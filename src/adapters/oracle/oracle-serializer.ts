@@ -1,0 +1,172 @@
+import oracledb from 'oracledb';
+
+import type {
+  IRegisteredFetchHandlerOptions,
+  TOracleObjectDbTypeHandlerCast,
+  TOracleObjectTypeCast,
+  TOracleSerializerTypeCastWithoutFormat,
+  TSetSerializer,
+} from '../../types.js';
+
+import { OracleNotify } from './oracle-notify.js';
+
+//TODO: In future add one abstract class with abstracts methods for all adapters serializers with common methods
+export class OracleSerializer extends OracleNotify {
+  private TYPE_SERIALIZER_MAP: TOracleSerializerTypeCastWithoutFormat =
+    new Map();
+  private readonly OBJECT_TYPE_CAST: TOracleObjectTypeCast = {
+    BINARY: oracledb.DB_TYPE_BLOB,
+    BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
+    CHAR: oracledb.DB_TYPE_CHAR,
+    DATE: oracledb.DB_TYPE_DATE,
+    VARCHAR: oracledb.DB_TYPE_VARCHAR,
+    JSON: oracledb.DB_TYPE_JSON,
+    TIMESTAMP: oracledb.DB_TYPE_TIMESTAMP,
+    TIMESTAMP_TZ: oracledb.DB_TYPE_TIMESTAMP_TZ,
+    XML: oracledb.DB_TYPE_XMLTYPE,
+  };
+  private OBJECT_DB_TYPE_HANDLER_CAST: TOracleObjectDbTypeHandlerCast =
+    new Map();
+
+  /**
+   * Registers a custom fetch handler for Oracle DB.
+   * This method is used to register a custom serializer for the given type.
+   * If a serializer with the same type already exists, it will be overridden.
+   * @param options - An object with the following properties:
+   *   isNeedRegisterDefaultSerializers - A flag indicating whether to register default serializers for the following types: DATE, TIMESTAMP, TIMESTAMP_TZ.
+   *   isNeedRegisterParamKeyTransform - A flag indicating whether to register a custom param key transformer.
+   */
+  public registerFetchHandlerHook(
+    options: IRegisteredFetchHandlerOptions
+  ): void {
+    //TODO : In future add default serializers, refactor logic for initialization this features
+    if (options.isNeedRegisterDefaultSerializers)
+      this.registerDefaultSerializers();
+    oracledb.fetchTypeHandler = (metaData) => {
+      if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
+        metaData.name = options.caseNativeStrategy.transformColumnName(
+          metaData.name
+        );
+
+      if (
+        metaData.dbType &&
+        this.OBJECT_DB_TYPE_HANDLER_CAST.has(metaData.dbType)
+      ) {
+        const serializeKey = this.OBJECT_DB_TYPE_HANDLER_CAST.get(
+          metaData.dbType
+        )!;
+        const serializer = this.TYPE_SERIALIZER_MAP.get(serializeKey);
+        // console.log(serializer, serializeKey);
+        if (!serializer) return { type: metaData.dbType };
+        const converter = (value: unknown): unknown => {
+          if (value === null || value === undefined) return null;
+          switch (typeof value) {
+            case 'string':
+              return serializer.strategy(value);
+            case 'number':
+              return serializer.strategy(value.toString());
+            case 'boolean':
+              return serializer.strategy(String(value));
+            case 'object':
+              return serializer.strategy(
+                value instanceof ArrayBuffer
+                  ? Buffer.from(value)
+                  : JSON.stringify(value)
+              );
+            case 'bigint':
+              return serializer.strategy(value.toString());
+            case 'symbol':
+              return serializer.strategy(value.toString());
+            default:
+              throw new Error(
+                `Unsupported type: ${typeof value} for ${metaData.name}`
+              );
+          }
+        };
+        return {
+          type: metaData.dbType,
+          converter: converter,
+        };
+      }
+      return;
+    };
+    return;
+  }
+
+  /**
+   * Registers default serializers for the following types: DATE, TIMESTAMP, TIMESTAMP_TZ.
+   * The registered serializers will use the following formatting rules:
+   * - DATE: 'yyyy-MM-dd'
+   * - TIMESTAMP: 'yyyy-MM-dd HH:mm:ss'
+   * - TIMESTAMP_TZ: 'yyyy-MM-dd HH:mm:ss'
+   */
+  // TODO: Added in future default serializers for must popular types.
+  private registerDefaultSerializers(): void {
+    this.logger.log('Default serializers successfully registered');
+  }
+
+  /**
+   * Registers a custom serializer for the given type.
+   * If a serializer with the same type already exists, it will be overridden.
+   * @param options - An object with the following properties:
+   *   serializerType - The type of the data to be serialized (e.g. 'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ').
+   *   strategy - A function that takes a value of the given type and returns a serialized string.
+   * @throws Error - If the serializer type is unknown.
+   */
+  public setSerializer(options: TSetSerializer): void {
+    if (this.TYPE_SERIALIZER_MAP.has(options.serializerType)) {
+      this.logger.warn(
+        `Serializer with type ${options.serializerType} already exists, overriding...`
+      );
+      this.TYPE_SERIALIZER_MAP.delete(options.serializerType);
+    }
+    const dbTypeClass = this.OBJECT_TYPE_CAST[options.serializerType];
+    if (!dbTypeClass)
+      throw new Error(`Unknown serializer type: ${options.serializerType}`);
+    if (this.OBJECT_DB_TYPE_HANDLER_CAST.has(dbTypeClass)) {
+      this.logger.warn(
+        `Serializer with dbType ${dbTypeClass.columnTypeName} already exists, overriding...`
+      );
+      this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
+    }
+    this.TYPE_SERIALIZER_MAP.set(options.serializerType, {
+      type: dbTypeClass,
+      strategy: options.strategy,
+    });
+    this.OBJECT_DB_TYPE_HANDLER_CAST.set(dbTypeClass, options.serializerType);
+    this.logger.log(
+      `Serializer with type ${options.serializerType} and dbType ${dbTypeClass.columnTypeName} set successfully`
+    );
+    return;
+  }
+
+  /**
+   * Deletes a serializer with the given type.
+   * @param serializerType - The type of the serializer to delete.
+   */
+  public deleteSerializer(
+    serializerType: Pick<TSetSerializer, 'serializerType'>
+  ): void {
+    if (this.TYPE_SERIALIZER_MAP.has(serializerType.serializerType))
+      this.TYPE_SERIALIZER_MAP.delete(serializerType.serializerType);
+    const dbTypeClass = this.OBJECT_TYPE_CAST[serializerType.serializerType];
+    if (this.OBJECT_DB_TYPE_HANDLER_CAST.has(dbTypeClass))
+      this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
+    return;
+  }
+
+  /**
+   * Deletes all registered serializers.
+   * This method is useful when you need to register new serializers or use default serializers,
+   * but don't want to keep the old ones.
+   */
+  public deleteAllSerializers(): void {
+    this.TYPE_SERIALIZER_MAP.clear();
+    this.OBJECT_DB_TYPE_HANDLER_CAST.clear();
+    return;
+  }
+
+  public get serializerMapping(): TOracleSerializerTypeCastWithoutFormat {
+    return this.TYPE_SERIALIZER_MAP;
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "outDir": "dist",
+    "rootDir": "src",
+    // Строгие проверки
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    // Импорты
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": false,
+    "noUncheckedSideEffectImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // Другие важные опции
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": false,
+    "skipDefaultLibCheck": false,
+    "useUnknownInCatchVariables": true,
+    "allowJs": false,
+    "checkJs": false,
+    "verbatimModuleSyntax": true,
+
+    // Сборка и отладка
+    "declaration": true,
+    "incremental": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "inlineSources": true,
+    "tsBuildInfoFile": "./dist/tsbuildinfo",
+
+    // Декораторы
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Оптимизации
+    "importHelpers": true,
+    "useDefineForClassFields": true,
+    "composite": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*spec.ts",
+    "**/node_modules/**",
+    "package-lock.json"
+  ]
+}
