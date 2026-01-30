@@ -1,20 +1,10 @@
 import { Result, types } from 'pg';
 
-import type {
-  IRegisteredFetchHandlerOptions,
-  TPostgreObjectTypeCast,
-  TPostgreSerializerTypeCastWithoutFormat,
-  TSetSerializer,
-} from '../../types.js';
+import type { ISetSerializer } from '../../types/serializer.types.js';
+import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
-import { PostgreNotify } from './postgre-notify.js';
-
-//TODO: In future add one abstract class for all adapters serializers with common methods
-export class PostgreSerializer extends PostgreNotify {
-  private TYPE_SERIALIZER_MAP: TPostgreSerializerTypeCastWithoutFormat =
-    new Map();
-
-  private readonly OBJECT_TYPE_CAST: TPostgreObjectTypeCast = {
+export class PostgreSerializer extends DatabaseSerializer {
+  private readonly OBJECT_TYPE_CAST = {
     BINARY: types.builtins.BYTEA,
     BOOLEAN: types.builtins.BOOL,
     CHAR: types.builtins.CHAR,
@@ -26,26 +16,15 @@ export class PostgreSerializer extends PostgreNotify {
     XML: types.builtins.XML,
   };
 
-  // private keyCaseTransform: KeyCaseTransform = new KeyCaseTransform();
-  /**
-   * Registers a custom fetch handler for PostgreSQL.
-   * This method is used to register a custom serializer for the given type.
-   * If a serializer with the same type already exists, it will be overridden.
-   * @param options - An object with the following properties:
-   *   isNeedRegisterDefaultSerializers - A flag indicating whether to register default serializers for the following types: DATE, TIMESTAMP, TIMESTAMP_TZ.
-   *   isNeedRegisterParamKeyTransform - A flag indicating whether to register a custom param key transformer.
-   */
-  public registerFetchHandlerHook(
-    options: IRegisteredFetchHandlerOptions,
-  ): void {
-    //TODO : In future add default serializers, and make two flags for control of it or refactor logic for initialization this features
-    if (options.isNeedRegisterDefaultSerializers)
+  public registerFetchHandlerHook(): void {
+    if (this.options.isNeedRegisterDefaultSerializers)
       this.registerDefaultSerializers();
-
+    const options = this.options;
+    //TODO: Find alternative solution
     (
       Result.prototype as Result & {
         parseRow: (
-          rowData: Array<string | Buffer | null>,
+          rowData: Array<string | Buffer | null>
         ) => Record<string, unknown>;
       }
     ).parseRow = function (
@@ -53,30 +32,30 @@ export class PostgreSerializer extends PostgreNotify {
         _parsers: Array<(value: string | Buffer | null) => unknown>;
         _prebuiltEmptyResultObject: Record<string, null>;
       },
-      rowData: Array<string | Buffer | null>,
+      rowData: Array<string | Buffer | null>
     ): Record<string, unknown> {
       const row: Record<string, unknown> = {
         ...this._prebuiltEmptyResultObject,
       };
       for (let i = 0, len = rowData.length; i < len; i++) {
         const rawValue = rowData[i];
-        const field = this.fields[i].name;
+        const field = this.fields[i]?.name;
         if (
           !field ||
           (this.fields[i]
-            .dataTypeID as (typeof types.builtins)[keyof typeof types.builtins]) ===
+            ?.dataTypeID as (typeof types.builtins)[keyof typeof types.builtins]) ===
             types.builtins.REFCURSOR
         )
           continue;
         delete row[field];
-        if (rawValue !== null) {
-          // console.log(this.fields[i]);
+        if (rawValue !== null && rawValue !== undefined) {
           const valueToParse =
-            this.fields[i].format === 'binary'
+            this.fields[i]?.format === 'binary'
               ? Buffer.from(rawValue)
               : rawValue;
-          row[options.caseNativeStrategy.transformColumnName(field)] =
-            this._parsers[i](valueToParse);
+          row[options.caseNativeStrategy.transformColumnName(field)] = (
+            this._parsers[i] as (value: string | Buffer | null) => unknown
+          )(valueToParse);
         } else {
           row[options.caseNativeStrategy.transformColumnName(field)] = null;
         }
@@ -95,10 +74,10 @@ export class PostgreSerializer extends PostgreNotify {
    * @throws Error - If the serializer type is unknown.
    */
 
-  public setSerializer(options: TSetSerializer): void {
+  public setSerializer(options: ISetSerializer): void {
     if (this.TYPE_SERIALIZER_MAP.has(options.serializerType)) {
       this.logger.warn(
-        `Serializer with type ${options.serializerType} already exists, overriding...`,
+        `Serializer with type ${options.serializerType} already exists, overriding...`
       );
       this.TYPE_SERIALIZER_MAP.delete(options.serializerType);
     }
@@ -106,26 +85,13 @@ export class PostgreSerializer extends PostgreNotify {
     if (!dbTypeClass)
       throw new Error(`Unknown serializer type: ${options.serializerType}`);
     this.TYPE_SERIALIZER_MAP.set(options.serializerType, {
-      type: dbTypeClass,
       strategy: options.strategy,
     });
     types.setTypeParser(dbTypeClass, options.strategy);
     this.logger.log(
-      `Serializer with type ${options.serializerType} and dbType ${dbTypeClass} set successfully`,
+      `Serializer with type ${options.serializerType} and dbType ${dbTypeClass} set successfully`
     );
     return;
-  }
-
-  // TODO: Added in future default serializers for must popular types.
-  /**
-   * Registers default serializers for the following types: DATE, TIMESTAMP, TIMESTAMP_TZ.
-   * The registered serializers will use the following formatting rules:
-   * - DATE: 'yyyy-MM-dd'
-   * - TIMESTAMP: 'yyyy-MM-dd HH:mm:ss'
-   * - TIMESTAMP_TZ: 'yyyy-MM-dd HH:mm:ss'
-   */
-  private registerDefaultSerializers(): void {
-    this.logger.log('Default serializers successfully registered');
   }
 
   /**
@@ -133,7 +99,7 @@ export class PostgreSerializer extends PostgreNotify {
    * @param serializerType - The type of the serializer to delete.
    */
   public deleteSerializer(
-    serializerType: Pick<TSetSerializer, 'serializerType'>,
+    serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
     if (this.TYPE_SERIALIZER_MAP.has(serializerType.serializerType))
       this.TYPE_SERIALIZER_MAP.delete(serializerType.serializerType);
@@ -153,9 +119,5 @@ export class PostgreSerializer extends PostgreNotify {
       types.setTypeParser(value, (val: string) => val);
     });
     return;
-  }
-
-  public get serializerMapping(): TPostgreSerializerTypeCastWithoutFormat {
-    return this.TYPE_SERIALIZER_MAP;
   }
 }

@@ -1,41 +1,43 @@
-import type { ICaseStratefyFactory, TKeyTransformCase } from '../types.js';
+import type {
+  ICaseStratefyFactory,
+  TKeyTransformCase,
+} from '../types/strategy.types.js';
+import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
+import { StringUtilities } from '../utils/string-utilities.js';
 
-import { CamelCaseNativeStrategy } from './native-strategy/camel-case-native-strategy.js';
-import { LowerCaseNativeStrategy } from './native-strategy/lower-case-native-strategy.js';
-import { CamelCaseNamingStrategy } from './orm-strategy/camel-case-naming-strategy.js';
-import { LowerCaseNamingStrategy } from './orm-strategy/lower-case-naming-strategy.js';
-import { DatabaseNamingCache } from './utils/database-naming-cache.js';
+import { NativeStrategy } from './native-strategy.js';
+import { OrmStrategy } from './orm-strategy.js';
 
-/**
- * Returns an object containing two strategies: one for TypeORM and one for native queries.
- * The returned strategies are determined by the outKeyTransformCase parameter.
- * If outKeyTransformCase is 'camelCase', the returned strategies will be CamelCaseNamingStrategy and CamelCaseNativeStrategy.
- * If outKeyTransformCase is 'lowerCase', the returned strategies will be LowerCaseNamingStrategy and LowerCaseNativeStrategy.
- * If outKeyTransformCase is neither 'camelCase' nor 'lowerCase', the returned strategies will default to CamelCaseNamingStrategy and CamelCaseNativeStrategy.
- * @param {TKeyTransformCase} outKeyTransformCase - The type of key transform case to use.
- * @returns {Object} An object containing two strategies: one for TypeORM and one for native queries.
- */
-export function caseStrategyFactory(
-  outKeyTransformCase: TKeyTransformCase,
-): ICaseStratefyFactory {
-  const columnNameCacheKey = DatabaseNamingCache.createCache(
-    Symbol('columnNameCacheKey'),
-  );
-  switch (outKeyTransformCase) {
-    case 'camelCase':
-      return {
-        strategy: new CamelCaseNamingStrategy(columnNameCacheKey),
-        nativeStrategy: new CamelCaseNativeStrategy(columnNameCacheKey),
-      };
-    case 'lowerCase':
-      return {
-        strategy: new LowerCaseNamingStrategy(columnNameCacheKey),
-        nativeStrategy: new LowerCaseNativeStrategy(columnNameCacheKey),
-      };
-    default:
-      return {
-        strategy: new CamelCaseNamingStrategy(columnNameCacheKey),
-        nativeStrategy: new CamelCaseNativeStrategy(columnNameCacheKey),
-      };
+export abstract class CaseStrategyFactory {
+  private static TRANSFORM_STRATEGIES: Record<
+    TKeyTransformCase,
+    (str: string) => string
+  > = {
+    camelCase: StringUtilities.toCamelCase,
+    lowerCase: StringUtilities.toLowerCase,
+    snakeCase: StringUtilities.toSnakeCase,
+  };
+
+  /**
+   * Returns an instance of ICaseStratefyFactory with the specified transformation function.
+   * The transformation function is used to transform column names from the database to the desired format.
+   * The default transformation function is StringUtilities.toCamelCase.
+   * @param {TKeyTransformCase} [outKeyTransformCase='camelCase'] - The key to the transformation function.
+   * @returns {ICaseStratefyFactory} - An instance of ICaseStratefyFactory with the specified transformation function.
+   */
+  public static caseStrategyFactory(
+    outKeyTransformCase: TKeyTransformCase = 'camelCase'
+  ): ICaseStratefyFactory {
+    const transformFn =
+      CaseStrategyFactory.TRANSFORM_STRATEGIES[outKeyTransformCase] ??
+      StringUtilities.toCamelCase;
+    const cacheKey = Symbol('columnNameCacheKey');
+    const cache = new DatabaseNamingCache<string>();
+    cache.createCache(cacheKey);
+
+    return {
+      strategy: new OrmStrategy(cacheKey, transformFn, cache),
+      nativeStrategy: new NativeStrategy(cacheKey, transformFn, cache),
+    };
   }
 }

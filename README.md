@@ -5,6 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/typeorm-procedure-kit.svg)](https://www.npmjs.com/package/typeorm-procedure-kit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](https://www.typescriptlang.org/)
+[![npm total downloads](https://img.shields.io)](https://www.npmjs.com/package/typeorm-procedure-kit)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 
 ---

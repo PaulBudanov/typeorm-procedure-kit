@@ -1,53 +1,50 @@
 import { randomUUID } from 'crypto';
 
 import oracledb from 'oracledb';
-import type { DataSource } from 'typeorm';
 
+import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
-  ILoggerModule,
   IOracleNotifyMsg,
   IOracleOptionsNotify,
-} from '../../types.js';
-import { delay } from '../../utils/delay.js';
-import { errorCodeCatcherSql } from '../../utils/errorCodeCatcherSql.js';
+  TNotifyCallbackGeneric,
+} from '../../types/notification.types.js';
+import { AsyncUtils } from '../../utils/async-utils.js';
+import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
+import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import { OracleConnection } from './oracle-connection.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
-export class OracleNotify extends OracleConnection {
-  private notificationPool = new Map<string, oracledb.Connection>();
-
+export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   /**
    * Constructor for OracleNotify class.
    * Initializes the OracleNotify object with the provided configuration
-   * and logger. Also sets up a listener for the 'beforeExit' event
-   * to handle the application exit and release all connections from the pool.
-   * @param {DataSource} appDataSource - configuration for the Oracle connection
+   * and logger.
+   * @param {OracleConnection} oracleConnection - configuration for the Oracle connection
    * @param {ILoggerModule} logger - logger module to log messages
-   * @param {number} notifyPort - port number for the notification listener
+   * @param {number} [notifyPort] - port number used for notify operations
    */
-  protected constructor(
-    protected appDataSource: DataSource,
-    protected logger: ILoggerModule,
-    protected notifyPort: number,
+  public constructor(
+    private readonly oracleConnection: OracleConnection,
+    protected readonly logger: ILoggerModule,
+    private readonly notifyPort?: number
   ) {
-    super(appDataSource, logger);
-    process.on('beforeExit', () => void this.handleApplicationExit());
+    super(logger);
   }
   /**
    * Gets the SQL command to fetch the packages that were updated in the database
    * @param {Array<string>} packages - names of the packages to fetch
    * @returns {string} - SQL command to fetch the packages that were updated in the database
    * @example
-   * const notifySql = dataBase.getNotifySql(['PACKAGE_NAME_1', 'PACKAGE_NAME_2']);
+   * const notifySql = dataBase.getPackagesNotifySql(['PACKAGE_NAME_1', 'PACKAGE_NAME_2']);
    */
-  public getNotifySql(packages: Array<string>): string {
+  public getPackagesNotifySql(packages: Array<string>): string {
     const packageConditions = packages
       .map((pkg) => `NAME = '${pkg.toUpperCase()}'`)
       .join(' OR ');
     return OracleSqlCommand.SQL_GET_NOTIFY_UPDATE_PACKAGE.replace(
       ':REPLACER_PACKAGES',
-      packageConditions,
+      packageConditions
     );
   }
   /**
@@ -59,7 +56,7 @@ export class OracleNotify extends OracleConnection {
    */
   public async unlistenNotify(
     channelName: string,
-    isTimedOut = false,
+    isTimedOut = false
   ): Promise<void> {
     const connection = this.notificationPool.get(channelName);
     this.notificationPool.delete(channelName);
@@ -70,7 +67,7 @@ export class OracleNotify extends OracleConnection {
 
     if (isTimedOut) {
       this.logger.warn(`Timed out subscription for channel: ${channelName}`);
-      await this.closeSingleConnection(connection);
+      await this.oracleConnection.closeSingleConnection(connection);
       return;
     }
 
@@ -82,10 +79,10 @@ export class OracleNotify extends OracleConnection {
         `Error unsubscribing from channel ${channelName}: ${
           (error as Error).message
         }`,
-        (error as Error).stack,
+        (error as Error).stack
       );
     } finally {
-      await this.closeSingleConnection(connection);
+      await this.oracleConnection.closeSingleConnection(connection);
     }
   }
   //TODO: Make return object more informative
@@ -99,15 +96,15 @@ export class OracleNotify extends OracleConnection {
    */
   public async listenNotify<T>(
     sqlCommand: string,
-    notifyCallback: (args: T) => Promise<void> | void,
-    options: IOracleOptionsNotify,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    options: IOracleOptionsNotify
   ): Promise<string> {
     const channelName = randomUUID();
-    const connection = await this.createSingleConnection();
+    const connection = await this.oracleConnection.createSingleConnection();
     if (Array.isArray(options.operations)) {
       if (options.operations.length >= 4)
         throw new Error(
-          'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,',
+          'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,'
         );
       const subscriptions = await Promise.all(
         options.operations.map((operation) => {
@@ -130,12 +127,12 @@ export class OracleNotify extends OracleConnection {
                 connection,
                 channelName,
                 subscribeOptions,
-                msg,
+                msg
               ),
             ...modifyOptions,
           };
           return this.subscribe(connection, channelName, subscribeOptions);
-        }),
+        })
       );
       return subscriptions.join(', ');
     } else {
@@ -154,7 +151,7 @@ export class OracleNotify extends OracleConnection {
             connection,
             channelName,
             subscribeOptions,
-            msg,
+            msg
           ),
         ...options,
         operations: options.operations,
@@ -175,21 +172,21 @@ export class OracleNotify extends OracleConnection {
   private async subscribe(
     connection: oracledb.Connection,
     channelName: string,
-    subscribeOptions: oracledb.SubscribeOptions,
+    subscribeOptions: oracledb.SubscribeOptions
   ): Promise<string> {
     try {
       await connection.subscribe(channelName, subscribeOptions);
       this.notificationPool.set(channelName, connection);
       this.logger.log(
-        `Successfully registered subscription for channel: ${channelName}`,
+        `Successfully registered subscription for channel: ${channelName}`
       );
       return channelName;
     } catch (error) {
       this.logger.error(
         `Subscription error: ${(error as Error).message}`,
-        (error as Error).stack,
+        (error as Error).stack
       );
-      await this.closeSingleConnection(connection);
+      await this.oracleConnection.closeSingleConnection(connection);
       throw error;
     }
   }
@@ -206,11 +203,11 @@ export class OracleNotify extends OracleConnection {
    * @returns Promise<void> - resolves when the subscription message is handled
    */
   private async makeSubscriptionHandler<T>(
-    notifyCallback: (args: T) => Promise<void> | void,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     client: oracledb.Connection,
     channelName: string,
     subscribeUnionOptions: Omit<oracledb.SubscribeOptions, 'callback'>,
-    msg: IOracleNotifyMsg,
+    msg: IOracleNotifyMsg
   ): Promise<void> {
     const options: IOracleOptionsNotify = {
       operations: subscribeUnionOptions.operations,
@@ -228,7 +225,7 @@ export class OracleNotify extends OracleConnection {
           subscribeUnionOptions.sql,
           channelName,
           notifyCallback,
-          options,
+          options
         );
       }
       const tables: Array<oracledb.SubscriptionTable> | undefined = msg
@@ -249,7 +246,7 @@ export class OracleNotify extends OracleConnection {
       for (const messageTable of affectedTables) {
         const [tableName, rowsArray] = messageTable;
         const sqlQuery = `SELECT * FROM ${tableName} WHERE rowid IN (${rowsArray.join(
-          ', ',
+          ', '
         )})`;
         const result = await client.execute<T>(
           sqlQuery,
@@ -257,16 +254,16 @@ export class OracleNotify extends OracleConnection {
           {
             outFormat: oracledb.OUT_FORMAT_OBJECT,
             autoCommit: true,
-          },
+          }
         );
-        const rows = result.rows as T;
+        const rows = result.rows as TNotifyCallbackGeneric<T>;
         try {
-          errorCodeCatcherSql<T>(rows);
+          DatabaseErrorHandler.checkForDatabaseError<T>(rows);
           await notifyCallback(rows);
         } catch (error) {
           this.logger.error(
             `Unhandled callback error: ${(error as Error).message}`,
-            (error as Error).stack,
+            (error as Error).stack
           );
           throw error;
         }
@@ -275,7 +272,7 @@ export class OracleNotify extends OracleConnection {
     } catch (error) {
       this.logger.error(
         `Subscription error: ${(error as Error).message}`,
-        (error as Error).stack,
+        (error as Error).stack
       );
       return;
     }
@@ -299,17 +296,17 @@ export class OracleNotify extends OracleConnection {
   private async restoreSubscription<T>(
     sqlCommand: string,
     channelName: string,
-    notifyCallback: (args: T) => Promise<void> | void,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: IOracleOptionsNotify,
     maxRetries = 5,
     retryDelayMs = 1000 * 60 * 5,
-    currentRetry = 1,
+    currentRetry = 1
   ): Promise<void> {
     try {
       await this.unlistenNotify(channelName, true);
       await this.listenNotify(sqlCommand, notifyCallback, options);
       this.logger.log(
-        `Successfully restored subscription for sqlCommand: ${sqlCommand}`,
+        `Successfully restored subscription for sqlCommand: ${sqlCommand}`
       );
       return;
     } catch (error) {
@@ -317,15 +314,15 @@ export class OracleNotify extends OracleConnection {
         `Attempt ${currentRetry}/${maxRetries} failed to restore subscription for channel "${channelName}": ${
           (error as Error).message
         }`,
-        (error as Error).stack,
+        (error as Error).stack
       );
       if (currentRetry < maxRetries) {
         this.logger.warn(
           `Retrying in ${retryDelayMs / 1000} seconds... (Attempt ${
             currentRetry + 1
-          }/${maxRetries})`,
+          }/${maxRetries})`
         );
-        await delay(retryDelayMs);
+        await AsyncUtils.delay(retryDelayMs);
         return void this.restoreSubscription(
           sqlCommand,
           channelName,
@@ -333,13 +330,13 @@ export class OracleNotify extends OracleConnection {
           options,
           maxRetries,
           retryDelayMs,
-          currentRetry + 1,
+          currentRetry + 1
         );
       }
       this.logger.error(
-        `Max retry attempts (${maxRetries}) exceeded for channel: ${channelName}. Scheduling recovery in 30 minutes.`,
+        `Max retry attempts (${maxRetries}) exceeded for channel: ${channelName}. Scheduling recovery in 30 minutes.`
       );
-      await delay(1000 * 60 * 30);
+      await AsyncUtils.delay(1000 * 60 * 30);
       return void this.restoreSubscription(
         sqlCommand,
         channelName,
@@ -347,33 +344,8 @@ export class OracleNotify extends OracleConnection {
         options,
         maxRetries,
         retryDelayMs,
-        1,
+        1
       );
-    }
-  }
-
-  /**
-   * Handles application exit by unsubscribing from all registered channels
-   * and then closing the corresponding client connections
-   * @returns {Promise<void>} - resolves when all channels are unsubscribed
-   * and the client connections are closed
-   */
-  private async handleApplicationExit(): Promise<void> {
-    if (this.notificationPool.size === 0) return;
-
-    for (const [channel] of this.notificationPool.entries()) {
-      try {
-        await this.unlistenNotify(channel);
-        this.logger.log(
-          `Unsubscribed and closed connection for channel: ${channel}`,
-        );
-      } catch (err) {
-        this.logger.error(
-          `Error unsubscribing/closing channel ${channel}: ${
-            (err as Error).message
-          }`,
-        );
-      }
     }
   }
 }

@@ -1,20 +1,13 @@
-import oracledb from 'oracledb';
+import oracledb, { type FetchTypeResponse } from 'oracledb';
 
 import type {
-  IRegisteredFetchHandlerOptions,
+  ISetSerializer,
   TOracleObjectDbTypeHandlerCast,
-  TOracleObjectTypeCast,
-  TOracleSerializerTypeCastWithoutFormat,
-  TSetSerializer,
-} from '../../types.js';
+} from '../../types/serializer.types.js';
+import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
-import { OracleNotify } from './oracle-notify.js';
-
-//TODO: In future add one abstract class with abstracts methods for all adapters serializers with common methods
-export class OracleSerializer extends OracleNotify {
-  private TYPE_SERIALIZER_MAP: TOracleSerializerTypeCastWithoutFormat =
-    new Map();
-  private readonly OBJECT_TYPE_CAST: TOracleObjectTypeCast = {
+export class OracleSerializer extends DatabaseSerializer {
+  private readonly OBJECT_TYPE_CAST = {
     BINARY: oracledb.DB_TYPE_BLOB,
     BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
     CHAR: oracledb.DB_TYPE_CHAR,
@@ -32,19 +25,13 @@ export class OracleSerializer extends OracleNotify {
    * Registers a custom fetch handler for Oracle DB.
    * This method is used to register a custom serializer for the given type.
    * If a serializer with the same type already exists, it will be overridden.
-   * @param options - An object with the following properties:
-   *   isNeedRegisterDefaultSerializers - A flag indicating whether to register default serializers for the following types: DATE, TIMESTAMP, TIMESTAMP_TZ.
-   *   isNeedRegisterParamKeyTransform - A flag indicating whether to register a custom param key transformer.
    */
-  public registerFetchHandlerHook(
-    options: IRegisteredFetchHandlerOptions
-  ): void {
-    //TODO : In future add default serializers, refactor logic for initialization this features
-    if (options.isNeedRegisterDefaultSerializers)
+  public registerFetchHandlerHook(): void {
+    if (this.options.isNeedRegisterDefaultSerializers)
       this.registerDefaultSerializers();
-    oracledb.fetchTypeHandler = (metaData) => {
+    oracledb.fetchTypeHandler = (metaData): FetchTypeResponse | undefined => {
       if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
-        metaData.name = options.caseNativeStrategy.transformColumnName(
+        metaData.name = this.options.caseNativeStrategy.transformColumnName(
           metaData.name
         );
 
@@ -69,8 +56,10 @@ export class OracleSerializer extends OracleNotify {
               return serializer.strategy(String(value));
             case 'object':
               return serializer.strategy(
-                value instanceof ArrayBuffer
-                  ? Buffer.from(value)
+                value instanceof ArrayBuffer || value instanceof Buffer
+                  ? value instanceof Buffer
+                    ? value
+                    : Buffer.from(value as ArrayBuffer)
                   : JSON.stringify(value)
               );
             case 'bigint':
@@ -94,18 +83,6 @@ export class OracleSerializer extends OracleNotify {
   }
 
   /**
-   * Registers default serializers for the following types: DATE, TIMESTAMP, TIMESTAMP_TZ.
-   * The registered serializers will use the following formatting rules:
-   * - DATE: 'yyyy-MM-dd'
-   * - TIMESTAMP: 'yyyy-MM-dd HH:mm:ss'
-   * - TIMESTAMP_TZ: 'yyyy-MM-dd HH:mm:ss'
-   */
-  // TODO: Added in future default serializers for must popular types.
-  private registerDefaultSerializers(): void {
-    this.logger.log('Default serializers successfully registered');
-  }
-
-  /**
    * Registers a custom serializer for the given type.
    * If a serializer with the same type already exists, it will be overridden.
    * @param options - An object with the following properties:
@@ -113,7 +90,7 @@ export class OracleSerializer extends OracleNotify {
    *   strategy - A function that takes a value of the given type and returns a serialized string.
    * @throws Error - If the serializer type is unknown.
    */
-  public setSerializer(options: TSetSerializer): void {
+  public setSerializer(options: ISetSerializer): void {
     if (this.TYPE_SERIALIZER_MAP.has(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
@@ -130,7 +107,6 @@ export class OracleSerializer extends OracleNotify {
       this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
     }
     this.TYPE_SERIALIZER_MAP.set(options.serializerType, {
-      type: dbTypeClass,
       strategy: options.strategy,
     });
     this.OBJECT_DB_TYPE_HANDLER_CAST.set(dbTypeClass, options.serializerType);
@@ -145,7 +121,7 @@ export class OracleSerializer extends OracleNotify {
    * @param serializerType - The type of the serializer to delete.
    */
   public deleteSerializer(
-    serializerType: Pick<TSetSerializer, 'serializerType'>
+    serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
     if (this.TYPE_SERIALIZER_MAP.has(serializerType.serializerType))
       this.TYPE_SERIALIZER_MAP.delete(serializerType.serializerType);
@@ -164,9 +140,5 @@ export class OracleSerializer extends OracleNotify {
     this.TYPE_SERIALIZER_MAP.clear();
     this.OBJECT_DB_TYPE_HANDLER_CAST.clear();
     return;
-  }
-
-  public get serializerMapping(): TOracleSerializerTypeCastWithoutFormat {
-    return this.TYPE_SERIALIZER_MAP;
   }
 }
