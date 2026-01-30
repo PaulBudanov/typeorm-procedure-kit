@@ -10,6 +10,7 @@ stages:
 #   - template: Auto-DevOps.gitlab-ci.yml
 
 publish:
+  image: node:22
   stage: release
   script:
     - npm cache clean --force
