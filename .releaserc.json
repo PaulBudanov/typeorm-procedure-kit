@@ -1,5 +1,5 @@
 {
-  "branches": ["release"],
+  "branches": ["master"],
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
@@ -12,31 +12,17 @@
     [
       "@semantic-release/npm",
       {
-        "npmPublish": false
+        "npmPublish": true
       }
     ],
-
+    "@semantic-release/gitlab",
     [
       "@semantic-release/git",
       {
         "assets": ["package.json", "CHANGELOG.md"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }
-    ],
-    [
-      "@semantic-release/gitlab",
-      {
-        "assets": [
-          {
-            "path": "build/web-reg-uo-backend.zip",
-            "label": "web-reg-uo-backend-${nextRelease.version}.zip",
-            "target": "generic_package",
-            "packageName": "web-reg-uo-backend-${nextRelease.version}.zip",
-            "status": "default"
-          }
-        ]
-      }
     ]
   ],
-  "repositoryUrl": "http://reshenie-soft.ru:7027/web/web-reg-uo/backend.git"
+  "repositoryUrl": "http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit.git"
 }
