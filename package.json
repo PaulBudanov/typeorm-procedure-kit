@@ -13,6 +13,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "semantic-release": "semantic-release",
     "build": "npm i && npm run lint && tsc",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
