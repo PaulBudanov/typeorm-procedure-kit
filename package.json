@@ -47,6 +47,10 @@
   ],
   "author": "Paul Budanov",
   "license": "MIT",
+  "bugs": {
+    "url": "http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/issues",
+    "email": "budanov@reshenie-soft.ru"
+  },
   "dependencies": {
     "@web-mis/queue-manager": "^1.0.9",
     "lru-cache": "^11.2.5",
