@@ -3,25 +3,11 @@ workflow:
     - if: $CI_COMMIT_BRANCH
 
 stages:
-  - build
-  - test
-  - deploy
-  - review
-  - dast
-  - staging
-  - canary
-  - production
-  - incremental rollout 10%
-  - incremental rollout 25%
-  - incremental rollout 50%
-  - incremental rollout 100%
-  - performance
-  - cleanup
   - release
-sast:
-  stage: test
-include:
-  - template: Auto-DevOps.gitlab-ci.yml
+# sast:
+#   stage: test
+# include:
+#   - template: Auto-DevOps.gitlab-ci.yml
 
 publish:
   stage: release
