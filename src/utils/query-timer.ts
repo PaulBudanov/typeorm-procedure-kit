@@ -38,7 +38,7 @@ export class QueryTimer {
    * @param {number} [rowCount] - number of rows returned by the query
    */
   public success(rowCount?: number): void {
-    const duration = Date.now() - this.startTime;
+    const duration = DateTime.now().toMillis() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
     const message =
@@ -59,7 +59,7 @@ export class QueryTimer {
    * @param error - error to log
    */
   public error(error: ServerError | Error): void {
-    const duration = Date.now() - this.startTime;
+    const duration = DateTime.now().toMillis() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
     this.logger.error(
