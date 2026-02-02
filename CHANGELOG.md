@@ -1,3 +1,10 @@
+## [1.1.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.6...v1.1.7) (2026-02-02)
+
+
+### Bug Fixes
+
+* dependepcy install changes. ([9b24c2d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/9b24c2d66a022bfb50988ae012fe2b02a33463a4))
+
 ## [1.1.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.5...v1.1.6) (2026-02-02)
 
 
