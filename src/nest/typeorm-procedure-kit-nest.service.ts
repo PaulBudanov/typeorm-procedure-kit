@@ -9,7 +9,7 @@ import type { TSerializerTypeCastWithoutFormat } from '../types/serializer.types
 import { DATABASE_CONFIG_TOKEN } from './consts.js';
 
 @Injectable({ scope: Scope.DEFAULT })
-export class TypeOrmProcedureKitService
+export class TypeOrmProcedureKitNestService
   extends TypeOrmProcedureKit
   implements OnModuleInit
 {

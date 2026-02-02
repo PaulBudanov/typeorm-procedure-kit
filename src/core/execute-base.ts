@@ -35,6 +35,7 @@ export class ExecuteBase {
     optionsCommands: Array<string> = [],
     cursorsNames: Array<string> = []
   ): Promise<Awaited<Array<T>>> {
+    console.log(this.logger);
     const queryTimer = new QueryTimer(sql, this.logger);
     const client = await this.connectionBase.getEntityManager();
     try {

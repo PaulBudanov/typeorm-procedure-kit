@@ -10,35 +10,35 @@ import {
 import type { IModuleConfig } from '../types/base.types.js';
 
 import { DATABASE_CONFIG_TOKEN, DATABASE_SERVICE_TOKEN } from './consts.js';
-import { TypeOrmProcedureKitService } from './typeorm-procedure-kit.service.js';
+import { TypeOrmProcedureKitNestService } from './typeorm-procedure-kit-nest.service.js';
 
 @Global()
 @Module({})
-export class DatabaseNestModule {
+export class TypeOrmProcedureKitNestModule {
   /**
    * Returns a dynamic module for the given options.
    *
    * This method is used to create a global module which is used
-   * to register the TypeORMProcedureKitService globally.
+   * to register the TypeOrmProcedureKitNestService globally.
    *
    * @param options - The options to register the global module with.
    * @returns A dynamic module for the given options.
    */
   public static forRoot(options: IModuleConfig): DynamicModule {
     return {
-      module: DatabaseNestModule,
+      module: TypeOrmProcedureKitNestModule,
       providers: [
         {
           provide: DATABASE_CONFIG_TOKEN,
           useValue: options,
         },
-        TypeOrmProcedureKitService,
+        TypeOrmProcedureKitNestService,
         {
           provide: DATABASE_SERVICE_TOKEN,
-          useExisting: TypeOrmProcedureKitService,
+          useExisting: TypeOrmProcedureKitNestService,
         },
       ],
-      exports: [TypeOrmProcedureKitService, DATABASE_SERVICE_TOKEN],
+      exports: [TypeOrmProcedureKitNestService, DATABASE_SERVICE_TOKEN],
     };
   }
   /**
@@ -64,16 +64,16 @@ export class DatabaseNestModule {
       inject: options.inject ?? [],
     };
     return {
-      module: DatabaseNestModule,
+      module: TypeOrmProcedureKitNestModule,
       providers: [
         configProvider,
-        TypeOrmProcedureKitService,
+        TypeOrmProcedureKitNestService,
         {
           provide: DATABASE_SERVICE_TOKEN,
-          useExisting: TypeOrmProcedureKitService,
+          useExisting: TypeOrmProcedureKitNestService,
         },
       ],
-      exports: [TypeOrmProcedureKitService, DATABASE_SERVICE_TOKEN],
+      exports: [TypeOrmProcedureKitNestService, DATABASE_SERVICE_TOKEN],
     };
   }
 }

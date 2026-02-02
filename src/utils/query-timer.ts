@@ -24,7 +24,7 @@ export class QueryTimer {
   ) {
     this.startTime = DateTime.now().toLocal().toMillis();
 
-    this.logger.debug(
+    this.logger.log(
       `SQL request [${this.queryId}] started: ${this.truncateSql(this.sql, 100)}`
     );
   }
@@ -48,10 +48,8 @@ export class QueryTimer {
 
     if (duration > 5000) {
       this.logger.warn(message);
-    } else if (duration > 1000) {
-      this.logger.log(message);
     } else {
-      this.logger.debug(message);
+      this.logger.log(message);
     }
   }
 
