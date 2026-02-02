@@ -1,3 +1,10 @@
+## [1.1.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.7...v1.1.8) (2026-02-02)
+
+
+### Bug Fixes
+
+* change reflect metadata dependency ([3b6a1be](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/3b6a1be1d42cf0f18daa21c45aed912cd38729b3))
+
 ## [1.1.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.6...v1.1.7) (2026-02-02)
 
 
