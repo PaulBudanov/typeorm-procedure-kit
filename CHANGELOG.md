@@ -1,3 +1,10 @@
+## [1.1.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.5...v1.1.6) (2026-02-02)
+
+
+### Bug Fixes
+
+* delete console.log ([da16e6e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/da16e6ea310c862b92e00e06164c6e0e5388849a))
+
 ## [1.1.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.4...v1.1.5) (2026-02-02)
 
 
