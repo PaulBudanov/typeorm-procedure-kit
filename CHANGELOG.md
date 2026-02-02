@@ -1,3 +1,15 @@
+# [1.1.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.0.2...v1.1.0) (2026-02-02)
+
+
+### Bug Fixes
+
+* change tsconfig for esm. ([6f1164b](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/6f1164baae67efbd09fe33f88f2667554d18092f))
+
+
+### Features
+
+* added nest js implementation, fix types. ([cfbe60e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/cfbe60e86c7b5dda2504258fa8ae6111af889bff))
+
 ## [1.0.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.0.1...v1.0.2) (2026-02-02)
 
 
