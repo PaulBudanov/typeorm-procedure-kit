@@ -1,3 +1,10 @@
+## [1.1.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.8...v1.1.9) (2026-02-02)
+
+
+### Bug Fixes
+
+* add types install auto. ([4db3f8d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/4db3f8d0f8e2535c5567269c171654b6edae3366))
+
 ## [1.1.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.7...v1.1.8) (2026-02-02)
 
 
