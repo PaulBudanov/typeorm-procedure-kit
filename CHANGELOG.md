@@ -1,3 +1,10 @@
+## [1.0.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.0.1...v1.0.2) (2026-02-02)
+
+
+### Bug Fixes
+
+* add union method for generate options, fix type for this method. ([7299a4e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/7299a4eff2868a6a10036fded2a06d02687a6adf))
+
 ## [1.0.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.0.0...v1.0.1) (2026-02-02)
 
 
