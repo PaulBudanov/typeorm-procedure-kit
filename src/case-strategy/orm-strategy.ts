@@ -1,6 +1,7 @@
 import { DefaultNamingStrategy } from 'typeorm';
 
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
+import { ServerError } from '../utils/server-error.js';
 
 export class OrmStrategy extends DefaultNamingStrategy {
   private databaseNamingCache: DatabaseNamingCache<string>;
@@ -31,7 +32,7 @@ export class OrmStrategy extends DefaultNamingStrategy {
   ): string {
     const columnName = customName ?? propertyName;
     if (typeof columnName !== 'string')
-      throw new Error('Column name must be a string');
+      throw new ServerError('Column name must be a string');
     const name = this.stringTransformUtility(columnName);
     if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, name))
       return this.databaseNamingCache.cacheGet(this.columnNameCacheKey, name)!;

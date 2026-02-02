@@ -16,6 +16,7 @@ import { PostgreConnection } from './postgre-connection.js';
 import { PostgreNotify } from './postgre-notify.js';
 import { PostgreSerializer } from './postgre-serializer.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
+import { ServerError } from '../../utils/server-error.js';
 export class PostgreAdapter extends DatabaseAdapter<
   PostgreSerializer,
   PostgreNotify,
@@ -89,7 +90,7 @@ export class PostgreAdapter extends DatabaseAdapter<
   ): IBindingsObjectReturn {
     // Проверка наличия пакета и процедуры в списках
     if (!procedures?.[processName]) {
-      throw new Error(
+      throw new ServerError(
         `Package "${packageName}" or process "${processName}" not found`
       );
     }

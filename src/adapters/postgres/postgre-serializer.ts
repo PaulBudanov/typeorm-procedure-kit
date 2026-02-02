@@ -2,6 +2,7 @@ import { Result, types } from 'pg';
 
 import type { ISetSerializer } from '../../types/serializer.types.js';
 import { DatabaseSerializer } from '../abstract/database-serializer.js';
+import { ServerError } from '../../utils/server-error.js';
 
 export class PostgreSerializer extends DatabaseSerializer {
   private readonly OBJECT_TYPE_CAST = {
@@ -83,7 +84,9 @@ export class PostgreSerializer extends DatabaseSerializer {
     }
     const dbTypeClass = this.OBJECT_TYPE_CAST[options.serializerType];
     if (!dbTypeClass)
-      throw new Error(`Unknown serializer type: ${options.serializerType}`);
+      throw new ServerError(
+        `Unknown serializer type: ${options.serializerType}`
+      );
     this.TYPE_SERIALIZER_MAP.set(options.serializerType, {
       strategy: options.strategy,
     });

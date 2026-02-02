@@ -15,6 +15,7 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import { OracleConnection } from './oracle-connection.js';
 import { OracleSqlCommand } from './oracle-sql.js';
+import { ServerError } from '../../utils/server-error.js';
 
 export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   /**
@@ -104,7 +105,7 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     const connection = await this.oracleConnection.createSingleConnection();
     if (Array.isArray(options.operations)) {
       if (options.operations.length >= 4)
-        throw new Error(
+        throw new ServerError(
           'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,'
         );
       const subscriptions = await Promise.all(

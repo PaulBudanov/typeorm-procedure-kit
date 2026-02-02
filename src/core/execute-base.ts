@@ -1,9 +1,6 @@
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
-import type {
-  IBindingsObjectReturn,
-  TOptionsCommand,
-} from '../types/utility.types.js';
+import type { IBindingsObjectReturn } from '../types/utility.types.js';
 import { DatabaseErrorHandler } from '../utils/database-error-handler.js';
 import { QueryTimer } from '../utils/query-timer.js';
 import { ServerError } from '../utils/server-error.js';
@@ -27,7 +24,7 @@ export class ExecuteBase {
    * Execute a SQL query or procedure call in a transaction
    * @param {string} sql - SQL query string
    * @param {IBindingsObjectReturn['bindings']} [bindings] - parameters for SQL query
-   * @param {TOptionsCommand[keyof TOptionsCommand]} [optionsCommands] - options for database commands
+   * @param {Array<string>} [optionsCommands] - options for database commands
    * @param {Array<string>} [cursorsNames] - names of cursors
    * @returns {Promise<Awaited<Array<T>>>} - result of SQL query call
    * @throws {Error} - if an error occurs during the execution of commands
@@ -35,7 +32,7 @@ export class ExecuteBase {
   public async execute<T>(
     sql: string,
     bindings: IBindingsObjectReturn['bindings'] = [],
-    optionsCommands: TOptionsCommand[keyof TOptionsCommand] = [],
+    optionsCommands: Array<string> = [],
     cursorsNames: Array<string> = []
   ): Promise<Awaited<Array<T>>> {
     const queryTimer = new QueryTimer(sql, this.logger);

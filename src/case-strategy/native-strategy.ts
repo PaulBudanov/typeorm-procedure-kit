@@ -1,5 +1,6 @@
 import type { INativeStrategyMethods } from '../types/strategy.types.js';
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
+import { ServerError } from '../utils/server-error.js';
 
 export class NativeStrategy implements INativeStrategyMethods {
   private databaseNamingCache: DatabaseNamingCache<string>;
@@ -24,7 +25,7 @@ export class NativeStrategy implements INativeStrategyMethods {
 
   public transformColumnName(columnName: string): string {
     if (typeof columnName !== 'string')
-      throw new Error('columnName must be a string');
+      throw new ServerError('columnName must be a string');
     if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, columnName))
       return this.databaseNamingCache.cacheGet(
         this.columnNameCacheKey,

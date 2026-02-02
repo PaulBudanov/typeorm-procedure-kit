@@ -1,10 +1,9 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
     "types": ["node"],
-    "outDir": "dist",
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
     "rootDir": "src",
     // Строгие проверки
     "strict": true,
@@ -24,7 +23,7 @@
     "allowImportingTsExtensions": false,
     "noUncheckedSideEffectImports": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true,
+    "resolveJsonModule": false,
 
     // Другие важные опции
     "forceConsistentCasingInFileNames": true,

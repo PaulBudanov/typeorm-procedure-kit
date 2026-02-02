@@ -1,4 +1,5 @@
 import { LRUCache } from 'lru-cache';
+import { ServerError } from './server-error.js';
 
 export class DatabaseNamingCache<
   U extends
@@ -32,7 +33,7 @@ export class DatabaseNamingCache<
   public cacheGet(cacheKey: symbol, key: string): U | undefined {
     const cache = this.cacheMap.get(cacheKey);
     if (!cache)
-      throw new Error(
+      throw new ServerError(
         `Cache with this cacheKey ${String(cacheKey)} not found.`
       );
     return cache.get(key);
@@ -41,7 +42,7 @@ export class DatabaseNamingCache<
   public cacheSet(cacheKey: symbol, key: string, value: U): void {
     const cache = this.cacheMap.get(cacheKey);
     if (!cache)
-      throw new Error(
+      throw new ServerError(
         `Cache with this cacheKey ${String(cacheKey)} not found.`
       );
     cache.set(key, value);
@@ -51,7 +52,7 @@ export class DatabaseNamingCache<
   public cacheHas(cacheKey: symbol, key: string): boolean {
     const cache = this.cacheMap.get(cacheKey);
     if (!cache)
-      throw new Error(
+      throw new ServerError(
         `Cache with this cacheKey ${String(cacheKey)} not found.`
       );
     return cache.has(key);
@@ -60,7 +61,9 @@ export class DatabaseNamingCache<
   public cacheClear(key: symbol, isDelete = false): void {
     const cache = this.cacheMap.get(key);
     if (!cache)
-      throw new Error(`Cache with this cacheKey ${String(key)} not found.`);
+      throw new ServerError(
+        `Cache with this cacheKey ${String(key)} not found.`
+      );
     if (isDelete) {
       this.cacheMap.delete(key);
     } else {

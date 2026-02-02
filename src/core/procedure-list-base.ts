@@ -8,6 +8,7 @@ import type {
 } from '../types/procedure.types.js';
 import { AsyncUtils } from '../utils/async-utils.js';
 import { procedureNameParser } from '../utils/procedure-name-parser.js';
+import { ServerError } from '../utils/server-error.js';
 import { StringUtilities } from '../utils/string-utilities.js';
 
 import type { ExecuteBase } from './execute-base.js';
@@ -131,7 +132,7 @@ export class ProcedureListBase {
       );
     });
     if (rawArguments.length < 1) {
-      throw new Error(
+      throw new ServerError(
         `No arguments in package ${packageName} , load package and restart server or wait get notification for load package`
       );
     }

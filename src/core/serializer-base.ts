@@ -3,6 +3,7 @@ import type {
   ISetSerializer,
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
+import { ServerError } from '../utils/server-error.js';
 
 export class SerializerBase {
   public constructor(
@@ -19,7 +20,7 @@ export class SerializerBase {
     return new Proxy(this.databaseAdapter.serializerMapping, {
       get(target, prop): unknown {
         if (prop === 'set' || prop === 'clear' || prop === 'delete') {
-          throw new Error('Read-only map: cannot modify');
+          throw new ServerError('Read-only map: cannot modify');
         }
         const value = Reflect.get(target, prop) as unknown;
         return typeof value === 'function'
@@ -28,10 +29,10 @@ export class SerializerBase {
       },
 
       set(): never {
-        throw new Error('Read-only map: cannot modify');
+        throw new ServerError('Read-only map: cannot modify');
       },
       deleteProperty(): never {
-        throw new Error('Read-only map: cannot modify');
+        throw new ServerError('Read-only map: cannot modify');
       },
     });
   }

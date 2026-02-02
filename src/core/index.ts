@@ -1,11 +1,6 @@
 import oracledb from 'oracledb';
 
-import type {
-  IEntityOptions,
-  IMigrationOptions,
-  TDbConfig,
-} from '../types/config.types.js';
-import type { ILoggerModule } from '../types/logger.types.js';
+import type { IModuleConfig } from '../types/base.types.js';
 import type {
   ICreateNotify,
   INotifyPackageCallback,
@@ -15,7 +10,6 @@ import type {
   ISetSerializer,
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
-import type { TOptionsCommand } from '../types/utility.types.js';
 import { procedureNameParser } from '../utils/procedure-name-parser.js';
 
 import { ConnectionBase } from './connection-base.js';
@@ -25,201 +19,74 @@ import { NotifyBase } from './notify-base.js';
 import { ProcedureListBase } from './procedure-list-base.js';
 import { SerializerBase } from './serializer-base.js';
 
-// /**
-//  * Main class for working with databases
-//  * Contains methods for calling procedures and calling queries and creating notifications
-//  *
-//  * @class Database
-//  * @extends NotifyBase
-//  */
-// export class Database extends NotifyBase {
-//   /**
-//    * @constructor
-//    * @param {TDbConfig} dbConfig - database configuration
-//    * @param {Record<string, string | object>} procedureObjectList - list of uses procedures
-//    * @param {ILoggerModule} [logger] - logger
-//    * @param {boolean} [isNeedSynchronize] - flag for synchronize
-//    * @param {IEntityOptions} [entity] - entity configuration (optional)
-//    * @param {IMigrationOptions} [migration] - migration configuration (optional)
-//    */
-//   public constructor(
-//     protected readonly dbConfig: TDbConfig,
-//     protected readonly procedureObjectList: Record<string, string>,
-//     protected readonly logger: ILoggerModule,
-//     protected readonly entity?: IEntityOptions,
-//     protected readonly migration?: IMigrationOptions
-//   ) {
-//     super(dbConfig, procedureObjectList, logger, entity, migration);
-//   }
-
-//   /**
-//    * Initializes the database by initializing the data source, db utils, and packages map.
-//    * If there are multiple packages, creates a notification for the package update set.
-//    *
-//    * @returns {Promise<void>} - promise that resolves when the database is initialized
-//    */
-//   public async initDataBase(): Promise<void> {
-//     await this.initDataSource();
-//     this.initDbUtils();
-//     await this.initPackagesMap();
-//     if (this.dbConfig.dbPackages.length > 0) {
-//       await this.createNotification<INotifyPackageCallback>({
-//         sql: this.dbUtilsInstance.getNotifySql(this.dbConfig.dbPackages),
-//         notifyCallback: this.packageNotifyCallback.bind(this),
-//         options:
-//           this.dbConfig.type === 'postgres'
-//             ? undefined
-//             : {
-//                 operations: oracledb.CQN_OPCODE_INSERT,
-//               },
-//       });
-//     }
-//   }
-
-//   /**
-//    * Call procedure in database
-//    * @param {string} executeString - name of procedure in format PackageName(schema).ProcedureName or only ProcedureName if only one package(schema)
-//    * @param {U} [params] - parameters for procedure
-//    * @param {TOptionsCommand} [options] - options for database commands
-//    * @returns {Promise<T | T[]>} - result of procedure call
-//    */
-//   public call<T>(
-//     executeString: string,
-//     params?: Record<string, unknown> | Array<unknown>,
-//     options?: TOptionsCommand
-//   ): Promise<Array<T>> {
-//     const { processName, packageName } = getProcedureNameAndPackage(
-//       executeString,
-//       this.packagesWithProceduresList,
-//       this.dbConfig.dbPackages
-//     );
-//     const { paramExecuteString, bindings, cursorsNames } =
-//       this.dbUtilsInstance.makeBindings<
-//         Record<string, unknown> | Array<unknown>
-//       >(
-//         packageName,
-//         processName,
-//         this.packagesWithProceduresList.get(packageName),
-//         params
-//       );
-//     return this.execute<T>(paramExecuteString, bindings, options, cursorsNames);
-//   }
-
-//   /**
-//    * Calls a SQL query in a transaction
-//    * @param {string} sql - SQL query string
-//    * @param {Record<string, unknown>} [params] - parameters for SQL query
-//    * @param {TOptionsCommand} [options] - options for database commands
-//    * @returns {Promise<Array<T>>} - result of SQL query call
-//    */
-//   public callSqlTransaction<T>(
-//     sql: string,
-//     params?: Record<string, unknown>,
-//     options?: TOptionsCommand
-//   ): Promise<Array<T>> {
-//     const { sqlString, bindings } = this.dbUtilsInstance.makeSqlBindings(
-//       sql,
-//       params
-//     );
-//     return this.execute(sqlString, bindings, options);
-//   }
-
-//   /**
-//    * Create notification
-//    * @param {ICreateNotifyOptionsPublic} options - options for notification
-//    * @returns {Promise<string>} - name of notification
-//    */
-//   public makeNotify<T>(
-//     options: ICreateNotifyOptionsPublic<T>
-//   ): Promise<string> {
-//     return this.dbConfig.type === 'postgres'
-//       ? this.createNotification<T>(options.postgres)
-//       : this.createNotification<T>(options.oracle);
-//   }
-
-//   /**
-//    * Unlisten notification
-//    * @param {string} channel - channel for notification
-//    * @returns {Promise<void>}
-//    */
-//   public unlistenNotify(channel: string): Promise<void> {
-//     return this.unlistenNotification(channel);
-//   }
-
-//   // public static forRoot(): Database {
-//   //   return new Database(
-//   //     dbConfig,
-//   //     procedureObjectList,
-//   //     logger,
-//   //     entity,
-//   //     migration
-//   //   );
-//   // }
-
-//   // public static forRootAsync(): Promise<Database> {
-//   //   return new Database(
-//   //     dbConfig,
-//   //     procedureObjectList,
-//   //     logger,
-//   //     entity,
-//   //     migration
-//   //   ).initDataBase();
-//   // }
-// }
-
-export class DatabaseModule {
+export class TypeOrmProcedureKit {
   private connectionBase!: ConnectionBase;
   private databaseInitializerBase!: DatabaseInitializerBase;
   private executeBase!: ExecuteBase;
   private notifyBase!: NotifyBase;
   private procedureListBase!: ProcedureListBase;
   private serialzierBase!: SerializerBase;
-  public constructor(
-    protected readonly config: TDbConfig,
-    protected readonly logger: ILoggerModule,
-    protected readonly entity?: IEntityOptions,
-    protected readonly migration?: IMigrationOptions
-  ) {
+  /**
+   * Creates a new instance of the TypeOrmProcedureKit class.
+   *
+   * @param settings - The settings object containing all the necessary configuration.
+   */
+  public constructor(private readonly settings: IModuleConfig) {
     this.initMainClasses();
   }
 
+  /**
+   * Initializes the main classes used in the TypeOrmProcedureKit class.
+   * These classes are:
+   * - DatabaseInitializerBase: responsible for initializing the database connection and running migrations if needed
+   * - ConnectionBase: provides a connection to the database
+   * - ExecuteBase: provides a way to execute a SQL query
+   * - ProcedureListBase: provides a way to fetch procedures from the database
+   * - NotifyBase: provides a way to listen to notifications from the database
+   * - SerializerBase: provides a way to set and get serializer mappings
+   */
   private initMainClasses(): void {
     this.databaseInitializerBase = new DatabaseInitializerBase(
-      this.config,
-      this.logger,
-      this.entity,
-      this.migration
+      this.settings.config,
+      this.settings.logger,
+      this.settings.entity,
+      this.settings.migration
     );
     this.connectionBase = new ConnectionBase(
       this.databaseInitializerBase.appDataSource,
-      this.logger
+      this.settings.logger
     );
     this.executeBase = new ExecuteBase(
       this.connectionBase,
       this.databaseInitializerBase.databaseAdapter,
-      this.logger
+      this.settings.logger
     );
     this.procedureListBase = new ProcedureListBase(
-      this.logger,
+      this.settings.logger,
       this.databaseInitializerBase.databaseAdapter,
       this.executeBase,
-      this.config.packagesSettings
+      this.settings.config.packagesSettings
     );
     this.notifyBase = new NotifyBase(
       this.databaseInitializerBase.databaseAdapter,
       this.procedureListBase,
-      this.config.packagesSettings
+      this.settings.config.packagesSettings
     );
     this.serialzierBase = new SerializerBase(
       this.databaseInitializerBase.databaseAdapter
     );
   }
+  /**
+   * Initializes the database connection, runs migrations if needed and fetches the procedure list for all packages.
+   * If packages are set in the settings, it also creates a notification channel for the packages and subscribes to it.
+   * @returns {Promise<void>} - promise that resolves when the database is initialized
+   */
   public async initDatabase(): Promise<void> {
     await this.databaseInitializerBase.initDatabaseModule();
     await this.procedureListBase.initPackagesMap();
     if (
-      this.config.packagesSettings &&
-      this.config.packagesSettings.packages.length > 0
+      this.settings.config.packagesSettings &&
+      this.settings.config.packagesSettings.packages.length > 0
     ) {
       const additionalOptions: IOracleOptionsNotify = {
         operations: oracledb.CQN_OPCODE_INSERT,
@@ -227,7 +94,7 @@ export class DatabaseModule {
       await this.notifyBase.createNotification<INotifyPackageCallback>(
         {
           sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
-            this.config.packagesSettings.packages
+            this.settings.config.packagesSettings.packages
           ),
           notifyCallback: this.notifyBase.packageNotifyCallback,
         },
@@ -236,15 +103,27 @@ export class DatabaseModule {
     }
   }
 
+  /**
+   * Calls a stored procedure or SQL query with the given execute string and params.
+   * The execute string can be in the format of either 'packageName.procedureName' or just 'procedureName'.
+   * If the execute string is in the format of 'packageName.procedureName', it will be parsed into a procedure name and package name.
+   * If the execute string is just 'procedureName', it will be parsed into a procedure name and package name only if there is one package in the packages array.
+   * If the execute string cannot be parsed into a procedure name and package name, it will throw a ServerError.
+   * @param executeString - the string to be parsed
+   * @param params - object or array with data to be passed to the procedure, or undefined/null
+   * @param options - array of strings representing the options for the procedure call
+   * @returns Promise<Array<T>> - promise that resolves with an array of result objects
+   * @throws ServerError - if the executeString cannot be parsed into a procedure name and package name
+   */
   public call<T>(
     executeString: string,
     params?: Record<string, unknown> | Array<unknown>,
-    options?: TOptionsCommand
+    options?: Array<string>
   ): Promise<Array<T>> {
     const { processName, packageName } = procedureNameParser.parse(
       executeString,
       this.procedureListBase.packagesWithProceduresList,
-      this.config.packagesSettings!.packages
+      this.settings.config.packagesSettings!.packages
     );
     const { paramExecuteString, bindings, cursorsNames } =
       this.databaseInitializerBase.databaseAdapter.makeBindings<
@@ -258,22 +137,26 @@ export class DatabaseModule {
     return this.executeBase.execute<T>(
       paramExecuteString,
       bindings,
-      options ? options[this.config.type] : undefined,
+      options,
       cursorsNames
     );
   }
+  /**
+   * Executes a SQL query or transaction in a single database call.
+   * @param sql - SQL query string
+   * @param [params] - object or array with data to be passed to the SQL query, or undefined/null
+   * @param [options] - array of strings representing the options for the SQL query call
+   * @returns Promise<Array<T>> - promise that resolves with an array of result objects
+   * @throws ServerError - if an error occurs during the execution of commands
+   */
   public callSqlTransaction<T>(
     sql: string,
     params?: Record<string, unknown>,
-    options?: TOptionsCommand
+    options?: Array<string>
   ): Promise<Array<T>> {
     const { sqlString, bindings } =
       this.databaseInitializerBase.databaseAdapter.makeSqlBindings(sql, params);
-    return this.executeBase.execute(
-      sqlString,
-      bindings,
-      options ? options[this.config.type] : undefined
-    );
+    return this.executeBase.execute(sqlString, bindings, options);
   }
   public makeNotify<T>(
     options: ICreateNotify,

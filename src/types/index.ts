@@ -31,7 +31,6 @@ export type { ISetSerializer } from './serializer.types.js';
 export type { ISqlError } from './utility.types.js';
 export type { IBindingsObjectReturn } from './utility.types.js';
 export type { ISqlBindingsObjectReturn } from './utility.types.js';
-export type { TOptionsCommand } from './utility.types.js';
 
 // Adapter
 export type { TAdapterUtilsClassTypes } from './adapter.types.js';
@@ -47,3 +46,6 @@ export type { TKeyTransformCase } from './strategy.types.js';
 
 // Logger
 export type { ILoggerModule } from './logger.types.js';
+
+// Base
+export type { IModuleConfig } from './base.types.js';

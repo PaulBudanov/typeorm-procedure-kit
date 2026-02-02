@@ -18,6 +18,7 @@ import { OracleConnection } from './oracle-connection.js';
 import { OracleNotify } from './oracle-notify.js';
 import { OracleSerializer } from './oracle-serializer.js';
 import { OracleSqlCommand } from './oracle-sql.js';
+import { ServerError } from '../../utils/server-error.js';
 
 export class OracleAdapter extends DatabaseAdapter<
   OracleSerializer,
@@ -72,7 +73,7 @@ export class OracleAdapter extends DatabaseAdapter<
     payload?: U
   ): IBindingsObjectReturn {
     if (!procedures?.[processName]) {
-      throw new Error(
+      throw new ServerError(
         `Package "${packageName}" or process "${processName}" not found`
       );
     }
@@ -88,7 +89,7 @@ export class OracleAdapter extends DatabaseAdapter<
           cursorsNames.push(item.argumentName);
           const dataType = item.argumentType.toUpperCase();
           if (!this.isValidDataType(dataType))
-            throw new Error(`Invalid data type: ${dataType}`);
+            throw new ServerError(`Invalid data type: ${dataType}`);
           bindings.push({
             dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
             type: this.TYPE_MAPPING[dataType],
@@ -113,7 +114,7 @@ export class OracleAdapter extends DatabaseAdapter<
         if (Array.isArray(value)) {
           const dataType = item.argumentType.toUpperCase();
           if (!this.isValidDataType(dataType))
-            throw new Error(`Invalid data type: ${dataType}`);
+            throw new ServerError(`Invalid data type: ${dataType}`);
           bindings.push({
             dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
             type: this.TYPE_MAPPING[dataType],
@@ -123,7 +124,7 @@ export class OracleAdapter extends DatabaseAdapter<
         }
         const dataType = item.argumentType.toUpperCase();
         if (!this.isValidDataType(dataType))
-          throw new Error(`Invalid data type: ${dataType}`);
+          throw new ServerError(`Invalid data type: ${dataType}`);
         bindings.push({
           dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
           type: this.TYPE_MAPPING[dataType],

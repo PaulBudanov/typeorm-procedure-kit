@@ -2,6 +2,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import type { TConnectionMode } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
+import { ServerError } from '../utils/server-error.js';
 export class ConnectionBase {
   public constructor(
     private readonly appDataSource: DataSource,
@@ -25,10 +26,10 @@ export class ConnectionBase {
         await queryRunner.connect();
         const entityManager = queryRunner.manager;
         if (!entityManager.connection.isInitialized)
-          throw new Error('Connection not initialized');
+          throw new ServerError('Connection not initialized');
         return entityManager;
       }
-      throw new Error('Connection to Database not established');
+      throw new ServerError('Connection to Database not established');
     } catch (e: unknown) {
       this.logger.error(
         'Error getting connection from pool',

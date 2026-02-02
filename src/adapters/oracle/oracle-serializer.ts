@@ -5,6 +5,7 @@ import type {
   TOracleObjectDbTypeHandlerCast,
 } from '../../types/serializer.types.js';
 import { DatabaseSerializer } from '../abstract/database-serializer.js';
+import { ServerError } from '../../utils/server-error.js';
 
 export class OracleSerializer extends DatabaseSerializer {
   private readonly OBJECT_TYPE_CAST = {
@@ -67,7 +68,7 @@ export class OracleSerializer extends DatabaseSerializer {
             case 'symbol':
               return serializer.strategy(value.toString());
             default:
-              throw new Error(
+              throw new ServerError(
                 `Unsupported type: ${typeof value} for ${metaData.name}`
               );
           }
@@ -99,7 +100,9 @@ export class OracleSerializer extends DatabaseSerializer {
     }
     const dbTypeClass = this.OBJECT_TYPE_CAST[options.serializerType];
     if (!dbTypeClass)
-      throw new Error(`Unknown serializer type: ${options.serializerType}`);
+      throw new ServerError(
+        `Unknown serializer type: ${options.serializerType}`
+      );
     if (this.OBJECT_DB_TYPE_HANDLER_CAST.has(dbTypeClass)) {
       this.logger.warn(
         `Serializer with dbType ${dbTypeClass.columnTypeName} already exists, overriding...`

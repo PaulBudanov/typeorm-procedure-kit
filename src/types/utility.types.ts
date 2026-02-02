@@ -17,8 +17,3 @@ export interface ISqlBindingsObjectReturn extends Pick<
 > {
   sqlString: string;
 }
-
-export interface TOptionsCommand {
-  postgres: Array<string>;
-  oracle: Array<string>;
-}

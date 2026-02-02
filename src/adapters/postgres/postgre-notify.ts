@@ -8,6 +8,7 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import type { PostgreConnection } from './postgre-connection.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
+import { ServerError } from '../../utils/server-error.js';
 export class PostgreNotify extends DatabaseNotify<PoolClient> {
   public constructor(
     private readonly postgreConnection: PostgreConnection,
@@ -39,14 +40,14 @@ export class PostgreNotify extends DatabaseNotify<PoolClient> {
     try {
       const channelName = sqlCommand.replace('LISTEN ', '');
       if (!sqlCommand.includes('LISTEN'))
-        throw new Error(
+        throw new ServerError(
           'SQL command must contain LISTEN for notification, example: LISTEN'
         );
       if (this.notificationPool.has(channelName)) {
         this.logger.warn(
           `Listener for channel "${channelName}" already registered`
         );
-        throw new Error(
+        throw new ServerError(
           `Listener for channel "${channelName}" already registered`
         );
       }
