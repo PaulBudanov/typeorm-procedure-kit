@@ -79,6 +79,8 @@
     "@nestjs/core": "^10.0.0 || ^11.0.0",
     "typeorm": "^0.3.0",
     "pg": "^8.0.0",
+    "@types/oracledb": "^6.0.0",
+    "@types/pg": "^8.0.0",
     "oracledb": "^6.0.0"
   },
   "peerDependenciesMeta": {
