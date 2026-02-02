@@ -10,6 +10,12 @@ export abstract class StringUtilities {
    * StringUtilities.toCamelCase('hello-world') // 'helloWorld'
    * StringUtilities.toCamelCase('hello_world') // 'helloWorld'
    * StringUtilities.toCamelCase('hello world  ') // 'helloWorld'
+   * StringUtilities.toCamelCase('helloWorld') // 'helloWorld'
+   * StringUtilities.toCamelCase('HelloWorld') // 'helloWorld'
+   * StringUtilities.toCamelCase('Hello world') // 'helloWorld'
+   * StringUtilities.toCamelCase('Hello-world') // 'helloWorld'
+   * StringUtilities.toCamelCase('Hello_world') // 'helloWorld'
+   * StringUtilities.toCamelCase('Hello world  ') // 'helloWorld'
    * @param {string} input - string to convert
    * @returns {string} - converted string
    */
@@ -20,9 +26,7 @@ export abstract class StringUtilities {
     if (length === 0) return '';
     if (length === 1) return input.toLowerCase();
 
-    const estimatedSize = Math.max(1, Math.floor(length * 0.7));
-    const result = new Array<string>(estimatedSize);
-    let resultIndex = 0;
+    const result: Array<string> = [];
     let capitalizeNext = false;
     let firstCharFound = false;
 
@@ -30,44 +34,28 @@ export abstract class StringUtilities {
       const char = input[i] as string;
 
       if (char === '_' || char === '-' || char === ' ' || char === '.') {
-        if (!firstCharFound) continue;
-
-        if (i + 1 < length) {
-          const nextChar = input[i + 1];
-          if (
-            nextChar !== '_' &&
-            nextChar !== '-' &&
-            nextChar !== ' ' &&
-            nextChar !== '.'
-          ) {
-            capitalizeNext = true;
-          }
+        if (firstCharFound) {
+          capitalizeNext = true;
         }
         continue;
       }
 
-      // Обработка первого непустого символа
       if (!firstCharFound) {
-        result[resultIndex++] = char.toLowerCase();
+        result.push(char.toLowerCase());
         firstCharFound = true;
+        capitalizeNext = false;
         continue;
       }
 
-      // Обработка остальных символов
       if (capitalizeNext) {
-        result[resultIndex++] = char.toUpperCase();
+        result.push(char.toUpperCase());
         capitalizeNext = false;
       } else {
-        result[resultIndex++] = char.toLowerCase();
-      }
-
-      if (resultIndex >= result.length) {
-        result.push('');
+        result.push(char.toLowerCase());
       }
     }
 
-    // Создаем результат только один раз
-    return resultIndex > 0 ? result.slice(0, resultIndex).join('') : '';
+    return result.join('');
   }
   public static toSnakeCase(input: string): string {
     if (!input || typeof input !== 'string') return '';
