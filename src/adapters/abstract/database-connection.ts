@@ -27,19 +27,23 @@ export abstract class DatabaseConnection<
 
   /**
    * Releases a connection to the database back to the pool.
+   * If a callback function is provided, it will be called with the connection object
+   * and must return a promise that resolves when the callback is complete.
+   * If the connection to the database is not established, throws an error.
    * If the connection is not initialized, throws an error.
-   * @param {oracledb.Connection | PoolClient} client - The connection to release.
+   * @param {V} client - The connection to release.
+   * @param {(client: V) => void | Promise<void>} [callback] - A callback function to be called
+   * before the connection is released. The callback function can be either a
+   * synchronous function or an asynchronous function returning a promise.
    * @returns {Promise<void>} - A promise that resolves when the connection is released.
-   * @throws {Error} - If the connection is not initialized.
+   * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
    */
   public async releaseConnectionFromPool(
     client: V,
     callback?: (client: V) => void | Promise<void>
   ): Promise<void> {
     try {
-      if (callback) {
-        await callback(client);
-      }
+      if (callback) await callback(client);
       await Promise.resolve(client.release());
       this.logger.log('Database client connection released successfully');
       return;

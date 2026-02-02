@@ -11,6 +11,10 @@ import type {
   INotifyPackageCallback,
   IOracleOptionsNotify,
 } from '../types/notification.types.js';
+import type {
+  ISetSerializer,
+  TSerializerTypeCastWithoutFormat,
+} from '../types/serializer.types.js';
 import type { TOptionsCommand } from '../types/utility.types.js';
 import { procedureNameParser } from '../utils/procedure-name-parser.js';
 
@@ -163,9 +167,6 @@ import { SerializerBase } from './serializer-base.js';
 //   // }
 // }
 
-// export default Database;
-
-//TODO: ADD NESTJS IMPLEMENT
 export class DatabaseModule {
   private connectionBase!: ConnectionBase;
   private databaseInitializerBase!: DatabaseInitializerBase;
@@ -228,7 +229,7 @@ export class DatabaseModule {
           sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
             this.config.packagesSettings.packages
           ),
-          notifyCallback: this.notifyBase.packageNotifyCallback.bind(this),
+          notifyCallback: this.notifyBase.packageNotifyCallback,
         },
         additionalOptions
       );
@@ -283,5 +284,21 @@ export class DatabaseModule {
   public unlistenNotify(channel: string): Promise<void> {
     return this.notifyBase.unlistenNotification(channel);
   }
+
+  public setSerializer(serializer: ISetSerializer): void {
+    this.serialzierBase.setSerializer(serializer);
+  }
+
+  public deleteSerializer(
+    serializerType: Pick<ISetSerializer, 'serializerType'>
+  ): void {
+    this.serialzierBase.deleteSerializer(serializerType);
+  }
+
+  public deleteAllSerializers(): void {
+    this.serialzierBase.deleteAllSerializers();
+  }
+  public get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
+    return this.serialzierBase.serializerReadOnlyMapping;
+  }
 }
-export default DatabaseModule;
