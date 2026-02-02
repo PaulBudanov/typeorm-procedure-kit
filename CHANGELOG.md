@@ -1,3 +1,10 @@
+## [1.1.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.0...v1.1.1) (2026-02-02)
+
+
+### Bug Fixes
+
+* change in package json nestjs path. ([b293194](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/b293194a7552e532788439062bbec750e62ab01a))
+
 # [1.1.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.0.2...v1.1.0) (2026-02-02)
 
 
