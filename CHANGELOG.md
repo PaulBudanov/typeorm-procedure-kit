@@ -1,3 +1,10 @@
+## [1.1.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.4...v1.1.5) (2026-02-02)
+
+
+### Bug Fixes
+
+* change logger types and delete logic with logger debug. ([bab20cc](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bab20ccb654a538aa84359e9cf9b137d79ab77d8))
+
 ## [1.1.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.3...v1.1.4) (2026-02-02)
 
 
