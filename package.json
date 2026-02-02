@@ -1,6 +1,6 @@
 {
   "name": "@web-mis/typeorm-procedure-kit",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Universal adapter for executing stored procedures and managing database notifications across Oracle and PostgreSQL with TypeORM integration",
   "type": "module",
   "main": "./dist/index.js",

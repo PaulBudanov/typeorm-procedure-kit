@@ -1,3 +1,10 @@
+## [1.1.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.2...v1.1.3) (2026-02-02)
+
+
+### Bug Fixes
+
+* change migration start logic and entity added. ([3ef7983](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/3ef7983cb6405529ac258967425c9350cd1038a6))
+
 ## [1.1.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.1...v1.1.2) (2026-02-02)
 
 
