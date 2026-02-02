@@ -7,6 +7,7 @@ import type {
   IOracleNotifyMsg,
   IOracleOptionsNotify,
   TNotifyCallbackGeneric,
+  TOracleNormilizeOptionsNotify,
 } from '../../types/notification.types.js';
 import { AsyncUtils } from '../../utils/async-utils.js';
 import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
@@ -108,59 +109,64 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
         );
       const subscriptions = await Promise.all(
         options.operations.map((operation) => {
-          const modifyOptions = {
+          const modifyOptions: TOracleNormilizeOptionsNotify = {
             ...options,
             operations: operation,
           };
-          const subscribeOptions: oracledb.SubscribeOptions = {
-            sql: sqlCommand,
-            clientInitiated: false,
-            timeout: 60 * 60 * 12,
-            qos:
-              oracledb.SUBSCR_QOS_QUERY |
-              oracledb.SUBSCR_QOS_ROWIDS |
-              oracledb.SUBSCR_QOS_RELIABLE, // = 13 (1 + 4 + 8)
-            port: this.notifyPort, // Listener port for CQN
-            callback: (msg: oracledb.SubscriptionMessage) =>
-              void this.makeSubscriptionHandler(
-                notifyCallback,
-                connection,
-                channelName,
-                subscribeOptions,
-                msg
-              ),
-            ...modifyOptions,
-          };
-          return this.subscribe(connection, channelName, subscribeOptions);
+          return this.subscribe(
+            connection,
+            channelName,
+            this.generateOptions(
+              notifyCallback,
+              modifyOptions,
+              sqlCommand,
+              channelName,
+              connection
+            )
+          );
         })
       );
       return subscriptions.join(', ');
     } else {
-      const subscribeOptions: oracledb.SubscribeOptions = {
-        sql: sqlCommand,
-        clientInitiated: false,
-        timeout: 60 * 60 * 12,
-        qos:
-          oracledb.SUBSCR_QOS_QUERY |
-          oracledb.SUBSCR_QOS_ROWIDS |
-          oracledb.SUBSCR_QOS_RELIABLE, // = 13 (1 + 4 + 8)
-        port: this.notifyPort, // Listener port for CQN
-        callback: (msg: oracledb.SubscriptionMessage) =>
-          void this.makeSubscriptionHandler(
-            notifyCallback,
-            connection,
-            channelName,
-            subscribeOptions,
-            msg
-          ),
-        ...options,
-        operations: options.operations,
-      };
-
-      return this.subscribe(connection, channelName, subscribeOptions);
+      return this.subscribe(
+        connection,
+        channelName,
+        this.generateOptions<T>(
+          notifyCallback,
+          options as TOracleNormilizeOptionsNotify,
+          sqlCommand,
+          channelName,
+          connection
+        )
+      );
     }
   }
 
+  private generateOptions<T>(
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    settings: TOracleNormilizeOptionsNotify,
+    sql: string,
+    channelName: string,
+    connection: oracledb.Connection
+  ): oracledb.SubscribeOptions {
+    const subscribeOptions = {
+      sql,
+      clientInitiated: settings.clientInitiated ?? false,
+      timeout: settings.timeout ?? 60 * 60 * 12,
+      operations: settings.operations ?? oracledb.CQN_OPCODE_ALL_OPS,
+      qos: settings.qos ?? oracledb.SUBSCR_QOS_ROWIDS,
+      port: this.notifyPort, // Listener port for CQN
+      callback: (msg: oracledb.SubscriptionMessage): Promise<void> =>
+        this.makeSubscriptionHandler(
+          notifyCallback,
+          connection,
+          channelName,
+          subscribeOptions,
+          msg
+        ),
+    };
+    return subscribeOptions;
+  }
   /**
    * Subscribe to a channel
    * @param {oracledb.Connection} connection - connection to Oracle database

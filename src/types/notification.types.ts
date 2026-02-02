@@ -13,7 +13,14 @@ export interface IOracleOptionsNotify {
   operations?: Array<number> | number; // CQN OPCODES, for all: oracledb.CQN_OPCODE_ALL_OPS
   qos?: number;
   timeout?: number;
+  clientInitiated?: boolean;
 }
+export type TOracleNormilizeOptionsNotify = Omit<
+  IOracleOptionsNotify,
+  'operations'
+> & {
+  operations?: number;
+};
 
 export type INotifyPackageCallback =
   | Array<INotifyPackageCallbackOracle>
