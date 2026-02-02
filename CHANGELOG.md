@@ -1,3 +1,10 @@
+## [1.1.12](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.11...v1.1.12) (2026-02-02)
+
+
+### Bug Fixes
+
+* change custom string utils to lodash methods. ([c307756](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/c307756d5a4d9fcff69a7319cc07146ca9f60faf))
+
 ## [1.1.11](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.10...v1.1.11) (2026-02-02)
 
 
