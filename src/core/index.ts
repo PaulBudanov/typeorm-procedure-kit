@@ -1,5 +1,7 @@
 import oracledb from 'oracledb';
+import type { DataSource } from 'typeorm';
 
+import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
 import type {
   ICreateNotify,
@@ -158,30 +160,90 @@ export class TypeOrmProcedureKit {
       this.databaseInitializerBase.databaseAdapter.makeSqlBindings(sql, params);
     return this.executeBase.execute(sqlString, bindings, options);
   }
+  /**
+   * Create a notification channel and subscribe to it.
+   * @param {ICreateNotify<T>} options - options for creating the notification channel
+   * @param {IOracleOptionsNotify} [additionalOptions] - additional options for Oracle database, if applicable
+   * @returns {Promise<string>} - promise that resolves with the name of the notification channel
+   * @example
+   * const channelName = await db.makeNotify(
+   *   {
+   *     sql: 'LISTEN my_channel',
+   *     notifyCallback: (data) => console.log(data),
+   *   }
+   * );
+   */
   public makeNotify<T>(
     options: ICreateNotify,
     additionalOptions?: IOracleOptionsNotify
   ): Promise<string> {
     return this.notifyBase.createNotification<T>(options, additionalOptions);
   }
+  /**
+   * Unsubscribes from a notification channel.
+   * @param {string} channel - name of the channel to unsubscribe from
+   * @returns {Promise<void>} - promise that resolves when the subscription is unsubscribed
+   * @throws {Error} - if there is an error unsubscribing from the channel
+   */
   public unlistenNotify(channel: string): Promise<void> {
     return this.notifyBase.unlistenNotification(channel);
   }
 
+  /**
+   * Registers a custom serializer for the given type.
+   * If a serializer with the same type already exists, it will be overridden.
+   * @param {ISetSerializer} serializer - an object with the following properties:
+   *   serializerType - The type of the data to be serialized (e.g. 'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ').
+   *   strategy - A function that takes a value of the given type and returns a serialized string.
+   * @throws {Error} - If the serializer type is unknown.
+   */
   public setSerializer(serializer: ISetSerializer): void {
     this.serialzierBase.setSerializer(serializer);
   }
 
+  /**
+   * Deletes a serializer with the given type.
+   * @param serializerType - The type of the serializer to delete.
+   */
   public deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
     this.serialzierBase.deleteSerializer(serializerType);
   }
 
+  /**
+   * Deletes all registered serializers.
+   * This method is useful when you need to register new serializers or use default serializers,
+   * but don't want to keep the old ones.
+   */
   public deleteAllSerializers(): void {
     this.serialzierBase.deleteAllSerializers();
   }
+  /**
+   * A read-only map of serializers, where the key is the name of the serializer
+   * and the value is the serializer itself.
+   *
+   * @readonly
+   * @throws {Error} If you try to modify the map.
+   */
   public get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
     return this.serialzierBase.serializerReadOnlyMapping;
+  }
+
+  /**
+   * Gets the database adapter that was used to initialize the database.
+   * @returns {TAdapterUtilsClassTypes} - the database adapter
+   */
+  public get databaseAdapter(): TAdapterUtilsClassTypes {
+    return this.databaseInitializerBase.databaseAdapter;
+  }
+
+  /**
+   * Returns the data source object that was used to initialize the database.
+   * This data source object can be used to perform database operations.
+   * @returns {DataSource} - the data source object
+   */
+  public get dataSource(): DataSource {
+    return this.databaseInitializerBase.appDataSource;
   }
 }
