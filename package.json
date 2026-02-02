@@ -14,10 +14,10 @@
       "default": "./dist/esm/index.js"
     },
     "./nestjs": {
-      "types": "./dist/types/nestjs/index.d.ts",
-      "import": "./dist/esm/nestjs/index.js",
-      "require": "./dist/cjs/nestjs/index.js",
-      "default": "./dist/esm/nestjs/index.js"
+      "types": "./dist/types/nest/index.d.ts",
+      "import": "./dist/esm/nest/index.js",
+      "require": "./dist/cjs/nest/index.js",
+      "default": "./dist/esm/nest/index.js"
     },
     "./package.json": "./package.json"
   },
