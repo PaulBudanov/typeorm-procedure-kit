@@ -71,12 +71,12 @@
   "dependencies": {
     "@web-mis/queue-manager": "^1.0.9",
     "lru-cache": "^11.2.5",
-    "luxon": "^3.7.2"
+    "luxon": "^3.7.2",
+    "reflect-metadata": "^0.2.2"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
-    "reflect-metadata": "^0.1.13 || ^0.2.0",
     "typeorm": "^0.3.0",
     "pg": "^8.0.0",
     "oracledb": "^6.0.0"
@@ -113,7 +113,6 @@
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import-x": "^4.16.1",
     "eslint-plugin-prettier": "^5.5.5",
-    "reflect-metadata": "^0.2.2",
     "semantic-release": "^25.0.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
