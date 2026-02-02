@@ -5,6 +5,7 @@
     "moduleResolution": "nodenext",
     "module": "nodenext",
     "rootDir": "src",
+    "declarationDir": "./dist/types",
     // Строгие проверки
     "strict": true,
     "noImplicitAny": true,
