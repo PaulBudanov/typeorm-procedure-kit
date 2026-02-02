@@ -47,12 +47,12 @@ export type TDbConfig = TOracleDbConfig | IPostgresDbConfig;
 
 export interface IEntityOptions {
   isNeedEntitySync: boolean;
-  entityPath: string;
+  entityPath: Array<string>;
 }
 
 export interface IMigrationOptions {
   isNeedMigrationStart: boolean;
-  migrationPath: string;
+  migrationPath: Array<string>;
 }
 
 export type TConnectionMode = 'master' | 'slave';

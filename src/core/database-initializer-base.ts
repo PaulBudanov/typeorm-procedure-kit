@@ -51,10 +51,15 @@ export class DatabaseInitializerBase {
         null: 'sql-null',
         undefined: 'throw',
       },
-      migrations: this.migration?.isNeedMigrationStart
-        ? [this.migration.migrationPath]
-        : [],
-      entities: this.entity?.entityPath ? [this.entity.entityPath] : [],
+      migrations:
+        this.migration?.migrationPath &&
+        Array.isArray(this.migration.migrationPath)
+          ? this.migration.migrationPath
+          : [],
+      entities:
+        this.entity?.entityPath && Array.isArray(this.entity.entityPath)
+          ? this.entity.entityPath
+          : [],
       ...this.configFactory(),
     } as const;
     this.appDataSource = new DataSource(options);
@@ -72,10 +77,16 @@ export class DatabaseInitializerBase {
       await this.appDataSource.initialize();
       if (
         this.migration &&
-        this.migration.migrationPath !== '' &&
-        (await this.appDataSource.showMigrations())
-      )
-        await this.appDataSource.runMigrations();
+        Array.isArray(this.migration.migrationPath) &&
+        this.migration.migrationPath.length > 0
+      ) {
+        this.logger.log('Showing migrations...');
+        await this.appDataSource.showMigrations();
+        if (this.migration.isNeedMigrationStart) {
+          this.logger.log('Running migrations...');
+          await this.appDataSource.runMigrations();
+        } else this.logger.log('Migrations skipped');
+      }
       this.initExecuteTypeormWithoutDoubleQuotes();
       this.logger.log('DataSource is initialized');
     } catch (error) {
