@@ -62,6 +62,7 @@ export class DatabaseInitializerBase {
           : [],
       ...this.configFactory(),
     } as const;
+    this.logger.log(`DataSource options: ${JSON.stringify(options, null, 2)}`);
     this.appDataSource = new DataSource(options);
     this.databaseAdapter = this.databaseAdapterFactory();
   }
