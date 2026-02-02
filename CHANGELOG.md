@@ -1,3 +1,10 @@
+## [1.1.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.3...v1.1.4) (2026-02-02)
+
+
+### Bug Fixes
+
+* add log to datasource options. ([4134af0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/4134af07845d2b0550bd21d49d14c676f73fbed2))
+
 ## [1.1.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.2...v1.1.3) (2026-02-02)
 
 
