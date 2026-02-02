@@ -11,11 +11,11 @@ import type {
 } from '../../types/notification.types.js';
 import { AsyncUtils } from '../../utils/async-utils.js';
 import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
+import { ServerError } from '../../utils/server-error.js';
 import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import { OracleConnection } from './oracle-connection.js';
 import { OracleSqlCommand } from './oracle-sql.js';
-import { ServerError } from '../../utils/server-error.js';
 
 export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   /**

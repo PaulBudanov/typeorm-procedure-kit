@@ -11,6 +11,7 @@ import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import { TypeGuards } from '../../utils/type-guards.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
 
@@ -18,7 +19,6 @@ import { OracleConnection } from './oracle-connection.js';
 import { OracleNotify } from './oracle-notify.js';
 import { OracleSerializer } from './oracle-serializer.js';
 import { OracleSqlCommand } from './oracle-sql.js';
-import { ServerError } from '../../utils/server-error.js';
 
 export class OracleAdapter extends DatabaseAdapter<
   OracleSerializer,

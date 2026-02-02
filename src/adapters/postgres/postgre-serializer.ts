@@ -1,8 +1,8 @@
 import { Result, types } from 'pg';
 
 import type { ISetSerializer } from '../../types/serializer.types.js';
-import { DatabaseSerializer } from '../abstract/database-serializer.js';
 import { ServerError } from '../../utils/server-error.js';
+import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
 export class PostgreSerializer extends DatabaseSerializer {
   private readonly OBJECT_TYPE_CAST = {

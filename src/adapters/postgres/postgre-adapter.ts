@@ -9,6 +9,7 @@ import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import { TypeGuards } from '../../utils/type-guards.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
 
@@ -16,7 +17,6 @@ import { PostgreConnection } from './postgre-connection.js';
 import { PostgreNotify } from './postgre-notify.js';
 import { PostgreSerializer } from './postgre-serializer.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
-import { ServerError } from '../../utils/server-error.js';
 export class PostgreAdapter extends DatabaseAdapter<
   PostgreSerializer,
   PostgreNotify,

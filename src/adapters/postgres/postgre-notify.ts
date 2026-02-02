@@ -4,11 +4,11 @@ import type { ILoggerModule } from '../../types/logger.types.js';
 import type { TNotifyCallbackGeneric } from '../../types/notification.types.js';
 import { AsyncUtils } from '../../utils/async-utils.js';
 import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
+import { ServerError } from '../../utils/server-error.js';
 import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import type { PostgreConnection } from './postgre-connection.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
-import { ServerError } from '../../utils/server-error.js';
 export class PostgreNotify extends DatabaseNotify<PoolClient> {
   public constructor(
     private readonly postgreConnection: PostgreConnection,
