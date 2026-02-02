@@ -1,3 +1,10 @@
+## [1.1.13](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.12...v1.1.13) (2026-02-02)
+
+
+### Bug Fixes
+
+* change lodash to lodash es ([f1ef4e0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/f1ef4e0ca97ef548579341932c126fb0535b6cef))
+
 ## [1.1.12](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.11...v1.1.12) (2026-02-02)
 
 
