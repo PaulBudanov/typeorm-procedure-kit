@@ -1,3 +1,10 @@
+## [1.1.10](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.9...v1.1.10) (2026-02-02)
+
+
+### Bug Fixes
+
+* change default js Date to DateTime from luxon. ([d4ec91f](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/d4ec91f7fae1c7b3d9b6176d8b4782fd1e5c975a))
+
 ## [1.1.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.8...v1.1.9) (2026-02-02)
 
 
