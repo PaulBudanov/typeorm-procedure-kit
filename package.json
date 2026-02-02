@@ -71,21 +71,27 @@
   "dependencies": {
     "@web-mis/queue-manager": "^1.0.9",
     "lru-cache": "^11.2.5",
-    "luxon": "^3.7.2",
-    "oracledb": "^6.10.0",
-    "pg": "^8.17.2",
-    "typeorm": "^0.3.28"
+    "luxon": "^3.7.2"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
-    "reflect-metadata": "^0.1.13"
+    "reflect-metadata": "^0.1.13 || ^0.2.0",
+    "typeorm": "^0.3.0",
+    "pg": "^8.0.0",
+    "oracledb": "^6.0.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
       "optional": true
     },
     "@nestjs/core": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "oracledb": {
       "optional": true
     }
   },
@@ -110,7 +116,10 @@
     "reflect-metadata": "^0.2.2",
     "semantic-release": "^25.0.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.54.0",
+    "typeorm": "^0.3.28",
+    "pg": "^8.17.2",
+    "oracledb": "^6.10.0"
   },
   "engines": {
     "node": ">=18.0.0",
