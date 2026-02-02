@@ -1,4 +1,4 @@
-import { snakeCase, camelCase, lowerCase } from 'lodash';
+import { camelCase, lowerCase, snakeCase } from 'lodash-es';
 export abstract class StringUtilities {
   public static toCamelCase(input: string | undefined): string {
     return camelCase(input);
