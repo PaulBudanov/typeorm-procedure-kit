@@ -1,3 +1,10 @@
+## [1.1.11](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.10...v1.1.11) (2026-02-02)
+
+
+### Bug Fixes
+
+* change camel case transform algorithm, added processing for another cases ([05c804e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/05c804e36147c22de99693c7f8f8a5b22e9ebfb7))
+
 ## [1.1.10](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.9...v1.1.10) (2026-02-02)
 
 
