@@ -1,3 +1,10 @@
+## [1.1.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.1...v1.1.2) (2026-02-02)
+
+
+### Bug Fixes
+
+* add comments to code, add public get method for export data source. ([1960065](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/1960065ac22169e24ac1a07a1feadf5491915569))
+
 ## [1.1.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.0...v1.1.1) (2026-02-02)
 
 
