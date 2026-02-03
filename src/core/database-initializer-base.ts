@@ -188,6 +188,7 @@ export class DatabaseInitializerBase {
     return {
       type: 'oracle',
       driver: oracledb,
+      serviceName: config.master.database,
       thickMode,
     };
   }
