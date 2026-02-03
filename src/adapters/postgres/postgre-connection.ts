@@ -1,14 +1,13 @@
-import type { Pool, PoolClient } from 'pg';
+import { Client, type ClientConfig } from 'pg';
 import type { DataSource } from 'typeorm';
-import type { PostgresDriver } from 'typeorm/driver/postgres/PostgresDriver.js';
+import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions.js';
 
 import type { ILoggerModule } from '../../types/logger.types.js';
 import { DatabaseConnection } from '../abstract/database-connection.js';
 
 export class PostgreConnection extends DatabaseConnection<
-  Pool,
-  PostgresDriver,
-  PoolClient
+  PostgresConnectionOptions,
+  Client
 > {
   /**
    * Constructor for PostgreConnection class.
@@ -25,28 +24,46 @@ export class PostgreConnection extends DatabaseConnection<
   }
 
   /**
-   * Retrieves a connection from the master pool.
-   * If the connection to the database is not established, throws an error.
-   * If the connection is not initialized, throws an error.
-   * @returns {Promise<PoolClient>} - A promise that resolves with the connection object
-   * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
+   * Creates a single Postgres connection object using the provided configuration.
+   *
+   * @returns {Promise<Client>} - A promise that resolves with the Postgres client object
    */
-  protected getMasterConnection(): Promise<PoolClient> {
-    return (this.nativePoolMaster as Pool).connect();
+  public async createSingleConnection(): Promise<Client> {
+    const options: ClientConfig = {
+      application_name: this.options.applicationName,
+      host: this.options.host,
+      port: this.options.port,
+      user: this.options.username,
+      password: this.options.password,
+      database: this.options.database,
+      keepAlive: true,
+    };
+    const client = new Client(options);
+    await client.connect();
+    return client;
   }
 
   /**
-   * Retrieves a connection from a random slave pool.
-   * If there are no slave pools configured, a warning is logged and the connection is taken from the master pool.
-   * @returns {Promise<PoolClient>} - A promise that resolves with the connection object
-   * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
+   * Closes a single Postgres connection object.
+   * Removes all listeners from the connection and then ends the connection.
+   * Logs an error if the connection close process fails.
+   * @param {Client} connection - The connection to close.
+   * @returns {Promise<void>} - A promise that resolves when the connection is closed.
    */
-  protected getSlaveConnection(): Promise<PoolClient> {
-    const randomIndex = Math.floor(
-      Math.random() * this.nativePoolSlaves.length
-    );
-    return (this.nativePoolSlaves[randomIndex] as Pool).connect();
+  public async closeSingleConnection(connection: Client): Promise<void> {
+    try {
+      connection.removeAllListeners();
+      await connection.end();
+      this.logger.log('Postgres client connection released successfully');
+      return;
+    } catch (error: unknown) {
+      this.logger.error(
+        `Postgres client connection release error: ${(error as Error).message}`,
+        (error as Error).stack
+      );
+    }
   }
+
   /**
    * Registers a callback function to be called when the client connection is
    * closed or an error occurs. The callback function can be either a
@@ -57,12 +74,12 @@ export class PostgreConnection extends DatabaseConnection<
    * If the callback function throws an error, it will be caught and logged
    * to the logger.
    *
-   * @param {PoolClient} client - the Postgres PoolClient object
+   * @param {Client} client - the Postgres Client object
    * @param {(() => void) | Promise<void>} callback - the callback function
    * to be called when the client connection is closed or an error occurs
    */
   public registerConnectionErrorHandler(
-    client: PoolClient,
+    client: Client,
     callback: () => void | Promise<void>
   ): void {
     client.on('error', (err) => {

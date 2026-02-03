@@ -1,4 +1,4 @@
-import { type PoolClient } from 'pg';
+import type { Client } from 'pg';
 
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { TNotifyCallbackGeneric } from '../../types/notification.types.js';
@@ -9,7 +9,7 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import type { PostgreConnection } from './postgre-connection.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
-export class PostgreNotify extends DatabaseNotify<PoolClient> {
+export class PostgreNotify extends DatabaseNotify<Client> {
   public constructor(
     private readonly postgreConnection: PostgreConnection,
     protected readonly logger: ILoggerModule
@@ -51,8 +51,7 @@ export class PostgreNotify extends DatabaseNotify<PoolClient> {
           `Listener for channel "${channelName}" already registered`
         );
       }
-      const client =
-        await this.postgreConnection.getConnectionFromPool('master');
+      const client = await this.postgreConnection.createSingleConnection();
       await client.query(sqlCommand);
       this.postgreConnection.registerConnectionErrorHandler(
         client,
@@ -121,8 +120,7 @@ export class PostgreNotify extends DatabaseNotify<PoolClient> {
         (error as Error).stack
       );
     } finally {
-      if (client)
-        await this.postgreConnection.releaseConnectionFromPool(client);
+      if (client) await this.postgreConnection.closeSingleConnection(client);
     }
   }
 

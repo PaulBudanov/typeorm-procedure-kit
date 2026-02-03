@@ -1,8 +1,6 @@
-import type { PoolClient } from 'pg';
 import { DataSource, EntityManager } from 'typeorm';
 
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
-import type { TConnectionMode } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
@@ -167,22 +165,5 @@ export class PostgreAdapter extends DatabaseAdapter<
       sqlQuery
     );
     return { bindings, sqlString: sqlString ?? '' };
-  }
-
-  //? maybe this should be in the adapter abstract. I think this is overengeering.
-  public getConnectionFromPool(mode?: TConnectionMode): Promise<PoolClient> {
-    {
-      return this.connection.getConnectionFromPool(mode);
-    }
-  }
-  // ? maybe this should be in the adapter abstract. I think this is overengeering.
-  public releaseConnectionFromPool(client: PoolClient): Promise<void> {
-    return this.connection.releaseConnectionFromPool(
-      client,
-      this.releaseCallback
-    );
-  }
-  private releaseCallback(client: PoolClient): void {
-    client.removeAllListeners();
   }
 }

@@ -1,6 +1,8 @@
 import type oracledb from 'oracledb';
-import type { Pool, PoolClient } from 'pg';
+import type { Client, Pool } from 'pg';
+import type { OracleConnectionOptions } from 'typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { OracleDriver } from 'typeorm/driver/oracle/OracleDriver.js';
+import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { PostgresDriver } from 'typeorm/driver/postgres/PostgresDriver.js';
 
 import type { OracleAdapter } from '../adapters/oracle/oracle-adapter.js';
@@ -96,6 +98,10 @@ export type TAdapterUtilsClassTypes = OracleAdapter | PostgreAdapter;
 
 export type TPoolTypes = oracledb.Pool | Pool;
 
-export type TConnectionTypes = oracledb.Connection | PoolClient;
+export type TConnectionTypes = oracledb.Connection | Client;
 
 export type TTypeOrmDriver = OracleDriver | PostgresDriver;
+
+export type TConnectionOptions =
+  | OracleConnectionOptions
+  | PostgresConnectionOptions;

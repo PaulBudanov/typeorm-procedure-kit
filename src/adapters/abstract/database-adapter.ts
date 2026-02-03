@@ -1,5 +1,4 @@
 import oracledb from 'oracledb';
-import type { PoolClient } from 'pg';
 import type { EntityManager } from 'typeorm';
 
 import type {
@@ -7,7 +6,6 @@ import type {
   TNotifyClassTypes,
   TSerializerClassTypes,
 } from '../../types/adapter.types.js';
-import type { TConnectionMode } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   IOracleOptionsNotify,
@@ -168,12 +166,6 @@ export abstract class DatabaseAdapter<
   public deleteAllSerializers(): void {
     this.serializer.deleteAllSerializers();
   }
-  public abstract getConnectionFromPool(
-    mode?: TConnectionMode
-  ): Promise<oracledb.Connection | PoolClient>;
-  public abstract releaseConnectionFromPool(
-    client: oracledb.Connection & PoolClient
-  ): Promise<void> | void;
   public get serializerMapping(): TSerializerTypeCastWithoutFormat {
     return this.serializer.serializerMapping;
   }

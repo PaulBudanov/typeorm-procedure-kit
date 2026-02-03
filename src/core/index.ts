@@ -3,6 +3,7 @@ import type { DataSource, EntityManager } from 'typeorm';
 
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
+import type { TConnectionMode } from '../types/config.types.js';
 import type {
   ICreateNotify,
   INotifyPackageCallback,
@@ -20,7 +21,6 @@ import { ExecuteBase } from './execute-base.js';
 import { NotifyBase } from './notify-base.js';
 import { ProcedureListBase } from './procedure-list-base.js';
 import { SerializerBase } from './serializer-base.js';
-import type { TConnectionMode } from '../types/config.types.js';
 
 export class TypeOrmProcedureKit {
   private connectionBase!: ConnectionBase;

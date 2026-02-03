@@ -4,7 +4,6 @@ import oracledb from 'oracledb';
 import { DataSource } from 'typeorm';
 
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
-import type { TConnectionMode } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
@@ -242,17 +241,5 @@ export class OracleAdapter extends DatabaseAdapter<
       })
     );
     return cursorResults;
-  }
-  //? maybe this should be in the adapter abstract. I think this is overengeering.
-  public getConnectionFromPool(
-    mode?: TConnectionMode
-  ): Promise<oracledb.Connection> {
-    {
-      return this.connection.getConnectionFromPool(mode);
-    }
-  }
-  // ? maybe this should be in the adapter abstract. I think this is overengeering.
-  public releaseConnectionFromPool(client: oracledb.Connection): Promise<void> {
-    return this.connection.releaseConnectionFromPool(client);
   }
 }
