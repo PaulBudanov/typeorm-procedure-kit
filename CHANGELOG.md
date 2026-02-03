@@ -1,3 +1,10 @@
+## [1.3.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.3...v1.3.4) (2026-02-03)
+
+
+### Bug Fixes
+
+* set options to replication, and in default settings object. ([4d9a657](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/4d9a65741a2c459044bb3e9642beb99a58968b2b))
+
 ## [1.3.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.2...v1.3.3) (2026-02-03)
 
 
