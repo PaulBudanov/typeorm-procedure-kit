@@ -35,11 +35,10 @@ export class DatabaseInitializerBase {
       this.dbConfig.outKeyTransformCase
     );
     const options: OracleConnectionOptions | PostgresConnectionOptions = {
-      username: dbConfig.username,
-      password: dbConfig.password,
-      database: dbConfig.database,
-      host: dbConfig.host,
-      port: dbConfig.port,
+      replication: {
+        master: this.dbConfig.master,
+        slaves: this.dbConfig.slaves ?? [],
+      },
       synchronize: this.entity?.isNeedEntitySync,
       logger: 'advanced-console',
       logging: true,
@@ -189,7 +188,6 @@ export class DatabaseInitializerBase {
     return {
       type: 'oracle',
       driver: oracledb,
-      serviceName: config.database,
       thickMode,
     };
   }

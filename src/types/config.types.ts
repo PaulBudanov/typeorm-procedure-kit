@@ -4,13 +4,18 @@ import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/Postgres
 import type { TAdapterUtilsClassTypes } from './adapter.types.js';
 import type { TKeyTransformCase } from './strategy.types.js';
 
-export interface IBaseConfig {
+interface IDatabaseCredentials {
   host: string;
   port: number;
   username: string;
   password: string;
   database: string;
+}
+
+export interface IBaseConfig {
+  master: IDatabaseCredentials;
   poolSize: number;
+  slaves?: Array<IDatabaseCredentials>;
   appName?: string;
   callTimeout?: number;
   isNeedRegisterDefaultSerializers?: boolean;
