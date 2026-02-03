@@ -1,3 +1,15 @@
+# [1.2.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.13...v1.2.0) (2026-02-03)
+
+
+### Bug Fixes
+
+* added logic and config for work with slaves databases. ([f05c004](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/f05c004d7be98088250ed46dba6526c8668a1929))
+
+
+### Features
+
+* added public methods getEntityManager and rekeaseEntityManager ([c31c11e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/c31c11e9f3e241d16b4966f089a54437fa753ab0))
+
 ## [1.1.13](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.12...v1.1.13) (2026-02-02)
 
 
