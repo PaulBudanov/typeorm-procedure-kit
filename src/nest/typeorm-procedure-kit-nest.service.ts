@@ -15,7 +15,7 @@ export class TypeOrmProcedureKitNestService
 {
   /**
    * Creates an instance of TypeOrmProcedureKitService.
-   * @param config - Configuration of TypeORMProcedureKit.
+   * @param config - Configuration of TypeOrmProcedureKitNestService.
    */
   public constructor(@Inject(DATABASE_CONFIG_TOKEN) config: IModuleConfig) {
     super(config);
