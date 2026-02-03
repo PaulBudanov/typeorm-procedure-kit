@@ -4,7 +4,7 @@ import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/Postgres
 import type { TAdapterUtilsClassTypes } from './adapter.types.js';
 import type { TKeyTransformCase } from './strategy.types.js';
 
-interface IDatabaseCredentials {
+export interface IDatabaseCredentials {
   host: string;
   port: number;
   username: string;

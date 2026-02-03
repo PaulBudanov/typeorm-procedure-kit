@@ -12,6 +12,7 @@ import type {
   TAdapterUtilsClassTypes,
 } from '../types/adapter.types.js';
 import type {
+  IDatabaseCredentials,
   IEntityOptions,
   IMigrationOptions,
   IPostgresDbConfig,
@@ -20,6 +21,7 @@ import type {
 } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ICaseStratefyFactory } from '../types/strategy.types.js';
+import { ServerError } from '../utils/server-error.js';
 
 export class DatabaseInitializerBase {
   public readonly appDataSource: DataSource;
@@ -35,11 +37,7 @@ export class DatabaseInitializerBase {
       this.dbConfig.outKeyTransformCase
     );
     const options: OracleConnectionOptions | PostgresConnectionOptions = {
-      ...this.dbConfig.master,
-      replication: {
-        master: this.dbConfig.master,
-        slaves: this.dbConfig.slaves ?? [],
-      },
+      ...this.configFactory(),
       synchronize: this.entity?.isNeedEntitySync,
       logger: 'advanced-console',
       logging: true,
@@ -60,7 +58,6 @@ export class DatabaseInitializerBase {
         this.entity?.entityPath && Array.isArray(this.entity.entityPath)
           ? this.entity.entityPath
           : [],
-      ...this.configFactory(),
     } as const;
     this.appDataSource = new DataSource(options);
     this.databaseAdapter = this.databaseAdapterFactory();
@@ -129,9 +126,35 @@ export class DatabaseInitializerBase {
   private configFactory(): PostgresConnectionOptions | OracleConnectionOptions {
     switch (this.dbConfig.type) {
       case 'postgres':
-        return this.getPostgresOptions(this.dbConfig);
+        return {
+          type: 'postgres',
+          replication: {
+            master: this.getPostgresOptions(
+              this.dbConfig,
+              this.dbConfig.master
+            ),
+            slaves:
+              this.dbConfig.slaves?.map((slave) =>
+                this.getPostgresOptions(
+                  this.dbConfig as IPostgresDbConfig,
+                  slave
+                )
+              ) ?? [],
+          },
+        };
       case 'oracle':
-        return this.getOracleOptions(this.dbConfig);
+        return {
+          type: 'oracle',
+          replication: {
+            master: this.getOracleOptions(this.dbConfig, this.dbConfig.master),
+            slaves:
+              this.dbConfig.slaves?.map((slave) =>
+                this.getOracleOptions(this.dbConfig as TOracleDbConfig, slave)
+              ) ?? [],
+          },
+        };
+      default:
+        throw new ServerError('Unknown database type!');
     }
   }
 
@@ -164,9 +187,15 @@ export class DatabaseInitializerBase {
    * @private
    */
   private getPostgresOptions(
-    config: IPostgresDbConfig
+    config: IPostgresDbConfig,
+    credentials: IDatabaseCredentials
   ): PostgresConnectionOptions {
     return {
+      database: credentials.database,
+      username: credentials.username,
+      password: credentials.password,
+      host: credentials.host,
+      port: credentials.port,
       type: 'postgres',
       driver: pg,
       parseInt8: config.parseInt8AsBigInt,
@@ -182,14 +211,22 @@ export class DatabaseInitializerBase {
    * @returns {OracleConnectionOptions} - the options for the Oracle data source connection
    * @private
    */
-  private getOracleOptions(config: TOracleDbConfig): OracleConnectionOptions {
+  private getOracleOptions(
+    config: TOracleDbConfig,
+    credentials: IDatabaseCredentials
+  ): OracleConnectionOptions {
     const thickMode: OracleConnectionOptions['thickMode'] = config.libraryPath
       ? { libDir: config.libraryPath }
       : undefined;
     return {
+      database: credentials.database,
+      username: credentials.username,
+      password: credentials.password,
+      host: credentials.host,
+      port: credentials.port,
       type: 'oracle',
       driver: oracledb,
-      serviceName: config.master.database,
+      serviceName: credentials.database,
       thickMode,
     };
   }
