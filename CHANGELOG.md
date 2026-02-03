@@ -1,3 +1,10 @@
+## [1.3.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.0...v1.3.1) (2026-02-03)
+
+
+### Bug Fixes
+
+* change options object for get connection data. ([77edd19](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/77edd190a4a4a11cea65d433099b6c0337224844))
+
 # [1.3.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.2.0...v1.3.0) (2026-02-03)
 
 
