@@ -1,3 +1,10 @@
+# [1.3.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.2.0...v1.3.0) (2026-02-03)
+
+
+### Features
+
+* make connection single to only master for notification for perfomance, ([a28384b](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a28384bf08cb156805044f92c445592b839e9965))
+
 # [1.2.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.1.13...v1.2.0) (2026-02-03)
 
 
