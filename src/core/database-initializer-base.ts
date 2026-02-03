@@ -35,6 +35,7 @@ export class DatabaseInitializerBase {
       this.dbConfig.outKeyTransformCase
     );
     const options: OracleConnectionOptions | PostgresConnectionOptions = {
+      ...this.dbConfig.master,
       replication: {
         master: this.dbConfig.master,
         slaves: this.dbConfig.slaves ?? [],
