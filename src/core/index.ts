@@ -1,5 +1,5 @@
 import oracledb from 'oracledb';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
@@ -20,6 +20,7 @@ import { ExecuteBase } from './execute-base.js';
 import { NotifyBase } from './notify-base.js';
 import { ProcedureListBase } from './procedure-list-base.js';
 import { SerializerBase } from './serializer-base.js';
+import type { TConnectionMode } from '../types/config.types.js';
 
 export class TypeOrmProcedureKit {
   private connectionBase!: ConnectionBase;
@@ -218,6 +219,30 @@ export class TypeOrmProcedureKit {
    */
   public deleteAllSerializers(): void {
     this.serialzierBase.deleteAllSerializers();
+  }
+  /**
+   * Retrieves an EntityManager from the pool.
+   * If the connection to the database is not established, throws an error.
+   * If the connection is not initialized, throws an error.
+   * @param {string} [mode] - The mode of the connection. 'master' or 'slave'. Defaults to 'master'.
+   * @returns {Promise<EntityManager>} - A promise that resolves with the EntityManager.
+   * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
+   */
+  public getEntityManager(
+    mode: TConnectionMode = 'master'
+  ): Promise<EntityManager> {
+    return this.connectionBase.getEntityManager(mode);
+  }
+  /**
+   * Releases a connection to the database back to the pool.
+   * If the connection to the database is not established, throws an error.
+   * If the connection is not initialized, throws an error.
+   * @param {EntityManager} connection - The connection to release.
+   * @returns {Promise<void>} - A promise that resolves when the connection is released.
+   * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
+   */
+  public releaseEntityManager(connection: EntityManager): Promise<void> {
+    return this.connectionBase.releaseEntityManager(connection);
   }
   /**
    * A read-only map of serializers, where the key is the name of the serializer
