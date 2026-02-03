@@ -15,6 +15,7 @@ export abstract class DatabaseConnection<
     protected readonly appDataSource: DataSource,
     protected readonly logger: ILoggerModule
   ) {
+    //? Maybe need get config options for create single connection from  class constructor. This doesn't look very good.
     this.options = (this.appDataSource.options as U).replication?.master as U;
   }
   public abstract createSingleConnection(): Promise<V>;
