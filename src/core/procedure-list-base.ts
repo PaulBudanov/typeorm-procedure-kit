@@ -82,8 +82,9 @@ export class ProcedureListBase {
       );
       return;
     }
+    if (!this.packagesSettings) return;
     const notFoundProcedures = Object.entries(
-      this.packagesSettings!.procedureObjectList
+      this.packagesSettings.procedureObjectList
     )
       .map(([_, sqlString]) => {
         const { processName, packageName } = procedureNameParser.parse(
@@ -163,7 +164,7 @@ export class ProcedureListBase {
   public async initPackagesMap(): Promise<void> {
     if (!this.packagesSettings) return;
     await Promise.all(
-      this.packagesSettings?.packages.map((item) => {
+      this.packagesSettings.packages.map((item) => {
         return this.fetchProcedureListWithArguments(
           item.toLowerCase() as Lowercase<string>
         );

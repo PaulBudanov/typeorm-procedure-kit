@@ -60,7 +60,10 @@ export class NotifyBase {
   public packageNotifyCallback(notifyData: INotifyPackageCallback): void {
     const processPackage = (packageNameRaw: string): void => {
       const packageName = packageNameRaw.toLowerCase() as Lowercase<string>;
-      if (this.packagesSettings?.packages.includes(packageName)) {
+      if (
+        this.packagesSettings &&
+        this.packagesSettings.packages.includes(packageName)
+      ) {
         this.queueManager.enqueue(undefined, packageName);
       }
     };

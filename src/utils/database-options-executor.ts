@@ -19,7 +19,7 @@ export abstract class DatabaseOptionsExecutor {
     try {
       await Promise.all(
         commands.map(async (command, index) => {
-          logger.debug(
+          logger.log(
             `Execute command ${index + 1}/${commands.length}: ${this.truncateCommand(command)}`
           );
           await connection.query(command);
