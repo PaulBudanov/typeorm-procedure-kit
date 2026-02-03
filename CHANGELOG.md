@@ -1,3 +1,10 @@
+## [1.3.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.1...v1.3.2) (2026-02-03)
+
+
+### Bug Fixes
+
+* return serviceName ([65592d4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/65592d46d81feaff95ab8630220bc503ebdf5b43))
+
 ## [1.3.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.0...v1.3.1) (2026-02-03)
 
 
