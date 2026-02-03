@@ -1,3 +1,11 @@
+## [1.3.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.2...v1.3.3) (2026-02-03)
+
+
+### Bug Fixes
+
+* add destruct for dataSource connection object. ([f2802c6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/f2802c662540386dfdfc1c35ccdbba5abef8e650))
+* change init data source logic, set all fields. ([0e7f014](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/0e7f0142d3dc14ce4038dd1aa219572cb22d330a))
+
 ## [1.3.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.1...v1.3.2) (2026-02-03)
 
 
