@@ -1,3 +1,10 @@
+## [1.3.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.4...v1.3.5) (2026-02-03)
+
+
+### Bug Fixes
+
+* change method for lowercase transform. ([7a8cdb7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/7a8cdb738a2bf8620b6532c9ff2fab958aed836c))
+
 ## [1.3.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.3...v1.3.4) (2026-02-03)
 
 
