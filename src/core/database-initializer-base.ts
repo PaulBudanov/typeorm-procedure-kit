@@ -127,7 +127,7 @@ export class DatabaseInitializerBase {
     switch (this.dbConfig.type) {
       case 'postgres':
         return {
-          type: 'postgres',
+          ...this.getPostgresOptions(this.dbConfig),
           replication: {
             master: this.getPostgresOptions(
               this.dbConfig,
@@ -144,7 +144,7 @@ export class DatabaseInitializerBase {
         };
       case 'oracle':
         return {
-          type: 'oracle',
+          ...this.getOracleOptions(this.dbConfig),
           replication: {
             master: this.getOracleOptions(this.dbConfig, this.dbConfig.master),
             slaves:
@@ -188,20 +188,24 @@ export class DatabaseInitializerBase {
    */
   private getPostgresOptions(
     config: IPostgresDbConfig,
-    credentials: IDatabaseCredentials
+    credentials?: IDatabaseCredentials
   ): PostgresConnectionOptions {
-    return {
-      database: credentials.database,
-      username: credentials.username,
-      password: credentials.password,
-      host: credentials.host,
-      port: credentials.port,
+    const defaultObject: PostgresConnectionOptions = {
       type: 'postgres',
       driver: pg,
       parseInt8: config.parseInt8AsBigInt,
       installExtensions: true,
       uuidExtension: 'uuid-ossp',
       applicationName: config.appName,
+    };
+    if (!credentials) return defaultObject;
+    return {
+      ...defaultObject,
+      database: credentials.database,
+      username: credentials.username,
+      password: credentials.password,
+      host: credentials.host,
+      port: credentials.port,
     };
   }
 
@@ -213,21 +217,26 @@ export class DatabaseInitializerBase {
    */
   private getOracleOptions(
     config: TOracleDbConfig,
-    credentials: IDatabaseCredentials
+    credentials?: IDatabaseCredentials
   ): OracleConnectionOptions {
     const thickMode: OracleConnectionOptions['thickMode'] = config.libraryPath
       ? { libDir: config.libraryPath }
       : undefined;
+    const defaultObject: OracleConnectionOptions = {
+      type: 'oracle',
+      driver: oracledb,
+      serviceName: config.master.database,
+      thickMode,
+    };
+    if (!credentials) return defaultObject;
     return {
+      ...defaultObject,
       database: credentials.database,
       username: credentials.username,
       password: credentials.password,
       host: credentials.host,
       port: credentials.port,
-      type: 'oracle',
-      driver: oracledb,
       serviceName: credentials.database,
-      thickMode,
     };
   }
 }
