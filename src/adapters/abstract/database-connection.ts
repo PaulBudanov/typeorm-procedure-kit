@@ -15,7 +15,7 @@ export abstract class DatabaseConnection<
     protected readonly appDataSource: DataSource,
     protected readonly logger: ILoggerModule
   ) {
-    this.options = this.appDataSource.options as U;
+    this.options = (this.appDataSource.options as U).replication?.master as U;
   }
   public abstract createSingleConnection(): Promise<V>;
 
