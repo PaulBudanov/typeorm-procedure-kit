@@ -65,7 +65,9 @@ export class OracleAdapter extends DatabaseAdapter<
    * - bindings: an array of values to be passed to the procedure
    * - cursorsNames: an array of names of cursors (for Oracle only)
    */
-  public makeBindings<U extends Record<string, unknown> | Array<unknown>>(
+  public override makeBindings<
+    U extends Record<string, unknown> | Array<unknown>,
+  >(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: IProcedureArgumentList | undefined,
@@ -148,7 +150,7 @@ export class OracleAdapter extends DatabaseAdapter<
    * @param {U} [params] - parameters for SQL query
    * @returns {ISqlBindingsObjectReturn} - object with bindings and modified SQL query string
    */
-  public makeSqlBindings<U extends Record<string, unknown>>(
+  public override makeSqlBindings<U extends Record<string, unknown>>(
     sqlQuery: string,
     params?: U
   ): ISqlBindingsObjectReturn {
@@ -184,7 +186,7 @@ export class OracleAdapter extends DatabaseAdapter<
    * @param packageName - name of the package to fetch info for
    * @returns SQL query string to fetch package info
    */
-  public generatePackageInfoSql(packageName: string): string {
+  public override generatePackageInfoSql(packageName: string): string {
     return (
       OracleSqlCommand.SQL_GET_PACKAGE_INFO + `('${packageName.toUpperCase()}')`
     );
@@ -226,7 +228,7 @@ export class OracleAdapter extends DatabaseAdapter<
    * @param _manager - database manager to use for the fetch, or undefined to use the default manager
    * @returns Promise that resolves with the fetched cursors as an array
    */
-  protected async fetchAllCursors<T>(
+  protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,
     result: Array<oracledb.ResultSet<T>>,
     _manager = undefined

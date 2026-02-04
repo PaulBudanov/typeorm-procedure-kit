@@ -1,5 +1,9 @@
 import type { TConnectionTypes } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
+import type {
+  IOracleOptionsNotify,
+  TNotifyCallbackGeneric,
+} from '../../types/notification.types.js';
 
 export abstract class DatabaseNotify<T extends TConnectionTypes> {
   protected notificationPool = new Map<string, T>();
@@ -28,5 +32,11 @@ export abstract class DatabaseNotify<T extends TConnectionTypes> {
         );
       }
   }
-  protected abstract unlistenNotify(channel: string): Promise<void>;
+  public abstract unlistenNotify(channel: string): Promise<void>;
+
+  public abstract listenNotify<T>(
+    sqlCommand: string,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    options?: IOracleOptionsNotify
+  ): Promise<string>;
 }

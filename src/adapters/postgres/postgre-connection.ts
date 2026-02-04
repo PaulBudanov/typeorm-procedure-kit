@@ -28,7 +28,7 @@ export class PostgreConnection extends DatabaseConnection<
    *
    * @returns {Promise<Client>} - A promise that resolves with the Postgres client object
    */
-  public async createSingleConnection(): Promise<Client> {
+  public override async createSingleConnection(): Promise<Client> {
     const options: ClientConfig = {
       application_name: this.options.applicationName,
       host: this.options.host,
@@ -50,7 +50,9 @@ export class PostgreConnection extends DatabaseConnection<
    * @param {Client} connection - The connection to close.
    * @returns {Promise<void>} - A promise that resolves when the connection is closed.
    */
-  public async closeSingleConnection(connection: Client): Promise<void> {
+  public override async closeSingleConnection(
+    connection: Client
+  ): Promise<void> {
     try {
       connection.removeAllListeners();
       await connection.end();

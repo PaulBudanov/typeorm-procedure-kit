@@ -17,7 +17,7 @@ export class PostgreSerializer extends DatabaseSerializer {
     XML: types.builtins.XML,
   };
 
-  public registerFetchHandlerHook(): void {
+  public override registerFetchHandlerHook(): void {
     if (this.options.isNeedRegisterDefaultSerializers)
       this.registerDefaultSerializers();
     const options = this.options;
@@ -75,7 +75,7 @@ export class PostgreSerializer extends DatabaseSerializer {
    * @throws Error - If the serializer type is unknown.
    */
 
-  public setSerializer(options: ISetSerializer): void {
+  public override setSerializer(options: ISetSerializer): void {
     if (this.TYPE_SERIALIZER_MAP.has(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
@@ -101,7 +101,7 @@ export class PostgreSerializer extends DatabaseSerializer {
    * Deletes a serializer with the given type.
    * @param serializerType - The type of the serializer to delete.
    */
-  public deleteSerializer(
+  public override deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
     if (this.TYPE_SERIALIZER_MAP.has(serializerType.serializerType))
@@ -116,7 +116,7 @@ export class PostgreSerializer extends DatabaseSerializer {
    * This method is useful when you need to register new serializers or use default serializers,
    * but don't want to keep the old ones.
    */
-  public deleteAllSerializers(): void {
+  public override deleteAllSerializers(): void {
     this.TYPE_SERIALIZER_MAP.clear();
     Object.entries(types.builtins).forEach(([_, value]) => {
       types.setTypeParser(value, (val: string) => val);

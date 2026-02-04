@@ -56,7 +56,7 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
    * @param {boolean} [isTimedOut=false] - whether to log a warning and then close the connection without unsubscribing first
    * @returns {Promise<void>} - resolves when the subscription is unsubscribed and the connection is closed
    */
-  public async unlistenNotify(
+  public override async unlistenNotify(
     channelName: string,
     isTimedOut = false
   ): Promise<void> {
@@ -96,7 +96,7 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
    * @returns {Promise<string>} - promise that resolves with the name of the channel that was subscribed to
    * @throws {Error} - if the SQL command does not contain LISTEN or if the listener for the channel is already registered
    */
-  public async listenNotify<T>(
+  public override async listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: IOracleOptionsNotify

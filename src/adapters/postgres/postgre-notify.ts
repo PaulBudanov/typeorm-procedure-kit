@@ -33,7 +33,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
    * @returns {Promise<string>} - promise that resolves with the name of the channel
    * @throws {Error} - if the SQL command does not contain LISTEN or if the listener for the channel is already registered
    */
-  public async listenNotify<T>(
+  public override async listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>
   ): Promise<string> {
@@ -100,7 +100,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
    * @returns {Promise<void>} - resolves when the listener is unregistered
    * @throws {Error} - if there is an error unregistering the listener
    */
-  public async unlistenNotify(channel: string): Promise<void> {
+  public override async unlistenNotify(channel: string): Promise<void> {
     const client = this.notificationPool.get(channel);
     this.notificationPool.delete(channel);
     try {

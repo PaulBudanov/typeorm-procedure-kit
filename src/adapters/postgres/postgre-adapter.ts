@@ -38,7 +38,7 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param packageName - name of the package to fetch info for
    * @returns SQL query string to fetch package info
    */
-  public generatePackageInfoSql(packageName: string): string {
+  public override generatePackageInfoSql(packageName: string): string {
     return PostgreSqlCommand.SQL_GET_PACKAGE_INFO + ` '${packageName}';`;
   }
 
@@ -50,7 +50,7 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param manager - entity manager to use for the queries
    * @returns A promise that resolves with an array of the fetched rows
    */
-  protected async fetchAllCursors<T>(
+  protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,
     _result = undefined,
     manager: EntityManager
@@ -80,7 +80,9 @@ export class PostgreAdapter extends DatabaseAdapter<
    * - bindings: an array of values to be passed to the procedure
    * - cursorsNames: an array of names of cursors (for Oracle only)
    */
-  public makeBindings<U extends Record<string, unknown> | Array<unknown>>(
+  public override makeBindings<
+    U extends Record<string, unknown> | Array<unknown>,
+  >(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: IProcedureArgumentList | undefined,
@@ -138,7 +140,7 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param {U} [params] - parameters for SQL query
    * @returns {ISqlBindingsObjectReturn} - object with bindings and modified SQL query string
    */
-  public makeSqlBindings<U extends Record<string, unknown>>(
+  public override makeSqlBindings<U extends Record<string, unknown>>(
     sqlQuery: string,
     params?: U
   ): ISqlBindingsObjectReturn {

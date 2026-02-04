@@ -27,7 +27,7 @@ export class OracleConnection extends DatabaseConnection<
    * Creates a single Oracle connection object using the provided configuration.
    * @returns {Promise<oracledb.Connection>} - A promise that resolves with the Oracle client object
    */
-  public async createSingleConnection(): Promise<oracledb.Connection> {
+  public override async createSingleConnection(): Promise<oracledb.Connection> {
     const options: oracledb.ConnectionAttributes = {
       user: this.options.username,
       password: this.options.password,
@@ -44,7 +44,7 @@ export class OracleConnection extends DatabaseConnection<
    * @param {oracledb.Connection} connection - The connection to close.
    * @returns {Promise<void>} - A promise that resolves when the connection is closed.
    */
-  public async closeSingleConnection(
+  public override async closeSingleConnection(
     connection: oracledb.Connection
   ): Promise<void> {
     try {

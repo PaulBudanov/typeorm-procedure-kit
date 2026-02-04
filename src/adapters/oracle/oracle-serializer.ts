@@ -27,7 +27,7 @@ export class OracleSerializer extends DatabaseSerializer {
    * This method is used to register a custom serializer for the given type.
    * If a serializer with the same type already exists, it will be overridden.
    */
-  public registerFetchHandlerHook(): void {
+  public override registerFetchHandlerHook(): void {
     if (this.options.isNeedRegisterDefaultSerializers)
       this.registerDefaultSerializers();
     oracledb.fetchTypeHandler = (metaData): FetchTypeResponse | undefined => {
@@ -91,7 +91,7 @@ export class OracleSerializer extends DatabaseSerializer {
    *   strategy - A function that takes a value of the given type and returns a serialized string.
    * @throws Error - If the serializer type is unknown.
    */
-  public setSerializer(options: ISetSerializer): void {
+  public override setSerializer(options: ISetSerializer): void {
     if (this.TYPE_SERIALIZER_MAP.has(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
@@ -123,7 +123,7 @@ export class OracleSerializer extends DatabaseSerializer {
    * Deletes a serializer with the given type.
    * @param serializerType - The type of the serializer to delete.
    */
-  public deleteSerializer(
+  public override deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
     if (this.TYPE_SERIALIZER_MAP.has(serializerType.serializerType))
@@ -139,7 +139,7 @@ export class OracleSerializer extends DatabaseSerializer {
    * This method is useful when you need to register new serializers or use default serializers,
    * but don't want to keep the old ones.
    */
-  public deleteAllSerializers(): void {
+  public override deleteAllSerializers(): void {
     this.TYPE_SERIALIZER_MAP.clear();
     this.OBJECT_DB_TYPE_HANDLER_CAST.clear();
     return;
