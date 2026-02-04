@@ -41,7 +41,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "inlineSources": true,
-    "tsBuildInfoFile": "./dist/tsbuildinfo",
+    "tsBuildInfoFile": "./dist/tsbuildinfo.json",
 
     // Декораторы
     "experimentalDecorators": true,
