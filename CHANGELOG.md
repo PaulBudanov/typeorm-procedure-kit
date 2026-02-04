@@ -1,3 +1,10 @@
+## [1.3.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.5...v1.3.6) (2026-02-03)
+
+
+### Bug Fixes
+
+* add check to packages settings. ([e0b3381](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/e0b3381a822e8276f74473a431ebc5b37e888dba))
+
 ## [1.3.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.4...v1.3.5) (2026-02-03)
 
 
