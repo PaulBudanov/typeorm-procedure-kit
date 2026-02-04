@@ -1,3 +1,10 @@
+## [1.3.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.6...v1.3.7) (2026-02-04)
+
+
+### Bug Fixes
+
+* added override to adapter methods. ([a00bc50](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a00bc50193a3949969ad7be6c298fcd71c508bdd))
+
 ## [1.3.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.5...v1.3.6) (2026-02-03)
 
 
