@@ -102,7 +102,7 @@ export class DatabaseInitializerBase {
    * double quotes from the query.
    * @private
    */
-  //TODO: Refactor in the future
+  //TODO: Refactor in the future, make fork from typeorm lib and fix this.
   private initExecuteTypeormWithoutDoubleQuotes(): void {
     const queryBuilderPrototype =
       QueryBuilder.prototype as typeof QueryBuilder.prototype & {

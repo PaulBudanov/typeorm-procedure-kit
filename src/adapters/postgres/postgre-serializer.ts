@@ -21,7 +21,7 @@ export class PostgreSerializer extends DatabaseSerializer {
     if (this.options.isNeedRegisterDefaultSerializers)
       this.registerDefaultSerializers();
     const options = this.options;
-    //TODO: Find alternative solution
+    //TODO: Make fork from pg lib and fix this
     (
       Result.prototype as Result & {
         parseRow: (

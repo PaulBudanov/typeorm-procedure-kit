@@ -24,3 +24,6 @@ export { DatabaseOptionsExecutor } from './database-options-executor.js';
 
 // String Utils
 export { StringUtilities } from './string-utilities.js';
+
+// TypeOrm Merge Helper
+export { TypeOrmMergeHelper } from './typeorm-merge-helper.js';

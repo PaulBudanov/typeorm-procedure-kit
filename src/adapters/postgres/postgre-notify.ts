@@ -62,7 +62,6 @@ export class PostgreNotify extends DatabaseNotify<Client> {
           )
       );
       client.on('notification', (msg) => {
-        // console.log(msg.channel, channelName);
         if (msg.channel?.toLowerCase() === channelName.toLowerCase()) {
           let payload: TNotifyCallbackGeneric<T>;
           try {

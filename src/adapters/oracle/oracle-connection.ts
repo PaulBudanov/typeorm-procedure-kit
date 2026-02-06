@@ -27,7 +27,7 @@ export class OracleConnection extends DatabaseConnection<
    * Creates a single Oracle connection object using the provided configuration.
    * @returns {Promise<oracledb.Connection>} - A promise that resolves with the Oracle client object
    */
-  public override async createSingleConnection(): Promise<oracledb.Connection> {
+  public override createSingleConnection(): Promise<oracledb.Connection> {
     const options: oracledb.ConnectionAttributes = {
       user: this.options.username,
       password: this.options.password,

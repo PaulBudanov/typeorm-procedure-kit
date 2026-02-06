@@ -94,6 +94,7 @@ export class NotifyBase {
    *   }
    * );
    */
+  //TODO: Extend to support other databases, refactor interfaces
   public createNotification<T>(
     options: ICreateNotify<T>,
     additionalOptions?: IOracleOptionsNotify

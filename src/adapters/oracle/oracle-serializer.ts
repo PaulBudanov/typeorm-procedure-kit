@@ -44,7 +44,6 @@ export class OracleSerializer extends DatabaseSerializer {
           metaData.dbType
         )!;
         const serializer = this.TYPE_SERIALIZER_MAP.get(serializeKey);
-        // console.log(serializer, serializeKey);
         if (!serializer) return { type: metaData.dbType };
         const converter = (value: unknown): unknown => {
           if (value === null || value === undefined) return null;
