@@ -1,3 +1,10 @@
+## [1.3.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.7...v1.3.8) (2026-02-04)
+
+
+### Bug Fixes
+
+* added tslib for build helper function. ([6ccceb5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/6ccceb58ac260d67ace7d0b3f9cbe09a2acab4c9))
+
 ## [1.3.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.6...v1.3.7) (2026-02-04)
 
 
