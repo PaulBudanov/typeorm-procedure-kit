@@ -1,3 +1,10 @@
+# [1.4.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.8...v1.4.0) (2026-02-06)
+
+
+### Features
+
+* added merge helper utils ([2db4fb6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/2db4fb67803a6715889a6c8537312d247e32ea71))
+
 ## [1.3.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.7...v1.3.8) (2026-02-04)
 
 
