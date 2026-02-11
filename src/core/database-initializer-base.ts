@@ -115,10 +115,13 @@ export class DatabaseInitializerBase {
     ) {
       const originalMethod =
         queryBuilderPrototype.replacePropertyNamesForTheWholeQuery;
-
-      queryBuilderPrototype.replacePropertyNamesForTheWholeQuery = (
+      queryBuilderPrototype.replacePropertyNamesForTheWholeQuery = function (
+        this: typeof queryBuilderPrototype,
         statement: string
-      ): string => originalMethod(statement).replace(/"([^"]+)"/g, '$1');
+      ): string {
+        const result = originalMethod.call(this, statement);
+        return result.replace(/"([^"]+)"/g, '$1');
+      };
     }
   }
 
