@@ -1,3 +1,10 @@
+## [1.4.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.4.0...v1.4.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* find and fixed bug with typeorm mehod context. ([73467f3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/73467f39c8ab648f0c0bc86e3517d0d291aeb5bc))
+
 # [1.4.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.3.8...v1.4.0) (2026-02-06)
 
 
