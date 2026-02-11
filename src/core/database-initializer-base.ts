@@ -118,8 +118,7 @@ export class DatabaseInitializerBase {
 
       queryBuilderPrototype.replacePropertyNamesForTheWholeQuery = (
         statement: string
-      ): string =>
-        originalMethod.call(this, statement).replace(/"([^"]+)"/g, '$1');
+      ): string => originalMethod(statement).replace(/"([^"]+)"/g, '$1');
     }
   }
 
