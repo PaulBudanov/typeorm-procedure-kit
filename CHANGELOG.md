@@ -1,3 +1,10 @@
+## [1.4.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.4.1...v1.4.2) (2026-02-11)
+
+
+### Bug Fixes
+
+* make function without arrow function for typeorm class context. ([902873e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/902873ef082cda210c5084d4d9ec2b0a96af83db))
+
 ## [1.4.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.4.0...v1.4.1) (2026-02-11)
 
 
