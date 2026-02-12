@@ -1,3 +1,10 @@
+## [1.5.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.5.0...v1.5.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* added import "reflect-metadata"; ([40289b8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/40289b827035c8bfa53a09de445f08c7ac11a683))
+
 # [1.5.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.4.2...v1.5.0) (2026-02-12)
 
 
