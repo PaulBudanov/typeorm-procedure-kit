@@ -1,3 +1,10 @@
+# [1.5.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.4.2...v1.5.0) (2026-02-12)
+
+
+### Features
+
+* added extend decorators for typeorm, extend metadata columns and entity. ([5a1657d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/5a1657db1473ed63658e4b352e4e59e99f7253a4))
+
 ## [1.4.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.4.1...v1.4.2) (2026-02-11)
 
 
