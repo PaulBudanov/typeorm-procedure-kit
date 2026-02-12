@@ -3,6 +3,7 @@ import { DefaultNamingStrategy } from 'typeorm';
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { ServerError } from '../utils/server-error.js';
 
+//TODO: Extend NamingStrategy Class.
 export class OrmStrategy extends DefaultNamingStrategy {
   private databaseNamingCache: DatabaseNamingCache<string>;
 
