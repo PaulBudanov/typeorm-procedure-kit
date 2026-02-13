@@ -13,6 +13,7 @@ export abstract class DatabaseErrorHandler {
    */
   public static checkForDatabaseError<T>(
     responseData: T | Buffer | string | Array<T>,
+    queryId?: string,
     logger?: ILoggerModule
   ): void {
     if (
@@ -25,7 +26,7 @@ export abstract class DatabaseErrorHandler {
 
     if (Array.isArray(responseData)) {
       responseData.forEach((item) =>
-        DatabaseErrorHandler.checkForDatabaseError(item, logger)
+        DatabaseErrorHandler.checkForDatabaseError(item, queryId, logger)
       );
       return;
     }
@@ -43,7 +44,9 @@ export abstract class DatabaseErrorHandler {
         logger.error(`Detected database error: ${errorMessage}`);
       }
 
-      throw new ServerError(errorMessage);
+      throw new ServerError(errorMessage, null, {
+        errorId: queryId,
+      });
     }
     return;
   }

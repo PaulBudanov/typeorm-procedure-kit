@@ -1,10 +1,9 @@
-import { randomUUID } from 'crypto';
-
 import { DateTime } from 'luxon';
 
 import type { ILoggerModule } from '../types/logger.types.js';
 
 import { ServerError } from './server-error.js';
+import type { IBindingsObjectReturn } from '../types/utility.types.js';
 
 export class QueryTimer {
   private startTime: number;
@@ -20,7 +19,8 @@ export class QueryTimer {
   public constructor(
     private sql: string,
     private logger: ILoggerModule,
-    private queryId: string = this.generateQueryId()
+    private queryId: string,
+    private bindings?: IBindingsObjectReturn['bindings']
   ) {
     this.startTime = DateTime.now().toLocal().toMillis();
 
@@ -42,9 +42,12 @@ export class QueryTimer {
     const durationStr = this.formatDuration(duration);
 
     const message =
-      rowCount !== undefined
+      rowCount !== undefined && rowCount !== null
         ? `SQL request [${this.queryId}] completed successfully in ${durationStr} with ${rowCount} rows`
-        : `SQL request [${this.queryId}] completed successfully in ${durationStr}`;
+        : `SQL request [${this.queryId}] completed successfully in ${durationStr}` +
+            this.bindings
+          ? `\nBindings: ${JSON.stringify(this.bindings)}`
+          : '';
 
     if (duration > 5000) {
       this.logger.warn(message);
@@ -61,11 +64,12 @@ export class QueryTimer {
   public error(error: ServerError | Error): void {
     const duration = DateTime.now().toMillis() - this.startTime;
     const durationStr = this.formatDuration(duration);
-
-    this.logger.error(
-      `SQL request [${this.queryId}] failed in ${durationStr}: ${error.message}`,
-      error.stack
-    );
+    const errorMessage =
+      `SQL request [${this.queryId}] failed in ${durationStr}: ${error.message}.` +
+      this.bindings
+        ? `\nBindings: ${JSON.stringify(this.bindings)}`
+        : '';
+    this.logger.error(errorMessage, error.stack);
   }
 
   /**
@@ -99,13 +103,5 @@ export class QueryTimer {
       return sql;
     }
     return sql.substring(0, maxLength) + '...';
-  }
-
-  /**
-   * Generates a unique query ID.
-   * @returns {string} - a unique query ID as a UUID.
-   */
-  private generateQueryId(): string {
-    return randomUUID();
   }
 }
