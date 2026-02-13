@@ -331,16 +331,6 @@ export class PostgresDriver implements Driver {
           : this.options
       ).database;
     this.schema = DriverUtils.buildDriverOptions(this.options).schema;
-
-    // ObjectUtils.assign(this.options, DriverUtils.buildDriverOptions(connection.options)); // todo: do it better way
-    // validate options to make sure everything is set
-    // todo: revisit validation with replication in mind
-    // if (!this.options.host)
-    //     throw new DriverOptionNotSetError("host");
-    // if (!this.options.username)
-    //     throw new DriverOptionNotSetError("username");
-    // if (!this.options.database)
-    //     throw new DriverOptionNotSetError("database");
   }
 
   // -------------------------------------------------------------------------
@@ -352,7 +342,7 @@ export class PostgresDriver implements Driver {
    * Based on pooling options, it can either create connection immediately,
    * either create a pool and create connection when needed.
    */
-  async connect(): Promise<void> {
+  public async connect(): Promise<void> {
     if (this.options.replication) {
       this.slaves = await Promise.all(
         this.options.replication.slaves.map((slave) => {
@@ -393,7 +383,7 @@ export class PostgresDriver implements Driver {
   /**
    * Makes any action after connection (e.g. create extensions in Postgres driver).
    */
-  async afterConnect(): Promise<void> {
+  public async afterConnect(): Promise<void> {
     const extensionsMetadata = await this.checkMetadataForExtensions();
     const [connection, release] = await this.obtainMasterConnection();
 

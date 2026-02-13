@@ -3,6 +3,8 @@ import { hash, shorten } from '../util/StringUtils.js';
 import { VersionUtils } from '../util/VersionUtils.js';
 
 import type { Driver } from './Driver.js';
+import type { OracleConnectionCredentialsOptions } from './oracle/OracleConnectionCredentialsOptions.js';
+import type { PostgresConnectionCredentialsOptions } from './postgres/PostgresConnectionCredentialsOptions.js';
 
 /**
  * Common driver utility functions.
@@ -28,19 +30,10 @@ export class DriverUtils {
    * Extracts settings from connection url and sets to a new options object.
    */
   public static buildDriverOptions<
-    T extends Record<string, string | number | undefined>,
-  >(
-    options: T,
-    buildOptions?: { useSid: boolean }
-  ): {
-    url?: string;
-    host?: string;
-    username?: string;
-    password?: string;
-    port?: number;
-    database?: string;
-    sid?: string;
-  } {
+    T extends
+      | PostgresConnectionCredentialsOptions
+      | OracleConnectionCredentialsOptions,
+  >(options: T, buildOptions?: { useSid: boolean }): T {
     if (options.url && typeof options.url === 'string') {
       const urlDriverOptions = this.parseConnectionUrl(options.url) as {
         type?: string;

@@ -76,11 +76,9 @@
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
-    "@sqltools/formatter": "^1.2.5",
     "@types/oracledb": "^6.9.0",
     "@types/pg": "^8.0.0",
     "@web-mis/queue-manager": "^1.0.9",
-    "ansis": "^4.2.0",
     "lodash-es": "^4.0.0",
     "lru-cache": "^11.0.0",
     "luxon": "^3.0.0",
@@ -88,8 +86,7 @@
     "pg": "^8.5.1",
     "pg-native": "^3.5.2",
     "pg-query-stream": "^4.12.0",
-    "reflect-metadata": "^0.2.2",
-    "sql-highlight": "^6.1.0"
+    "reflect-metadata": "^0.2.2"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -144,7 +141,10 @@
   "sideEffects": false,
   "dependencies": {
     "@sqltools/formatter": "^1.2.5",
+    "app-root-path": "^3.1.0",
     "dedent": "^1.7.1",
-    "glob": "^13.0.3"
+    "glob": "^13.0.3",
+    "sql-highlight": "^6.1.0",
+    "ansis": "^4.2.0"
   }
 }

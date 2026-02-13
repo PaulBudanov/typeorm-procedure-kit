@@ -1,6 +1,6 @@
 import { getMetadataArgsStorage } from '../../globals.js';
-import { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs.js';
-import { RelationOptions } from '../options/RelationOptions.js';
+import type { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs.js';
+import type { RelationOptions } from '../options/RelationOptions.js';
 
 /**
  * Marks an entity property as a children of the tree.
@@ -9,14 +9,14 @@ import { RelationOptions } from '../options/RelationOptions.js';
 export function TreeChildren(options?: {
   cascade?:
     | boolean
-    | ('insert' | 'update' | 'remove' | 'soft-remove' | 'recover')[];
+    | Array<'insert' | 'update' | 'remove' | 'soft-remove' | 'recover'>;
 }): PropertyDecorator {
-  return function (object: Object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol) {
     if (!options) options = {} as RelationOptions;
 
     // now try to determine it its lazy relation
     const reflectedType =
-      Reflect && (Reflect as any).getMetadata
+      Reflect && (Reflect as typeof Reflect).getMetadata
         ? Reflect.getMetadata('design:type', object, propertyName)
         : undefined;
     const isLazy =
