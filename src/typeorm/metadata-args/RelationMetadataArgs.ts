@@ -1,68 +1,69 @@
-import { RelationType } from "../metadata/types/RelationTypes"
-import { RelationOptions } from "../decorator/options/RelationOptions"
-import { PropertyTypeFactory } from "../metadata/types/PropertyTypeInFunction"
-import { RelationTypeInFunction } from "../metadata/types/RelationTypeInFunction"
+import type { TFunction } from '../../types/utility.types.js';
+import type { RelationOptions } from '../decorator/options/RelationOptions.js';
+import type { PropertyTypeFactory } from '../metadata/types/PropertyTypeInFunction.js';
+import type { RelationTypeInFunction } from '../metadata/types/RelationTypeInFunction.js';
+import type { RelationType } from '../metadata/types/RelationTypes.js';
 
 /**
  * Arguments for RelationMetadata class.
  */
 export interface RelationMetadataArgs {
-    /**
-     * Class to which this relation is applied.
-     */
-    readonly target: Function | string
+  /**
+   * Class to which this relation is applied.
+   */
+  readonly target: TFunction | string;
 
-    /**
-     * In the case if this relation is without a target, targetId must be specified.
-     * This is used for entity schemas without classes.
-     */
-    // readonly targetId?: string;
+  /**
+   * In the case if this relation is without a target, targetId must be specified.
+   * This is used for entity schemas without classes.
+   */
+  // readonly targetId?: string;
 
-    /**
-     * Class's property name to which this relation is applied.
-     */
-    readonly propertyName: string
+  /**
+   * Class's property name to which this relation is applied.
+   */
+  readonly propertyName: string;
 
-    /**
-     * Indicates if this relation will be lazily loaded.
-     */
-    readonly isLazy: boolean
+  /**
+   * Indicates if this relation will be lazily loaded.
+   */
+  readonly isLazy: boolean;
 
-    /**
-     * Original (reflected) class's property type.
-     *
-     * todo: this can be empty for relations from entity schemas.
-     */
-    // readonly propertyType?: any;
+  /**
+   * Original (reflected) class's property type.
+   *
+   * todo: this can be empty for relations from entity schemas.
+   */
+  // readonly propertyType?: any;
 
-    /**
-     * Type of relation. Can be one of the value of the RelationTypes class.
-     */
-    readonly relationType: RelationType
+  /**
+   * Type of relation. Can be one of the value of the RelationTypes class.
+   */
+  readonly relationType: RelationType;
 
-    /**
-     * Type of the relation. This type is in function because of language specifics and problems with recursive
-     * referenced classes.
-     */
-    readonly type: RelationTypeInFunction
+  /**
+   * Type of the relation. This type is in function because of language specifics and problems with recursive
+   * referenced classes.
+   */
+  readonly type: RelationTypeInFunction;
 
-    /**
-     * Inverse side of the relation.
-     */
-    readonly inverseSideProperty?: PropertyTypeFactory<any>
+  /**
+   * Inverse side of the relation.
+   */
+  readonly inverseSideProperty?: PropertyTypeFactory<unknown>;
 
-    /**
-     * Additional relation options.
-     */
-    readonly options: RelationOptions
+  /**
+   * Additional relation options.
+   */
+  readonly options: RelationOptions;
 
-    /**
-     * Indicates if this is a parent (can be only many-to-one relation) relation in the tree tables.
-     */
-    readonly isTreeParent?: boolean
+  /**
+   * Indicates if this is a parent (can be only many-to-one relation) relation in the tree tables.
+   */
+  readonly isTreeParent?: boolean;
 
-    /**
-     * Indicates if this is a children (can be only one-to-many relation) relation in the tree tables.
-     */
-    readonly isTreeChildren?: boolean
+  /**
+   * Indicates if this is a children (can be only one-to-many relation) relation in the tree tables.
+   */
+  readonly isTreeChildren?: boolean;
 }

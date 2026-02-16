@@ -1,141 +1,143 @@
-import {
-    DataSource,
-    EntitySchemaEmbeddedColumnOptions,
-    SelectQueryBuilder,
-} from ".."
-import { EntitySchemaIndexOptions } from "./EntitySchemaIndexOptions"
-import { EntitySchemaColumnOptions } from "./EntitySchemaColumnOptions"
-import { EntitySchemaRelationOptions } from "./EntitySchemaRelationOptions"
-import { OrderByCondition } from "../find-options/OrderByCondition"
-import { TableType } from "../metadata/types/TableTypes"
-import { EntitySchemaUniqueOptions } from "./EntitySchemaUniqueOptions"
-import { EntitySchemaCheckOptions } from "./EntitySchemaCheckOptions"
-import { EntitySchemaExclusionOptions } from "./EntitySchemaExclusionOptions"
-import { EntitySchemaInheritanceOptions } from "./EntitySchemaInheritanceOptions"
-import { EntitySchemaRelationIdOptions } from "./EntitySchemaRelationIdOptions"
-import { EntitySchemaForeignKeyOptions } from "./EntitySchemaForeignKeyOptions"
-import { TreeMetadataArgs } from "../metadata-args/TreeMetadataArgs"
+import type { TFunction } from '../../types/utility.types.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { OrderByCondition } from '../find-options/OrderByCondition.js';
+import type { TableType } from '../metadata/types/TableTypes.js';
+import type { TreeMetadataArgs } from '../metadata-args/TreeMetadataArgs.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+
+import type { EntitySchemaCheckOptions } from './EntitySchemaCheckOptions.js';
+import type { EntitySchemaColumnOptions } from './EntitySchemaColumnOptions.js';
+import type { EntitySchemaEmbeddedColumnOptions } from './EntitySchemaEmbeddedColumnOptions.js';
+import type { EntitySchemaExclusionOptions } from './EntitySchemaExclusionOptions.js';
+import type { EntitySchemaForeignKeyOptions } from './EntitySchemaForeignKeyOptions.js';
+import type { EntitySchemaIndexOptions } from './EntitySchemaIndexOptions.js';
+import type { EntitySchemaInheritanceOptions } from './EntitySchemaInheritanceOptions.js';
+import type { EntitySchemaRelationIdOptions } from './EntitySchemaRelationIdOptions.js';
+import type { EntitySchemaRelationOptions } from './EntitySchemaRelationOptions.js';
+import type { EntitySchemaUniqueOptions } from './EntitySchemaUniqueOptions.js';
 
 /**
  * Interface for entity metadata mappings stored inside "schemas" instead of models decorated by decorators.
  */
 export class EntitySchemaOptions<T> {
-    /**
-     * Target bind to this entity schema. Optional.
-     */
-    target?: Function
+  /**
+   * Target bind to this entity schema. Optional.
+   */
+  public target?: TFunction;
 
-    /**
-     * Entity name.
-     */
-    name: string
+  /**
+   * Entity name.
+   */
+  public name!: string;
 
-    /**
-     * Table name.
-     */
-    tableName?: string
+  /**
+   * Table name.
+   */
+  public tableName?: string;
 
-    /**
-     * Database name. Used in MySql and Sql Server.
-     */
-    database?: string
+  /**
+   * Database name. Used in MySql and Sql Server.
+   */
+  public database?: string;
 
-    /**
-     * Schema name. Used in Postgres and Sql Server.
-     */
-    schema?: string
+  /**
+   * Schema name. Used in Postgres and Sql Server.
+   */
+  public schema?: string;
 
-    /**
-     * Table type.
-     */
-    type?: TableType
+  /**
+   * Table type.
+   */
+  public type?: TableType;
 
-    /**
-     * Specifies a property name by which queries will perform ordering by default when fetching rows.
-     */
-    orderBy?: OrderByCondition
+  /**
+   * Specifies a property name by which queries will perform ordering by default when fetching rows.
+   */
+  public orderBy?: OrderByCondition;
 
-    /**
-     * Entity column's options.
-     */
-    columns: {
-        [P in keyof T]?: EntitySchemaColumnOptions
-    }
+  /**
+   * Entity column's options.
+   */
+  public columns!: {
+    [P in keyof T]?: EntitySchemaColumnOptions;
+  };
 
-    /**
-     * Entity relation's options.
-     */
-    relations?: {
-        [P in keyof T]?: EntitySchemaRelationOptions
-    }
+  /**
+   * Entity relation's options.
+   */
+  public relations?: {
+    [P in keyof T]?: EntitySchemaRelationOptions;
+  };
 
-    /**
-     * Entity relation id options.
-     */
-    relationIds?: {
-        [P in keyof T]?: EntitySchemaRelationIdOptions
-    }
+  /**
+   * Entity relation id options.
+   */
+  public relationIds?: {
+    [P in keyof T]?: EntitySchemaRelationIdOptions;
+  };
 
-    /**
-     * Entity indices options.
-     */
-    indices?: EntitySchemaIndexOptions[]
+  /**
+   * Entity indices options.
+   */
+  public indices?: Array<EntitySchemaIndexOptions>;
 
-    /**
-     * Entity foreign keys options.
-     */
-    foreignKeys?: EntitySchemaForeignKeyOptions[]
+  /**
+   * Entity foreign keys options.
+   */
+  public foreignKeys?: Array<EntitySchemaForeignKeyOptions>;
 
-    /**
-     * Entity uniques options.
-     */
-    uniques?: EntitySchemaUniqueOptions[]
+  /**
+   * Entity uniques options.
+   */
+  public uniques?: Array<EntitySchemaUniqueOptions>;
 
-    /**
-     * Entity check options.
-     */
-    checks?: EntitySchemaCheckOptions[]
+  /**
+   * Entity check options.
+   */
+  public checks?: Array<EntitySchemaCheckOptions>;
 
-    /**
-     * Entity exclusion options.
-     */
-    exclusions?: EntitySchemaExclusionOptions[]
+  /**
+   * Entity exclusion options.
+   */
+  public exclusions?: Array<EntitySchemaExclusionOptions>;
 
-    /**
-     * Embedded Entities options
-     */
-    embeddeds?: {
-        [P in keyof Partial<T>]: EntitySchemaEmbeddedColumnOptions
-    }
+  /**
+   * Embedded Entities options
+   */
+  public embeddeds?: {
+    [P in keyof Partial<T>]: EntitySchemaEmbeddedColumnOptions;
+  };
 
-    /**
-     * Indicates if schema synchronization is enabled or disabled for this entity.
-     * If it will be set to false then schema sync will and migrations ignore this entity.
-     * By default schema synchronization is enabled for all entities.
-     */
-    synchronize?: boolean
+  /**
+   * Indicates if schema synchronization is enabled or disabled for this entity.
+   * If it will be set to false then schema sync will and migrations ignore this entity.
+   * By default schema synchronization is enabled for all entities.
+   */
+  public synchronize?: boolean;
 
-    /**
-     * If set to 'true' this option disables Sqlite's default behaviour of secretly creating
-     * an integer primary key column named 'rowid' on table creation.
-     * @see https://www.sqlite.org/withoutrowid.html.
-     */
-    withoutRowid?: boolean
+  /**
+   * If set to 'true' this option disables Sqlite's default behaviour of secretly creating
+   * an integer primary key column named 'rowid' on table creation.
+   * @see https://www.sqlite.org/withoutrowid.html.
+   */
+  public withoutRowid?: boolean;
 
-    /**
-     * View expression.
-     */
-    expression?: string | ((connection: DataSource) => SelectQueryBuilder<any>)
+  /**
+   * View expression.
+   */
+  public expression?:
+    | string
+    | ((connection: DataSource) => SelectQueryBuilder<unknown>);
 
-    /**
-     * Inheritance options.
-     */
-    inheritance?: EntitySchemaInheritanceOptions
+  /**
+   * Inheritance options.
+   */
+  public inheritance?: EntitySchemaInheritanceOptions;
 
-    /**
-     * Custom discriminator value for Single Table Inheritance.
-     */
-    discriminatorValue?: string
+  /**
+   * Custom discriminator value for Single Table Inheritance.
+   */
+  public discriminatorValue?: string;
 
-    trees?: Omit<TreeMetadataArgs, "target">[]
+  public trees?: Array<Omit<TreeMetadataArgs, 'target'>>;
 }

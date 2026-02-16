@@ -1,6 +1,8 @@
 import { merge } from 'lodash-es';
-import { getMetadataArgsStorage, type EntityOptions } from 'typeorm';
 
+import type { EntityOptions } from '../../typeorm/decorator/options/EntityOptions.js';
+import { getMetadataArgsStorage } from '../../typeorm/globals.js';
+import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
 
@@ -23,12 +25,12 @@ export function ExtendEntity(
 
     const entityMetadata = TypeOrmHelpers.findEntityMetadata(
       storage.tables,
-      target as new (...args: Array<unknown>) => unknown
+      target as TFunction
     );
 
     if (!entityMetadata) {
       throw new ServerError(
-        `Entity "${(target as new (...args: Array<unknown>) => unknown).name}" not found. ` +
+        `Entity "${(target as TFunction).name}" not found. ` +
           'Register entity with @Entity() decorator first.'
       );
     }

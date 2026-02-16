@@ -1,5 +1,6 @@
 import type { ColumnMetadataArgs } from 'typeorm/metadata-args/ColumnMetadataArgs.js';
 import type { TableMetadataArgs } from 'typeorm/metadata-args/TableMetadataArgs.js';
+import type { TFunction } from '../types/utility.types.js';
 
 export abstract class TypeOrmHelpers {
   /**
@@ -35,9 +36,7 @@ export abstract class TypeOrmHelpers {
    * @param target - Object to find the entity metadata for.
    * @returns The entity metadata for the given target if found, otherwise undefined.
    */
-  public static findEntityMetadata<
-    T extends new (...args: Array<unknown>) => unknown,
-  >(
+  public static findEntityMetadata<T extends TFunction>(
     tables: Array<TableMetadataArgs>,
     target: T
   ): TableMetadataArgs | undefined {

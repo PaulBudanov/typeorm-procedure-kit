@@ -1,18 +1,18 @@
-import { ColumnType } from "../driver/types/ColumnTypes"
-import { DatabaseType } from "../driver/types/DatabaseType"
-import { ColumnMetadata } from "../metadata/ColumnMetadata"
-import { TypeORMError } from "./TypeORMError"
+import type { TDbConfig } from '../../types/config.types.js';
+import { type ColumnType } from '../driver/types/ColumnTypes.js';
+import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+
+import { TypeORMError } from './TypeORMError.js';
 
 export class DataTypeNotSupportedError extends TypeORMError {
-    constructor(
-        column: ColumnMetadata,
-        dataType: ColumnType,
-        database?: DatabaseType,
-    ) {
-        super()
+  public constructor(
+    column: ColumnMetadata,
+    dataType: ColumnType,
+    database?: TDbConfig['type']
+  ) {
+    super();
 
-        const type =
-            typeof dataType === "string" ? dataType : (<any>dataType).name
-        this.message = `Data type "${type}" in "${column.entityMetadata.targetName}.${column.propertyName}" is not supported by "${database}" database.`
-    }
+    const type = typeof dataType === 'string' ? dataType : dataType.name;
+    this.message = `Data type "${type}" in "${column.entityMetadata.targetName}.${column.propertyName}" is not supported by "${database}" database.`;
+  }
 }

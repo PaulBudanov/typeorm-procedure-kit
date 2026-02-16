@@ -99,7 +99,7 @@ export class PostgresDriver implements Driver {
    *
    * In most cases this will be `public`.
    */
-  public earchSchema?: string;
+  public searchSchema?: string;
 
   /**
    * Indicates if replication is enabled.

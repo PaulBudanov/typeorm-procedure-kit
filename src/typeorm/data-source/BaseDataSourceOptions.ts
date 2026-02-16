@@ -1,11 +1,12 @@
-import { EntitySchema } from '../entity-schema/EntitySchema.js';
-import { LoggerOptions } from '../logger/LoggerOptions';
-import { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface';
-import { Logger } from '../logger/Logger.js';
-import { DataSource } from '../data-source/DataSource';
-import { QueryResultCache } from '../cache/QueryResultCache';
-import { MixedList } from '../common/MixedList';
 import type { TDbConfig } from '../../types/config.types.js';
+import type { TFunction } from '../../types/utility.types.js';
+import { DbQueryResultCache } from '../cache/db-query-result-cache.js';
+import { MixedList } from '../common/MixedList';
+import { DataSource } from '../data-source/DataSource.js';
+import { EntitySchema } from '../entity-schema/EntitySchema.js';
+import type { Logger } from '../logger/Logger.js';
+import type { LoggerOptions } from '../logger/LoggerOptions.js';
+import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
 /**
  * BaseDataSourceOptions is set of DataSourceOptions shared by all database types.
@@ -29,26 +30,20 @@ export interface BaseDataSourceOptions {
    * Accepts both entity classes and directories where from entities need to be loaded.
    * Directories support glob patterns.
    */
-  readonly entities?: MixedList<
-    (...args: Array<unknown>) => unknown | string | EntitySchema
-  >;
+  readonly entities?: MixedList<TFunction | string | EntitySchema>;
 
   /**
    * Subscribers to be loaded for this connection.
    * Accepts both subscriber classes and directories where from subscribers need to be loaded.
    * Directories support glob patterns.
    */
-  readonly subscribers?: MixedList<
-    (...args: Array<unknown>) => unknown | string
-  >;
+  readonly subscribers?: MixedList<TFunction | string>;
 
   /**
    * Migrations to be loaded for this connection.
    * Accepts both migration classes and glob patterns representing migration files.
    */
-  readonly migrations?: MixedList<
-    (...args: Array<unknown>) => unknown | string
-  >;
+  readonly migrations?: MixedList<TFunction | string>;
 
   /**
    * Migrations table name, in case of different name from "migrations".
@@ -173,7 +168,7 @@ export interface BaseDataSourceOptions {
         /**
          * Factory function for custom cache providers that implement QueryResultCache.
          */
-        readonly provider?: (connection: DataSource) => QueryResultCache;
+        readonly provider?: (connection: DataSource) => DbQueryResultCache;
 
         /**
          * Configurable table name for "database" type cache.

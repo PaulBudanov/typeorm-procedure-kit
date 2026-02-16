@@ -1,5 +1,5 @@
-import { Table } from '../schema-builder/table/Table';
-import { View } from '../schema-builder/view/View';
+import { Table } from '../schema-builder/table/Table.js';
+import { View } from '../schema-builder/view/View.js';
 
 /**
  * Naming strategy defines how auto-generated names for such things like table name, or table column gonna be
@@ -32,7 +32,7 @@ export interface NamingStrategyInterface {
   columnName(
     propertyName: string,
     customName: string | undefined,
-    embeddedPrefixes: string[]
+    embeddedPrefixes: Array<string>
   ): string;
 
   /**
@@ -43,14 +43,17 @@ export interface NamingStrategyInterface {
   /**
    * Gets the table's primary key name from the given table name and column names.
    */
-  primaryKeyName(tableOrName: Table | string, columnNames: string[]): string;
+  primaryKeyName(
+    tableOrName: Table | string,
+    columnNames: Array<string>
+  ): string;
 
   /**
    * Gets the table's unique constraint name from the given table name and column names.
    */
   uniqueConstraintName(
     tableOrName: Table | string,
-    columnNames: string[]
+    columnNames: Array<string>
   ): string;
 
   /**
@@ -59,7 +62,7 @@ export interface NamingStrategyInterface {
    */
   relationConstraintName(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     where?: string
   ): string;
 
@@ -76,9 +79,9 @@ export interface NamingStrategyInterface {
    */
   foreignKeyName(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     referencedTablePath?: string,
-    referencedColumnNames?: string[]
+    referencedColumnNames?: Array<string>
   ): string;
 
   /**
@@ -86,7 +89,7 @@ export interface NamingStrategyInterface {
    */
   indexName(
     tableOrName: Table | View | string,
-    columns: string[],
+    columns: Array<string>,
     where?: string
   ): string;
 

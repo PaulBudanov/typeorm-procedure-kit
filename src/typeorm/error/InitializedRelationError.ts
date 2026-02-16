@@ -1,5 +1,6 @@
-import { RelationMetadata } from "../metadata/RelationMetadata"
-import { TypeORMError } from "./TypeORMError"
+import { RelationMetadata } from '../metadata/RelationMetadata.js';
+
+import { TypeORMError } from './TypeORMError.js';
 
 /**
  * Thrown when relation has array initialized which is forbidden my ORM.
@@ -8,11 +9,11 @@ import { TypeORMError } from "./TypeORMError"
  * @see http://typeorm.io/docs/Relations/relations-faq/#avoid-relation-property-initializers
  */
 export class InitializedRelationError extends TypeORMError {
-    constructor(relation: RelationMetadata) {
-        super(
-            `Array initializations are not allowed in entity relations. ` +
-                `Please remove array initialization (= []) from "${relation.entityMetadata.targetName}#${relation.propertyPath}". ` +
-                `This is ORM requirement to make relations to work properly. Refer docs for more information.`,
-        )
-    }
+  public constructor(relation: RelationMetadata) {
+    super(
+      `Array initializations are not allowed in entity relations. ` +
+        `Please remove array initialization (= []) from "${relation.entityMetadata.targetName}#${relation.propertyPath}". ` +
+        `This is ORM requirement to make relations to work properly. Refer docs for more information.`
+    );
+  }
 }

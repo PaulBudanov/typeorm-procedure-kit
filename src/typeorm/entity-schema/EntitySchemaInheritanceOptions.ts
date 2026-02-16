@@ -1,13 +1,13 @@
-import { ColumnOptions } from "../decorator/options/ColumnOptions"
+import type { ColumnOptions } from '../decorator/options/ColumnOptions.js';
 
 export interface EntitySchemaInheritanceOptions {
-    /**
-     * Inheritance pattern.
-     */
-    pattern?: "STI"
+  /**
+   * Inheritance pattern.
+   */
+  pattern?: 'STI';
 
-    /**
-     * Inheritance discriminator column.
-     */
-    column?: string | ColumnOptions
+  /**
+   * Inheritance discriminator column.
+   */
+  column?: string | ColumnOptions;
 }

@@ -13,7 +13,7 @@ import {
   TypeORMError,
 } from '../error';
 import { TreeRepository } from '../repository/TreeRepository';
-import { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface';
+import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 import { EntityMetadata } from '../metadata/EntityMetadata';
 import { Logger } from '../logger/Logger';
 import { MigrationInterface } from '../migration/MigrationInterface';
@@ -32,7 +32,7 @@ import { LoggerFactory } from '../logger/LoggerFactory.js';
 import { QueryResultCacheFactory } from '../cache/QueryResultCacheFactory';
 import { QueryResultCache } from '../cache/QueryResultCache';
 import { SqljsEntityManager } from '../entity-manager/SqljsEntityManager';
-import { RelationLoader } from '../query-builder/RelationLoader';
+import { RelationLoader } from '../query-builder/RelationLoader.js';
 import { ObjectUtils } from '../util/ObjectUtils';
 import { IsolationLevel } from '../driver/types/IsolationLevel';
 import { ReplicationMode } from '../driver/types/ReplicationMode';

@@ -1,7 +1,7 @@
-import { TypeORMError } from "./TypeORMError"
+import { TypeORMError } from './TypeORMError.js';
 
 export class QueryRunnerAlreadyReleasedError extends TypeORMError {
-    constructor() {
-        super(`Query runner already released. Cannot run queries anymore.`)
-    }
+  public constructor() {
+    super(`Query runner already released. Cannot run queries anymore.`);
+  }
 }

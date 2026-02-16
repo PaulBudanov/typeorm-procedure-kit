@@ -1,9 +1,9 @@
-import { TypeORMError } from "./TypeORMError"
+import { TypeORMError } from './TypeORMError.js';
 
 export class UpdateValuesMissingError extends TypeORMError {
-    constructor() {
-        super(
-            `Cannot perform update query because update values are not defined. Call "qb.set(...)" method to specify updated values.`,
-        )
-    }
+  public constructor() {
+    super(
+      `Cannot perform update query because update values are not defined. Call "qb.set(...)" method to specify updated values.`
+    );
+  }
 }

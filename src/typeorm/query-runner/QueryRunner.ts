@@ -16,6 +16,7 @@ import { TableExclusion } from '../schema-builder/table/TableExclusion';
 import { QueryResult } from './QueryResult';
 import { ReplicationMode } from '../driver/types/ReplicationMode';
 import type { TConnectionTypes } from '../../types/adapter.types.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Runs queries on a single database connection.
@@ -145,8 +146,8 @@ export interface QueryRunner {
   stream(
     query: string,
     parameters?: Array<unknown>,
-    onEnd?: (...args: Array<unknown>) => unknown,
-    onError?: (...args: Array<unknown>) => unknown
+    onEnd?: TFunction,
+    onError?: TFunction
   ): Promise<ReadStream>;
 
   /**

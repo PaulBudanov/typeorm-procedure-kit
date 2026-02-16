@@ -1,5 +1,5 @@
-import { Subject } from "../persistence/Subject"
-import { TypeORMError } from "./TypeORMError"
+import { Subject } from '../persistence/Subject.js';
+import { TypeORMError } from './TypeORMError.js';
 
 /**
  * Thrown when operation is going to be executed on a subject without identifier.
@@ -7,9 +7,9 @@ import { TypeORMError } from "./TypeORMError"
  * If this error occurs still, it most probably is an ORM internal problem which must be reported and fixed.
  */
 export class SubjectWithoutIdentifierError extends TypeORMError {
-    constructor(subject: Subject) {
-        super(
-            `Internal error. Subject ${subject.metadata.targetName} must have an identifier to perform operation.`,
-        )
-    }
+  public constructor(subject: Subject) {
+    super(
+      `Internal error. Subject ${subject.metadata.targetName} must have an identifier to perform operation.`
+    );
+  }
 }

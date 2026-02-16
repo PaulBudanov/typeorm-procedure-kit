@@ -1,17 +1,16 @@
 export class TypeORMError extends Error {
-    get name() {
-        return this.constructor.name
-    }
+  public get name(): string {
+    return this.constructor.name;
+  }
+  public constructor(message?: string) {
+    super(message);
 
-    constructor(message?: string) {
-        super(message)
-
-        // restore prototype chain because the base `Error` type
-        // will break the prototype chain a little
-        if (Object.setPrototypeOf) {
-            Object.setPrototypeOf(this, new.target.prototype)
-        } else {
-            ;(this as any).__proto__ = new.target.prototype
-        }
+    // restore prototype chain because the base `Error` type
+    // will break the prototype chain a little
+    if (Object.setPrototypeOf) {
+      Object.setPrototypeOf(this, new.target.prototype);
+    } else {
+      Reflect.setPrototypeOf(this, new.target.prototype);
     }
+  }
 }

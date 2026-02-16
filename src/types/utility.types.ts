@@ -17,3 +17,5 @@ export interface ISqlBindingsObjectReturn extends Pick<
 > {
   sqlString: string;
 }
+
+export type TFunction<T = unknown> = (...args: Array<unknown>) => T;

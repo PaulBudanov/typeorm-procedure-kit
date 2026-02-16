@@ -1,7 +1,8 @@
-import { NamingStrategyInterface } from './NamingStrategyInterface';
-import { RandomGenerator } from '../util/RandomGenerator';
-import { camelCase, snakeCase, titleCase } from '../util/StringUtils';
-import { Table } from '../schema-builder/table/Table';
+import { Table } from '../schema-builder/table/Table.js';
+import { RandomGenerator } from '../util/RandomGenerator.js';
+import { camelCase, snakeCase, titleCase } from '../util/StringUtils.js';
+
+import { type NamingStrategyInterface } from './NamingStrategyInterface.js';
 
 /**
  * Naming strategy that is used by default.
@@ -20,7 +21,10 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
    * @param targetName Name of the target entity that can be used to generate a table name.
    * @param userSpecifiedName For example if user specified a table name in a decorator, e.g. @Entity("name")
    */
-  tableName(targetName: string, userSpecifiedName: string | undefined): string {
+  public tableName(
+    targetName: string,
+    userSpecifiedName: string | undefined
+  ): string {
     return userSpecifiedName ? userSpecifiedName : snakeCase(targetName);
   }
 
@@ -29,14 +33,14 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
    *
    * @param originalClosureTableName Name of the closure table which owns this junction table.
    */
-  closureJunctionTableName(originalClosureTableName: string): string {
+  public closureJunctionTableName(originalClosureTableName: string): string {
     return originalClosureTableName + '_closure';
   }
 
-  columnName(
+  public columnName(
     propertyName: string,
     customName: string,
-    embeddedPrefixes: string[]
+    embeddedPrefixes: Array<string>
   ): string {
     const name = customName || propertyName;
 
@@ -46,11 +50,14 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return name;
   }
 
-  relationName(propertyName: string): string {
+  public relationName(propertyName: string): string {
     return propertyName;
   }
 
-  primaryKeyName(tableOrName: Table | string, columnNames: string[]): string {
+  public primaryKeyName(
+    tableOrName: Table | string,
+    columnNames: Array<string>
+  ): string {
     // sort incoming column names to avoid issue when ["id", "name"] and ["name", "id"] arrays
     const clonedColumnNames = [...columnNames];
     clonedColumnNames.sort();
@@ -60,9 +67,9 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'PK_' + RandomGenerator.sha1(key).substr(0, 27);
   }
 
-  uniqueConstraintName(
+  public uniqueConstraintName(
     tableOrName: Table | string,
-    columnNames: string[]
+    columnNames: Array<string>
   ): string {
     // sort incoming column names to avoid issue when ["id", "name"] and ["name", "id"] arrays
     const clonedColumnNames = [...columnNames];
@@ -73,9 +80,9 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'UQ_' + RandomGenerator.sha1(key).substr(0, 27);
   }
 
-  relationConstraintName(
+  public relationConstraintName(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     where?: string
   ): string {
     // sort incoming column names to avoid issue when ["id", "name"] and ["name", "id"] arrays
@@ -89,7 +96,7 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'REL_' + RandomGenerator.sha1(key).substr(0, 26);
   }
 
-  defaultConstraintName(
+  public defaultConstraintName(
     tableOrName: Table | string,
     columnName: string
   ): string {
@@ -99,11 +106,11 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'DF_' + RandomGenerator.sha1(key).substr(0, 27);
   }
 
-  foreignKeyName(
+  public foreignKeyName(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     _referencedTablePath?: string,
-    _referencedColumnNames?: string[]
+    _referencedColumnNames?: Array<string>
   ): string {
     // sort incoming column names to avoid issue when ["id", "name"] and ["name", "id"] arrays
     const clonedColumnNames = [...columnNames];
@@ -114,9 +121,9 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'FK_' + RandomGenerator.sha1(key).substr(0, 27);
   }
 
-  indexName(
+  public indexName(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     where?: string
   ): string {
     // sort incoming column names to avoid issue when ["id", "name"] and ["name", "id"] arrays
@@ -130,7 +137,7 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'IDX_' + RandomGenerator.sha1(key).substr(0, 26);
   }
 
-  checkConstraintName(
+  public checkConstraintName(
     tableOrName: Table | string,
     expression: string,
     isEnum?: boolean
@@ -142,7 +149,7 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return isEnum ? `${name}_ENUM` : name;
   }
 
-  exclusionConstraintName(
+  public exclusionConstraintName(
     tableOrName: Table | string,
     expression: string
   ): string {
@@ -152,15 +159,18 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return 'XCL_' + RandomGenerator.sha1(key).substr(0, 26);
   }
 
-  joinColumnName(relationName: string, referencedColumnName: string): string {
+  public joinColumnName(
+    relationName: string,
+    referencedColumnName: string
+  ): string {
     return camelCase(relationName + '_' + referencedColumnName);
   }
 
-  joinTableName(
+  public joinTableName(
     firstTableName: string,
     secondTableName: string,
     firstPropertyName: string,
-    secondPropertyName: string
+    _secondPropertyName: string
   ): string {
     return snakeCase(
       firstTableName +
@@ -171,11 +181,14 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     );
   }
 
-  joinTableColumnDuplicationPrefix(columnName: string, index: number): string {
+  public joinTableColumnDuplicationPrefix(
+    columnName: string,
+    index: number
+  ): string {
     return columnName + '_' + index;
   }
 
-  joinTableColumnName(
+  public joinTableColumnName(
     tableName: string,
     propertyName: string,
     columnName?: string
@@ -185,7 +198,7 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     );
   }
 
-  joinTableInverseColumnName(
+  public joinTableInverseColumnName(
     tableName: string,
     propertyName: string,
     columnName?: string
@@ -199,10 +212,10 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
    * Table name is either user's given table name, either name generated from entity target.
    * Note that table name comes here already normalized by #tableName method.
    */
-  prefixTableName(prefix: string, tableName: string): string {
+  public prefixTableName(prefix: string, tableName: string): string {
     return prefix + tableName;
   }
 
-  nestedSetColumnNames = { left: 'nsleft', right: 'nsright' };
-  materializedPathColumnName = 'mpath';
+  public nestedSetColumnNames = { left: 'nsleft', right: 'nsright' };
+  public materializedPathColumnName = 'mpath';
 }

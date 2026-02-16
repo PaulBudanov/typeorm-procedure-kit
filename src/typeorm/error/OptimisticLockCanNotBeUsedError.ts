@@ -1,10 +1,10 @@
-import { TypeORMError } from "./TypeORMError"
+import { TypeORMError } from './TypeORMError.js';
 
 /**
  * Thrown when an optimistic lock cannot be used in query builder.
  */
 export class OptimisticLockCanNotBeUsedError extends TypeORMError {
-    constructor() {
-        super(`The optimistic lock can be used only with getOne() method.`)
-    }
+  public constructor() {
+    super(`The optimistic lock can be used only with getOne() method.`);
+  }
 }

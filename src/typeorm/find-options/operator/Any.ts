@@ -1,9 +1,11 @@
-import { FindOperator } from "../FindOperator"
+import { FindOperator } from '../FindOperator.js';
 
 /**
  * Find Options Operator.
  * Example: { someField: Any([...]) }
  */
-export function Any<T>(value: readonly T[] | FindOperator<T>): FindOperator<T> {
-    return new FindOperator("any", value as any)
+export function Any<T>(
+  value: ReadonlyArray<T> | FindOperator<T>
+): FindOperator<T> {
+  return new FindOperator('any', value);
 }

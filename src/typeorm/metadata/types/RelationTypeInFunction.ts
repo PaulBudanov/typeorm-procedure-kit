@@ -1,8 +1,9 @@
-import { EntityTarget } from "../../common/EntityTarget"
+import type { TFunction } from '../../../types/utility.types.js';
+import type { EntityTarget } from '../../common/EntityTarget.js';
 
 /**
  * Function that returns a type of the field. Returned value must be a class used on the relation.
  */
 export type RelationTypeInFunction =
-    | ((type?: any) => Function)
-    | EntityTarget<any>
+  | ((type?: unknown) => TFunction)
+  | EntityTarget<unknown>;

@@ -1,7 +1,7 @@
-import { TypeORMError } from "./TypeORMError"
+import { TypeORMError } from './TypeORMError.js';
 
 export class NestedSetMultipleRootError extends TypeORMError {
-    constructor() {
-        super(`Nested sets do not support multiple root entities.`)
-    }
+  public constructor() {
+    super(`Nested sets do not support multiple root entities.`);
+  }
 }

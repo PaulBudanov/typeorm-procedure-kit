@@ -1,15 +1,16 @@
-import { importClassesFromDirectories } from '../util/DirectoryExportedClassesLoader';
-import { OrmUtils } from '../util/OrmUtils';
+import type { TFunction } from '../../types/utility.types.js';
 import { getFromContainer } from '../container';
-import { MigrationInterface } from '../migration/MigrationInterface';
-import { getMetadataArgsStorage } from '../globals';
-import { EntityMetadataBuilder } from '../metadata-builder/EntityMetadataBuilder';
-import { EntitySchemaTransformer } from '../entity-schema/EntitySchemaTransformer';
-import { DataSource } from '../data-source/DataSource';
-import { EntitySchema } from '../entity-schema/EntitySchema';
-import { EntityMetadata } from '../metadata/EntityMetadata';
-import { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface';
-import { InstanceChecker } from '../util/InstanceChecker';
+import { DataSource } from '../data-source/DataSource.js';
+import { EntitySchema } from '../entity-schema/EntitySchema.js';
+import { EntitySchemaTransformer } from '../entity-schema/EntitySchemaTransformer.js';
+import { getMetadataArgsStorage } from '../globals.js';
+import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import { EntityMetadataBuilder } from '../metadata-builder/EntityMetadataBuilder.js';
+import type { MigrationInterface } from '../migration/MigrationInterface.js';
+import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';
+import { importClassesFromDirectories } from '../util/DirectoryExportedClassesLoader.js';
+import { InstanceChecker } from '../util/InstanceChecker.js';
+import { OrmUtils } from '../util/OrmUtils.js';
 
 /**
  * Builds migration instances, subscriber instances and entity metadatas for the given classes.
@@ -29,7 +30,7 @@ export class ConnectionMetadataBuilder {
    * Builds migration instances for the given classes or directories.
    */
   public async buildMigrations(
-    migrations: Array<(...args: Array<unknown>) => unknown | string>
+    migrations: Array<TFunction | string>
   ): Promise<Array<MigrationInterface>> {
     const [migrationClasses, migrationDirectories] =
       OrmUtils.splitClassesAndStrings(migrations);
@@ -49,8 +50,8 @@ export class ConnectionMetadataBuilder {
    * Builds subscriber instances for the given classes or directories.
    */
   public async buildSubscribers(
-    subscribers: (Function | string)[]
-  ): Promise<EntitySubscriberInterface<any>[]> {
+    subscribers: Array<TFunction | string>
+  ): Promise<Array<EntitySubscriberInterface<unknown>>> {
     const [subscriberClasses, subscriberDirectories] =
       OrmUtils.splitClassesAndStrings(subscribers || []);
     const allSubscriberClasses = [
@@ -63,7 +64,7 @@ export class ConnectionMetadataBuilder {
     return getMetadataArgsStorage()
       .filterSubscribers(allSubscriberClasses)
       .map((metadata) =>
-        getFromContainer<EntitySubscriberInterface<any>>(metadata.target)
+        getFromContainer<EntitySubscriberInterface<unknown>>(metadata.target)
       );
   }
 
@@ -71,18 +72,19 @@ export class ConnectionMetadataBuilder {
    * Builds entity metadatas for the given classes or directories.
    */
   public async buildEntityMetadatas(
-    entities: (Function | EntitySchema<any> | string)[]
-  ): Promise<EntityMetadata[]> {
+    entities: Array<TFunction | EntitySchema<unknown> | string>
+  ): Promise<Array<EntityMetadata>> {
     // todo: instead we need to merge multiple metadata args storages
 
     const [entityClassesOrSchemas, entityDirectories] =
       OrmUtils.splitClassesAndStrings(entities || []);
-    const entityClasses: Function[] = entityClassesOrSchemas.filter(
+    const entityClasses: Array<TFunction> = entityClassesOrSchemas.filter(
       (entityClass) => !InstanceChecker.isEntitySchema(entityClass)
-    ) as any;
-    const entitySchemas: EntitySchema<any>[] = entityClassesOrSchemas.filter(
-      (entityClass) => InstanceChecker.isEntitySchema(entityClass)
-    ) as any;
+    ) as unknown;
+    const entitySchemas: Array<EntitySchema<unknown>> =
+      entityClassesOrSchemas.filter((entityClass) =>
+        InstanceChecker.isEntitySchema(entityClass)
+      ) as unknown;
 
     const allEntityClasses = [
       ...entityClasses,

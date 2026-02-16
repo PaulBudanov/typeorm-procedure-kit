@@ -5,14 +5,14 @@
  * date column.
  */
 export type ColumnMode =
-    | "regular"
-    | "virtual"
-    | "virtual-property"
-    | "createDate"
-    | "updateDate"
-    | "deleteDate"
-    | "version"
-    | "treeChildrenCount"
-    | "treeLevel"
-    | "objectId"
-    | "array"
+  | 'regular'
+  | 'virtual'
+  | 'virtual-property'
+  | 'createDate'
+  | 'updateDate'
+  | 'deleteDate'
+  | 'version'
+  | 'treeChildrenCount'
+  | 'treeLevel'
+  | 'objectId'
+  | 'array';

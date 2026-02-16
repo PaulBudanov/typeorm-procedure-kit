@@ -1,6 +1,7 @@
 /**
  * Describes all entity view's options.
  */
+import type { TFunction } from '../../../types/utility.types.js';
 import { DataSource } from '../../data-source/DataSource.js';
 import { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 
@@ -45,5 +46,5 @@ export interface ViewEntityOptions {
    * View dependencies. In case the view depends on another view it can be listed here
    * to ensure correct order of view migrations.
    */
-  dependsOn?: Array<(...args: Array<unknown>) => unknown | string>;
+  dependsOn?: Array<TFunction | string>;
 }
