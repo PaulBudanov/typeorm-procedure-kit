@@ -1,21 +1,21 @@
+import { DataSource } from '../data-source/DataSource';
 import { PostgresConnectionOptions } from '../driver/postgres/PostgresConnectionOptions';
 import { Query } from '../driver/Query';
 import { SqlInMemory } from '../driver/SqlInMemory';
 import { SqlServerConnectionOptions } from '../driver/sqlserver/SqlServerConnectionOptions';
-import { TableIndex } from '../schema-builder/table/TableIndex';
-import { View } from '../schema-builder/view/View';
-import { DataSource } from '../data-source/DataSource';
-import { Table } from '../schema-builder/table/Table';
-import { EntityManager } from '../entity-manager/EntityManager';
-import { TableColumn } from '../schema-builder/table/TableColumn';
-import { Broadcaster } from '../subscriber/Broadcaster';
+import { MetadataTableType } from '../driver/types/MetadataTableType';
 import { ReplicationMode } from '../driver/types/ReplicationMode';
+import { EntityManager } from '../entity-manager/EntityManager';
 import { TypeORMError } from '../error/TypeORMError';
 import { EntityMetadata } from '../metadata/EntityMetadata';
+import { Table } from '../schema-builder/table/Table';
+import { TableColumn } from '../schema-builder/table/TableColumn';
 import { TableForeignKey } from '../schema-builder/table/TableForeignKey';
-import { OrmUtils } from '../util/OrmUtils';
-import { MetadataTableType } from '../driver/types/MetadataTableType';
+import { TableIndex } from '../schema-builder/table/TableIndex';
+import { View } from '../schema-builder/view/View';
+import { Broadcaster } from '../subscriber/Broadcaster';
 import { InstanceChecker } from '../util/InstanceChecker';
+import { OrmUtils } from '../util/OrmUtils';
 import { buildSqlTag } from '../util/SqlTagUtils';
 
 export abstract class BaseQueryRunner {
@@ -53,12 +53,12 @@ export abstract class BaseQueryRunner {
   /**
    * All synchronized tables in the database.
    */
-  loadedTables: Table[] = [];
+  loadedTables: Array<Table> = [];
 
   /**
    * All synchronized views in the database.
    */
-  loadedViews: View[] = [];
+  loadedViews: Array<View> = [];
 
   /**
    * Broadcaster used on this query runner to broadcast entity events.
@@ -77,7 +77,7 @@ export abstract class BaseQueryRunner {
   /**
    * Indicates if special query runner mode in which sql queries won't be executed is enabled.
    */
-  protected sqlMemoryMode: boolean = false;
+  protected sqlMemoryMode = false;
 
   /**
    * Sql-s stored if "sql in memory" mode is enabled.
@@ -108,7 +108,7 @@ export abstract class BaseQueryRunner {
    */
   abstract query(
     query: string,
-    parameters?: any[],
+    parameters?: Array<any>,
     useStructuredResult?: boolean
   ): Promise<any>;
 
@@ -121,7 +121,7 @@ export abstract class BaseQueryRunner {
    */
   async sql<T = any>(
     strings: TemplateStringsArray,
-    ...values: unknown[]
+    ...values: Array<unknown>
   ): Promise<T> {
     const { query, parameters } = buildSqlTag({
       driver: this.connection.driver,
@@ -136,9 +136,13 @@ export abstract class BaseQueryRunner {
   // Protected Abstract Methods
   // -------------------------------------------------------------------------
 
-  protected abstract loadTables(tablePaths?: string[]): Promise<Table[]>;
+  protected abstract loadTables(
+    tablePaths?: Array<string>
+  ): Promise<Array<Table>>;
 
-  protected abstract loadViews(tablePaths?: string[]): Promise<View[]>;
+  protected abstract loadViews(
+    tablePaths?: Array<string>
+  ): Promise<Array<View>>;
 
   // -------------------------------------------------------------------------
   // Public Methods
@@ -169,7 +173,7 @@ export abstract class BaseQueryRunner {
   /**
    * Loads all tables (with given names) from the database.
    */
-  async getTables(tableNames?: string[]): Promise<Table[]> {
+  async getTables(tableNames?: Array<string>): Promise<Array<Table>> {
     if (!tableNames) {
       // Don't cache in this case.
       // This is the new case & isn't used anywhere else anyway.
@@ -191,7 +195,7 @@ export abstract class BaseQueryRunner {
   /**
    * Loads given view's data from the database.
    */
-  async getViews(viewPaths?: string[]): Promise<View[]> {
+  async getViews(viewPaths?: Array<string>): Promise<Array<View>> {
     this.loadedViews = await this.loadViews(viewPaths);
     return this.loadedViews;
   }
@@ -356,9 +360,9 @@ export abstract class BaseQueryRunner {
   }
 
   protected getTypeormMetadataTableName(): string {
-    const options = <SqlServerConnectionOptions | PostgresConnectionOptions>(
-      this.connection.driver.options
-    );
+    const options = this.connection.driver.options as
+      | SqlServerConnectionOptions
+      | PostgresConnectionOptions;
     return this.connection.driver.buildTableName(
       this.connection.metadataTableName,
       options.schema,
@@ -649,8 +653,8 @@ export abstract class BaseQueryRunner {
    * Executes sql used special for schema build.
    */
   protected async executeQueries(
-    upQueries: Query | Query[],
-    downQueries: Query | Query[]
+    upQueries: Query | Array<Query>,
+    downQueries: Query | Array<Query>
   ): Promise<void> {
     if (InstanceChecker.isQuery(upQueries)) upQueries = [upQueries];
     if (InstanceChecker.isQuery(downQueries)) downQueries = [downQueries];

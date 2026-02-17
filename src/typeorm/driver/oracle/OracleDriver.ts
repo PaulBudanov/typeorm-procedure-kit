@@ -1,15 +1,6 @@
-import { Driver } from '../Driver';
-import { ConnectionIsNotSetError } from '../../error/ConnectionIsNotSetError';
-import { DriverPackageNotInstalledError } from '../../error/DriverPackageNotInstalledError';
-import { CteCapabilities } from '../types/CteCapabilities';
-import { OracleQueryRunner } from './OracleQueryRunner';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { ColumnMetadata } from '../../metadata/ColumnMetadata';
-import { DateUtils } from '../../util/DateUtils';
-import { PlatformTools } from '../../platform/PlatformTools.js';
 import { DataSource } from '../../data-source/DataSource';
-import { RdbmsSchemaBuilder } from '../../schema-builder/RdbmsSchemaBuilder';
-import { OracleConnectionOptions } from './OracleConnectionOptions';
+
 import { MappedColumnTypes } from '../types/MappedColumnTypes';
 import { ColumnType } from '../types/ColumnTypes';
 import { DataTypeDefaults } from '../types/DataTypeDefaults';
@@ -24,10 +15,21 @@ import { Table } from '../../schema-builder/table/Table';
 import { View } from '../../schema-builder/view/View';
 import { TableForeignKey } from '../../schema-builder/table/TableForeignKey';
 import { TypeORMError } from '../../error';
+import { ConnectionIsNotSetError } from '../../error/ConnectionIsNotSetError';
+import { DriverPackageNotInstalledError } from '../../error/DriverPackageNotInstalledError';
+import { ColumnMetadata } from '../../metadata/ColumnMetadata';
 import { InstanceChecker } from '../../util/InstanceChecker';
-import { UpsertType } from '../types/UpsertType';
 import { OnDeleteType } from '../../metadata/types/OnDeleteType';
 import { OnUpdateType } from '../../metadata/types/OnUpdateType';
+import { PlatformTools } from '../../platform/PlatformTools.js';
+import { RdbmsSchemaBuilder } from '../../schema-builder/RdbmsSchemaBuilder';
+import { DateUtils } from '../../util/DateUtils';
+import { Driver } from '../Driver';
+import { CteCapabilities } from '../types/CteCapabilities';
+import { UpsertType } from '../types/UpsertType';
+import { OracleConnectionOptions } from './OracleConnectionOptions';
+
+import { OracleQueryRunner } from './OracleQueryRunner';
 
 /**
  * Organizes communication with Oracle RDBMS.
@@ -56,7 +58,7 @@ export class OracleDriver implements Driver {
    * Pool for slave databases.
    * Used in replication.
    */
-  slaves: any[] = [];
+  slaves: Array<any> = [];
 
   // -------------------------------------------------------------------------
   // Public Implemented Properties
@@ -80,7 +82,7 @@ export class OracleDriver implements Driver {
   /**
    * Indicates if replication is enabled.
    */
-  isReplicated: boolean = false;
+  isReplicated = false;
 
   /**
    * Indicates if tree tables are supported by this driver.
@@ -98,7 +100,7 @@ export class OracleDriver implements Driver {
    * @see https://www.techonthenet.com/oracle/datatypes.php
    * @see https://docs.oracle.com/cd/B28359_01/server.111/b28318/datatype.htm#CNCPT012
    */
-  supportedDataTypes: ColumnType[] = [
+  supportedDataTypes: Array<ColumnType> = [
     'char',
     'nchar',
     'nvarchar2',
@@ -135,30 +137,34 @@ export class OracleDriver implements Driver {
   /**
    * Returns type of upsert supported by driver if any
    */
-  supportedUpsertTypes: UpsertType[] = ['merge-into'];
+  supportedUpsertTypes: Array<UpsertType> = ['merge-into'];
 
   /**
    * Returns list of supported onDelete types by driver.
    * https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/sql-language-reference.pdf
    * Oracle does not support NO ACTION, but NO ACTION is set by default in EntityMetadata
    */
-  supportedOnDeleteTypes: OnDeleteType[] = ['CASCADE', 'SET NULL', 'NO ACTION'];
+  supportedOnDeleteTypes: Array<OnDeleteType> = [
+    'CASCADE',
+    'SET NULL',
+    'NO ACTION',
+  ];
 
   /**
    * Returns list of supported onUpdate types by driver.
    * Oracle does not have onUpdate option, but we allow NO ACTION since it is set by default in EntityMetadata
    */
-  supportedOnUpdateTypes: OnUpdateType[] = ['NO ACTION'];
+  supportedOnUpdateTypes: Array<OnUpdateType> = ['NO ACTION'];
 
   /**
    * Gets list of spatial column data types.
    */
-  spatialTypes: ColumnType[] = [];
+  spatialTypes: Array<ColumnType> = [];
 
   /**
    * Gets list of column data types that support length by a driver.
    */
-  withLengthColumnTypes: ColumnType[] = [
+  withLengthColumnTypes: Array<ColumnType> = [
     'char',
     'nchar',
     'nvarchar2',
@@ -170,7 +176,7 @@ export class OracleDriver implements Driver {
   /**
    * Gets list of column data types that support precision by a driver.
    */
-  withPrecisionColumnTypes: ColumnType[] = [
+  withPrecisionColumnTypes: Array<ColumnType> = [
     'number',
     'float',
     'timestamp',
@@ -181,7 +187,7 @@ export class OracleDriver implements Driver {
   /**
    * Gets list of column data types that support scale by a driver.
    */
-  withScaleColumnTypes: ColumnType[] = ['number'];
+  withScaleColumnTypes: Array<ColumnType> = ['number'];
 
   /**
    * Orm has special columns and we need to know what database column types should be for those types.
@@ -216,7 +222,7 @@ export class OracleDriver implements Driver {
   /**
    * The prefix used for the parameters
    */
-  parametersPrefix: string = ':';
+  parametersPrefix = ':';
 
   /**
    * Default values of length, precision and scale depends on column data type.
@@ -369,8 +375,8 @@ export class OracleDriver implements Driver {
     sql: string,
     parameters: ObjectLiteral,
     nativeParameters: ObjectLiteral
-  ): [string, any[]] {
-    const escapedParameters: any[] = Object.keys(nativeParameters).map(
+  ): [string, Array<any>] {
+    const escapedParameters: Array<any> = Object.keys(nativeParameters).map(
       (key) => {
         if (typeof nativeParameters[key] === 'boolean')
           return nativeParameters[key] ? 1 : 0;
@@ -787,9 +793,9 @@ export class OracleDriver implements Driver {
    * and returns only changed.
    */
   findChangedColumns(
-    tableColumns: TableColumn[],
-    columnMetadatas: ColumnMetadata[]
-  ): ColumnMetadata[] {
+    tableColumns: Array<TableColumn>,
+    columnMetadatas: Array<ColumnMetadata>
+  ): Array<ColumnMetadata> {
     return columnMetadatas.filter((columnMetadata) => {
       const tableColumn = tableColumns.find(
         (c) => c.name === columnMetadata.databaseName

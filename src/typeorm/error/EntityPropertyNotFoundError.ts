@@ -1,5 +1,6 @@
-import { TypeORMError } from './TypeORMError.js';
 import { EntityMetadata } from '../metadata/EntityMetadata.js';
+
+import { TypeORMError } from './TypeORMError.js';
 
 /**
  * Thrown when specified entity property was not found.

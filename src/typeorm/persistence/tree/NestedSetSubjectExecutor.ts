@@ -1,9 +1,9 @@
-import { Subject } from '../Subject';
+import { ObjectLiteral } from '../../common/ObjectLiteral';
+import { NestedSetMultipleRootError } from '../../error/NestedSetMultipleRootError';
+import { EntityMetadata } from '../../metadata/EntityMetadata';
 import { QueryRunner } from '../../query-runner/QueryRunner';
 import { OrmUtils } from '../../util/OrmUtils';
-import { NestedSetMultipleRootError } from '../../error/NestedSetMultipleRootError';
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
+import { Subject } from '../Subject';
 
 class NestedSetIds {
   left: number;
@@ -228,7 +228,7 @@ export class NestedSetSubjectExecutor {
   /**
    * Executes operations when subject is being removed.
    */
-  async remove(subjects: Subject | Subject[]): Promise<void> {
+  async remove(subjects: Subject | Array<Subject>): Promise<void> {
     if (!Array.isArray(subjects)) subjects = [subjects];
 
     const metadata = subjects[0].metadata;
@@ -239,7 +239,7 @@ export class NestedSetSubjectExecutor {
     const leftColumnName = escape(metadata.nestedSetLeftColumn!.databaseName);
     const rightColumnName = escape(metadata.nestedSetRightColumn!.databaseName);
 
-    const entitiesIds: ObjectLiteral[] = [];
+    const entitiesIds: Array<ObjectLiteral> = [];
     for (const subject of subjects) {
       const entityId = metadata.getEntityIdMap(subject.entity);
 
@@ -272,8 +272,8 @@ export class NestedSetSubjectExecutor {
    */
   protected getNestedSetIds(
     metadata: EntityMetadata,
-    ids: ObjectLiteral | ObjectLiteral[]
-  ): Promise<NestedSetIds[]> {
+    ids: ObjectLiteral | Array<ObjectLiteral>
+  ): Promise<Array<NestedSetIds>> {
     const select = {
       left: `${metadata.targetName}.${
         metadata.nestedSetLeftColumn!.propertyPath
@@ -295,7 +295,7 @@ export class NestedSetSubjectExecutor {
       .orderBy(select.right, 'DESC')
       .getRawMany()
       .then((results) => {
-        const data: NestedSetIds[] = [];
+        const data: Array<NestedSetIds> = [];
 
         for (const result of results) {
           const entry: any = {};
@@ -319,7 +319,7 @@ export class NestedSetSubjectExecutor {
     const escape = (alias: string) =>
       this.queryRunner.connection.driver.escape(alias);
     const tableName = this.getTableName(subject.metadata.tablePath);
-    const parameters: any[] = [];
+    const parameters: Array<any> = [];
     const whereCondition = subject.metadata
       .treeParentRelation!.joinColumns.map((column) => {
         const columnName = escape(column.databaseName);

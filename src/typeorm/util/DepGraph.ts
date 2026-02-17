@@ -21,7 +21,7 @@ import { TypeORMError } from '../error';
  * @param result An array in which the results will be populated
  */
 function createDFS(edges: any, leavesOnly: any, result: any) {
-  const currentPath: any[] = [];
+  const currentPath: Array<any> = [];
   const visited: any = {};
   return function DFS(currentNode: any) {
     visited[currentNode] = true;
@@ -165,7 +165,7 @@ export class DepGraph {
    */
   dependenciesOf(node: any, leavesOnly: any) {
     if (this.hasNode(node)) {
-      const result: any[] = [];
+      const result: Array<any> = [];
       const DFS = createDFS(this.outgoingEdges, leavesOnly, result);
       DFS(node);
       const idx = result.indexOf(node);
@@ -187,7 +187,7 @@ export class DepGraph {
    */
   dependantsOf(node: any, leavesOnly: any) {
     if (this.hasNode(node)) {
-      const result: any[] = [];
+      const result: Array<any> = [];
       const DFS = createDFS(this.incomingEdges, leavesOnly, result);
       DFS(node);
       const idx = result.indexOf(node);
@@ -209,7 +209,7 @@ export class DepGraph {
    */
   overallOrder(leavesOnly?: any) {
     const self = this;
-    const result: any[] = [];
+    const result: Array<any> = [];
     const keys = Object.keys(this.nodes);
     if (keys.length === 0) {
       return result; // Empty graph

@@ -1,22 +1,23 @@
-import { TableColumn } from '../schema-builder/table/TableColumn';
-import { Table } from '../schema-builder/table/Table';
-import { TableForeignKey } from '../schema-builder/table/TableForeignKey';
-import { TableIndex } from '../schema-builder/table/TableIndex';
-import { DataSource } from '../data-source/DataSource';
-import { ReadStream } from '../platform/PlatformTools';
-import { EntityManager } from '../entity-manager/EntityManager';
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { SqlInMemory } from '../driver/SqlInMemory';
-import { TableUnique } from '../schema-builder/table/TableUnique';
-import { View } from '../schema-builder/view/View';
-import { Broadcaster } from '../subscriber/Broadcaster';
-import { TableCheck } from '../schema-builder/table/TableCheck';
-import { IsolationLevel } from '../driver/types/IsolationLevel';
-import { TableExclusion } from '../schema-builder/table/TableExclusion';
-import { QueryResult } from './QueryResult';
-import { ReplicationMode } from '../driver/types/ReplicationMode';
 import type { TConnectionTypes } from '../../types/adapter.types.js';
 import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { DataSource } from '../data-source/DataSource.js';
+import { SqlInMemory } from '../driver/SqlInMemory.js';
+import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
+import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
+import { EntityManager } from '../entity-manager/EntityManager.js';
+import { ReadStream } from '../platform/PlatformTools.js';
+import { Table } from '../schema-builder/table/Table.js';
+import { TableCheck } from '../schema-builder/table/TableCheck.js';
+import { TableColumn } from '../schema-builder/table/TableColumn.js';
+import { TableExclusion } from '../schema-builder/table/TableExclusion.js';
+import { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
+import { TableIndex } from '../schema-builder/table/TableIndex.js';
+import { TableUnique } from '../schema-builder/table/TableUnique.js';
+import { View } from '../schema-builder/view/View.js';
+import { Broadcaster } from '../subscriber/Broadcaster.js';
+
+import { QueryResult } from './QueryResult.js';
 
 /**
  * Runs queries on a single database connection.
@@ -126,7 +127,7 @@ export interface QueryRunner {
   /**
    * Executes a given SQL query and returns raw database results.
    */
-  query(query: string, parameters?: Array<unknown>): Promise<unknown>;
+  query<T = unknown>(query: string, parameters?: Array<unknown>): Promise<T>;
 
   /**
    * Tagged template function that executes raw SQL query and returns raw database results.
@@ -326,7 +327,7 @@ export interface QueryRunner {
    */
   changeColumns(
     table: Table | string,
-    changedColumns: { oldColumn: TableColumn; newColumn: TableColumn }[]
+    changedColumns: Array<{ oldColumn: TableColumn; newColumn: TableColumn }>
   ): Promise<void>;
 
   /**
@@ -342,7 +343,7 @@ export interface QueryRunner {
    */
   dropColumns(
     table: Table | string,
-    columns: TableColumn[] | string[]
+    columns: Array<TableColumn> | Array<string>
   ): Promise<void>;
 
   /**
@@ -350,7 +351,7 @@ export interface QueryRunner {
    */
   createPrimaryKey(
     table: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     constraintName?: string
   ): Promise<void>;
 
@@ -359,7 +360,7 @@ export interface QueryRunner {
    */
   updatePrimaryKeys(
     table: Table | string,
-    columns: TableColumn[]
+    columns: Array<TableColumn>
   ): Promise<void>;
 
   /**
@@ -380,7 +381,7 @@ export interface QueryRunner {
    */
   createUniqueConstraints(
     table: Table | string,
-    uniqueConstraints: TableUnique[]
+    uniqueConstraints: Array<TableUnique>
   ): Promise<void>;
 
   /**
@@ -396,7 +397,7 @@ export interface QueryRunner {
    */
   dropUniqueConstraints(
     table: Table | string,
-    uniqueConstraints: TableUnique[]
+    uniqueConstraints: Array<TableUnique>
   ): Promise<void>;
 
   /**
@@ -412,7 +413,7 @@ export interface QueryRunner {
    */
   createCheckConstraints(
     table: Table | string,
-    checkConstraints: TableCheck[]
+    checkConstraints: Array<TableCheck>
   ): Promise<void>;
 
   /**
@@ -428,7 +429,7 @@ export interface QueryRunner {
    */
   dropCheckConstraints(
     table: Table | string,
-    checkConstraints: TableCheck[]
+    checkConstraints: Array<TableCheck>
   ): Promise<void>;
 
   /**
@@ -444,7 +445,7 @@ export interface QueryRunner {
    */
   createExclusionConstraints(
     table: Table | string,
-    exclusionConstraints: TableExclusion[]
+    exclusionConstraints: Array<TableExclusion>
   ): Promise<void>;
 
   /**
@@ -460,7 +461,7 @@ export interface QueryRunner {
    */
   dropExclusionConstraints(
     table: Table | string,
-    exclusionConstraints: TableExclusion[]
+    exclusionConstraints: Array<TableExclusion>
   ): Promise<void>;
 
   /**
@@ -476,7 +477,7 @@ export interface QueryRunner {
    */
   createForeignKeys(
     table: Table | string,
-    foreignKeys: TableForeignKey[]
+    foreignKeys: Array<TableForeignKey>
   ): Promise<void>;
 
   /**
@@ -492,7 +493,7 @@ export interface QueryRunner {
    */
   dropForeignKeys(
     table: Table | string,
-    foreignKeys: TableForeignKey[]
+    foreignKeys: Array<TableForeignKey>
   ): Promise<void>;
 
   /**
@@ -503,7 +504,10 @@ export interface QueryRunner {
   /**
    * Creates new indices.
    */
-  createIndices(table: Table | string, indices: TableIndex[]): Promise<void>;
+  createIndices(
+    table: Table | string,
+    indices: Array<TableIndex>
+  ): Promise<void>;
 
   /**
    * Drops an index.
@@ -513,7 +517,7 @@ export interface QueryRunner {
   /**
    * Drops indices.
    */
-  dropIndices(table: Table | string, indices: TableIndex[]): Promise<void>;
+  dropIndices(table: Table | string, indices: Array<TableIndex>): Promise<void>;
 
   /**
    * Clears all table contents.

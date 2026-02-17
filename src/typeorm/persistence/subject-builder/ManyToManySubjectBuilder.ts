@@ -1,7 +1,7 @@
-import { Subject } from '../Subject';
-import { OrmUtils } from '../../util/OrmUtils';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
 import { RelationMetadata } from '../../metadata/RelationMetadata';
+import { OrmUtils } from '../../util/OrmUtils';
+import { Subject } from '../Subject';
 
 /**
  * Builds operations needs to be executed for many-to-many relations of the given subjects.
@@ -16,7 +16,7 @@ export class ManyToManySubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected subjects: Subject[]) {}
+  constructor(protected subjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods
@@ -55,7 +55,7 @@ export class ManyToManySubjectBuilder {
 
       // get all related entities (actually related entity relation ids) bind to this subject entity
       // by example: returns category ids of the post we are currently working with (subject.entity is post)
-      const relatedEntityRelationIdsInDatabase: ObjectLiteral[] =
+      const relatedEntityRelationIdsInDatabase: Array<ObjectLiteral> =
         relation.getEntityValue(subject.databaseEntity!);
 
       // go through all related entities and create a new junction subject for each row in junction table
@@ -94,7 +94,7 @@ export class ManyToManySubjectBuilder {
   ) {
     // load from db all relation ids of inverse entities that are "bind" to the subject's entity
     // this way we gonna check which relation ids are missing and which are new (e.g. inserted or removed)
-    let databaseRelatedEntityIds: ObjectLiteral[] = [];
+    let databaseRelatedEntityIds: Array<ObjectLiteral> = [];
 
     // if subject don't have database entity it means all related entities in persisted subject are new and must be bind
     // and we don't need to remove something that is not exist
@@ -111,7 +111,7 @@ export class ManyToManySubjectBuilder {
 
     // extract entity's relation value
     // by example: categories inside our post (subject.entity is post)
-    let relatedEntities: ObjectLiteral[] = relation.getEntityValue(
+    let relatedEntities: Array<ObjectLiteral> = relation.getEntityValue(
       subject.entity!
     );
     if (relatedEntities === null)
@@ -200,7 +200,7 @@ export class ManyToManySubjectBuilder {
     });
 
     // get all inverse entities relation ids that are "bind" to the currently persisted entity
-    const changedInverseEntityRelationIds: ObjectLiteral[] = [];
+    const changedInverseEntityRelationIds: Array<ObjectLiteral> = [];
     relatedEntities.forEach((relatedEntity) => {
       // relation.inverseEntityMetadata!.getEntityIdMap(relatedEntity)
       let relatedEntityRelationIdMap =

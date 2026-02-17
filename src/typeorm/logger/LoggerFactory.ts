@@ -1,11 +1,12 @@
+import { ObjectUtils } from '../util/ObjectUtils.js';
+
+import { AdvancedConsoleLogger } from './AdvancedConsoleLogger.js';
+import { DebugLogger } from './DebugLogger.js';
+import { FileLogger } from './FileLogger.js';
+import { FormattedConsoleLogger } from './FormattedConsoleLogger.js';
 import type { Logger } from './Logger.js';
 import type { LoggerOptions } from './LoggerOptions.js';
 import { SimpleConsoleLogger } from './SimpleConsoleLogger.js';
-import { AdvancedConsoleLogger } from './AdvancedConsoleLogger.js';
-import { FileLogger } from './FileLogger.js';
-import { DebugLogger } from './DebugLogger.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-import { FormattedConsoleLogger } from './FormattedConsoleLogger.js';
 
 /**
  * Helps to create logger instances.

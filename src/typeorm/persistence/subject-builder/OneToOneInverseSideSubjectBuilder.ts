@@ -1,7 +1,7 @@
-import { Subject } from '../Subject';
-import { OrmUtils } from '../../util/OrmUtils';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
 import { RelationMetadata } from '../../metadata/RelationMetadata';
+import { OrmUtils } from '../../util/OrmUtils';
+import { Subject } from '../Subject';
 
 /**
  * Builds operations needs to be executed for one-to-one non-owner relations of the given subjects.
@@ -19,7 +19,7 @@ export class OneToOneInverseSideSubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected subjects: Subject[]) {}
+  constructor(protected subjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods

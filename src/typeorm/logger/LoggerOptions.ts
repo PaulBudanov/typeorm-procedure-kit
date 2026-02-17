@@ -1,16 +1,16 @@
-import { LogLevel } from "./Logger"
+import { LogLevel } from './Logger';
 
 /**
  * Logging options.
  */
-export type LoggerOptions = boolean | "all" | LogLevel[]
+export type LoggerOptions = boolean | 'all' | Array<LogLevel>;
 
 /**
  * File logging option.
  */
-export type FileLoggerOptions = {
-    /**
-     * Specify custom path for log file, relative to application root
-     */
-    logPath: string
+export interface FileLoggerOptions {
+  /**
+   * Specify custom path for log file, relative to application root
+   */
+  logPath: string;
 }

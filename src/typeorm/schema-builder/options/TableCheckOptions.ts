@@ -2,22 +2,22 @@
  * Database's table check constraint options.
  */
 export interface TableCheckOptions {
-    // -------------------------------------------------------------------------
-    // Public Properties
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
 
-    /**
-     * Constraint name.
-     */
-    name?: string
+  /**
+   * Constraint name.
+   */
+  name?: string;
 
-    /**
-     * Column that contains this constraint.
-     */
-    columnNames?: string[]
+  /**
+   * Column that contains this constraint.
+   */
+  columnNames?: Array<string>;
 
-    /**
-     * Check expression.
-     */
-    expression?: string
+  /**
+   * Check expression.
+   */
+  expression?: string;
 }

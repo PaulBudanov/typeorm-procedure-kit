@@ -1,52 +1,44 @@
-import { DataSource } from '../data-source/DataSource';
-import { FindManyOptions } from '../find-options/FindManyOptions';
-import { EntityTarget } from '../common/EntityTarget';
-import { ObjectType } from '../common/ObjectType';
-import { EntityNotFoundError } from '../error/EntityNotFoundError';
-import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError';
-import { FindOneOptions } from '../find-options/FindOneOptions';
-import { DeepPartial } from '../common/DeepPartial';
-import { RemoveOptions } from '../repository/RemoveOptions';
-import { SaveOptions } from '../repository/SaveOptions';
-import { NoNeedToReleaseEntityManagerError } from '../error/NoNeedToReleaseEntityManagerError';
-import { MongoRepository } from '../repository/MongoRepository';
-import { TreeRepository } from '../repository/TreeRepository';
-import { Repository } from '../repository/Repository';
-import { FindOptionsUtils } from '../find-options/FindOptionsUtils';
-import { PlainObjectToNewEntityTransformer } from '../query-builder/transformer/PlainObjectToNewEntityTransformer';
-import { PlainObjectToDatabaseEntityTransformer } from '../query-builder/transformer/PlainObjectToDatabaseEntityTransformer';
-import {
-  CustomRepositoryCannotInheritRepositoryError,
-  CustomRepositoryNotFoundError,
-  TreeRepositoryNotSupportedError,
-  TypeORMError,
-} from '../error';
-import { AbstractRepository } from '../repository/AbstractRepository';
-import { QueryRunner } from '../query-runner/QueryRunner';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder';
-import { QueryDeepPartialEntity } from '../query-builder/QueryPartialEntity';
-import { EntityPersistExecutor } from '../persistence/EntityPersistExecutor';
-import { ObjectId } from '../driver/mongodb/typings';
-import { InsertResult } from '../query-builder/result/InsertResult';
-import { UpdateResult } from '../query-builder/result/UpdateResult';
-import { DeleteResult } from '../query-builder/result/DeleteResult';
-import { FindOptionsWhere } from '../find-options/FindOptionsWhere';
-import { IsolationLevel } from '../driver/types/IsolationLevel';
-import { ObjectUtils } from '../util/ObjectUtils';
-import { getMetadataArgsStorage } from '../globals';
-import { UpsertOptions } from '../repository/UpsertOptions';
-import { InstanceChecker } from '../util/InstanceChecker';
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { PickKeysByType } from '../common/PickKeysByType';
-import { buildSqlTag } from '../util/SqlTagUtils';
-import { OrmUtils } from '../util/OrmUtils';
+import type { TFunction } from '../../types/utility.types.js';
+import type { DeepPartial } from '../common/DeepPartial.js';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { DataSource } from '../data-source/DataSource.js';
+import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
+import { EntityNotFoundError } from '../error/EntityNotFoundError.js';
+import { NoNeedToReleaseEntityManagerError } from '../error/NoNeedToReleaseEntityManagerError.js';
+import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError.js';
+import { TreeRepositoryNotSupportedError } from '../error/TreeRepositoryNotSupportedError.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import type { FindManyOptions } from '../find-options/FindManyOptions.js';
+import type { FindOneOptions } from '../find-options/FindOneOptions.js';
+import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
+import type { FindOptionsWhere } from '../find-options/FindOptionsWhere.js';
+import { EntityPersistExecutor } from '../persistence/EntityPersistExecutor.js';
+import type { QueryDeepPartialEntity } from '../query-builder/QueryPartialEntity.js';
+import { DeleteResult } from '../query-builder/result/DeleteResult.js';
+import { InsertResult } from '../query-builder/result/InsertResult.js';
+import { UpdateResult } from '../query-builder/result/UpdateResult.js';
+import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import { PlainObjectToDatabaseEntityTransformer } from '../query-builder/transformer/PlainObjectToDatabaseEntityTransformer.js';
+import { PlainObjectToNewEntityTransformer } from '../query-builder/transformer/PlainObjectToNewEntityTransformer.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import { MongoRepository } from '../repository/MongoRepository.js';
+import type { RemoveOptions } from '../repository/RemoveOptions.js';
+import { Repository } from '../repository/Repository.js';
+import type { SaveOptions } from '../repository/SaveOptions.js';
+import { TreeRepository } from '../repository/TreeRepository.js';
+import type { UpsertOptions } from '../repository/UpsertOptions.js';
+import { InstanceChecker } from '../util/InstanceChecker.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
+import { OrmUtils } from '../util/OrmUtils.js';
+import { buildSqlTag } from '../util/SqlTagUtils.js';
 
 /**
  * Entity manager supposed to work with any entity, automatically find its repository and call its methods,
  * whatever entity type are you passing.
  */
 export class EntityManager {
-  readonly '@instanceof' = Symbol.for('EntityManager');
+  public readonly '@instanceof' = Symbol.for('EntityManager');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -55,13 +47,13 @@ export class EntityManager {
   /**
    * Connection used by this entity manager.
    */
-  readonly connection: DataSource;
+  public readonly connection: DataSource;
 
   /**
    * Custom query runner to be used for operations in this entity manager.
    * Used only in non-global entity manager.
    */
-  readonly queryRunner?: QueryRunner;
+  public readonly queryRunner?: QueryRunner;
 
   // -------------------------------------------------------------------------
   // Protected Properties
@@ -71,12 +63,15 @@ export class EntityManager {
    * Once created and then reused by repositories.
    * Created as a future replacement for the #repositories to provide a bit more perf optimization.
    */
-  protected repositories = new Map<EntityTarget<any>, Repository<any>>();
+  protected repositories = new Map<
+    EntityTarget<unknown>,
+    Repository<unknown>
+  >();
 
   /**
    * Once created and then reused by repositories.
    */
-  protected treeRepositories: TreeRepository<any>[] = [];
+  protected treeRepositories: Array<TreeRepository<unknown>> = [];
 
   /**
    * Plain to object transformer used in create and merge operations.
@@ -88,7 +83,7 @@ export class EntityManager {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(connection: DataSource, queryRunner?: QueryRunner) {
+  public constructor(connection: DataSource, queryRunner?: QueryRunner) {
     this.connection = connection;
     if (queryRunner) {
       this.queryRunner = queryRunner;
@@ -97,32 +92,11 @@ export class EntityManager {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Public Methods
-  // -------------------------------------------------------------------------
-
   /**
    * Wraps given function execution (and all operations made there) in a transaction.
    * All database operations must be executed using provided entity manager.
    */
-  async transaction<T>(
-    runInTransaction: (entityManager: EntityManager) => Promise<T>
-  ): Promise<T>;
-
-  /**
-   * Wraps given function execution (and all operations made there) in a transaction.
-   * All database operations must be executed using provided entity manager.
-   */
-  async transaction<T>(
-    isolationLevel: IsolationLevel,
-    runInTransaction: (entityManager: EntityManager) => Promise<T>
-  ): Promise<T>;
-
-  /**
-   * Wraps given function execution (and all operations made there) in a transaction.
-   * All database operations must be executed using provided entity manager.
-   */
-  async transaction<T>(
+  public async transaction<T>(
     isolationOrRunInTransaction:
       | IsolationLevel
       | ((entityManager: EntityManager) => Promise<T>),
@@ -148,7 +122,8 @@ export class EntityManager {
 
     // if query runner is already defined in this class, it means this entity manager was already created for a single connection
     // if its not defined we create a new query runner - single connection where we'll execute all our operations
-    const queryRunner = this.queryRunner || this.connection.createQueryRunner();
+    const queryRunner: QueryRunner =
+      this.queryRunner ?? this.connection.createQueryRunner();
 
     try {
       await queryRunner.startTransaction(isolation);
@@ -159,7 +134,9 @@ export class EntityManager {
       try {
         // we throw original error even if rollback thrown an error
         await queryRunner.rollbackTransaction();
-      } catch (rollbackError) {}
+      } catch {
+        // do nothing
+      }
       throw err;
     } finally {
       if (!this.queryRunner)
@@ -173,7 +150,10 @@ export class EntityManager {
    *
    * @see [Official docs](https://typeorm.io/docs/Working%20with%20Entity%20Manager/entity-manager-api/) for examples.
    */
-  async query<T = any>(query: string, parameters?: any[]): Promise<T> {
+  public async query<T = unknown>(
+    query: string,
+    parameters?: Array<unknown>
+  ): Promise<T> {
     return this.connection.query(query, parameters, this.queryRunner);
   }
 
@@ -184,9 +164,9 @@ export class EntityManager {
    * Note: Don't call this as a regular function, it is meant to be used with backticks to tag a template literal.
    * Example: entityManager.sql`SELECT * FROM table_name WHERE id = ${id}`
    */
-  async sql<T = any>(
+  public async sql<T = unknown>(
     strings: TemplateStringsArray,
-    ...values: unknown[]
+    ...values: Array<unknown>
   ): Promise<T> {
     const { query, parameters } = buildSqlTag({
       driver: this.connection.driver,
@@ -200,7 +180,7 @@ export class EntityManager {
   /**
    * Creates a new query builder that can be used to build a SQL query.
    */
-  createQueryBuilder<Entity extends ObjectLiteral>(
+  public createQueryBuilder<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     alias: string,
     queryRunner?: QueryRunner
@@ -209,26 +189,28 @@ export class EntityManager {
   /**
    * Creates a new query builder that can be used to build a SQL query.
    */
-  createQueryBuilder(queryRunner?: QueryRunner): SelectQueryBuilder<any>;
+  public createQueryBuilder(
+    queryRunner?: QueryRunner
+  ): SelectQueryBuilder<ObjectLiteral>;
 
   /**
    * Creates a new query builder that can be used to build a SQL query.
    */
-  createQueryBuilder<Entity extends ObjectLiteral>(
+  public createQueryBuilder<Entity extends ObjectLiteral>(
     entityClass?: EntityTarget<Entity> | QueryRunner,
     alias?: string,
     queryRunner?: QueryRunner
-  ): SelectQueryBuilder<Entity> {
+  ): SelectQueryBuilder<ObjectLiteral> {
     if (alias) {
       return this.connection.createQueryBuilder(
         entityClass as EntityTarget<Entity>,
         alias,
-        queryRunner || this.queryRunner
+        queryRunner ?? this.queryRunner
       );
     } else {
       return this.connection.createQueryBuilder(
-        (entityClass as QueryRunner | undefined) ||
-          queryRunner ||
+        (entityClass as QueryRunner | undefined) ??
+          queryRunner ??
           this.queryRunner
       );
     }
@@ -237,50 +219,64 @@ export class EntityManager {
   /**
    * Checks if entity has an id.
    */
-  hasId(entity: any): boolean;
+  public hasId(entity: unknown): boolean;
 
   /**
    * Checks if entity of given schema name has an id.
    */
-  hasId(target: Function | string, entity: any): boolean;
+  public hasId(target: TFunction | string, entity: unknown): boolean;
 
   /**
    * Checks if entity has an id by its Function type or schema name.
    */
-  hasId(targetOrEntity: any | Function | string, maybeEntity?: any): boolean {
+  public hasId(
+    targetOrEntity: unknown | TFunction | string,
+    maybeEntity?: unknown
+  ): boolean {
     const target =
-      arguments.length === 2 ? targetOrEntity : targetOrEntity.constructor;
+      arguments.length === 2
+        ? targetOrEntity
+        : (targetOrEntity as object).constructor;
     const entity = arguments.length === 2 ? maybeEntity : targetOrEntity;
-    const metadata = this.connection.getMetadata(target);
-    return metadata.hasId(entity);
+    const metadata = this.connection.getMetadata(
+      target as EntityTarget<unknown>
+    );
+    return metadata.hasId(entity as ObjectLiteral);
   }
 
   /**
    * Gets entity mixed id.
    */
-  getId(entity: any): any;
+  public getId(entity: unknown): unknown;
 
   /**
    * Gets entity mixed id.
    */
-  getId(target: EntityTarget<any>, entity: any): any;
+  public getId(target: EntityTarget<unknown>, entity: unknown): unknown;
 
   /**
    * Gets entity mixed id.
    */
-  getId(targetOrEntity: any | EntityTarget<any>, maybeEntity?: any): any {
+  public getId(
+    targetOrEntity: unknown | EntityTarget<unknown>,
+    maybeEntity?: unknown
+  ): unknown {
     const target =
-      arguments.length === 2 ? targetOrEntity : targetOrEntity.constructor;
+      arguments.length === 2
+        ? targetOrEntity
+        : (targetOrEntity as object).constructor;
     const entity = arguments.length === 2 ? maybeEntity : targetOrEntity;
-    const metadata = this.connection.getMetadata(target);
-    return metadata.getEntityIdMixedMap(entity);
+    const metadata = this.connection.getMetadata(
+      target as EntityTarget<unknown>
+    );
+    return metadata.getEntityIdMixedMap(entity as ObjectLiteral);
   }
 
   /**
    * Creates a new entity instance and copies all entity properties from this object into a new entity.
    * Note that it copies only properties that present in entity schema.
    */
-  create<Entity, EntityLike extends DeepPartial<Entity>>(
+  public create<Entity, EntityLike extends DeepPartial<Entity>>(
     entityClass: EntityTarget<Entity>,
     plainObject?: EntityLike
   ): Entity;
@@ -289,26 +285,27 @@ export class EntityManager {
    * Creates a new entities and copies all entity properties from given objects into their new entities.
    * Note that it copies only properties that present in entity schema.
    */
-  create<Entity, EntityLike extends DeepPartial<Entity>>(
+  public create<Entity, EntityLike extends DeepPartial<Entity>>(
     entityClass: EntityTarget<Entity>,
-    plainObjects?: EntityLike[]
-  ): Entity[];
+    plainObjects?: Array<EntityLike>
+  ): Array<Entity>;
 
   /**
    * Creates a new entity instance or instances.
    * Can copy properties from the given object into new entities.
    */
-  create<Entity, EntityLike extends DeepPartial<Entity>>(
+  public create<Entity, EntityLike extends DeepPartial<Entity>>(
     entityClass: EntityTarget<Entity>,
-    plainObjectOrObjects?: EntityLike | EntityLike[]
-  ): Entity | Entity[] {
+    plainObjectOrObjects?: EntityLike | Array<EntityLike>
+  ): Entity | Array<Entity> {
     const metadata = this.connection.getMetadata(entityClass);
 
-    if (!plainObjectOrObjects) return metadata.create(this.queryRunner);
+    if (!plainObjectOrObjects)
+      return metadata.create(this.queryRunner) as Entity;
 
     if (Array.isArray(plainObjectOrObjects))
-      return (plainObjectOrObjects as EntityLike[]).map((plainEntityLike) =>
-        this.create(entityClass, plainEntityLike)
+      return (plainObjectOrObjects as Array<EntityLike>).map(
+        (plainEntityLike) => this.create(entityClass, plainEntityLike)
       );
 
     const mergeIntoEntity = metadata.create(this.queryRunner);
@@ -318,16 +315,16 @@ export class EntityManager {
       metadata,
       true
     );
-    return mergeIntoEntity;
+    return mergeIntoEntity as Entity;
   }
 
   /**
    * Merges two entities into one new entity.
    */
-  merge<Entity extends ObjectLiteral>(
+  public merge<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     mergeIntoEntity: Entity,
-    ...entityLikes: DeepPartial<Entity>[]
+    ...entityLikes: Array<DeepPartial<Entity>>
   ): Entity {
     // todo: throw exception if entity manager is released
     const metadata = this.connection.getMetadata(entityClass);
@@ -347,7 +344,7 @@ export class EntityManager {
    * and returns this new entity. This new entity is actually a loaded from the db entity with all properties
    * replaced from the new object.
    */
-  async preload<Entity extends ObjectLiteral>(
+  public async preload<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     entityLike: DeepPartial<Entity>
   ): Promise<Entity | undefined> {
@@ -360,11 +357,7 @@ export class EntityManager {
         metadata
       );
     if (transformedEntity)
-      return this.merge(
-        entityClass as any,
-        transformedEntity as Entity,
-        entityLike
-      );
+      return this.merge(entityClass, transformedEntity as Entity, entityLike);
 
     return undefined;
   }
@@ -373,39 +366,42 @@ export class EntityManager {
    * Saves all given entities in the database.
    * If entities do not exist in the database then inserts, otherwise updates.
    */
-  save<Entity>(entities: Entity[], options?: SaveOptions): Promise<Entity[]>;
-
-  /**
-   * Saves all given entities in the database.
-   * If entities do not exist in the database then inserts, otherwise updates.
-   */
-  save<Entity>(entity: Entity, options?: SaveOptions): Promise<Entity>;
-
-  /**
-   * Saves all given entities in the database.
-   * If entities do not exist in the database then inserts, otherwise updates.
-   */
-  save<Entity, T extends DeepPartial<Entity>>(
-    targetOrEntity: EntityTarget<Entity>,
-    entities: T[],
-    options: SaveOptions & { reload: false }
-  ): Promise<T[]>;
-
-  /**
-   * Saves all given entities in the database.
-   * If entities do not exist in the database then inserts, otherwise updates.
-   */
-  save<Entity, T extends DeepPartial<Entity>>(
-    targetOrEntity: EntityTarget<Entity>,
-    entities: T[],
+  public save<Entity>(
+    entities: Array<Entity>,
     options?: SaveOptions
-  ): Promise<(T & Entity)[]>;
+  ): Promise<Array<Entity>>;
+
+  /**
+   * Saves all given entities in the database.
+   * If entities do not exist in the database then inserts, otherwise updates.
+   */
+  public save<Entity>(entity: Entity, options?: SaveOptions): Promise<Entity>;
+
+  /**
+   * Saves all given entities in the database.
+   * If entities do not exist in the database then inserts, otherwise updates.
+   */
+  public save<Entity, T extends DeepPartial<Entity>>(
+    targetOrEntity: EntityTarget<Entity>,
+    entities: Array<T>,
+    options: SaveOptions & { reload: false }
+  ): Promise<Array<T>>;
+
+  /**
+   * Saves all given entities in the database.
+   * If entities do not exist in the database then inserts, otherwise updates.
+   */
+  public save<Entity, T extends DeepPartial<Entity>>(
+    targetOrEntity: EntityTarget<Entity>,
+    entities: Array<T>,
+    options?: SaveOptions
+  ): Promise<Array<T & Entity>>;
 
   /**
    * Saves a given entity in the database.
    * If entity does not exist in the database then inserts, otherwise updates.
    */
-  save<Entity, T extends DeepPartial<Entity>>(
+  public save<Entity, T extends DeepPartial<Entity>>(
     targetOrEntity: EntityTarget<Entity>,
     entity: T,
     options: SaveOptions & { reload: false }
@@ -415,7 +411,7 @@ export class EntityManager {
    * Saves a given entity in the database.
    * If entity does not exist in the database then inserts, otherwise updates.
    */
-  save<Entity, T extends DeepPartial<Entity>>(
+  public save<Entity, T extends DeepPartial<Entity>>(
     targetOrEntity: EntityTarget<Entity>,
     entity: T,
     options?: SaveOptions
@@ -424,22 +420,22 @@ export class EntityManager {
   /**
    * Saves a given entity in the database.
    */
-  save<Entity extends ObjectLiteral, T extends DeepPartial<Entity>>(
-    targetOrEntity: (T | T[]) | EntityTarget<Entity>,
-    maybeEntityOrOptions?: T | T[],
+  public save<Entity extends ObjectLiteral, T extends DeepPartial<Entity>>(
+    targetOrEntity: (T | Array<T>) | EntityTarget<Entity>,
+    maybeEntityOrOptions?: T | Array<T>,
     maybeOptions?: SaveOptions
-  ): Promise<T | T[]> {
+  ): Promise<T | Array<T>> {
     // normalize mixed parameters
     let target =
       arguments.length > 1 &&
       (typeof targetOrEntity === 'function' ||
         InstanceChecker.isEntitySchema(targetOrEntity) ||
         typeof targetOrEntity === 'string')
-        ? (targetOrEntity as Function | string)
+        ? (targetOrEntity as TFunction | string)
         : undefined;
-    const entity: T | T[] = target
-      ? (maybeEntityOrOptions as T | T[])
-      : (targetOrEntity as T | T[]);
+    const entity: T | Array<T> = target
+      ? (maybeEntityOrOptions as T | Array<T>)
+      : (targetOrEntity as T | Array<T>);
     const options = target
       ? maybeOptions
       : (maybeEntityOrOptions as SaveOptions);
@@ -466,12 +462,15 @@ export class EntityManager {
   /**
    * Removes a given entity from the database.
    */
-  remove<Entity>(entity: Entity, options?: RemoveOptions): Promise<Entity>;
+  public remove<Entity>(
+    entity: Entity,
+    options?: RemoveOptions
+  ): Promise<Entity>;
 
   /**
    * Removes a given entity from the database.
    */
-  remove<Entity>(
+  public remove<Entity>(
     targetOrEntity: EntityTarget<Entity>,
     entity: Entity,
     options?: RemoveOptions
@@ -480,36 +479,39 @@ export class EntityManager {
   /**
    * Removes a given entity from the database.
    */
-  remove<Entity>(entity: Entity[], options?: RemoveOptions): Promise<Entity>;
-
-  /**
-   * Removes a given entity from the database.
-   */
-  remove<Entity>(
-    targetOrEntity: EntityTarget<Entity>,
-    entity: Entity[],
+  public remove<Entity>(
+    entity: Array<Entity>,
     options?: RemoveOptions
-  ): Promise<Entity[]>;
+  ): Promise<Entity>;
 
   /**
    * Removes a given entity from the database.
    */
-  remove<Entity extends ObjectLiteral>(
-    targetOrEntity: (Entity | Entity[]) | EntityTarget<Entity>,
-    maybeEntityOrOptions?: Entity | Entity[],
+  public remove<Entity>(
+    targetOrEntity: EntityTarget<Entity>,
+    entity: Array<Entity>,
+    options?: RemoveOptions
+  ): Promise<Array<Entity>>;
+
+  /**
+   * Removes a given entity from the database.
+   */
+  public remove<Entity extends ObjectLiteral>(
+    targetOrEntity: (Entity | Array<Entity>) | EntityTarget<Entity>,
+    maybeEntityOrOptions?: Entity | Array<Entity>,
     maybeOptions?: RemoveOptions
-  ): Promise<Entity | Entity[]> {
+  ): Promise<Entity | Array<Entity>> {
     // normalize mixed parameters
     const target =
       arguments.length > 1 &&
       (typeof targetOrEntity === 'function' ||
         InstanceChecker.isEntitySchema(targetOrEntity) ||
         typeof targetOrEntity === 'string')
-        ? (targetOrEntity as Function | string)
+        ? (targetOrEntity as TFunction | string)
         : undefined;
-    const entity: Entity | Entity[] = target
-      ? (maybeEntityOrOptions as Entity | Entity[])
-      : (targetOrEntity as Entity | Entity[]);
+    const entity: Entity | Array<Entity> = target
+      ? (maybeEntityOrOptions as Entity | Array<Entity>)
+      : (targetOrEntity as Entity | Array<Entity>);
     const options = target
       ? maybeOptions
       : (maybeEntityOrOptions as SaveOptions);
@@ -534,29 +536,32 @@ export class EntityManager {
   /**
    * Records the delete date of all given entities.
    */
-  softRemove<Entity>(
-    entities: Entity[],
+  public softRemove<Entity>(
+    entities: Array<Entity>,
     options?: SaveOptions
-  ): Promise<Entity[]>;
+  ): Promise<Array<Entity>>;
 
   /**
    * Records the delete date of a given entity.
    */
-  softRemove<Entity>(entity: Entity, options?: SaveOptions): Promise<Entity>;
+  public softRemove<Entity>(
+    entity: Entity,
+    options?: SaveOptions
+  ): Promise<Entity>;
 
   /**
    * Records the delete date of all given entities.
    */
-  softRemove<Entity, T extends DeepPartial<Entity>>(
+  public softRemove<Entity, T extends DeepPartial<Entity>>(
     targetOrEntity: EntityTarget<Entity>,
-    entities: T[],
+    entities: Array<T>,
     options?: SaveOptions
-  ): Promise<T[]>;
+  ): Promise<Array<T>>;
 
   /**
    * Records the delete date of a given entity.
    */
-  softRemove<Entity, T extends DeepPartial<Entity>>(
+  public softRemove<Entity, T extends DeepPartial<Entity>>(
     targetOrEntity: EntityTarget<Entity>,
     entity: T,
     options?: SaveOptions
@@ -565,22 +570,25 @@ export class EntityManager {
   /**
    * Records the delete date of one or many given entities.
    */
-  softRemove<Entity extends ObjectLiteral, T extends DeepPartial<Entity>>(
-    targetOrEntity: (T | T[]) | EntityTarget<Entity>,
-    maybeEntityOrOptions?: T | T[],
+  public softRemove<
+    Entity extends ObjectLiteral,
+    T extends DeepPartial<Entity>,
+  >(
+    targetOrEntity: (T | Array<T>) | EntityTarget<Entity>,
+    maybeEntityOrOptions?: T | Array<T>,
     maybeOptions?: SaveOptions
-  ): Promise<T | T[]> {
+  ): Promise<T | Array<T>> {
     // normalize mixed parameters
     let target =
       arguments.length > 1 &&
       (typeof targetOrEntity === 'function' ||
         InstanceChecker.isEntitySchema(targetOrEntity) ||
         typeof targetOrEntity === 'string')
-        ? (targetOrEntity as Function | string)
+        ? (targetOrEntity as TFunction | string)
         : undefined;
-    const entity: T | T[] = target
-      ? (maybeEntityOrOptions as T | T[])
-      : (targetOrEntity as T | T[]);
+    const entity: T | Array<T> = target
+      ? (maybeEntityOrOptions as T | Array<T>)
+      : (targetOrEntity as T | Array<T>);
     const options = target
       ? maybeOptions
       : (maybeEntityOrOptions as SaveOptions);
@@ -607,26 +615,32 @@ export class EntityManager {
   /**
    * Recovers all given entities.
    */
-  recover<Entity>(entities: Entity[], options?: SaveOptions): Promise<Entity[]>;
+  public recover<Entity>(
+    entities: Array<Entity>,
+    options?: SaveOptions
+  ): Promise<Array<Entity>>;
 
   /**
    * Recovers a given entity.
    */
-  recover<Entity>(entity: Entity, options?: SaveOptions): Promise<Entity>;
+  public recover<Entity>(
+    entity: Entity,
+    options?: SaveOptions
+  ): Promise<Entity>;
 
   /**
    * Recovers all given entities.
    */
-  recover<Entity, T extends DeepPartial<Entity>>(
+  public recover<Entity, T extends DeepPartial<Entity>>(
     targetOrEntity: EntityTarget<Entity>,
-    entities: T[],
+    entities: Array<T>,
     options?: SaveOptions
-  ): Promise<T[]>;
+  ): Promise<Array<T>>;
 
   /**
    * Recovers a given entity.
    */
-  recover<Entity, T extends DeepPartial<Entity>>(
+  public recover<Entity, T extends DeepPartial<Entity>>(
     targetOrEntity: EntityTarget<Entity>,
     entity: T,
     options?: SaveOptions
@@ -635,22 +649,22 @@ export class EntityManager {
   /**
    * Recovers one or many given entities.
    */
-  recover<Entity extends ObjectLiteral, T extends DeepPartial<Entity>>(
-    targetOrEntity: (T | T[]) | EntityTarget<Entity>,
-    maybeEntityOrOptions?: T | T[],
+  public recover<Entity extends ObjectLiteral, T extends DeepPartial<Entity>>(
+    targetOrEntity: (T | Array<T>) | EntityTarget<Entity>,
+    maybeEntityOrOptions?: T | Array<T>,
     maybeOptions?: SaveOptions
-  ): Promise<T | T[]> {
+  ): Promise<T | Array<T>> {
     // normalize mixed parameters
     let target =
       arguments.length > 1 &&
       (typeof targetOrEntity === 'function' ||
         InstanceChecker.isEntitySchema(targetOrEntity) ||
         typeof targetOrEntity === 'string')
-        ? (targetOrEntity as Function | string)
+        ? (targetOrEntity as TFunction | string)
         : undefined;
-    const entity: T | T[] = target
-      ? (maybeEntityOrOptions as T | T[])
-      : (targetOrEntity as T | T[]);
+    const entity: T | Array<T> = target
+      ? (maybeEntityOrOptions as T | Array<T>)
+      : (targetOrEntity as T | Array<T>);
     const options = target
       ? maybeOptions
       : (maybeEntityOrOptions as SaveOptions);
@@ -681,9 +695,11 @@ export class EntityManager {
    * Does not check if entity exist in the database, so query will fail if duplicate entity is being inserted.
    * You can execute bulk inserts using this method.
    */
-  async insert<Entity extends ObjectLiteral>(
+  public async insert<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>,
-    entity: QueryDeepPartialEntity<Entity> | QueryDeepPartialEntity<Entity>[]
+    entity:
+      | QueryDeepPartialEntity<Entity>
+      | Array<QueryDeepPartialEntity<Entity>>
   ): Promise<InsertResult> {
     return this.createQueryBuilder()
       .insert()
@@ -692,12 +708,12 @@ export class EntityManager {
       .execute();
   }
 
-  async upsert<Entity extends ObjectLiteral>(
+  public async upsert<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>,
     entityOrEntities:
       | QueryDeepPartialEntity<Entity>
-      | QueryDeepPartialEntity<Entity>[],
-    conflictPathsOrOptions: string[] | UpsertOptions<Entity>
+      | Array<QueryDeepPartialEntity<Entity>>,
+    conflictPathsOrOptions: Array<string> | UpsertOptions<Entity>
   ): Promise<InsertResult> {
     const metadata = this.connection.getMetadata(target);
 
@@ -711,7 +727,7 @@ export class EntityManager {
       options = conflictPathsOrOptions;
     }
 
-    let entities: QueryDeepPartialEntity<Entity>[];
+    let entities: Array<QueryDeepPartialEntity<Entity>>;
 
     if (!Array.isArray(entityOrEntities)) {
       entities = [entityOrEntities];
@@ -760,18 +776,16 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  update<Entity extends ObjectLiteral>(
+  public update<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>,
     criteria:
       | string
-      | string[]
+      | Array<string>
       | number
-      | number[]
+      | Array<number>
       | Date
-      | Date[]
-      | ObjectId
-      | ObjectId[]
-      | any,
+      | Array<Date>
+      | unknown,
     partialEntity: QueryDeepPartialEntity<Entity>
   ): Promise<UpdateResult> {
     // if user passed empty criteria or empty list of criterias, then throw an error
@@ -805,7 +819,7 @@ export class EntityManager {
    *
    * WARNING! This method updates ALL rows in the target table.
    */
-  updateAll<Entity extends ObjectLiteral>(
+  public updateAll<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>,
     partialEntity: QueryDeepPartialEntity<Entity>
   ): Promise<UpdateResult> {
@@ -822,18 +836,16 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  delete<Entity extends ObjectLiteral>(
+  public delete<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>,
     criteria:
       | string
-      | string[]
+      | Array<string>
       | number
-      | number[]
+      | Array<number>
       | Date
-      | Date[]
-      | ObjectId
-      | ObjectId[]
-      | any
+      | Array<Date>
+      | unknown
   ): Promise<DeleteResult> {
     // if user passed empty criteria or empty list of criterias, then throw an error
     if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
@@ -866,7 +878,7 @@ export class EntityManager {
    *
    * WARNING! This method deletes ALL rows in the target table.
    */
-  deleteAll<Entity extends ObjectLiteral>(
+  public deleteAll<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>
   ): Promise<DeleteResult> {
     return this.createQueryBuilder().delete().from(targetOrEntity).execute();
@@ -879,18 +891,16 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  softDelete<Entity extends ObjectLiteral>(
+  public softDelete<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>,
     criteria:
       | string
-      | string[]
+      | Array<string>
       | number
-      | number[]
+      | Array<number>
       | Date
-      | Date[]
-      | ObjectId
-      | ObjectId[]
-      | any
+      | Array<Date>
+      | unknown
   ): Promise<UpdateResult> {
     // if user passed empty criteria or empty list of criterias, then throw an error
     if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
@@ -923,18 +933,16 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  restore<Entity extends ObjectLiteral>(
+  public restore<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>,
     criteria:
       | string
-      | string[]
+      | Array<string>
       | number
-      | number[]
+      | Array<number>
       | Date
-      | Date[]
-      | ObjectId
-      | ObjectId[]
-      | any
+      | Array<Date>
+      | unknown
   ): Promise<UpdateResult> {
     // if user passed empty criteria or empty list of criterias, then throw an error
     if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
@@ -963,7 +971,7 @@ export class EntityManager {
   /**
    * Checks whether any entity exists with the given options.
    */
-  exists<Entity extends ObjectLiteral>(
+  public exists<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
   ): Promise<boolean> {
@@ -979,9 +987,9 @@ export class EntityManager {
   /**
    * Checks whether any entity exists with the given conditions.
    */
-  async existsBy<Entity extends ObjectLiteral>(
+  public async existsBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<boolean> {
     const metadata = this.connection.getMetadata(entityClass);
     return this.createQueryBuilder(entityClass, metadata.name)
@@ -993,7 +1001,7 @@ export class EntityManager {
    * Counts entities that match given options.
    * Useful for pagination.
    */
-  count<Entity extends ObjectLiteral>(
+  public count<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
   ): Promise<number> {
@@ -1010,9 +1018,9 @@ export class EntityManager {
    * Counts entities that match given conditions.
    * Useful for pagination.
    */
-  countBy<Entity extends ObjectLiteral>(
+  public countBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number> {
     const metadata = this.connection.getMetadata(entityClass);
     return this.createQueryBuilder(entityClass, metadata.name)
@@ -1023,10 +1031,10 @@ export class EntityManager {
   /**
    * Return the SUM of a column
    */
-  sum<Entity extends ObjectLiteral>(
+  public sum<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     columnName: PickKeysByType<Entity, number>,
-    where?: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
     return this.callAggregateFun(entityClass, 'SUM', columnName, where);
   }
@@ -1034,10 +1042,10 @@ export class EntityManager {
   /**
    * Return the AVG of a column
    */
-  average<Entity extends ObjectLiteral>(
+  public average<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     columnName: PickKeysByType<Entity, number>,
-    where?: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
     return this.callAggregateFun(entityClass, 'AVG', columnName, where);
   }
@@ -1045,10 +1053,10 @@ export class EntityManager {
   /**
    * Return the MIN of a column
    */
-  minimum<Entity extends ObjectLiteral>(
+  public minimum<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     columnName: PickKeysByType<Entity, number>,
-    where?: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
     return this.callAggregateFun(entityClass, 'MIN', columnName, where);
   }
@@ -1056,10 +1064,10 @@ export class EntityManager {
   /**
    * Return the MAX of a column
    */
-  maximum<Entity extends ObjectLiteral>(
+  public maximum<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     columnName: PickKeysByType<Entity, number>,
-    where?: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
     return this.callAggregateFun(entityClass, 'MAX', columnName, where);
   }
@@ -1068,7 +1076,7 @@ export class EntityManager {
     entityClass: EntityTarget<Entity>,
     fnName: 'SUM' | 'AVG' | 'MIN' | 'MAX',
     columnName: PickKeysByType<Entity, number>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[] = {}
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>> = {}
   ): Promise<number | null> {
     const metadata = this.connection.getMetadata(entityClass);
     const column = metadata.columns.find(
@@ -1093,13 +1101,13 @@ export class EntityManager {
   /**
    * Finds entities that match given find options.
    */
-  async find<Entity extends ObjectLiteral>(
+  public async find<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
-  ): Promise<Entity[]> {
+  ): Promise<Array<Entity>> {
     const metadata = this.connection.getMetadata(entityClass);
     return this.createQueryBuilder<Entity>(
-      entityClass as any,
+      entityClass,
       FindOptionsUtils.extractFindManyOptionsAlias(options) || metadata.name
     )
       .setFindOptions(options || {})
@@ -1109,12 +1117,12 @@ export class EntityManager {
   /**
    * Finds entities that match given find options.
    */
-  async findBy<Entity extends ObjectLiteral>(
+  public async findBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
-  ): Promise<Entity[]> {
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
+  ): Promise<Array<Entity>> {
     const metadata = this.connection.getMetadata(entityClass);
-    return this.createQueryBuilder<Entity>(entityClass as any, metadata.name)
+    return this.createQueryBuilder<Entity>(entityClass, metadata.name)
       .setFindOptions({ where: where })
       .getMany();
   }
@@ -1124,13 +1132,13 @@ export class EntityManager {
    * Also counts all entities that match given conditions,
    * but ignores pagination settings (from and take options).
    */
-  findAndCount<Entity extends ObjectLiteral>(
+  public findAndCount<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
-  ): Promise<[Entity[], number]> {
+  ): Promise<[Array<Entity>, number]> {
     const metadata = this.connection.getMetadata(entityClass);
     return this.createQueryBuilder<Entity>(
-      entityClass as any,
+      entityClass,
       FindOptionsUtils.extractFindManyOptionsAlias(options) || metadata.name
     )
       .setFindOptions(options || {})
@@ -1142,12 +1150,12 @@ export class EntityManager {
    * Also counts all entities that match given conditions,
    * but ignores pagination settings (from and take options).
    */
-  findAndCountBy<Entity extends ObjectLiteral>(
+  public findAndCountBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
-  ): Promise<[Entity[], number]> {
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
+  ): Promise<[Array<Entity>, number]> {
     const metadata = this.connection.getMetadata(entityClass);
-    return this.createQueryBuilder<Entity>(entityClass as any, metadata.name)
+    return this.createQueryBuilder<Entity>(entityClass, metadata.name)
       .setFindOptions({ where })
       .getManyAndCount();
   }
@@ -1162,15 +1170,15 @@ export class EntityManager {
    *     id: In([1, 2, 3])
    * })
    */
-  async findByIds<Entity extends ObjectLiteral>(
+  public async findByIds<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    ids: any[]
-  ): Promise<Entity[]> {
+    ids: Array<unknown>
+  ): Promise<Array<Entity>> {
     // if no ids passed, no need to execute a query - just return an empty array of values
     if (!ids.length) return Promise.resolve([]);
 
     const metadata = this.connection.getMetadata(entityClass);
-    return this.createQueryBuilder<Entity>(entityClass as any, metadata.name)
+    return this.createQueryBuilder<Entity>(entityClass, metadata.name)
       .andWhereInIds(ids)
       .getMany();
   }
@@ -1179,7 +1187,7 @@ export class EntityManager {
    * Finds first entity by a given find options.
    * If entity was not found in the database - returns null.
    */
-  async findOne<Entity extends ObjectLiteral>(
+  public async findOne<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options: FindOneOptions<Entity>
   ): Promise<Entity | null> {
@@ -1210,9 +1218,9 @@ export class EntityManager {
    * Finds first entity that matches given where condition.
    * If entity was not found in the database - returns null.
    */
-  async findOneBy<Entity extends ObjectLiteral>(
+  public async findOneBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Entity | null> {
     const metadata = this.connection.getMetadata(entityClass);
 
@@ -1235,9 +1243,9 @@ export class EntityManager {
    *     id: 1 // where "id" is your primary column name
    * })
    */
-  async findOneById<Entity extends ObjectLiteral>(
+  public async findOneById<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    id: number | string | Date | ObjectId
+    id: number | string | Date
   ): Promise<Entity | null> {
     const metadata = this.connection.getMetadata(entityClass);
 
@@ -1254,11 +1262,11 @@ export class EntityManager {
    * Finds first entity by a given find options.
    * If entity was not found in the database - rejects with error.
    */
-  async findOneOrFail<Entity extends ObjectLiteral>(
+  public async findOneOrFail<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options: FindOneOptions<Entity>
   ): Promise<Entity> {
-    return this.findOne<Entity>(entityClass as any, options).then((value) => {
+    return this.findOne<Entity>(entityClass, options).then((value) => {
       if (value === null) {
         return Promise.reject(new EntityNotFoundError(entityClass, options));
       }
@@ -1270,11 +1278,11 @@ export class EntityManager {
    * Finds first entity that matches given where condition.
    * If entity was not found in the database - rejects with error.
    */
-  async findOneByOrFail<Entity extends ObjectLiteral>(
+  public async findOneByOrFail<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    where: FindOptionsWhere<Entity> | FindOptionsWhere<Entity>[]
+    where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Entity> {
-    return this.findOneBy<Entity>(entityClass as any, where).then((value) => {
+    return this.findOneBy<Entity>(entityClass, where).then((value) => {
       if (value === null) {
         return Promise.reject(new EntityNotFoundError(entityClass, where));
       }
@@ -1288,7 +1296,7 @@ export class EntityManager {
    * Note: this method uses TRUNCATE and may not work as you expect in transactions on some platforms.
    * @see https://stackoverflow.com/a/5972738/925151
    */
-  async clear<Entity>(entityClass: EntityTarget<Entity>): Promise<void> {
+  public async clear<Entity>(entityClass: EntityTarget<Entity>): Promise<void> {
     const metadata = this.connection.getMetadata(entityClass);
     const queryRunner = this.queryRunner || this.connection.createQueryRunner();
     try {
@@ -1301,9 +1309,9 @@ export class EntityManager {
   /**
    * Increments some column by provided value of the entities matched given conditions.
    */
-  async increment<Entity extends ObjectLiteral>(
+  public async increment<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    conditions: any,
+    conditions: unknown,
     propertyPath: string,
     value: number | string
   ): Promise<UpdateResult> {
@@ -1321,11 +1329,11 @@ export class EntityManager {
     const values: QueryDeepPartialEntity<Entity> = propertyPath
       .split('.')
       .reduceRight(
-        (value, key) => ({ [key]: value }) as any,
+        (value, key) => ({ [key]: value }),
         () => this.connection.driver.escape(column.databaseName) + ' + ' + value
       );
 
-    return this.createQueryBuilder<Entity>(entityClass as any, 'entity')
+    return this.createQueryBuilder<Entity>(entityClass, 'entity')
       .update(entityClass)
       .set(values)
       .where(conditions)
@@ -1335,9 +1343,9 @@ export class EntityManager {
   /**
    * Decrements some column by provided value of the entities matched given conditions.
    */
-  async decrement<Entity extends ObjectLiteral>(
+  public async decrement<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    conditions: any,
+    conditions: unknown,
     propertyPath: string,
     value: number | string
   ): Promise<UpdateResult> {
@@ -1355,7 +1363,7 @@ export class EntityManager {
     const values: QueryDeepPartialEntity<Entity> = propertyPath
       .split('.')
       .reduceRight(
-        (value, key) => ({ [key]: value }) as any,
+        (value, key) => ({ [key]: value }),
         () => this.connection.driver.escape(column.databaseName) + ' - ' + value
       );
 
@@ -1372,7 +1380,7 @@ export class EntityManager {
    * repository aggregator, where each repository is individually created for this entity manager.
    * When single database connection is not used, repository is being obtained from the connection.
    */
-  getRepository<Entity extends ObjectLiteral>(
+  public getRepository<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>
   ): Repository<Entity> {
     // find already created repository instance and return it if found
@@ -1397,7 +1405,7 @@ export class EntityManager {
    * repository aggregator, where each repository is individually created for this entity manager.
    * When single database connection is not used, repository is being obtained from the connection.
    */
-  getTreeRepository<Entity extends ObjectLiteral>(
+  public getTreeRepository<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>
   ): TreeRepository<Entity> {
     // tree tables aren't supported by some drivers (mongodb)
@@ -1417,22 +1425,14 @@ export class EntityManager {
   }
 
   /**
-   * Gets mongodb repository for the given entity class.
-   */
-  getMongoRepository<Entity extends ObjectLiteral>(
-    target: EntityTarget<Entity>
-  ): MongoRepository<Entity> {
-    return this.connection.getMongoRepository<Entity>(target);
-  }
-
-  /**
    * Creates a new repository instance out of a given Repository and
    * sets current EntityManager instance to it. Used to work with custom repositories
    * in transactions.
    */
-  withRepository<Entity extends ObjectLiteral, R extends Repository<any>>(
-    repository: R & Repository<Entity>
-  ): R {
+  public withRepository<
+    Entity extends ObjectLiteral,
+    R extends Repository<any>,
+  >(repository: R & Repository<Entity>): R {
     const repositoryConstructor = repository.constructor as typeof Repository;
     const { target, manager, queryRunner, ...otherRepositoryProperties } =
       repository;
@@ -1449,7 +1449,7 @@ export class EntityManager {
    * This is used when entity manager is created with a single query runner,
    * and this single query runner needs to be released after job with entity manager is done.
    */
-  async release(): Promise<void> {
+  public async release(): Promise<void> {
     if (!this.queryRunner) throw new NoNeedToReleaseEntityManagerError();
 
     return this.queryRunner.release();

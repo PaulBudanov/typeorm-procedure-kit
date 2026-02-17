@@ -1,49 +1,49 @@
-import { EntityMetadata } from "../metadata/EntityMetadata"
-import { ObjectUtils } from "../util/ObjectUtils"
-import { TypeORMError } from "../error"
+import { TypeORMError } from '../error';
+import { EntityMetadata } from '../metadata/EntityMetadata';
+import { ObjectUtils } from '../util/ObjectUtils';
 
 /**
  */
 export class Alias {
-    type: "from" | "select" | "join" | "other" // todo: make something with "other"
+  type: 'from' | 'select' | 'join' | 'other'; // todo: make something with "other"
 
-    name: string
+  name: string;
 
-    /**
-     * Table on which this alias is applied.
-     * Used only for aliases which select custom tables.
-     */
-    tablePath?: string
+  /**
+   * Table on which this alias is applied.
+   * Used only for aliases which select custom tables.
+   */
+  tablePath?: string;
 
-    /**
-     * If this alias is for sub query.
-     */
-    subQuery?: string
+  /**
+   * If this alias is for sub query.
+   */
+  subQuery?: string;
 
-    constructor(alias?: Alias) {
-        ObjectUtils.assign(this, alias || {})
-    }
+  constructor(alias?: Alias) {
+    ObjectUtils.assign(this, alias || {});
+  }
 
-    private _metadata?: EntityMetadata
+  private _metadata?: EntityMetadata;
 
-    get target(): Function | string {
-        return this.metadata.target
-    }
+  get target(): Function | string {
+    return this.metadata.target;
+  }
 
-    get hasMetadata(): boolean {
-        return !!this._metadata
-    }
+  get hasMetadata(): boolean {
+    return !!this._metadata;
+  }
 
-    set metadata(metadata: EntityMetadata) {
-        this._metadata = metadata
-    }
+  set metadata(metadata: EntityMetadata) {
+    this._metadata = metadata;
+  }
 
-    get metadata(): EntityMetadata {
-        if (!this._metadata)
-            throw new TypeORMError(
-                `Cannot get entity metadata for the given alias "${this.name}"`,
-            )
+  get metadata(): EntityMetadata {
+    if (!this._metadata)
+      throw new TypeORMError(
+        `Cannot get entity metadata for the given alias "${this.name}"`
+      );
 
-        return this._metadata
-    }
+    return this._metadata;
+  }
 }

@@ -1,67 +1,67 @@
-import { TableCheckOptions } from "../options/TableCheckOptions"
-import { CheckMetadata } from "../../metadata/CheckMetadata"
+import { CheckMetadata } from '../../metadata/CheckMetadata';
+import { TableCheckOptions } from '../options/TableCheckOptions';
 
 /**
  * Database's table check constraint stored in this class.
  */
 export class TableCheck {
-    readonly "@instanceof" = Symbol.for("TableCheck")
+  readonly '@instanceof' = Symbol.for('TableCheck');
 
-    // -------------------------------------------------------------------------
-    // Public Properties
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
 
-    /**
-     * Constraint name.
-     */
-    name?: string
+  /**
+   * Constraint name.
+   */
+  name?: string;
 
-    /**
-     * Column that contains this constraint.
-     */
-    columnNames?: string[] = []
+  /**
+   * Column that contains this constraint.
+   */
+  columnNames?: Array<string> = [];
 
-    /**
-     * Check expression.
-     */
-    expression?: string
+  /**
+   * Check expression.
+   */
+  expression?: string;
 
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Constructor
+  // -------------------------------------------------------------------------
 
-    constructor(options: TableCheckOptions) {
-        this.name = options.name
-        this.columnNames = options.columnNames
-        this.expression = options.expression
-    }
+  constructor(options: TableCheckOptions) {
+    this.name = options.name;
+    this.columnNames = options.columnNames;
+    this.expression = options.expression;
+  }
 
-    // -------------------------------------------------------------------------
-    // Public Methods
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Methods
+  // -------------------------------------------------------------------------
 
-    /**
-     * Creates a new copy of this constraint with exactly same properties.
-     */
-    clone(): TableCheck {
-        return new TableCheck(<TableCheckOptions>{
-            name: this.name,
-            columnNames: this.columnNames ? [...this.columnNames] : [],
-            expression: this.expression,
-        })
-    }
+  /**
+   * Creates a new copy of this constraint with exactly same properties.
+   */
+  clone(): TableCheck {
+    return new TableCheck({
+      name: this.name,
+      columnNames: this.columnNames ? [...this.columnNames] : [],
+      expression: this.expression,
+    } as TableCheckOptions);
+  }
 
-    // -------------------------------------------------------------------------
-    // Static Methods
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Static Methods
+  // -------------------------------------------------------------------------
 
-    /**
-     * Creates checks from the check metadata object.
-     */
-    static create(checkMetadata: CheckMetadata): TableCheck {
-        return new TableCheck(<TableCheckOptions>{
-            name: checkMetadata.name,
-            expression: checkMetadata.expression,
-        })
-    }
+  /**
+   * Creates checks from the check metadata object.
+   */
+  static create(checkMetadata: CheckMetadata): TableCheck {
+    return new TableCheck({
+      name: checkMetadata.name,
+      expression: checkMetadata.expression,
+    } as TableCheckOptions);
+  }
 }

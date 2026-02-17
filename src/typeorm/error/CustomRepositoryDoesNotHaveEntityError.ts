@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+
 import { TypeORMError } from './TypeORMError.js';
 
 /**

@@ -15,17 +15,17 @@ export class TreeRepositoryUtils {
     manager: EntityManager,
     metadata: EntityMetadata,
     alias: string,
-    rawResults: Array<unknown>
+    rawResults: Array<Record<string, unknown>>
   ): Array<{ id: unknown; parentId: unknown }> {
     return rawResults.map((rawResult) => {
-      const joinColumn = metadata.treeParentRelation!.joinColumns[0];
-      const referencedColumn =
-        joinColumn.referencedColumn ?? metadata.primaryColumns[0];
+      const joinColumn = metadata.treeParentRelation!.joinColumns[0]!;
+      const referencedColumn = (joinColumn.referencedColumn ??
+        metadata.primaryColumns[0])!;
       // fixes issue #2518, default to databaseName property when givenDatabaseName is not set
       const joinColumnName =
         joinColumn.givenDatabaseName ?? joinColumn.databaseName;
-      const referencedColumnName =
-        referencedColumn.givenDatabaseName ?? referencedColumn.databaseName;
+      const referencedColumnName = (referencedColumn.givenDatabaseName ??
+        referencedColumn.databaseName)!;
       const id = rawResult[alias + '_' + referencedColumnName];
       const parentId = rawResult[alias + '_' + joinColumnName];
       return {

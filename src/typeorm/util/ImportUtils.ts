@@ -9,7 +9,6 @@ export async function importOrRequireFile(
     // `Function` is required to make sure the `import` statement wil stay `import` after
     // transpilation and won't be converted to `require`
     return [
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
       await Function('return filePath => import(filePath)')()(
         filePath.startsWith('file://')
           ? filePath
@@ -43,7 +42,7 @@ export async function importOrRequireFile(
 const packageJsonCache = new Map<string, object | null>();
 const MAX_CACHE_SIZE = 1000;
 
-function setPackageJsonCache(paths: string[], packageJson: object | null) {
+function setPackageJsonCache(paths: Array<string>, packageJson: object | null) {
   for (const path of paths) {
     // Simple LRU-like behavior: if we're at capacity, remove oldest entry
     if (
@@ -59,7 +58,7 @@ function setPackageJsonCache(paths: string[], packageJson: object | null) {
 
 async function getNearestPackageJson(filePath: string): Promise<object | null> {
   let currentPath = filePath;
-  const paths: string[] = [];
+  const paths: Array<string> = [];
 
   while (currentPath !== path.dirname(currentPath)) {
     currentPath = path.dirname(currentPath);

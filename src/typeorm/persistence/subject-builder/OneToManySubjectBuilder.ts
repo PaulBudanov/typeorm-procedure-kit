@@ -1,8 +1,8 @@
-import { Subject } from '../Subject';
-import { OrmUtils } from '../../util/OrmUtils';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
 import { EntityMetadata } from '../../metadata/EntityMetadata';
 import { RelationMetadata } from '../../metadata/RelationMetadata';
+import { OrmUtils } from '../../util/OrmUtils';
+import { Subject } from '../Subject';
 
 /**
  * Builds operations needs to be executed for one-to-many relations of the given subjects.
@@ -20,7 +20,7 @@ export class OneToManySubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected subjects: Subject[]) {}
+  constructor(protected subjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods
@@ -62,10 +62,10 @@ export class OneToManySubjectBuilder {
     // however if the entity uses the afterLoad hook to calculate any properties, the fetched "key object" might include ADDITIONAL properties.
     // to handle such situations, we pass the data to relation.inverseEntityMetadata.getEntityIdMap to extract the key without any other properties.
 
-    let relatedEntityDatabaseRelationIds: ObjectLiteral[] = [];
+    let relatedEntityDatabaseRelationIds: Array<ObjectLiteral> = [];
     if (subject.databaseEntity) {
       // related entities in the database can exist only if this entity (post) is saved
-      const relatedEntityDatabaseRelation: ObjectLiteral[] | undefined =
+      const relatedEntityDatabaseRelation: Array<ObjectLiteral> | undefined =
         relation.getEntityValue(subject.databaseEntity);
       if (relatedEntityDatabaseRelation) {
         relatedEntityDatabaseRelationIds = relatedEntityDatabaseRelation.map(
@@ -76,19 +76,19 @@ export class OneToManySubjectBuilder {
 
     // get related entities of persisted entity
     // by example: get categories from the passed to persist post entity
-    let relatedEntities: ObjectLiteral[] = relation.getEntityValue(
+    let relatedEntities: Array<ObjectLiteral> = relation.getEntityValue(
       subject.entity!
     );
     if (relatedEntities === null)
       // we treat relations set to null as removed, so we don't skip it
-      relatedEntities = [] as ObjectLiteral[];
+      relatedEntities = [] as Array<ObjectLiteral>;
     if (relatedEntities === undefined)
       // if relation is undefined then nothing to update
       return;
 
     // extract only relation ids from the related entities, since we only need them for comparison
     // by example: extract from categories only relation ids (category id, or let's say category title, depend on join column options)
-    const relatedPersistedEntityRelationIds: ObjectLiteral[] = [];
+    const relatedPersistedEntityRelationIds: Array<ObjectLiteral> = [];
     relatedEntities.forEach((relatedEntity) => {
       // by example: relatedEntity is a category here
       let relationIdMap =

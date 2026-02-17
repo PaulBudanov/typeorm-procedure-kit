@@ -1,9 +1,10 @@
-import { Subject } from './Subject';
 import { ObjectLiteral } from '../common/ObjectLiteral';
-import { QueryRunner } from '../query-runner/QueryRunner';
 import { FindManyOptions } from '../find-options/FindManyOptions';
+import { QueryRunner } from '../query-runner/QueryRunner';
 import { MongoRepository } from '../repository/MongoRepository';
 import { OrmUtils } from '../util/OrmUtils';
+
+import { Subject } from './Subject';
 
 /**
  * Loads database entities for all operate subjects which do not have database entity set.
@@ -18,7 +19,7 @@ export class SubjectDatabaseEntityLoader {
 
   constructor(
     protected queryRunner: QueryRunner,
-    protected subjects: Subject[]
+    protected subjects: Array<Subject>
   ) {}
 
   // ---------------------------------------------------------------------
@@ -38,8 +39,8 @@ export class SubjectDatabaseEntityLoader {
     // go through the groups and perform loading of database entities of each subject in the group
     const promises = this.groupByEntityTargets().map(async (subjectGroup) => {
       // prepare entity ids of the subjects we need to load
-      const allIds: ObjectLiteral[] = [];
-      const allSubjects: Subject[] = [];
+      const allIds: Array<ObjectLiteral> = [];
+      const allSubjects: Array<Subject> = [];
       subjectGroup.subjects.forEach((subject) => {
         // we don't load if subject already has a database entity loaded
         if (subject.databaseEntity || !subject.identifier) return;
@@ -51,7 +52,7 @@ export class SubjectDatabaseEntityLoader {
       // if there no ids found (means all entities are new and have generated ids) - then nothing to load there
       if (!allIds.length) return;
 
-      const loadRelationPropertyPaths: string[] = [];
+      const loadRelationPropertyPaths: Array<string> = [];
 
       // for the save, soft-remove and recover operation
       // extract all property paths of the relations we need to load relation ids for
@@ -98,7 +99,7 @@ export class SubjectDatabaseEntityLoader {
       };
 
       // load database entities for all given ids
-      let entities: any[] = [];
+      let entities: Array<any> = [];
       if (this.queryRunner.connection.driver.options.type === 'mongodb') {
         const mongoRepo = this.queryRunner.manager.getRepository<ObjectLiteral>(
           subjectGroup.target
@@ -142,10 +143,10 @@ export class SubjectDatabaseEntityLoader {
   /**
    * Groups given Subject objects into groups separated by entity targets.
    */
-  protected groupByEntityTargets(): {
+  protected groupByEntityTargets(): Array<{
     target: Function | string;
-    subjects: Subject[];
-  }[] {
+    subjects: Array<Subject>;
+  }> {
     return this.subjects.reduce(
       (groups, operatedEntity) => {
         let group = groups.find(
@@ -158,7 +159,7 @@ export class SubjectDatabaseEntityLoader {
         group.subjects.push(operatedEntity);
         return groups;
       },
-      [] as { target: Function | string; subjects: Subject[] }[]
+      [] as Array<{ target: Function | string; subjects: Array<Subject> }>
     );
   }
 }

@@ -1,10 +1,10 @@
-import { Subject } from '../Subject';
-import { QueryRunner } from '../../query-runner/QueryRunner';
-import { OrmUtils } from '../../util/OrmUtils';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
 import { ColumnMetadata } from '../../metadata/ColumnMetadata';
 import { EntityMetadata } from '../../metadata/EntityMetadata';
 import { Brackets } from '../../query-builder/Brackets';
+import { QueryRunner } from '../../query-runner/QueryRunner';
+import { OrmUtils } from '../../util/OrmUtils';
+import { Subject } from '../Subject';
 
 /**
  * Executes subject operations for materialized-path tree entities.
@@ -35,7 +35,7 @@ export class MaterializedPathSubjectExecutor {
 
     const parentId = subject.metadata.getEntityIdMap(parent);
 
-    let parentPath: string = '';
+    let parentPath = '';
     if (parentId) {
       parentPath = await this.getEntityPath(subject, parentId);
     }
@@ -98,12 +98,12 @@ export class MaterializedPathSubjectExecutor {
       return;
     }
 
-    let newParentPath: string = '';
+    let newParentPath = '';
     if (newParentId) {
       newParentPath = await this.getEntityPath(subject, newParentId);
     }
 
-    let oldParentPath: string = '';
+    let oldParentPath = '';
     if (oldParentId) {
       oldParentPath = (await this.getEntityPath(subject, oldParentId)) || '';
     }
@@ -141,7 +141,7 @@ export class MaterializedPathSubjectExecutor {
         .treeParentRelation!.joinColumns.map(
           (column) => column.referencedColumn
         )
-        .filter((v) => v != null) as ColumnMetadata[],
+        .filter((v) => v != null) as Array<ColumnMetadata>,
       { skipNulls: true }
     );
   }

@@ -1,11 +1,13 @@
-import appRootPath from 'app-root-path';
 import path from 'path';
+
+import appRootPath from 'app-root-path';
 
 import { DataSourceOptions } from '../data-source/DataSourceOptions';
 import { TypeORMError } from '../error';
 import { PlatformTools } from '../platform/PlatformTools';
 import { importOrRequireFile } from '../util/ImportUtils';
 import { isAbsolute } from '../util/PathUtils.js';
+
 import { ConnectionOptionsEnvReader } from './options-reader/ConnectionOptionsEnvReader';
 
 /**
@@ -38,7 +40,7 @@ export class ConnectionOptionsReader {
   /**
    * Returns all connection options read from the ormconfig.
    */
-  async all(): Promise<DataSourceOptions[]> {
+  async all(): Promise<Array<DataSourceOptions>> {
     const options = await this.load();
     if (!options)
       throw new TypeORMError(
@@ -89,9 +91,11 @@ export class ConnectionOptionsReader {
    *
    * todo: get in count NODE_ENV somehow
    */
-  protected async load(): Promise<DataSourceOptions[] | undefined> {
-    let connectionOptions: DataSourceOptions | DataSourceOptions[] | undefined =
-      undefined;
+  protected async load(): Promise<Array<DataSourceOptions> | undefined> {
+    let connectionOptions:
+      | DataSourceOptions
+      | Array<DataSourceOptions>
+      | undefined = undefined;
 
     const fileFormats = ['env', 'js', 'mjs', 'cjs', 'ts', 'mts', 'cts', 'json'];
 
@@ -166,15 +170,15 @@ export class ConnectionOptionsReader {
    * Normalize connection options.
    */
   protected normalizeConnectionOptions(
-    connectionOptions: DataSourceOptions | DataSourceOptions[]
-  ): DataSourceOptions[] {
+    connectionOptions: DataSourceOptions | Array<DataSourceOptions>
+  ): Array<DataSourceOptions> {
     if (!Array.isArray(connectionOptions))
       connectionOptions = [connectionOptions];
 
     connectionOptions.forEach((options) => {
       options.baseDirectory = this.baseDirectory;
       if (options.entities) {
-        const entities = (options.entities as any[]).map((entity) => {
+        const entities = (options.entities as Array<any>).map((entity) => {
           if (typeof entity === 'string' && entity.substr(0, 1) !== '/')
             return this.baseDirectory + '/' + entity;
 
@@ -183,21 +187,28 @@ export class ConnectionOptionsReader {
         Object.assign(connectionOptions, { entities: entities });
       }
       if (options.subscribers) {
-        const subscribers = (options.subscribers as any[]).map((subscriber) => {
-          if (typeof subscriber === 'string' && subscriber.substr(0, 1) !== '/')
-            return this.baseDirectory + '/' + subscriber;
+        const subscribers = (options.subscribers as Array<any>).map(
+          (subscriber) => {
+            if (
+              typeof subscriber === 'string' &&
+              subscriber.substr(0, 1) !== '/'
+            )
+              return this.baseDirectory + '/' + subscriber;
 
-          return subscriber;
-        });
+            return subscriber;
+          }
+        );
         Object.assign(connectionOptions, { subscribers: subscribers });
       }
       if (options.migrations) {
-        const migrations = (options.migrations as any[]).map((migration) => {
-          if (typeof migration === 'string' && migration.substr(0, 1) !== '/')
-            return this.baseDirectory + '/' + migration;
+        const migrations = (options.migrations as Array<any>).map(
+          (migration) => {
+            if (typeof migration === 'string' && migration.substr(0, 1) !== '/')
+              return this.baseDirectory + '/' + migration;
 
-          return migration;
-        });
+            return migration;
+          }
+        );
         Object.assign(connectionOptions, { migrations: migrations });
       }
 

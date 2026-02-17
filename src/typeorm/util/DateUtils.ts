@@ -1,5 +1,6 @@
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import dayjs from 'dayjs';
+
+import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 
 /**
  * Provides utilities to transform hydrated and persisted data.
@@ -57,7 +58,7 @@ export class DateUtils {
    */
   static mixedDateToDate(
     mixedDate: Date | string,
-    toUtc: boolean = false,
+    toUtc = false,
     useMilliseconds = true
   ): Date {
     /**
@@ -98,7 +99,7 @@ export class DateUtils {
    */
   static mixedDateToTimeString(
     value: Date | any,
-    skipSeconds: boolean = false
+    skipSeconds = false
   ): string | any {
     if (value instanceof Date)
       return (
@@ -132,7 +133,7 @@ export class DateUtils {
    */
   static mixedTimeToString(
     value: string | any,
-    skipSeconds: boolean = false
+    skipSeconds = false
   ): string | any {
     value =
       value instanceof Date
@@ -215,9 +216,9 @@ export class DateUtils {
   /**
    * Converts each item in the given array to string joined by "," separator.
    */
-  static simpleArrayToString(value: any[] | any): string[] | any {
+  static simpleArrayToString(value: Array<any> | any): Array<string> | any {
     if (Array.isArray(value)) {
-      return (value as any[]).map((i) => String(i)).join(',');
+      return (value as Array<any>).map((i) => String(i)).join(',');
     }
 
     return value;

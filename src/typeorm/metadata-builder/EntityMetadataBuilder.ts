@@ -1,3 +1,4 @@
+import type { TFunction } from '../../types/utility.types.js';
 import { DataSource } from '../data-source/DataSource.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import { TypeORMError } from '../error/TypeORMError.js';
@@ -23,7 +24,6 @@ import { ClosureJunctionEntityMetadataBuilder } from './ClosureJunctionEntityMet
 import { JunctionEntityMetadataBuilder } from './JunctionEntityMetadataBuilder.js';
 import { MetadataUtils } from './MetadataUtils.js';
 import { RelationJoinColumnBuilder } from './RelationJoinColumnBuilder.js';
-import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Builds EntityMetadata objects and all its sub-metadatas.

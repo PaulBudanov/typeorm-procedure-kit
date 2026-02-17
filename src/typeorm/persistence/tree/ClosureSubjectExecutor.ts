@@ -1,10 +1,10 @@
-import { Subject } from '../Subject';
-import { QueryRunner } from '../../query-runner/QueryRunner';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
 import { CannotAttachTreeChildrenEntityError } from '../../error/CannotAttachTreeChildrenEntityError';
-import { DeleteQueryBuilder } from '../../query-builder/DeleteQueryBuilder';
-import { OrmUtils } from '../../util/OrmUtils';
 import { ColumnMetadata } from '../../metadata/ColumnMetadata';
+import { DeleteQueryBuilder } from '../../query-builder/DeleteQueryBuilder';
+import { QueryRunner } from '../../query-runner/QueryRunner';
+import { OrmUtils } from '../../util/OrmUtils';
+import { Subject } from '../Subject';
 
 /**
  * Executes subject operations for closure entities.
@@ -60,7 +60,7 @@ export class ClosureSubjectExecutor {
       const tableName = this.getTableName(
         subject.metadata.closureJunctionTable.tablePath
       );
-      const queryParams: any[] = [];
+      const queryParams: Array<any> = [];
 
       const ancestorColumnNames =
         subject.metadata.closureJunctionTable.ancestorColumns.map((column) => {
@@ -230,7 +230,7 @@ export class ClosureSubjectExecutor {
      */
     if (parent) {
       // Insert logic
-      const queryParams: any[] = [];
+      const queryParams: Array<any> = [];
 
       const tableName = this.getTableName(closureTable.tablePath);
       const superAlias = escape('supertree');
@@ -298,7 +298,7 @@ export class ClosureSubjectExecutor {
   /**
    * Executes operations when subject is being removed.
    */
-  async remove(subjects: Subject | Subject[]): Promise<void> {
+  async remove(subjects: Subject | Array<Subject>): Promise<void> {
     // Only mssql need to execute deletes for the juntion table as it doesn't support multi cascade paths.
     if (!(this.queryRunner.connection.driver.options.type === 'mssql')) {
       return;
@@ -311,7 +311,7 @@ export class ClosureSubjectExecutor {
     const identifiers = subjects.map((subject) => subject.identifier);
     const closureTable = subjects[0].metadata.closureJunctionTable;
 
-    const generateWheres = (columns: ColumnMetadata[]) => {
+    const generateWheres = (columns: Array<ColumnMetadata>) => {
       return columns
         .map((column) => {
           const data = identifiers.map(

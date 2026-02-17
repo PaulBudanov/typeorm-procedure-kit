@@ -1,5 +1,5 @@
-import type { ColumnMetadataArgs } from 'typeorm/metadata-args/ColumnMetadataArgs.js';
-import type { TableMetadataArgs } from 'typeorm/metadata-args/TableMetadataArgs.js';
+import type { ColumnMetadataArgs } from '../typeorm/metadata-args/ColumnMetadataArgs.js';
+import type { TableMetadataArgs } from '../typeorm/metadata-args/TableMetadataArgs.js';
 import type { TFunction } from '../types/utility.types.js';
 
 export abstract class TypeOrmHelpers {

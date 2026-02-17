@@ -1,9 +1,9 @@
 import { DateTime } from 'luxon';
 
 import type { ILoggerModule } from '../types/logger.types.js';
+import type { IBindingsObjectReturn } from '../types/utility.types.js';
 
 import { ServerError } from './server-error.js';
-import type { IBindingsObjectReturn } from '../types/utility.types.js';
 
 export class QueryTimer {
   private startTime: number;

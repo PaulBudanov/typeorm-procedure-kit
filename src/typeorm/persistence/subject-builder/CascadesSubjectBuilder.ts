@@ -1,6 +1,6 @@
-import { Subject } from '../Subject';
 import { ObjectLiteral } from '../../common/ObjectLiteral';
 import { ObjectUtils } from '../../util/ObjectUtils';
+import { Subject } from '../Subject';
 
 /**
  * Finds all cascade operations of the given subject and cascade operations of the found cascaded subjects,
@@ -11,7 +11,7 @@ export class CascadesSubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected allSubjects: Subject[]) {}
+  constructor(protected allSubjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods

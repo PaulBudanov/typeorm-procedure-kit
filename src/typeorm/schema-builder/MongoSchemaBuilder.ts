@@ -1,8 +1,9 @@
-import { DataSource } from "../data-source/DataSource"
-import { SchemaBuilder } from "./SchemaBuilder"
-import { MongoQueryRunner } from "../driver/mongodb/MongoQueryRunner"
-import { SqlInMemory } from "../driver/SqlInMemory"
-import { CreateIndexesOptions } from "../driver/mongodb/typings"
+import { DataSource } from '../data-source/DataSource';
+import { MongoQueryRunner } from '../driver/mongodb/MongoQueryRunner';
+import { CreateIndexesOptions } from '../driver/mongodb/typings';
+import { SqlInMemory } from '../driver/SqlInMemory';
+
+import { SchemaBuilder } from './SchemaBuilder';
 
 /**
  * Creates complete tables schemas in the database based on the entity metadatas.
@@ -19,66 +20,65 @@ import { CreateIndexesOptions } from "../driver/mongodb/typings"
  * 9. create indices which are missing in db yet, and drops indices which exist in the db, but does not exist in the metadata anymore
  */
 export class MongoSchemaBuilder implements SchemaBuilder {
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Constructor
+  // -------------------------------------------------------------------------
 
-    constructor(protected connection: DataSource) {}
+  constructor(protected connection: DataSource) {}
 
-    // -------------------------------------------------------------------------
-    // Public Methods
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Methods
+  // -------------------------------------------------------------------------
 
-    /**
-     * Creates complete schemas for the given entity metadatas.
-     */
-    async build(): Promise<void> {
-        const queryRunner =
-            this.connection.createQueryRunner() as MongoQueryRunner
-        const promises: Promise<any>[] = []
-        this.connection.entityMetadatas.forEach((metadata) => {
-            metadata.indices.forEach((index) => {
-                const options: CreateIndexesOptions = Object.assign(
-                    {},
-                    {
-                        name: index.name,
-                        unique: index.isUnique,
-                        sparse: index.isSparse,
-                        background: index.isBackground,
-                    },
-                    index.expireAfterSeconds === undefined
-                        ? {}
-                        : { expireAfterSeconds: index.expireAfterSeconds },
-                )
-                promises.push(
-                    queryRunner.createCollectionIndex(
-                        metadata.tableName,
-                        index.columnNamesWithOrderingMap,
-                        options,
-                    ),
-                )
-            })
-            metadata.uniques.forEach((unique) => {
-                const options = <CreateIndexesOptions>{
-                    name: unique.name,
-                    unique: true,
-                }
-                promises.push(
-                    queryRunner.createCollectionIndex(
-                        metadata.tableName,
-                        unique.columnNamesWithOrderingMap,
-                        options,
-                    ),
-                )
-            })
-        })
-        await Promise.all(promises)
-    }
+  /**
+   * Creates complete schemas for the given entity metadatas.
+   */
+  async build(): Promise<void> {
+    const queryRunner = this.connection.createQueryRunner() as MongoQueryRunner;
+    const promises: Array<Promise<any>> = [];
+    this.connection.entityMetadatas.forEach((metadata) => {
+      metadata.indices.forEach((index) => {
+        const options: CreateIndexesOptions = Object.assign(
+          {},
+          {
+            name: index.name,
+            unique: index.isUnique,
+            sparse: index.isSparse,
+            background: index.isBackground,
+          },
+          index.expireAfterSeconds === undefined
+            ? {}
+            : { expireAfterSeconds: index.expireAfterSeconds }
+        );
+        promises.push(
+          queryRunner.createCollectionIndex(
+            metadata.tableName,
+            index.columnNamesWithOrderingMap,
+            options
+          )
+        );
+      });
+      metadata.uniques.forEach((unique) => {
+        const options = {
+          name: unique.name,
+          unique: true,
+        } as CreateIndexesOptions;
+        promises.push(
+          queryRunner.createCollectionIndex(
+            metadata.tableName,
+            unique.columnNamesWithOrderingMap,
+            options
+          )
+        );
+      });
+    });
+    await Promise.all(promises);
+  }
 
-    /**
-     * Returns query to be executed by schema builder.
-     */
-    log(): Promise<SqlInMemory> {
-        return Promise.resolve(new SqlInMemory())
-    }
+  /**
+   * Returns query to be executed by schema builder.
+   */
+  log(): Promise<SqlInMemory> {
+    return Promise.resolve(new SqlInMemory());
+  }
 }

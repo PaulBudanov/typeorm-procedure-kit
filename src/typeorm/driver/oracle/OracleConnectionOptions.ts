@@ -1,5 +1,6 @@
 import type oracledb from 'oracledb';
-import type { BaseDataSourceOptions } from 'typeorm/data-source/BaseDataSourceOptions.js';
+
+import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
 
 import type { OracleConnectionCredentialsOptions } from './OracleConnectionCredentialsOptions.js';
 

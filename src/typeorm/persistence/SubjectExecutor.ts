@@ -1,19 +1,22 @@
-import { QueryRunner } from '../query-runner/QueryRunner';
-import { Subject } from './Subject';
-import { SubjectTopologicalSorter } from './SubjectTopologicalSorter';
-import { SubjectChangedColumnsComputer } from './SubjectChangedColumnsComputer';
-import { SubjectWithoutIdentifierError } from '../error/SubjectWithoutIdentifierError';
-import { SubjectRemovedAndUpdatedError } from '../error/SubjectRemovedAndUpdatedError';
-import { MongoEntityManager } from '../entity-manager/MongoEntityManager';
 import { ObjectLiteral } from '../common/ObjectLiteral';
-import { SaveOptions } from '../repository/SaveOptions';
+import { MongoEntityManager } from '../entity-manager/MongoEntityManager';
+import { SubjectRemovedAndUpdatedError } from '../error/SubjectRemovedAndUpdatedError';
+import { SubjectWithoutIdentifierError } from '../error/SubjectWithoutIdentifierError';
+import { UpdateResult } from '../query-builder/result/UpdateResult';
+import { QueryRunner } from '../query-runner/QueryRunner';
 import { RemoveOptions } from '../repository/RemoveOptions';
+import { SaveOptions } from '../repository/SaveOptions';
 import { BroadcasterResult } from '../subscriber/BroadcasterResult';
-import { NestedSetSubjectExecutor } from './tree/NestedSetSubjectExecutor';
+import { OrmUtils } from '../util/OrmUtils';
+
+import { Subject } from './Subject';
+import { SubjectChangedColumnsComputer } from './SubjectChangedColumnsComputer';
+import { SubjectTopologicalSorter } from './SubjectTopologicalSorter';
+
 import { ClosureSubjectExecutor } from './tree/ClosureSubjectExecutor';
 import { MaterializedPathSubjectExecutor } from './tree/MaterializedPathSubjectExecutor';
-import { OrmUtils } from '../util/OrmUtils';
-import { UpdateResult } from '../query-builder/result/UpdateResult';
+import { NestedSetSubjectExecutor } from './tree/NestedSetSubjectExecutor';
+
 import { ObjectUtils } from '../util/ObjectUtils';
 import { InstanceChecker } from '../util/InstanceChecker';
 
@@ -29,7 +32,7 @@ export class SubjectExecutor {
   /**
    * Indicates if executor has any operations to execute (e.g. has insert / update / delete operations to be executed).
    */
-  hasExecutableOperations: boolean = false;
+  hasExecutableOperations = false;
 
   // -------------------------------------------------------------------------
   // Protected Properties
@@ -48,32 +51,32 @@ export class SubjectExecutor {
   /**
    * All subjects that needs to be operated.
    */
-  protected allSubjects: Subject[];
+  protected allSubjects: Array<Subject>;
 
   /**
    * Subjects that must be inserted.
    */
-  protected insertSubjects: Subject[] = [];
+  protected insertSubjects: Array<Subject> = [];
 
   /**
    * Subjects that must be updated.
    */
-  protected updateSubjects: Subject[] = [];
+  protected updateSubjects: Array<Subject> = [];
 
   /**
    * Subjects that must be removed.
    */
-  protected removeSubjects: Subject[] = [];
+  protected removeSubjects: Array<Subject> = [];
 
   /**
    * Subjects that must be soft-removed.
    */
-  protected softRemoveSubjects: Subject[] = [];
+  protected softRemoveSubjects: Array<Subject> = [];
 
   /**
    * Subjects that must be recovered.
    */
-  protected recoverSubjects: Subject[] = [];
+  protected recoverSubjects: Array<Subject> = [];
 
   // -------------------------------------------------------------------------
   // Constructor
@@ -81,7 +84,7 @@ export class SubjectExecutor {
 
   constructor(
     queryRunner: QueryRunner,
-    subjects: Subject[],
+    subjects: Array<Subject>,
     options?: SaveOptions & RemoveOptions
   ) {
     this.queryRunner = queryRunner;
@@ -361,9 +364,9 @@ export class SubjectExecutor {
 
       // we must separately insert entities which does not have any values to insert
       // because its not possible to insert multiple entities with only default values in bulk
-      const bulkInsertMaps: ObjectLiteral[] = [];
-      const bulkInsertSubjects: Subject[] = [];
-      const singleInsertSubjects: Subject[] = [];
+      const bulkInsertMaps: Array<ObjectLiteral> = [];
+      const bulkInsertSubjects: Array<Subject> = [];
+      const singleInsertSubjects: Array<Subject> = [];
       if (this.queryRunner.connection.driver.options.type === 'mongodb') {
         subjects.forEach((subject) => {
           if (subject.metadata.createDateColumn && subject.entity) {
@@ -604,8 +607,8 @@ export class SubjectExecutor {
 
     // Nested sets need to be updated one by one
     // Split array in two, one with nested set subjects and the other with the remaining subjects
-    const nestedSetSubjects: Subject[] = [];
-    const remainingSubjects: Subject[] = [];
+    const nestedSetSubjects: Array<Subject> = [];
+    const remainingSubjects: Array<Subject> = [];
 
     for (const subject of this.updateSubjects) {
       if (subject.metadata.treeType === 'nested-set') {
@@ -974,7 +977,7 @@ export class SubjectExecutor {
    * Also updates nullable columns and columns with default values.
    */
   protected updateSpecialColumnsInInsertedAndUpdatedEntities(
-    subjects: Subject[]
+    subjects: Array<Subject>
   ): void {
     subjects.forEach((subject) => {
       if (!subject.entity) return;
@@ -1044,11 +1047,11 @@ export class SubjectExecutor {
    * id for each inserted row, that's why bulk insertion is not limited to junction tables in there.
    */
   protected groupBulkSubjects(
-    subjects: Subject[],
+    subjects: Array<Subject>,
     type: 'insert' | 'delete'
-  ): [{ [key: string]: Subject[] }, string[]] {
-    const group: { [key: string]: Subject[] } = {};
-    const keys: string[] = [];
+  ): [Record<string, Array<Subject>>, Array<string>] {
+    const group: Record<string, Array<Subject>> = {};
+    const keys: Array<string> = [];
     const hasReturningDependColumns = subjects.some((subject) => {
       return subject.metadata.getInsertionReturningColumns().length > 0;
     });

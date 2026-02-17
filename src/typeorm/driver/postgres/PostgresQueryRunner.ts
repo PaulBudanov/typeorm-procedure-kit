@@ -26,6 +26,7 @@ import { ColumnType } from '../types/ColumnTypes';
 import { IsolationLevel } from '../types/IsolationLevel';
 import { MetadataTableType } from '../types/MetadataTableType';
 import { ReplicationMode } from '../types/ReplicationMode';
+
 import { PostgresDriver } from './PostgresDriver';
 
 /**
@@ -87,7 +88,7 @@ export class PostgresQueryRunner
     if (this.mode === 'slave' && this.driver.isReplicated) {
       this.databaseConnectionPromise = this.driver
         .obtainSlaveConnection()
-        .then(([connection, release]: any[]) => {
+        .then(([connection, release]: Array<any>) => {
           this.driver.connectedQueryRunners.push(this);
           this.databaseConnection = connection;
 
@@ -105,7 +106,7 @@ export class PostgresQueryRunner
       // master
       this.databaseConnectionPromise = this.driver
         .obtainMasterConnection()
-        .then(([connection, release]: any[]) => {
+        .then(([connection, release]: Array<any>) => {
           this.driver.connectedQueryRunners.push(this);
           this.databaseConnection = connection;
 
@@ -228,8 +229,8 @@ export class PostgresQueryRunner
    */
   async query(
     query: string,
-    parameters?: any[],
-    useStructuredResult: boolean = false
+    parameters?: Array<any>,
+    useStructuredResult = false
   ): Promise<any> {
     if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
 
@@ -315,7 +316,7 @@ export class PostgresQueryRunner
    */
   async stream(
     query: string,
-    parameters?: any[],
+    parameters?: Array<any>,
     onEnd?: Function,
     onError?: Function
   ): Promise<ReadStream> {
@@ -334,7 +335,7 @@ export class PostgresQueryRunner
   /**
    * Returns all available database names including system databases.
    */
-  async getDatabases(): Promise<string[]> {
+  async getDatabases(): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
@@ -342,7 +343,7 @@ export class PostgresQueryRunner
    * Returns all available schema names including system schemas.
    * If database parameter specified, returns schemas of that database.
    */
-  async getSchemas(database?: string): Promise<string[]> {
+  async getSchemas(database?: string): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
@@ -480,22 +481,22 @@ export class PostgresQueryRunner
    */
   async createTable(
     table: Table,
-    ifNotExist: boolean = false,
-    createForeignKeys: boolean = true,
-    createIndices: boolean = true
+    ifNotExist = false,
+    createForeignKeys = true,
+    createIndices = true
   ): Promise<void> {
     if (ifNotExist) {
       const isTableExist = await this.hasTable(table);
       if (isTableExist) return Promise.resolve();
     }
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     // if table have column with ENUM type, we must create this type in postgres.
     const enumColumns = table.columns.filter(
       (column) => column.type === 'enum' || column.type === 'simple-enum'
     );
-    const createdEnumTypes: string[] = [];
+    const createdEnumTypes: Array<string> = [];
     for (const column of enumColumns) {
       // TODO: Should also check if values of existing type matches expected ones
       const hasEnum = await this.hasEnumType(table, column);
@@ -589,8 +590,8 @@ export class PostgresQueryRunner
   async dropTable(
     target: Table | string,
     ifExist?: boolean,
-    dropForeignKeys: boolean = true,
-    dropIndices: boolean = true
+    dropForeignKeys = true,
+    dropIndices = true
   ): Promise<void> {
     // It needs because if table does not exist and dropForeignKeys or dropIndices is true, we don't need
     // to perform drop queries for foreign keys and indices.
@@ -603,8 +604,8 @@ export class PostgresQueryRunner
     const createForeignKeys: boolean = dropForeignKeys;
     const tablePath = this.getTablePath(target);
     const table = await this.getCachedTable(tablePath);
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     if (dropIndices) {
       table.indices.forEach((index) => {
@@ -659,12 +660,9 @@ export class PostgresQueryRunner
   /**
    * Creates a new view.
    */
-  async createView(
-    view: View,
-    syncWithMetadata: boolean = false
-  ): Promise<void> {
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+  async createView(view: View, syncWithMetadata = false): Promise<void> {
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     upQueries.push(this.createViewSql(view));
     if (syncWithMetadata)
       upQueries.push(await this.insertViewDefinitionSql(view));
@@ -681,8 +679,8 @@ export class PostgresQueryRunner
     const viewName = InstanceChecker.isView(target) ? target.name : target;
     const view = await this.getCachedView(viewName);
 
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     upQueries.push(await this.deleteViewDefinitionSql(view));
     upQueries.push(this.dropViewSql(view));
     downQueries.push(await this.insertViewDefinitionSql(view));
@@ -697,8 +695,8 @@ export class PostgresQueryRunner
     oldTableOrName: Table | string,
     newTableName: string
   ): Promise<void> {
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     const oldTable = InstanceChecker.isTable(oldTableOrName)
       ? oldTableOrName
       : await this.getCachedTable(oldTableOrName);
@@ -922,8 +920,8 @@ export class PostgresQueryRunner
       ? tableOrName
       : await this.getCachedTable(tableOrName);
     const clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     if (column.type === 'enum' || column.type === 'simple-enum') {
       const hasEnum = await this.hasEnumType(table, column);
@@ -1094,7 +1092,7 @@ export class PostgresQueryRunner
    */
   async addColumns(
     tableOrName: Table | string,
-    columns: TableColumn[]
+    columns: Array<TableColumn>
   ): Promise<void> {
     for (const column of columns) {
       await this.addColumn(tableOrName, column);
@@ -1143,8 +1141,8 @@ export class PostgresQueryRunner
       ? tableOrName
       : await this.getCachedTable(tableOrName);
     let clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     let defaultValueChanged = false;
 
     const oldColumn = InstanceChecker.isTableColumn(oldTableColumnOrName)
@@ -2115,7 +2113,7 @@ export class PostgresQueryRunner
    */
   async changeColumns(
     tableOrName: Table | string,
-    changedColumns: { newColumn: TableColumn; oldColumn: TableColumn }[]
+    changedColumns: Array<{ newColumn: TableColumn; oldColumn: TableColumn }>
   ): Promise<void> {
     for (const { oldColumn, newColumn } of changedColumns) {
       await this.changeColumn(tableOrName, oldColumn, newColumn);
@@ -2141,8 +2139,8 @@ export class PostgresQueryRunner
       );
 
     const clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     // drop primary key constraint
     if (column.isPrimary) {
@@ -2304,7 +2302,7 @@ export class PostgresQueryRunner
    */
   async dropColumns(
     tableOrName: Table | string,
-    columns: TableColumn[] | string[]
+    columns: Array<TableColumn> | Array<string>
   ): Promise<void> {
     for (const column of [...columns]) {
       await this.dropColumn(tableOrName, column);
@@ -2316,7 +2314,7 @@ export class PostgresQueryRunner
    */
   async createPrimaryKey(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     constraintName?: string
   ): Promise<void> {
     const table = InstanceChecker.isTable(tableOrName)
@@ -2342,15 +2340,15 @@ export class PostgresQueryRunner
    */
   async updatePrimaryKeys(
     tableOrName: Table | string,
-    columns: TableColumn[]
+    columns: Array<TableColumn>
   ): Promise<void> {
     const table = InstanceChecker.isTable(tableOrName)
       ? tableOrName
       : await this.getCachedTable(tableOrName);
     const clonedTable = table.clone();
     const columnNames = columns.map((column) => column.name);
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     // if table already have primary columns, we must drop them.
     const primaryColumns = clonedTable.primaryColumns;
@@ -2462,7 +2460,7 @@ export class PostgresQueryRunner
    */
   async createUniqueConstraints(
     tableOrName: Table | string,
-    uniqueConstraints: TableUnique[]
+    uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
     for (const uniqueConstraint of uniqueConstraints) {
       await this.createUniqueConstraint(tableOrName, uniqueConstraint);
@@ -2498,7 +2496,7 @@ export class PostgresQueryRunner
    */
   async dropUniqueConstraints(
     tableOrName: Table | string,
-    uniqueConstraints: TableUnique[]
+    uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
     for (const uniqueConstraint of [...uniqueConstraints]) {
       await this.dropUniqueConstraint(tableOrName, uniqueConstraint);
@@ -2534,7 +2532,7 @@ export class PostgresQueryRunner
    */
   async createCheckConstraints(
     tableOrName: Table | string,
-    checkConstraints: TableCheck[]
+    checkConstraints: Array<TableCheck>
   ): Promise<void> {
     const promises = checkConstraints.map((checkConstraint) =>
       this.createCheckConstraint(tableOrName, checkConstraint)
@@ -2571,7 +2569,7 @@ export class PostgresQueryRunner
    */
   async dropCheckConstraints(
     tableOrName: Table | string,
-    checkConstraints: TableCheck[]
+    checkConstraints: Array<TableCheck>
   ): Promise<void> {
     const promises = checkConstraints.map((checkConstraint) =>
       this.dropCheckConstraint(tableOrName, checkConstraint)
@@ -2609,7 +2607,7 @@ export class PostgresQueryRunner
    */
   async createExclusionConstraints(
     tableOrName: Table | string,
-    exclusionConstraints: TableExclusion[]
+    exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
     const promises = exclusionConstraints.map((exclusionConstraint) =>
       this.createExclusionConstraint(tableOrName, exclusionConstraint)
@@ -2648,7 +2646,7 @@ export class PostgresQueryRunner
    */
   async dropExclusionConstraints(
     tableOrName: Table | string,
-    exclusionConstraints: TableExclusion[]
+    exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
     const promises = exclusionConstraints.map((exclusionConstraint) =>
       this.dropExclusionConstraint(tableOrName, exclusionConstraint)
@@ -2687,7 +2685,7 @@ export class PostgresQueryRunner
    */
   async createForeignKeys(
     tableOrName: Table | string,
-    foreignKeys: TableForeignKey[]
+    foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
     for (const foreignKey of foreignKeys) {
       await this.createForeignKey(tableOrName, foreignKey);
@@ -2732,7 +2730,7 @@ export class PostgresQueryRunner
    */
   async dropForeignKeys(
     tableOrName: Table | string,
-    foreignKeys: TableForeignKey[]
+    foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
     for (const foreignKey of [...foreignKeys]) {
       await this.dropForeignKey(tableOrName, foreignKey);
@@ -2784,7 +2782,7 @@ export class PostgresQueryRunner
    */
   async createIndices(
     tableOrName: Table | string,
-    indices: TableIndex[]
+    indices: Array<TableIndex>
   ): Promise<void> {
     for (const index of indices) {
       await this.createIndex(tableOrName, index);
@@ -2796,7 +2794,7 @@ export class PostgresQueryRunner
    */
   async createViewIndices(
     viewOrName: View | string,
-    indices: TableIndex[]
+    indices: Array<TableIndex>
   ): Promise<void> {
     for (const index of indices) {
       await this.createViewIndex(viewOrName, index);
@@ -2860,7 +2858,7 @@ export class PostgresQueryRunner
    */
   async dropIndices(
     tableOrName: Table | string,
-    indices: TableIndex[]
+    indices: Array<TableIndex>
   ): Promise<void> {
     for (const index of [...indices]) {
       await this.dropIndex(tableOrName, index);
@@ -2879,7 +2877,7 @@ export class PostgresQueryRunner
    * Removes all tables from the currently connected database.
    */
   async clearDatabase(): Promise<void> {
-    const schemas: string[] = [];
+    const schemas: Array<string> = [];
     this.connection.entityMetadatas
       .filter((metadata) => metadata.schema)
       .forEach((metadata) => {
@@ -2902,7 +2900,7 @@ export class PostgresQueryRunner
       const selectViewDropsQuery =
         `SELECT 'DROP VIEW IF EXISTS "' || schemaname || '"."' || viewname || '" CASCADE;' as "query" ` +
         `FROM "pg_views" WHERE "schemaname" IN (${schemaNamesString}) AND "viewname" NOT IN ('geography_columns', 'geometry_columns', 'raster_columns', 'raster_overviews')`;
-      const dropViewQueries: ObjectLiteral[] =
+      const dropViewQueries: Array<ObjectLiteral> =
         await this.query(selectViewDropsQuery);
       await Promise.all(dropViewQueries.map((q) => this.query(q['query'])));
 
@@ -2912,7 +2910,7 @@ export class PostgresQueryRunner
         const selectMatViewDropsQuery =
           `SELECT 'DROP MATERIALIZED VIEW IF EXISTS "' || schemaname || '"."' || matviewname || '" CASCADE;' as "query" ` +
           `FROM "pg_matviews" WHERE "schemaname" IN (${schemaNamesString})`;
-        const dropMatViewQueries: ObjectLiteral[] = await this.query(
+        const dropMatViewQueries: Array<ObjectLiteral> = await this.query(
           selectMatViewDropsQuery
         );
         await Promise.all(
@@ -2925,7 +2923,7 @@ export class PostgresQueryRunner
 
       // drop tables
       const selectTableDropsQuery = `SELECT 'DROP TABLE IF EXISTS "' || schemaname || '"."' || tablename || '" CASCADE;' as "query" FROM "pg_tables" WHERE "schemaname" IN (${schemaNamesString}) AND "tablename" NOT IN ('spatial_ref_sys')`;
-      const dropTableQueries: ObjectLiteral[] = await this.query(
+      const dropTableQueries: Array<ObjectLiteral> = await this.query(
         selectTableDropsQuery
       );
       await Promise.all(dropTableQueries.map((q) => this.query(q['query'])));
@@ -2953,7 +2951,7 @@ export class PostgresQueryRunner
   // Protected Methods
   // -------------------------------------------------------------------------
 
-  protected async loadViews(viewNames?: string[]): Promise<View[]> {
+  protected async loadViews(viewNames?: Array<string>): Promise<Array<View>> {
     const hasTable = await this.hasTable(this.getTypeormMetadataTableName());
 
     if (!hasTable) return [];
@@ -3016,7 +3014,7 @@ export class PostgresQueryRunner
       }') ${viewsCondition ? `AND (${viewsCondition})` : ''}`;
 
     const dbViews = await this.query(query);
-    const dbIndices: ObjectLiteral[] = await this.query(indicesSql);
+    const dbIndices: Array<ObjectLiteral> = await this.query(indicesSql);
     return dbViews.map((dbView: any) => {
       // find index constraints of table, group them by constraint name and build TableIndex.
       const tableIndexConstraints = OrmUtils.uniq(
@@ -3047,14 +3045,14 @@ export class PostgresQueryRunner
             index['constraint_name'] === constraint['constraint_name']
           );
         });
-        return new TableIndex(<TableIndexOptions>{
+        return new TableIndex({
           view: view,
           name: constraint['constraint_name'],
           columnNames: indices.map((i) => i['column_name']),
           isUnique: constraint['is_unique'] === 'TRUE',
           where: constraint['condition'],
           isFulltext: false,
-        });
+        } as TableIndexOptions);
       });
       return view;
     });
@@ -3063,7 +3061,9 @@ export class PostgresQueryRunner
   /**
    * Loads all tables (with given names) from the database and creates a Table from them.
    */
-  protected async loadTables(tableNames?: string[]): Promise<Table[]> {
+  protected async loadTables(
+    tableNames?: Array<string>
+  ): Promise<Array<Table>> {
     // if no tables given then no need to proceed
     if (tableNames && tableNames.length === 0) {
       return [];
@@ -3072,11 +3072,11 @@ export class PostgresQueryRunner
     const currentSchema = await this.getCurrentSchema();
     const currentDatabase = await this.getCurrentDatabase();
 
-    const dbTables: {
+    const dbTables: Array<{
       table_schema: string;
       table_name: string;
       table_comment: string;
-    }[] = [];
+    }> = [];
 
     if (!tableNames) {
       const tablesSql = `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables"`;
@@ -3187,12 +3187,9 @@ export class PostgresQueryRunner
       `INNER JOIN "pg_namespace" "ns" ON "cl"."relnamespace" = "ns"."oid" ` +
       `INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent"`;
 
-    const [
-      dbColumns,
-      dbConstraints,
-      dbIndices,
-      dbForeignKeys,
-    ]: ObjectLiteral[][] = await Promise.all([
+    const [dbColumns, dbConstraints, dbIndices, dbForeignKeys]: Array<
+      Array<ObjectLiteral>
+    > = await Promise.all([
       this.query(columnsSql),
       this.query(constraintsSql),
       this.query(indicesSql),
@@ -3346,7 +3343,7 @@ export class PostgresQueryRunner
                   `WHERE "n"."nspname" = '${
                     dbTable['table_schema']
                   }' AND "t"."typname" = '${enumName || name}'`;
-                const results: ObjectLiteral[] = await this.query(sql);
+                const results: Array<ObjectLiteral> = await this.query(sql);
 
                 if (results.length) {
                   tableColumn.type = 'enum';
@@ -3377,7 +3374,7 @@ export class PostgresQueryRunner
                   `"table_schema" = '${dbColumn['table_schema']}' AND ` +
                   `"table_name" = '${dbColumn['table_name']}'`;
 
-                const results: ObjectLiteral[] = await this.query(sql);
+                const results: Array<ObjectLiteral> = await this.query(sql);
 
                 if (results.length > 0) {
                   tableColumn.spatialFeatureType = results[0].type;
@@ -3685,7 +3682,7 @@ export class PostgresQueryRunner
               index['constraint_name'] === constraint['constraint_name']
             );
           });
-          return new TableIndex(<TableIndexOptions>{
+          return new TableIndex({
             table: table,
             name: constraint['constraint_name'],
             columnNames: indices.map((i) => i['column_name']),
@@ -3693,7 +3690,7 @@ export class PostgresQueryRunner
             where: constraint['condition'],
             isSpatial: constraint['index_type'] === 'gist',
             isFulltext: false,
-          });
+          } as TableIndexOptions);
         });
 
         return table;
@@ -3947,7 +3944,8 @@ export class PostgresQueryRunner
       `INNER JOIN "pg_enum" "e" ON "e"."enumtypid" = "t"."oid" ` +
       `INNER JOIN "pg_namespace" "n" ON "n"."oid" = "t"."typnamespace" ` +
       `WHERE "n"."nspname" IN (${schemaNames}) GROUP BY "n"."nspname", "t"."typname"`;
-    const dropQueries: ObjectLiteral[] = await this.query(selectDropsQuery);
+    const dropQueries: Array<ObjectLiteral> =
+      await this.query(selectDropsQuery);
     await Promise.all(dropQueries.map((q) => this.query(q['query'])));
   }
 
@@ -4062,7 +4060,7 @@ export class PostgresQueryRunner
    */
   protected createPrimaryKeySql(
     table: Table,
-    columnNames: string[],
+    columnNames: Array<string>,
     constraintName?: string
   ): Query {
     const primaryKeyName = constraintName
@@ -4278,7 +4276,7 @@ export class PostgresQueryRunner
   protected buildEnumName(
     table: Table,
     column: TableColumn,
-    withSchema: boolean = true,
+    withSchema = true,
     disableEscape?: boolean,
     toOld?: boolean
   ): string {
@@ -4433,8 +4431,8 @@ export class PostgresQueryRunner
     tableOrName: Table | string,
     newComment?: string
   ): Promise<void> {
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     const table = InstanceChecker.isTable(tableOrName)
       ? tableOrName

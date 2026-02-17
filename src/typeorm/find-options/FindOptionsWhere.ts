@@ -1,6 +1,7 @@
-import { FindOperator } from "./FindOperator"
-import { ObjectId } from "../driver/mongodb/typings"
-import { EqualOperator } from "./EqualOperator"
+import type { TFunction } from '../../types/utility.types.js';
+
+import { EqualOperator } from './EqualOperator.js';
+import { FindOperator } from './FindOperator.js';
 
 /**
  * A single property handler for FindOptionsWhere.
@@ -10,41 +11,42 @@ import { EqualOperator } from "./EqualOperator"
  * So we keep the original Union as Original and pass it to the FindOperator too. Original remains Union as extends is not used for it.
  */
 export type FindOptionsWhereProperty<
-    PropertyToBeNarrowed,
-    Property = PropertyToBeNarrowed,
-> = PropertyToBeNarrowed extends Promise<infer I>
+  PropertyToBeNarrowed,
+  Property = PropertyToBeNarrowed,
+> =
+  PropertyToBeNarrowed extends Promise<infer I>
     ? FindOptionsWhereProperty<NonNullable<I>>
     : PropertyToBeNarrowed extends Array<infer I>
-    ? FindOptionsWhereProperty<NonNullable<I>>
-    : PropertyToBeNarrowed extends Function
-    ? never
-    : PropertyToBeNarrowed extends Buffer
-    ? Property | FindOperator<Property>
-    : PropertyToBeNarrowed extends Date
-    ? Property | FindOperator<Property>
-    : PropertyToBeNarrowed extends ObjectId
-    ? Property | FindOperator<Property>
-    : PropertyToBeNarrowed extends string
-    ? Property | FindOperator<Property>
-    : PropertyToBeNarrowed extends number
-    ? Property | FindOperator<Property>
-    : PropertyToBeNarrowed extends boolean
-    ? Property | FindOperator<Property>
-    : PropertyToBeNarrowed extends object
-    ?
-          | FindOptionsWhere<Property>
-          | FindOptionsWhere<Property>[]
-          | EqualOperator<Property>
-          | FindOperator<any>
-          | boolean
-          | Property
-    : Property | FindOperator<Property>
+      ? FindOptionsWhereProperty<NonNullable<I>>
+      : PropertyToBeNarrowed extends TFunction
+        ? never
+        : PropertyToBeNarrowed extends Buffer
+          ? Property | FindOperator<Property>
+          : PropertyToBeNarrowed extends Date
+            ? Property | FindOperator<Property>
+            : PropertyToBeNarrowed extends number
+              ? Property | FindOperator<Property>
+              : PropertyToBeNarrowed extends string
+                ? Property | FindOperator<Property>
+                : PropertyToBeNarrowed extends number
+                  ? Property | FindOperator<Property>
+                  : PropertyToBeNarrowed extends boolean
+                    ? Property | FindOperator<Property>
+                    : PropertyToBeNarrowed extends object
+                      ?
+                          | FindOptionsWhere<Property>
+                          | Array<FindOptionsWhere<Property>>
+                          | EqualOperator<Property>
+                          | FindOperator<unknown>
+                          | boolean
+                          | Property
+                      : Property | FindOperator<Property>;
 
 /**
  * Used for find operations.
  */
 export type FindOptionsWhere<Entity> = {
-    [P in keyof Entity]?: P extends "toString"
-        ? unknown
-        : FindOptionsWhereProperty<NonNullable<Entity[P]>>
-}
+  [P in keyof Entity]?: P extends 'toString'
+    ? unknown
+    : FindOptionsWhereProperty<NonNullable<Entity[P]>>;
+};

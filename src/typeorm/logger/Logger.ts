@@ -7,7 +7,11 @@ export interface Logger {
   /**
    * Logs query and parameters used in it.
    */
-  logQuery(query: string, parameters?: any[], queryRunner?: QueryRunner): any;
+  logQuery(
+    query: string,
+    parameters?: Array<any>,
+    queryRunner?: QueryRunner
+  ): any;
 
   /**
    * Logs query that is failed.
@@ -15,7 +19,7 @@ export interface Logger {
   logQueryError(
     error: string | Error,
     query: string,
-    parameters?: any[],
+    parameters?: Array<any>,
     queryRunner?: QueryRunner
   ): any;
 
@@ -25,7 +29,7 @@ export interface Logger {
   logQuerySlow(
     time: number,
     query: string,
-    parameters?: any[],
+    parameters?: Array<any>,
     queryRunner?: QueryRunner
   ): any;
 
@@ -65,14 +69,14 @@ export type LogLevel =
 /**
  * Log message.
  */
-export type LogMessage = {
+export interface LogMessage {
   type?: LogMessageType;
   prefix?: string;
   message: string | number;
   format?: LogMessageFormat;
-  parameters?: any[];
+  parameters?: Array<any>;
   additionalInfo?: Record<string, any>;
-};
+}
 
 /**
  * Log message format.
@@ -96,9 +100,9 @@ export type LogMessageType =
 /**
  * Options for prepare log messages
  */
-export type PrepareLogMessagesOptions = {
+export interface PrepareLogMessagesOptions {
   highlightSql: boolean;
   formatSql: boolean;
   appendParameterAsComment: boolean;
   addColonToPrefix: boolean;
-};
+}

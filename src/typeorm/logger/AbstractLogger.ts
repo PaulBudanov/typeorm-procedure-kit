@@ -1,3 +1,6 @@
+import { PlatformTools } from '../platform/PlatformTools.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+
 import type {
   Logger,
   LogLevel,
@@ -5,9 +8,7 @@ import type {
   LogMessageType,
   PrepareLogMessagesOptions,
 } from './Logger.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import type { LoggerOptions } from './LoggerOptions.js';
-import { PlatformTools } from '../platform/PlatformTools.js';
 
 export abstract class AbstractLogger implements Logger {
   // -------------------------------------------------------------------------
@@ -337,14 +338,14 @@ export abstract class AbstractLogger implements Logger {
       }
     }
 
-    return messages as LogMessage[];
+    return messages as Array<LogMessage>;
   }
 
   /**
    * Converts parameters to a string.
    * Sometimes parameters can have circular objects and therefor we are handle this case too.
    */
-  protected stringifyParams(parameters: any[]) {
+  protected stringifyParams(parameters: Array<any>) {
     try {
       return JSON.stringify(parameters);
     } catch (error) {

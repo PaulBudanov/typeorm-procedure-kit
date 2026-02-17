@@ -1,18 +1,19 @@
 import { ObjectLiteral } from '../common/ObjectLiteral';
-import { SaveOptions } from '../repository/SaveOptions';
-import { RemoveOptions } from '../repository/RemoveOptions';
-import { MustBeEntityError } from '../error/MustBeEntityError';
-import { SubjectExecutor } from './SubjectExecutor';
-import { CannotDetermineEntityError } from '../error/CannotDetermineEntityError';
-import { QueryRunner } from '../query-runner/QueryRunner';
 import { DataSource } from '../data-source/DataSource';
+import { CannotDetermineEntityError } from '../error/CannotDetermineEntityError';
+import { MustBeEntityError } from '../error/MustBeEntityError';
+import { QueryRunner } from '../query-runner/QueryRunner';
+import { RemoveOptions } from '../repository/RemoveOptions';
+import { SaveOptions } from '../repository/SaveOptions';
+import { OrmUtils } from '../util/OrmUtils';
+
 import { Subject } from './Subject';
+import { CascadesSubjectBuilder } from './subject-builder/CascadesSubjectBuilder';
+import { ManyToManySubjectBuilder } from './subject-builder/ManyToManySubjectBuilder';
 import { OneToManySubjectBuilder } from './subject-builder/OneToManySubjectBuilder';
 import { OneToOneInverseSideSubjectBuilder } from './subject-builder/OneToOneInverseSideSubjectBuilder';
-import { ManyToManySubjectBuilder } from './subject-builder/ManyToManySubjectBuilder';
 import { SubjectDatabaseEntityLoader } from './SubjectDatabaseEntityLoader';
-import { CascadesSubjectBuilder } from './subject-builder/CascadesSubjectBuilder';
-import { OrmUtils } from '../util/OrmUtils';
+import { SubjectExecutor } from './SubjectExecutor';
 
 /**
  * Persists a single entity or multiple entities - saves or removes them.
@@ -27,7 +28,7 @@ export class EntityPersistExecutor {
     protected queryRunner: QueryRunner | undefined,
     protected mode: 'save' | 'remove' | 'soft-remove' | 'recover',
     protected target: Function | string | undefined,
-    protected entity: ObjectLiteral | ObjectLiteral[],
+    protected entity: ObjectLiteral | Array<ObjectLiteral>,
     protected options?: SaveOptions & RemoveOptions
   ) {}
 
@@ -59,7 +60,7 @@ export class EntityPersistExecutor {
 
     try {
       // collect all operate subjects
-      const entities: ObjectLiteral[] = Array.isArray(this.entity)
+      const entities: Array<ObjectLiteral> = Array.isArray(this.entity)
         ? this.entity
         : [this.entity];
       const entitiesInChunks =
@@ -70,7 +71,7 @@ export class EntityPersistExecutor {
       // console.time("building subject executors...");
       const executors = await Promise.all(
         entitiesInChunks.map(async (entities) => {
-          const subjects: Subject[] = [];
+          const subjects: Array<Subject> = [];
 
           // create subjects for all entities we received for the persistence
           entities.forEach((entity) => {

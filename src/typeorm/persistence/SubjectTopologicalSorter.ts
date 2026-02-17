@@ -1,6 +1,7 @@
-import { Subject } from './Subject';
-import { EntityMetadata } from '../metadata/EntityMetadata';
 import { TypeORMError } from '../error';
+import { EntityMetadata } from '../metadata/EntityMetadata';
+
+import { Subject } from './Subject';
 
 /**
  * Orders insert or remove subjects in proper order (using topological sorting)
@@ -14,18 +15,18 @@ export class SubjectTopologicalSorter {
   /**
    * Insert subjects needs to be sorted.
    */
-  subjects: Subject[];
+  subjects: Array<Subject>;
 
   /**
    * Unique list of entity metadatas of this subject.
    */
-  metadatas: EntityMetadata[];
+  metadatas: Array<EntityMetadata>;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(subjects: Subject[]) {
+  constructor(subjects: Array<Subject>) {
     this.subjects = [...subjects]; // copy subjects to prevent changing of sent array
     this.metadatas = this.getUniqueMetadatas(this.subjects);
   }
@@ -37,11 +38,11 @@ export class SubjectTopologicalSorter {
   /**
    * Sorts (orders) subjects in their topological order.
    */
-  sort(direction: 'insert' | 'delete'): Subject[] {
+  sort(direction: 'insert' | 'delete'): Array<Subject> {
     // if there are no metadatas it probably mean there is no subjects... we don't have to do anything here
     if (!this.metadatas.length) return this.subjects;
 
-    const sortedSubjects: Subject[] = [];
+    const sortedSubjects: Array<Subject> = [];
 
     // first if we sort for deletion all junction subjects
     // junction subjects are subjects without entity and database entity set
@@ -76,7 +77,7 @@ export class SubjectTopologicalSorter {
 
     // next sort all other entities
     // same process as in above but with other entities
-    const otherDependencies: string[][] = this.getDependencies();
+    const otherDependencies: Array<Array<string>> = this.getDependencies();
     let sortedOtherEntityTargets = this.toposort(otherDependencies);
     if (direction === 'insert')
       sortedOtherEntityTargets = sortedOtherEntityTargets.reverse();
@@ -101,7 +102,7 @@ export class SubjectTopologicalSorter {
   /**
    * Removes already sorted subjects from this.subjects list of subjects.
    */
-  protected removeAlreadySorted(subjects: Subject[]) {
+  protected removeAlreadySorted(subjects: Array<Subject>) {
     subjects.forEach((subject) => {
       this.subjects.splice(this.subjects.indexOf(subject), 1);
     });
@@ -110,8 +111,8 @@ export class SubjectTopologicalSorter {
   /**
    * Extracts all unique metadatas from the given subjects.
    */
-  protected getUniqueMetadatas(subjects: Subject[]) {
-    const metadatas: EntityMetadata[] = [];
+  protected getUniqueMetadatas(subjects: Array<Subject>) {
+    const metadatas: Array<EntityMetadata> = [];
     subjects.forEach((subject) => {
       if (metadatas.indexOf(subject.metadata) === -1)
         metadatas.push(subject.metadata);
@@ -123,37 +124,43 @@ export class SubjectTopologicalSorter {
    * Gets dependency tree for all entity metadatas with non-nullable relations.
    * We need to execute insertions first for entities which non-nullable relations.
    */
-  protected getNonNullableDependencies(): string[][] {
-    return this.metadatas.reduce((dependencies, metadata) => {
-      metadata.relationsWithJoinColumns.forEach((relation) => {
-        if (relation.isNullable) return;
+  protected getNonNullableDependencies(): Array<Array<string>> {
+    return this.metadatas.reduce(
+      (dependencies, metadata) => {
+        metadata.relationsWithJoinColumns.forEach((relation) => {
+          if (relation.isNullable) return;
 
-        dependencies.push([
-          metadata.targetName,
-          relation.inverseEntityMetadata.targetName,
-        ]);
-      });
-      return dependencies;
-    }, [] as string[][]);
+          dependencies.push([
+            metadata.targetName,
+            relation.inverseEntityMetadata.targetName,
+          ]);
+        });
+        return dependencies;
+      },
+      [] as Array<Array<string>>
+    );
   }
 
   /**
    * Gets dependency tree for all entity metadatas with non-nullable relations.
    * We need to execute insertions first for entities which non-nullable relations.
    */
-  protected getDependencies(): string[][] {
-    return this.metadatas.reduce((dependencies, metadata) => {
-      metadata.relationsWithJoinColumns.forEach((relation) => {
-        // if relation is self-referenced we skip it
-        if (relation.inverseEntityMetadata === metadata) return;
+  protected getDependencies(): Array<Array<string>> {
+    return this.metadatas.reduce(
+      (dependencies, metadata) => {
+        metadata.relationsWithJoinColumns.forEach((relation) => {
+          // if relation is self-referenced we skip it
+          if (relation.inverseEntityMetadata === metadata) return;
 
-        dependencies.push([
-          metadata.targetName,
-          relation.inverseEntityMetadata.targetName,
-        ]);
-      });
-      return dependencies;
-    }, [] as string[][]);
+          dependencies.push([
+            metadata.targetName,
+            relation.inverseEntityMetadata.targetName,
+          ]);
+        });
+        return dependencies;
+      },
+      [] as Array<Array<string>>
+    );
   }
 
   /**
@@ -161,8 +168,8 @@ export class SubjectTopologicalSorter {
    *
    * Algorithm is kindly taken from https://github.com/marcelklehr/toposort repository.
    */
-  protected toposort(edges: any[][]) {
-    function uniqueNodes(arr: any[]) {
+  protected toposort(edges: Array<Array<any>>) {
+    function uniqueNodes(arr: Array<any>) {
       const res = [];
       for (let i = 0, len = arr.length; i < len; i++) {
         const edge: any = arr[i];
@@ -182,7 +189,7 @@ export class SubjectTopologicalSorter {
       if (!visited.has(i)) visit(nodes[i], i, []);
     }
 
-    function visit(node: any, i: number, predecessors: any[]) {
+    function visit(node: any, i: number, predecessors: Array<any>) {
       if (predecessors.indexOf(node) >= 0) {
         throw new TypeORMError('Cyclic dependency: ' + JSON.stringify(node)); // todo: better error
       }

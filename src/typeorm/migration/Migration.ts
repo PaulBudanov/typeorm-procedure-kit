@@ -1,54 +1,54 @@
-import { MigrationInterface } from "./MigrationInterface"
+import { MigrationInterface } from './MigrationInterface';
 
 /**
  * Represents entity of the migration in the database.
  */
 export class Migration {
-    // -------------------------------------------------------------------------
-    // Public Properties
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
 
-    /**
-     * Migration id.
-     * Indicates order of the executed migrations.
-     */
-    id: number | undefined
+  /**
+   * Migration id.
+   * Indicates order of the executed migrations.
+   */
+  id: number | undefined;
 
-    /**
-     * Timestamp of the migration.
-     */
-    timestamp: number
+  /**
+   * Timestamp of the migration.
+   */
+  timestamp: number;
 
-    /**
-     * Name of the migration (class name).
-     */
-    name: string
+  /**
+   * Name of the migration (class name).
+   */
+  name: string;
 
-    /**
-     * Migration instance that needs to be run.
-     */
-    instance?: MigrationInterface
+  /**
+   * Migration instance that needs to be run.
+   */
+  instance?: MigrationInterface;
 
-    /**
-     * Whether to run this migration within a transaction
-     */
+  /**
+   * Whether to run this migration within a transaction
+   */
+  transaction?: boolean;
+
+  // -------------------------------------------------------------------------
+  // Constructor
+  // -------------------------------------------------------------------------
+
+  constructor(
+    id: number | undefined,
+    timestamp: number,
+    name: string,
+    instance?: MigrationInterface,
     transaction?: boolean
-
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
-
-    constructor(
-        id: number | undefined,
-        timestamp: number,
-        name: string,
-        instance?: MigrationInterface,
-        transaction?: boolean,
-    ) {
-        this.id = id
-        this.timestamp = timestamp
-        this.name = name
-        this.instance = instance
-        this.transaction = transaction
-    }
+  ) {
+    this.id = id;
+    this.timestamp = timestamp;
+    this.name = name;
+    this.instance = instance;
+    this.transaction = transaction;
+  }
 }

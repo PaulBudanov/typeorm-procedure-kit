@@ -3,6 +3,7 @@ import { ApplyValueTransformers } from '../util/ApplyValueTransformers';
 import { DateUtils } from '../util/DateUtils';
 import { ObjectUtils } from '../util/ObjectUtils';
 import { OrmUtils } from '../util/OrmUtils';
+
 import { Subject } from './Subject';
 
 /**
@@ -16,7 +17,7 @@ export class SubjectChangedColumnsComputer {
   /**
    * Finds what columns are changed in the subject entities.
    */
-  compute(subjects: Subject[]) {
+  compute(subjects: Array<Subject>) {
     subjects.forEach((subject) => {
       this.computeDiffColumns(subject);
       this.computeDiffRelationalColumns(subjects, subject);
@@ -189,7 +190,7 @@ export class SubjectChangedColumnsComputer {
    * Difference columns of the owning one-to-one and many-to-one columns.
    */
   protected computeDiffRelationalColumns(
-    allSubjects: Subject[],
+    allSubjects: Array<Subject>,
     subject: Subject
   ): void {
     // if there is no persisted entity then nothing to compute changed in it

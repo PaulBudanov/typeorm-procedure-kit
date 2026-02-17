@@ -9,11 +9,11 @@
  *
  * @deprecated
  */
-export type OrderByCondition = {
-    [columnName: string]:
-        | ("ASC" | "DESC")
-        | {
-              order: "ASC" | "DESC"
-              nulls?: "NULLS FIRST" | "NULLS LAST"
-          }
-}
+export type OrderByCondition = Record<
+  string,
+  | ('ASC' | 'DESC')
+  | {
+      order: 'ASC' | 'DESC';
+      nulls?: 'NULLS FIRST' | 'NULLS LAST';
+    }
+>;

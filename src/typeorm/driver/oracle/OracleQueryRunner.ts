@@ -24,6 +24,7 @@ import { ColumnType } from '../types/ColumnTypes';
 import { IsolationLevel } from '../types/IsolationLevel';
 import { MetadataTableType } from '../types/MetadataTableType';
 import { ReplicationMode } from '../types/ReplicationMode';
+
 import { OracleDriver } from './OracleDriver.js';
 
 /**
@@ -189,7 +190,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async query(
     query: string,
-    parameters?: any[],
+    parameters?: Array<any>,
     useStructuredResult = false
   ): Promise<any> {
     if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
@@ -289,7 +290,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async stream(
     query: string,
-    parameters?: any[],
+    parameters?: Array<any>,
     onEnd?: Function,
     onError?: Function
   ): Promise<ReadStream> {
@@ -330,7 +331,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Returns all available database names including system databases.
    */
-  async getDatabases(): Promise<string[]> {
+  async getDatabases(): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
@@ -338,7 +339,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    * Returns all available schema names including system schemas.
    * If database parameter specified, returns schemas of that database.
    */
-  async getSchemas(database?: string): Promise<string[]> {
+  async getSchemas(database?: string): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
@@ -461,16 +462,16 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createTable(
     table: Table,
-    ifNotExist: boolean = false,
-    createForeignKeys: boolean = true,
-    createIndices: boolean = true
+    ifNotExist = false,
+    createForeignKeys = true,
+    createIndices = true
   ): Promise<void> {
     if (ifNotExist) {
       const isTableExist = await this.hasTable(table);
       if (isTableExist) return Promise.resolve();
     }
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     upQueries.push(this.createTableSql(table, createForeignKeys));
     downQueries.push(this.dropTableSql(table));
@@ -528,8 +529,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   async dropTable(
     tableOrName: Table | string,
     ifExist?: boolean,
-    dropForeignKeys: boolean = true,
-    dropIndices: boolean = true
+    dropForeignKeys = true,
+    dropIndices = true
   ): Promise<void> {
     // It needs because if table does not exist and dropForeignKeys or dropIndices is true, we don't need
     // to perform drop queries for foreign keys and indices.
@@ -543,8 +544,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     const table = InstanceChecker.isTable(tableOrName)
       ? tableOrName
       : await this.getCachedTable(tableOrName);
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     if (dropIndices) {
       table.indices.forEach((index) => {
@@ -592,12 +593,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new view.
    */
-  async createView(
-    view: View,
-    syncWithMetadata: boolean = false
-  ): Promise<void> {
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+  async createView(view: View, syncWithMetadata = false): Promise<void> {
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     upQueries.push(this.createViewSql(view));
     if (syncWithMetadata) upQueries.push(this.insertViewDefinitionSql(view));
     downQueries.push(this.dropViewSql(view));
@@ -612,8 +610,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     const viewName = InstanceChecker.isView(target) ? target.name : target;
     const view = await this.getCachedView(viewName);
 
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     upQueries.push(this.deleteViewDefinitionSql(view));
     upQueries.push(this.dropViewSql(view));
     downQueries.push(this.insertViewDefinitionSql(view));
@@ -628,8 +626,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     oldTableOrName: Table | string,
     newTableName: string
   ): Promise<void> {
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
     const oldTable = InstanceChecker.isTable(oldTableOrName)
       ? oldTableOrName
       : await this.getCachedTable(oldTableOrName);
@@ -809,8 +807,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       ? tableOrName
       : await this.getCachedTable(tableOrName);
     const clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     upQueries.push(
       new Query(
@@ -946,7 +944,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async addColumns(
     tableOrName: Table | string,
-    columns: TableColumn[]
+    columns: Array<TableColumn>
   ): Promise<void> {
     for (const column of columns) {
       await this.addColumn(tableOrName, column);
@@ -997,8 +995,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       ? tableOrName
       : await this.getCachedTable(tableOrName);
     let clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     const oldColumn = InstanceChecker.isTableColumn(oldTableColumnOrName)
       ? oldTableColumnOrName
@@ -1219,10 +1217,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       }
 
       if (this.isColumnChanged(oldColumn, newColumn, true)) {
-        let defaultUp: string = '';
-        let defaultDown: string = '';
-        let nullableUp: string = '';
-        let nullableDown: string = '';
+        let defaultUp = '';
+        let defaultDown = '';
+        let nullableUp = '';
+        let nullableDown = '';
 
         // changing column default
         if (newColumn.default !== null && newColumn.default !== undefined) {
@@ -1442,7 +1440,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async changeColumns(
     tableOrName: Table | string,
-    changedColumns: { newColumn: TableColumn; oldColumn: TableColumn }[]
+    changedColumns: Array<{ newColumn: TableColumn; oldColumn: TableColumn }>
   ): Promise<void> {
     for (const { oldColumn, newColumn } of changedColumns) {
       await this.changeColumn(tableOrName, oldColumn, newColumn);
@@ -1470,8 +1468,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       );
 
     const clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     // drop primary key constraint
     if (column.isPrimary) {
@@ -1610,7 +1608,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async dropColumns(
     tableOrName: Table | string,
-    columns: TableColumn[] | string[]
+    columns: Array<TableColumn> | Array<string>
   ): Promise<void> {
     for (const column of [...columns]) {
       await this.dropColumn(tableOrName, column);
@@ -1622,7 +1620,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createPrimaryKey(
     tableOrName: Table | string,
-    columnNames: string[],
+    columnNames: Array<string>,
     constraintName?: string
   ): Promise<void> {
     const table = InstanceChecker.isTable(tableOrName)
@@ -1648,15 +1646,15 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async updatePrimaryKeys(
     tableOrName: Table | string,
-    columns: TableColumn[]
+    columns: Array<TableColumn>
   ): Promise<void> {
     const table = InstanceChecker.isTable(tableOrName)
       ? tableOrName
       : await this.getCachedTable(tableOrName);
     const columnNames = columns.map((column) => column.name);
     const clonedTable = table.clone();
-    const upQueries: Query[] = [];
-    const downQueries: Query[] = [];
+    const upQueries: Array<Query> = [];
+    const downQueries: Array<Query> = [];
 
     // if table already have primary columns, we must drop them.
     const primaryColumns = clonedTable.primaryColumns;
@@ -1767,7 +1765,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createUniqueConstraints(
     tableOrName: Table | string,
-    uniqueConstraints: TableUnique[]
+    uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
     const promises = uniqueConstraints.map((uniqueConstraint) =>
       this.createUniqueConstraint(tableOrName, uniqueConstraint)
@@ -1804,7 +1802,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async dropUniqueConstraints(
     tableOrName: Table | string,
-    uniqueConstraints: TableUnique[]
+    uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
     const promises = uniqueConstraints.map((uniqueConstraint) =>
       this.dropUniqueConstraint(tableOrName, uniqueConstraint)
@@ -1841,7 +1839,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createCheckConstraints(
     tableOrName: Table | string,
-    checkConstraints: TableCheck[]
+    checkConstraints: Array<TableCheck>
   ): Promise<void> {
     const promises = checkConstraints.map((checkConstraint) =>
       this.createCheckConstraint(tableOrName, checkConstraint)
@@ -1878,7 +1876,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async dropCheckConstraints(
     tableOrName: Table | string,
-    checkConstraints: TableCheck[]
+    checkConstraints: Array<TableCheck>
   ): Promise<void> {
     const promises = checkConstraints.map((checkConstraint) =>
       this.dropCheckConstraint(tableOrName, checkConstraint)
@@ -1901,7 +1899,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createExclusionConstraints(
     tableOrName: Table | string,
-    exclusionConstraints: TableExclusion[]
+    exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
     throw new TypeORMError(`Oracle does not support exclusion constraints.`);
   }
@@ -1921,7 +1919,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async dropExclusionConstraints(
     tableOrName: Table | string,
-    exclusionConstraints: TableExclusion[]
+    exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
     throw new TypeORMError(`Oracle does not support exclusion constraints.`);
   }
@@ -1957,7 +1955,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createForeignKeys(
     tableOrName: Table | string,
-    foreignKeys: TableForeignKey[]
+    foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
     const promises = foreignKeys.map((foreignKey) =>
       this.createForeignKey(tableOrName, foreignKey)
@@ -1994,7 +1992,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async dropForeignKeys(
     tableOrName: Table | string,
-    foreignKeys: TableForeignKey[]
+    foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
     const promises = foreignKeys.map((foreignKey) =>
       this.dropForeignKey(tableOrName, foreignKey)
@@ -2027,7 +2025,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async createIndices(
     tableOrName: Table | string,
-    indices: TableIndex[]
+    indices: Array<TableIndex>
   ): Promise<void> {
     const promises = indices.map((index) =>
       this.createIndex(tableOrName, index)
@@ -2066,7 +2064,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   async dropIndices(
     tableOrName: Table | string,
-    indices: TableIndex[]
+    indices: Array<TableIndex>
   ): Promise<void> {
     const promises = indices.map((index) => this.dropIndex(tableOrName, index));
     await Promise.all(promises);
@@ -2089,14 +2087,15 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     try {
       // drop views
       const dropViewsQuery = `SELECT 'DROP VIEW "' || VIEW_NAME || '"' AS "query" FROM "USER_VIEWS"`;
-      const dropViewQueries: ObjectLiteral[] = await this.query(dropViewsQuery);
+      const dropViewQueries: Array<ObjectLiteral> =
+        await this.query(dropViewsQuery);
       await Promise.all(
         dropViewQueries.map((query) => this.query(query['query']))
       );
 
       // drop materialized views
       const dropMatViewsQuery = `SELECT 'DROP MATERIALIZED VIEW "' || MVIEW_NAME || '"' AS "query" FROM "USER_MVIEWS"`;
-      const dropMatViewQueries: ObjectLiteral[] =
+      const dropMatViewQueries: Array<ObjectLiteral> =
         await this.query(dropMatViewsQuery);
       await Promise.all(
         dropMatViewQueries.map((query) => this.query(query['query']))
@@ -2104,7 +2103,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
       // drop tables
       const dropTablesQuery = `SELECT 'DROP TABLE "' || TABLE_NAME || '" CASCADE CONSTRAINTS' AS "query" FROM "USER_TABLES"`;
-      const dropTableQueries: ObjectLiteral[] =
+      const dropTableQueries: Array<ObjectLiteral> =
         await this.query(dropTablesQuery);
       await Promise.all(
         dropTableQueries.map((query) => this.query(query['query']))
@@ -2123,7 +2122,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   // Protected Methods
   // -------------------------------------------------------------------------
 
-  protected async loadViews(viewNames?: string[]): Promise<View[]> {
+  protected async loadViews(viewNames?: Array<string>): Promise<Array<View>> {
     const hasTable = await this.hasTable(this.getTypeormMetadataTableName());
     if (!hasTable) {
       return [];
@@ -2174,12 +2173,14 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Loads all tables (with given names) from the database and creates a Table from them.
    */
-  protected async loadTables(tableNames?: string[]): Promise<Table[]> {
+  protected async loadTables(
+    tableNames?: Array<string>
+  ): Promise<Array<Table>> {
     if (tableNames && tableNames.length === 0) {
       return [];
     }
 
-    const dbTables: { TABLE_NAME: string; OWNER: string }[] = [];
+    const dbTables: Array<{ TABLE_NAME: string; OWNER: string }> = [];
 
     const currentSchema = await this.getCurrentSchema();
     const currentDatabase = await this.getCurrentDatabase();
@@ -2246,12 +2247,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       `INNER JOIN "ALL_CONS_COLUMNS" "COL" ON "COL"."OWNER" = "C"."OWNER" AND "COL"."CONSTRAINT_NAME" = "C"."CONSTRAINT_NAME" ` +
       `WHERE (${columnsCondition}) AND "C"."CONSTRAINT_TYPE" IN ('C', 'U', 'P') AND "C"."GENERATED" = 'USER NAME'`;
 
-    const [
-      dbColumns,
-      dbIndices,
-      dbForeignKeys,
-      dbConstraints,
-    ]: ObjectLiteral[][] = await Promise.all([
+    const [dbColumns, dbIndices, dbForeignKeys, dbConstraints]: Array<
+      Array<ObjectLiteral>
+    > = await Promise.all([
       this.query(columnsSql),
       this.query(indicesSql),
       this.query(foreignKeysSql),
@@ -2790,7 +2788,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   protected createPrimaryKeySql(
     table: Table,
-    columnNames: string[],
+    columnNames: Array<string>,
     constraintName?: string
   ): Query {
     const primaryKeyName = constraintName

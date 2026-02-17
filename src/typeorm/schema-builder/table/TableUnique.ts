@@ -1,71 +1,69 @@
-import { TableUniqueOptions } from "../options/TableUniqueOptions"
-import { UniqueMetadata } from "../../metadata/UniqueMetadata"
+import { UniqueMetadata } from '../../metadata/UniqueMetadata';
+import { TableUniqueOptions } from '../options/TableUniqueOptions';
 
 /**
  * Database's table unique constraint stored in this class.
  */
 export class TableUnique {
-    readonly "@instanceof" = Symbol.for("TableUnique")
+  readonly '@instanceof' = Symbol.for('TableUnique');
 
-    // -------------------------------------------------------------------------
-    // Public Properties
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
 
-    /**
-     * Constraint name.
-     */
-    name?: string
+  /**
+   * Constraint name.
+   */
+  name?: string;
 
-    /**
-     * Columns that contains this constraint.
-     */
-    columnNames: string[] = []
+  /**
+   * Columns that contains this constraint.
+   */
+  columnNames: Array<string> = [];
 
-    /**
-     * Set this foreign key constraint as "DEFERRABLE" e.g. check constraints at start
-     * or at the end of a transaction
-     */
-    deferrable?: string
+  /**
+   * Set this foreign key constraint as "DEFERRABLE" e.g. check constraints at start
+   * or at the end of a transaction
+   */
+  deferrable?: string;
 
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Constructor
+  // -------------------------------------------------------------------------
 
-    constructor(options: TableUniqueOptions) {
-        this.name = options.name
-        this.columnNames = options.columnNames
-        this.deferrable = options.deferrable
-    }
+  constructor(options: TableUniqueOptions) {
+    this.name = options.name;
+    this.columnNames = options.columnNames;
+    this.deferrable = options.deferrable;
+  }
 
-    // -------------------------------------------------------------------------
-    // Public Methods
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public Methods
+  // -------------------------------------------------------------------------
 
-    /**
-     * Creates a new copy of this constraint with exactly same properties.
-     */
-    clone(): TableUnique {
-        return new TableUnique(<TableUniqueOptions>{
-            name: this.name,
-            columnNames: [...this.columnNames],
-            deferrable: this.deferrable,
-        })
-    }
+  /**
+   * Creates a new copy of this constraint with exactly same properties.
+   */
+  clone(): TableUnique {
+    return new TableUnique({
+      name: this.name,
+      columnNames: [...this.columnNames],
+      deferrable: this.deferrable,
+    } as TableUniqueOptions);
+  }
 
-    // -------------------------------------------------------------------------
-    // Static Methods
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Static Methods
+  // -------------------------------------------------------------------------
 
-    /**
-     * Creates unique from the unique metadata object.
-     */
-    static create(uniqueMetadata: UniqueMetadata): TableUnique {
-        return new TableUnique(<TableUniqueOptions>{
-            name: uniqueMetadata.name,
-            columnNames: uniqueMetadata.columns.map(
-                (column) => column.databaseName,
-            ),
-            deferrable: uniqueMetadata.deferrable,
-        })
-    }
+  /**
+   * Creates unique from the unique metadata object.
+   */
+  static create(uniqueMetadata: UniqueMetadata): TableUnique {
+    return new TableUnique({
+      name: uniqueMetadata.name,
+      columnNames: uniqueMetadata.columns.map((column) => column.databaseName),
+      deferrable: uniqueMetadata.deferrable,
+    } as TableUniqueOptions);
+  }
 }
