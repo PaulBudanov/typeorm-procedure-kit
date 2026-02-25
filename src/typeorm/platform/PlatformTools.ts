@@ -48,7 +48,6 @@ export class PlatformTools {
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           return Promise.resolve(require('pg-native') as unknown);
         case 'pg-query-stream':
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
           return import('pg-query-stream');
       }
     } catch {
