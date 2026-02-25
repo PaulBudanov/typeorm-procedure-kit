@@ -382,7 +382,7 @@ export class DataSource {
   /**
    * Gets repository for the given entity.
    */
-  public getRepository<Entity extends ObjectLiteral>(
+  public getRepository<Entity = unknown>(
     target: EntityTarget<Entity>
   ): Repository<Entity> {
     return this.manager.getRepository(target);
