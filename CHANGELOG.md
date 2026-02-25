@@ -1,3 +1,11 @@
+## [1.6.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.2...v1.6.3) (2026-02-25)
+
+
+### Bug Fixes
+
+* lint script change, added export for typeorm core. ([70319df](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/70319dfb360d9ed172b90861e4830098e83ba105))
+* return to build scripts. ([2e2e565](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/2e2e565f4f4f0b06fa464af4971dc8e7f500c323))
+
 ## [1.6.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.1...v1.6.2) (2026-02-25)
 
 
