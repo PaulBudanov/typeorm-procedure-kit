@@ -1,3 +1,10 @@
+## [1.6.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.4...v1.6.5) (2026-02-25)
+
+
+### Bug Fixes
+
+* change named import package json rules. ([337f9d6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/337f9d69036a6b76d9acbefdab502839114b4f98))
+
 ## [1.6.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.3...v1.6.4) (2026-02-25)
 
 
