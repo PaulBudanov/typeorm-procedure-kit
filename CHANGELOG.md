@@ -1,3 +1,11 @@
+## [1.6.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.0...v1.6.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* change require to import for pg query. ([14230b3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/14230b3076269b0bbb46c09dc274637ed36b0c6c))
+* delete comment for require eslint rule. ([32dc3d9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/32dc3d94148679542ba8bc88df7c1ff020c0dcba))
+
 # [1.6.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.5.1...v1.6.0) (2026-02-25)
 
 
