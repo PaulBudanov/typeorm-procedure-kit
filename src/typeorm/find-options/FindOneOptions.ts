@@ -1,19 +1,19 @@
-import { FindOptionsOrder } from './FindOptionsOrder';
-import {
+import type { FindOptionsOrder } from './FindOptionsOrder.js';
+import type {
   FindOptionsRelationByString,
   FindOptionsRelations,
-} from './FindOptionsRelations';
-import {
+} from './FindOptionsRelations.js';
+import type {
   FindOptionsSelect,
   FindOptionsSelectByString,
-} from './FindOptionsSelect';
-import { FindOptionsWhere } from './FindOptionsWhere';
-import { JoinOptions } from './JoinOptions';
+} from './FindOptionsSelect.js';
+import type { FindOptionsWhere } from './FindOptionsWhere.js';
+import type { JoinOptions } from './JoinOptions.js';
 
 /**
  * Defines a special criteria to find specific entity.
  */
-export interface FindOneOptions<Entity = any> {
+export interface FindOneOptions<Entity = unknown> {
   /**
    * Adds a comment with the supplied string in the generated query.  This is
    * helpful for debugging purposes, such as finding a specific query in the
@@ -60,7 +60,7 @@ export interface FindOneOptions<Entity = any> {
   /**
    * Enables or disables query result caching.
    */
-  cache?: boolean | number | { id: any; milliseconds: number };
+  cache?: boolean | number | { id: unknown; milliseconds: number };
 
   /**
    * Indicates what locking mode should be used.

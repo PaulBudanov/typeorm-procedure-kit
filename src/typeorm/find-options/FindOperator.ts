@@ -1,9 +1,9 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { ValueTransformer } from '../decorator/options/ValueTransformer';
-import { ApplyValueTransformers } from '../util/ApplyValueTransformers';
-import { InstanceChecker } from '../util/InstanceChecker';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
+import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
+import { InstanceChecker } from '../util/InstanceChecker.js';
 
-import { FindOperatorType } from './FindOperatorType';
+import type { FindOperatorType } from './FindOperatorType.js';
 
 type SqlGeneratorType = (aliasPath: string) => string;
 
@@ -11,7 +11,7 @@ type SqlGeneratorType = (aliasPath: string) => string;
  * Find Operator used in Find Conditions.
  */
 export class FindOperator<T> {
-  readonly '@instanceof' = Symbol.for('FindOperator');
+  public readonly '@instanceof' = Symbol.for('FindOperator');
 
   // -------------------------------------------------------------------------
   // Private Properties
@@ -51,7 +51,7 @@ export class FindOperator<T> {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     type: FindOperatorType,
     value: T | FindOperator<T>,
     useParameter = true,
@@ -75,7 +75,7 @@ export class FindOperator<T> {
    * Indicates if parameter is used or not for this operator.
    * Extracts final value if value is another find operator.
    */
-  get useParameter(): boolean {
+  public get useParameter(): boolean {
     if (InstanceChecker.isFindOperator(this._value))
       return this._value.useParameter;
 
@@ -86,7 +86,7 @@ export class FindOperator<T> {
    * Indicates if multiple parameters must be used for this operator.
    * Extracts final value if value is another find operator.
    */
-  get multipleParameters(): boolean {
+  public get multipleParameters(): boolean {
     if (InstanceChecker.isFindOperator(this._value))
       return this._value.multipleParameters;
 
@@ -96,14 +96,14 @@ export class FindOperator<T> {
   /**
    * Gets the Type of this FindOperator
    */
-  get type(): FindOperatorType {
+  public get type(): FindOperatorType {
     return this._type;
   }
 
   /**
    * Gets the final value needs to be used as parameter value.
    */
-  get value(): T {
+  public get value(): T {
     if (InstanceChecker.isFindOperator(this._value)) return this._value.value;
 
     return this._value;
@@ -112,7 +112,7 @@ export class FindOperator<T> {
   /**
    * Gets ObjectLiteral parameters.
    */
-  get objectLiteralParameters(): ObjectLiteral | undefined {
+  public get objectLiteralParameters(): ObjectLiteral | undefined {
     if (InstanceChecker.isFindOperator(this._value))
       return this._value.objectLiteralParameters;
 
@@ -122,7 +122,7 @@ export class FindOperator<T> {
   /**
    * Gets the child FindOperator if it exists
    */
-  get child(): FindOperator<T> | undefined {
+  public get child(): FindOperator<T> | undefined {
     if (InstanceChecker.isFindOperator(this._value)) return this._value;
 
     return undefined;
@@ -131,24 +131,26 @@ export class FindOperator<T> {
   /**
    * Gets the SQL generator
    */
-  get getSql(): SqlGeneratorType | undefined {
+  public get getSql(): SqlGeneratorType | undefined {
     if (InstanceChecker.isFindOperator(this._value)) return this._value.getSql;
 
     return this._getSql;
   }
 
-  transformValue(transformer: ValueTransformer | Array<ValueTransformer>) {
+  public transformValue(
+    transformer: ValueTransformer | Array<ValueTransformer>
+  ): void {
     if (this._value instanceof FindOperator) {
       this._value.transformValue(transformer);
     } else {
       this._value =
         Array.isArray(this._value) && this._multipleParameters
-          ? this._value.map(
-              (v: any) =>
+          ? (this._value.map(
+              (v: T) =>
                 transformer &&
-                ApplyValueTransformers.transformTo(transformer, v)
-            )
-          : ApplyValueTransformers.transformTo(transformer, this._value);
+                (ApplyValueTransformers.transformTo(transformer, v) as T)
+            ) as unknown as FindOperator<T>)
+          : (ApplyValueTransformers.transformTo(transformer, this._value) as T);
     }
   }
 }

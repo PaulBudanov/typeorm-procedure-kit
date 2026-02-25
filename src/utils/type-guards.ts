@@ -70,6 +70,24 @@ export abstract class TypeGuards {
   }
 
   /**
+   * Checks if the given value is a Buffer object.
+   * @param value The value to check.
+   * @returns True if the value is a Buffer object, false otherwise.
+   */
+  public static isBuffer(value: unknown): value is Buffer {
+    return Buffer.isBuffer(value);
+  }
+
+  /**
+   * Checks if the given value is a BigInt.
+   * @param value The value to check.
+   * @returns True if the value is a BigInt, false otherwise.
+   */
+  public static isBigInt(value: unknown): value is bigint {
+    return typeof value === 'bigint';
+  }
+
+  /**
    * Checks if the given value is a function.
    * @param value The value to check.
    * @returns True if the value is a function, false otherwise.

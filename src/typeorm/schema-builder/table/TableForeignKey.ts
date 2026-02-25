@@ -1,12 +1,11 @@
-import { Driver } from '../../driver/Driver';
-import { ForeignKeyMetadata } from '../../metadata/ForeignKeyMetadata';
-import { TableForeignKeyOptions } from '../options/TableForeignKeyOptions';
+import { ForeignKeyMetadata } from '../../metadata/ForeignKeyMetadata.js';
+import type { TableForeignKeyOptions } from '../options/TableForeignKeyOptions.js';
 
 /**
  * Foreign key from the database stored in this class.
  */
 export class TableForeignKey {
-  readonly '@instanceof' = Symbol.for('TableForeignKey');
+  public readonly '@instanceof' = Symbol.for('TableForeignKey');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -15,56 +14,56 @@ export class TableForeignKey {
   /**
    * Name of the foreign key constraint.
    */
-  name?: string;
+  public name?: string;
 
   /**
    * Column names which included by this foreign key.
    */
-  columnNames: Array<string> = [];
+  public columnNames: Array<string> = [];
 
   /**
    * Database of Table referenced in the foreign key.
    */
-  referencedDatabase?: string;
+  public referencedDatabase?: string;
 
   /**
    * Database of Table referenced in the foreign key.
    */
-  referencedSchema?: string;
+  public referencedSchema?: string;
 
   /**
    * Table referenced in the foreign key.
    */
-  referencedTableName: string;
+  public referencedTableName: string;
 
   /**
    * Column names which included by this foreign key.
    */
-  referencedColumnNames: Array<string> = [];
+  public referencedColumnNames: Array<string> = [];
 
   /**
    * "ON DELETE" of this foreign key, e.g. what action database should perform when
    * referenced stuff is being deleted.
    */
-  onDelete?: string;
+  public onDelete?: string;
 
   /**
    * "ON UPDATE" of this foreign key, e.g. what action database should perform when
    * referenced stuff is being updated.
    */
-  onUpdate?: string;
+  public onUpdate?: string;
 
   /**
    * Set this foreign key constraint as "DEFERRABLE" e.g. check constraints at start
    * or at the end of a transaction
    */
-  deferrable?: string;
+  public deferrable?: string;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(options: TableForeignKeyOptions) {
+  public constructor(options: TableForeignKeyOptions) {
     this.name = options.name;
     this.columnNames = options.columnNames;
     this.referencedColumnNames = options.referencedColumnNames;
@@ -83,7 +82,7 @@ export class TableForeignKey {
   /**
    * Creates a new copy of this foreign key with exactly same properties.
    */
-  clone(): TableForeignKey {
+  public clone(): TableForeignKey {
     return new TableForeignKey({
       name: this.name,
       columnNames: [...this.columnNames],
@@ -104,7 +103,7 @@ export class TableForeignKey {
   /**
    * Creates a new table foreign key from the given foreign key metadata.
    */
-  static create(metadata: ForeignKeyMetadata, driver: Driver): TableForeignKey {
+  public static create(metadata: ForeignKeyMetadata): TableForeignKey {
     return new TableForeignKey({
       name: metadata.name,
       columnNames: metadata.columnNames,

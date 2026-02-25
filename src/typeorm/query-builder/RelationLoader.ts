@@ -1,10 +1,10 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { DataSource } from '../data-source/DataSource';
-import { FindOptionsUtils } from '../find-options/FindOptionsUtils';
-import { RelationMetadata } from '../metadata/RelationMetadata';
-import { QueryRunner } from '../query-runner/QueryRunner';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
-import { SelectQueryBuilder } from './SelectQueryBuilder';
+import type { SelectQueryBuilder } from './SelectQueryBuilder.js';
 
 /**
  * Wraps entities and creates getters/setters for their relations
@@ -15,7 +15,7 @@ export class RelationLoader {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(private connection: DataSource) {}
+  public constructor(private connection: DataSource) {}
 
   // -------------------------------------------------------------------------
   // Public Methods
@@ -24,12 +24,12 @@ export class RelationLoader {
   /**
    * Loads relation data for the given entity and its relation.
    */
-  load(
+  public load(
     relation: RelationMetadata,
     entityOrEntities: ObjectLiteral | Array<ObjectLiteral>,
     queryRunner?: QueryRunner,
-    queryBuilder?: SelectQueryBuilder<any>
-  ): Promise<Array<any>> {
+    queryBuilder?: SelectQueryBuilder<ObjectLiteral>
+  ): Promise<Array<unknown>> {
     // todo: check all places where it uses non array
     if (queryRunner && queryRunner.isReleased) queryRunner = undefined; // get new one if already closed
     if (relation.isManyToOne || relation.isOneToOneOwner) {
@@ -72,12 +72,12 @@ export class RelationLoader {
    * example: SELECT category.id AS category_id, category.name AS category_name FROM category category
    *              INNER JOIN post Post ON Post.category=category.id WHERE Post.id=1
    */
-  loadManyToOneOrOneToOneOwner(
+  public loadManyToOneOrOneToOneOwner(
     relation: RelationMetadata,
     entityOrEntities: ObjectLiteral | Array<ObjectLiteral>,
     queryRunner?: QueryRunner,
-    queryBuilder?: SelectQueryBuilder<any>
-  ): Promise<any> {
+    queryBuilder?: SelectQueryBuilder<ObjectLiteral>
+  ): Promise<Array<ObjectLiteral>> {
     const entities = Array.isArray(entityOrEntities)
       ? entityOrEntities
       : [entityOrEntities];
@@ -99,25 +99,26 @@ export class RelationLoader {
       .map((joinColumn) => {
         return `${relation.entityMetadata.name}.${
           joinColumn.propertyName
-        } = ${mainAlias}.${joinColumn.referencedColumn!.propertyName}`;
+        } = ${mainAlias}.${joinColumn.referencedColumn!.propertyName!}`;
       })
       .join(' AND ');
 
     qb.innerJoin(
-      relation.entityMetadata.target as Function,
+      relation.entityMetadata.target as () => unknown,
       joinAliasName,
       conditions
     );
 
     if (columns.length === 1) {
+      const column = columns[0]!;
       qb.where(
-        `${joinAliasName}.${columns[0].propertyPath} IN (:...${
-          joinAliasName + '_' + columns[0].propertyName
+        `${joinAliasName}.${column.propertyPath!} IN (:...${
+          joinAliasName + '_' + column.propertyName!
         })`
       );
       qb.setParameter(
-        joinAliasName + '_' + columns[0].propertyName,
-        entities.map((entity) => columns[0].getEntityValue(entity, true))
+        joinAliasName + '_' + column.propertyName!,
+        entities.map((entity) => column.getEntityValue(entity, true))
       );
     } else {
       const condition = entities
@@ -128,7 +129,7 @@ export class RelationLoader {
                 joinAliasName + '_entity_' + entityIndex + '_' + columnIndex;
               qb.setParameter(paramName, column.getEntityValue(entity, true));
               return (
-                joinAliasName + '.' + column.propertyPath + ' = :' + paramName
+                joinAliasName + '.' + column.propertyPath! + ' = :' + paramName
               );
             })
             .join(' AND ');
@@ -144,7 +145,7 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany();
+    return qb.getMany() as Promise<Array<ObjectLiteral>>;
     // return qb.getOne(); todo: fix all usages
   }
 
@@ -155,12 +156,12 @@ export class RelationLoader {
    * FROM post post
    * WHERE post.[joinColumn.name] = entity[joinColumn.referencedColumn]
    */
-  loadOneToManyOrOneToOneNotOwner(
+  public loadOneToManyOrOneToOneNotOwner(
     relation: RelationMetadata,
     entityOrEntities: ObjectLiteral | Array<ObjectLiteral>,
     queryRunner?: QueryRunner,
-    queryBuilder?: SelectQueryBuilder<any>
-  ): Promise<any> {
+    queryBuilder?: SelectQueryBuilder<ObjectLiteral>
+  ): Promise<Array<ObjectLiteral>> {
     const entities = Array.isArray(entityOrEntities)
       ? entityOrEntities
       : [entityOrEntities];
@@ -178,15 +179,16 @@ export class RelationLoader {
     const aliasName = qb.expressionMap.mainAlias!.name;
 
     if (columns.length === 1) {
+      const column = columns[0]!;
       qb.where(
-        `${aliasName}.${columns[0].propertyPath} IN (:...${
-          aliasName + '_' + columns[0].propertyName
+        `${aliasName}.${column.propertyPath!} IN (:...${
+          aliasName + '_' + column.propertyName!
         })`
       );
       qb.setParameter(
-        aliasName + '_' + columns[0].propertyName,
+        aliasName + '_' + column.propertyName!,
         entities.map((entity) =>
-          columns[0].referencedColumn!.getEntityValue(entity, true)
+          column.referencedColumn!.getEntityValue(entity, true)
         )
       );
     } else {
@@ -200,7 +202,9 @@ export class RelationLoader {
                 paramName,
                 column.referencedColumn!.getEntityValue(entity, true)
               );
-              return aliasName + '.' + column.propertyPath + ' = :' + paramName;
+              return (
+                aliasName + '.' + column.propertyPath! + ' = :' + paramName
+              );
             })
             .join(' AND ');
         })
@@ -215,7 +219,7 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany();
+    return qb.getMany() as Promise<Array<ObjectLiteral>>;
     // return relation.isOneToMany ? qb.getMany() : qb.getOne(); todo: fix all usages
   }
 
@@ -228,12 +232,12 @@ export class RelationLoader {
    * ON post_categories.postId = :postId
    * AND post_categories.categoryId = category.id
    */
-  loadManyToManyOwner(
+  public loadManyToManyOwner(
     relation: RelationMetadata,
     entityOrEntities: ObjectLiteral | Array<ObjectLiteral>,
     queryRunner?: QueryRunner,
-    queryBuilder?: SelectQueryBuilder<any>
-  ): Promise<any> {
+    queryBuilder?: SelectQueryBuilder<ObjectLiteral>
+  ): Promise<Array<ObjectLiteral>> {
     const entities = Array.isArray(entityOrEntities)
       ? entityOrEntities
       : [entityOrEntities];
@@ -276,7 +280,7 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany();
+    return qb.getMany() as Promise<Array<ObjectLiteral>>;
   }
 
   /**
@@ -288,12 +292,12 @@ export class RelationLoader {
    * ON post_categories.postId = post.id
    * AND post_categories.categoryId = post_categories.categoryId
    */
-  loadManyToManyNotOwner(
+  public loadManyToManyNotOwner(
     relation: RelationMetadata,
     entityOrEntities: ObjectLiteral | Array<ObjectLiteral>,
     queryRunner?: QueryRunner,
-    queryBuilder?: SelectQueryBuilder<any>
-  ): Promise<any> {
+    queryBuilder?: SelectQueryBuilder<ObjectLiteral>
+  ): Promise<Array<ObjectLiteral>> {
     const entities = Array.isArray(entityOrEntities)
       ? entityOrEntities
       : [entityOrEntities];
@@ -340,30 +344,34 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany();
+    return qb.getMany() as Promise<Array<ObjectLiteral>>;
   }
 
   /**
    * Wraps given entity and creates getters/setters for its given relation
    * to be able to lazily load data when accessing this relation.
    */
-  enableLazyLoad(
+  public enableLazyLoad(
     relation: RelationMetadata,
     entity: ObjectLiteral,
     queryRunner?: QueryRunner
-  ) {
+  ): void {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const relationLoader = this;
     const dataIndex = '__' + relation.propertyName + '__'; // in what property of the entity loaded data will be stored
     const promiseIndex = '__promise_' + relation.propertyName + '__'; // in what property of the entity loading promise will be stored
     const resolveIndex = '__has_' + relation.propertyName + '__'; // indicates if relation data already was loaded or not, we need this flag if loaded data is empty
 
-    const setData = (entity: ObjectLiteral, value: any) => {
+    const setData = (entity: ObjectLiteral, value: unknown): unknown => {
       entity[dataIndex] = value;
       entity[resolveIndex] = true;
       delete entity[promiseIndex];
       return value;
     };
-    const setPromise = (entity: ObjectLiteral, value: Promise<any>) => {
+    const setPromise = (
+      entity: ObjectLiteral,
+      value: Promise<unknown>
+    ): unknown => {
       delete entity[resolveIndex];
       delete entity[dataIndex];
       entity[promiseIndex] = value;
@@ -378,17 +386,20 @@ export class RelationLoader {
 
     Object.defineProperty(entity, relation.propertyName, {
       get: function () {
-        if (this[resolveIndex] === true || this[dataIndex] !== undefined)
+        if (
+          (this as unknown as ObjectLiteral)[resolveIndex] === true ||
+          (this as unknown as ObjectLiteral)[dataIndex] !== undefined
+        )
           // if related data already was loaded then simply return it
-          return Promise.resolve(this[dataIndex]);
+          return Promise.resolve((this as unknown as ObjectLiteral)[dataIndex]);
 
-        if (this[promiseIndex])
+        if ((this as unknown as ObjectLiteral)[promiseIndex])
           // if related data is loading then return a promise relationLoader loads it
-          return this[promiseIndex];
+          return (this as unknown as ObjectLiteral)[promiseIndex];
 
         // nothing is loaded yet, load relation data and save it in the model once they are loaded
         const loader = relationLoader
-          .load(relation, this, queryRunner)
+          .load(relation, this as unknown as ObjectLiteral, queryRunner)
           .then((result) =>
             relation.isOneToOne || relation.isManyToOne
               ? result.length === 0
@@ -396,16 +407,16 @@ export class RelationLoader {
                 : result[0]
               : result
           );
-        return setPromise(this, loader);
+        return setPromise(this as unknown as ObjectLiteral, loader);
       },
-      set: function (value: any | Promise<any>) {
+      set: function (value: unknown | Promise<unknown>) {
         if (value instanceof Promise) {
           // if set data is a promise then wait for its resolve and save in the object
-          // eslint-disable-next-line @typescript-eslint/no-floating-promises
-          setPromise(this, value);
+
+          setPromise(this as unknown as ObjectLiteral, value);
         } else {
           // if its direct data set (non promise, probably not safe-typed)
-          setData(this, value);
+          setData(this as unknown as ObjectLiteral, value);
         }
       },
       configurable: true,

@@ -1,4 +1,4 @@
-import { QueryRunner } from '../query-runner/QueryRunner.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
  * Performs logging of the events in TypeORM.
@@ -9,9 +9,9 @@ export interface Logger {
    */
   logQuery(
     query: string,
-    parameters?: Array<any>,
+    parameters?: Array<unknown>,
     queryRunner?: QueryRunner
-  ): any;
+  ): void;
 
   /**
    * Logs query that is failed.
@@ -19,9 +19,9 @@ export interface Logger {
   logQueryError(
     error: string | Error,
     query: string,
-    parameters?: Array<any>,
+    parameters?: Array<unknown>,
     queryRunner?: QueryRunner
-  ): any;
+  ): void;
 
   /**
    * Logs query that is slow.
@@ -29,19 +29,19 @@ export interface Logger {
   logQuerySlow(
     time: number,
     query: string,
-    parameters?: Array<any>,
+    parameters?: Array<unknown>,
     queryRunner?: QueryRunner
-  ): any;
+  ): void;
 
   /**
    * Logs events from the schema build process.
    */
-  logSchemaBuild(message: string, queryRunner?: QueryRunner): any;
+  logSchemaBuild(message: string, queryRunner?: QueryRunner): void;
 
   /**
    * Logs events from the migrations run process.
    */
-  logMigration(message: string, queryRunner?: QueryRunner): any;
+  logMigration(message: string, queryRunner?: QueryRunner): void;
 
   /**
    * Perform logging using given logger, or by default to the console.
@@ -49,9 +49,9 @@ export interface Logger {
    */
   log(
     level: 'log' | 'info' | 'warn',
-    message: any,
+    message: unknown,
     queryRunner?: QueryRunner
-  ): any;
+  ): void;
 }
 
 /**
@@ -74,8 +74,8 @@ export interface LogMessage {
   prefix?: string;
   message: string | number;
   format?: LogMessageFormat;
-  parameters?: Array<any>;
-  additionalInfo?: Record<string, any>;
+  parameters?: Array<unknown>;
+  additionalInfo?: Record<string, unknown>;
 }
 
 /**

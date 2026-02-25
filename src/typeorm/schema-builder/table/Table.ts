@@ -1,20 +1,20 @@
-import { Driver } from '../../driver/Driver';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { TableOptions } from '../options/TableOptions';
-import { TableUtils } from '../util/TableUtils';
+import type { Driver } from '../../driver/Driver.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { TableOptions } from '../options/TableOptions.js';
+import { TableUtils } from '../util/TableUtils.js';
 
-import { TableCheck } from './TableCheck';
-import { TableColumn } from './TableColumn';
-import { TableExclusion } from './TableExclusion';
-import { TableForeignKey } from './TableForeignKey';
-import { TableIndex } from './TableIndex';
-import { TableUnique } from './TableUnique';
+import { TableCheck } from './TableCheck.js';
+import { TableColumn } from './TableColumn.js';
+import { TableExclusion } from './TableExclusion.js';
+import { TableForeignKey } from './TableForeignKey.js';
+import { TableIndex } from './TableIndex.js';
+import { TableUnique } from './TableUnique.js';
 
 /**
  * Table in the database represented in this class.
  */
 export class Table {
-  readonly '@instanceof' = Symbol.for('Table');
+  public readonly '@instanceof' = Symbol.for('Table');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -23,77 +23,77 @@ export class Table {
   /**
    * Database name that this table resides in if it applies.
    */
-  database?: string;
+  public database?: string;
 
   /**
    * Schema name that this table resides in if it applies.
    */
-  schema?: string;
+  public schema?: string;
 
   /**
    * May contain database name, schema name and table name, unless they're the current database.
    *
    * E.g. myDB.mySchema.myTable
    */
-  name: string;
+  public name!: string;
 
   /**
    * Table columns.
    */
-  columns: Array<TableColumn> = [];
+  public columns: Array<TableColumn> = [];
 
   /**
    * Table indices.
    */
-  indices: Array<TableIndex> = [];
+  public indices: Array<TableIndex> = [];
 
   /**
    * Table foreign keys.
    */
-  foreignKeys: Array<TableForeignKey> = [];
+  public foreignKeys: Array<TableForeignKey> = [];
 
   /**
    * Table unique constraints.
    */
-  uniques: Array<TableUnique> = [];
+  public uniques: Array<TableUnique> = [];
 
   /**
    * Table check constraints.
    */
-  checks: Array<TableCheck> = [];
+  public checks: Array<TableCheck> = [];
 
   /**
    * Table exclusion constraints.
    */
-  exclusions: Array<TableExclusion> = [];
+  public exclusions: Array<TableExclusion> = [];
 
   /**
    * Indicates if table was just created.
    * This is needed, for example to check if we need to skip primary keys creation
    * for new tables.
    */
-  justCreated = false;
+  public justCreated = false;
 
   /**
    * Enables Sqlite "WITHOUT ROWID" modifier for the "CREATE TABLE" statement
    */
-  withoutRowid?: boolean = false;
+  public withoutRowid?: boolean = false;
 
   /**
    * Table engine.
    */
-  engine?: string;
+  public engine?: string;
 
   /**
    * Table comment. Not supported by all database types.
    */
-  comment?: string;
+  public comment?: string;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(options?: TableOptions) {
+  public constructor(options?: TableOptions) {
     if (options) {
       this.database = options.database;
       this.schema = options.schema;
@@ -142,7 +142,7 @@ export class Table {
   // Accessors
   // -------------------------------------------------------------------------
 
-  get primaryColumns(): Array<TableColumn> {
+  public get primaryColumns(): Array<TableColumn> {
     return this.columns.filter((column) => column.isPrimary);
   }
 
@@ -153,7 +153,7 @@ export class Table {
   /**
    * Clones this table to a new table with all properties cloned.
    */
-  clone(): Table {
+  public clone(): Table {
     return new Table({
       schema: this.schema,
       database: this.database,
@@ -174,14 +174,14 @@ export class Table {
   /**
    * Add column and creates its constraints.
    */
-  addColumn(column: TableColumn): void {
+  public addColumn(column: TableColumn): void {
     this.columns.push(column);
   }
 
   /**
    * Remove column and its constraints.
    */
-  removeColumn(column: TableColumn): void {
+  public removeColumn(column: TableColumn): void {
     const foundColumn = this.columns.find((c) => c.name === column.name);
     if (foundColumn) this.columns.splice(this.columns.indexOf(foundColumn), 1);
   }
@@ -189,7 +189,7 @@ export class Table {
   /**
    * Adds unique constraint.
    */
-  addUniqueConstraint(uniqueConstraint: TableUnique): void {
+  public addUniqueConstraint(uniqueConstraint: TableUnique): void {
     this.uniques.push(uniqueConstraint);
     if (uniqueConstraint.columnNames.length === 1) {
       const uniqueColumn = this.columns.find(
@@ -202,7 +202,7 @@ export class Table {
   /**
    * Removes unique constraint.
    */
-  removeUniqueConstraint(removedUnique: TableUnique): void {
+  public removeUniqueConstraint(removedUnique: TableUnique): void {
     const foundUnique = this.uniques.find(
       (unique) => unique.name === removedUnique.name
     );
@@ -220,14 +220,14 @@ export class Table {
   /**
    * Adds check constraint.
    */
-  addCheckConstraint(checkConstraint: TableCheck): void {
+  public addCheckConstraint(checkConstraint: TableCheck): void {
     this.checks.push(checkConstraint);
   }
 
   /**
    * Removes check constraint.
    */
-  removeCheckConstraint(removedCheck: TableCheck): void {
+  public removeCheckConstraint(removedCheck: TableCheck): void {
     const foundCheck = this.checks.find(
       (check) => check.name === removedCheck.name
     );
@@ -239,14 +239,14 @@ export class Table {
   /**
    * Adds exclusion constraint.
    */
-  addExclusionConstraint(exclusionConstraint: TableExclusion): void {
+  public addExclusionConstraint(exclusionConstraint: TableExclusion): void {
     this.exclusions.push(exclusionConstraint);
   }
 
   /**
    * Removes exclusion constraint.
    */
-  removeExclusionConstraint(removedExclusion: TableExclusion): void {
+  public removeExclusionConstraint(removedExclusion: TableExclusion): void {
     const foundExclusion = this.exclusions.find(
       (exclusion) => exclusion.name === removedExclusion.name
     );
@@ -258,14 +258,14 @@ export class Table {
   /**
    * Adds foreign keys.
    */
-  addForeignKey(foreignKey: TableForeignKey): void {
+  public addForeignKey(foreignKey: TableForeignKey): void {
     this.foreignKeys.push(foreignKey);
   }
 
   /**
    * Removes foreign key.
    */
-  removeForeignKey(removedForeignKey: TableForeignKey): void {
+  public removeForeignKey(removedForeignKey: TableForeignKey): void {
     const fk = this.foreignKeys.find(
       (foreignKey) => foreignKey.name === removedForeignKey.name
     );
@@ -275,7 +275,7 @@ export class Table {
   /**
    * Adds index.
    */
-  addIndex(index: TableIndex, isMysql = false): void {
+  public addIndex(index: TableIndex, isMysql = false): void {
     this.indices.push(index);
 
     // in Mysql unique indices and unique constraints are the same thing
@@ -289,7 +289,7 @@ export class Table {
   /**
    * Removes index.
    */
-  removeIndex(tableIndex: TableIndex, isMysql = false): void {
+  public removeIndex(tableIndex: TableIndex, isMysql = false): void {
     const index = this.indices.find((index) => index.name === tableIndex.name);
     if (index) {
       this.indices.splice(this.indices.indexOf(index), 1);
@@ -311,14 +311,14 @@ export class Table {
     }
   }
 
-  findColumnByName(name: string): TableColumn | undefined {
+  public findColumnByName(name: string): TableColumn | undefined {
     return this.columns.find((column) => column.name === name);
   }
 
   /**
    * Returns all column indices.
    */
-  findColumnIndices(column: TableColumn): Array<TableIndex> {
+  public findColumnIndices(column: TableColumn): Array<TableIndex> {
     return this.indices.filter((index) => {
       return !!index.columnNames.find(
         (columnName) => columnName === column.name
@@ -329,7 +329,7 @@ export class Table {
   /**
    * Returns all column foreign keys.
    */
-  findColumnForeignKeys(column: TableColumn): Array<TableForeignKey> {
+  public findColumnForeignKeys(column: TableColumn): Array<TableForeignKey> {
     return this.foreignKeys.filter((foreignKey) => {
       return !!foreignKey.columnNames.find(
         (columnName) => columnName === column.name
@@ -340,7 +340,7 @@ export class Table {
   /**
    * Returns all column uniques.
    */
-  findColumnUniques(column: TableColumn): Array<TableUnique> {
+  public findColumnUniques(column: TableColumn): Array<TableUnique> {
     return this.uniques.filter((unique) => {
       return !!unique.columnNames.find(
         (columnName) => columnName === column.name
@@ -351,7 +351,7 @@ export class Table {
   /**
    * Returns all column checks.
    */
-  findColumnChecks(column: TableColumn): Array<TableCheck> {
+  public findColumnChecks(column: TableColumn): Array<TableCheck> {
     return this.checks.filter((check) => {
       return !!check.columnNames!.find(
         (columnName) => columnName === column.name
@@ -366,13 +366,14 @@ export class Table {
   /**
    * Creates table from a given entity metadata.
    */
-  static create(entityMetadata: EntityMetadata, driver: Driver): Table {
+  public static create(entityMetadata: EntityMetadata, driver: Driver): Table {
     const database =
       entityMetadata.database === driver.database
         ? undefined
         : entityMetadata.database;
     const schema =
-      entityMetadata.schema === (driver.options as any).schema
+      entityMetadata.schema ===
+      (driver.options as unknown as Record<string, unknown>)?.schema
         ? undefined
         : entityMetadata.schema;
 

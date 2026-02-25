@@ -2,13 +2,13 @@ import path from 'path';
 
 import appRootPath from 'app-root-path';
 
-import { DataSourceOptions } from '../data-source/DataSourceOptions';
-import { TypeORMError } from '../error';
-import { PlatformTools } from '../platform/PlatformTools';
-import { importOrRequireFile } from '../util/ImportUtils';
+import type { DataSourceOptions } from '../data-source/DataSourceOptions.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import { PlatformTools } from '../platform/PlatformTools.js';
+import { importOrRequireFile } from '../util/ImportUtils.js';
 import { isAbsolute } from '../util/PathUtils.js';
 
-import { ConnectionOptionsEnvReader } from './options-reader/ConnectionOptionsEnvReader';
+import { ConnectionOptionsEnvReader } from './options-reader/ConnectionOptionsEnvReader.js';
 
 /**
  * Reads connection options from the ormconfig.
@@ -40,7 +40,7 @@ export class ConnectionOptionsReader {
   /**
    * Returns all connection options read from the ormconfig.
    */
-  async all(): Promise<Array<DataSourceOptions>> {
+  public async all(): Promise<Array<DataSourceOptions>> {
     const options = await this.load();
     if (!options)
       throw new TypeORMError(
@@ -54,7 +54,7 @@ export class ConnectionOptionsReader {
    * Gets a connection with a given name read from ormconfig.
    * If connection with such name would not be found then it throw error.
    */
-  async get(name: string): Promise<DataSourceOptions> {
+  public async get(name: string): Promise<DataSourceOptions> {
     const allOptions = await this.all();
     const targetOptions = allOptions.find(
       (options) =>
@@ -71,7 +71,7 @@ export class ConnectionOptionsReader {
   /**
    * Checks if there is a TypeORM configuration file.
    */
-  async has(name: string): Promise<boolean> {
+  public async has(name: string): Promise<boolean> {
     const allOptions = await this.load();
     if (!allOptions) return false;
 
@@ -147,14 +147,19 @@ export class ConnectionOptionsReader {
       if (
         moduleSystem === 'esm' ||
         (configModule &&
+          typeof configModule === 'object' &&
           '__esModule' in configModule &&
           'default' in configModule)
       ) {
-        connectionOptions = configModule.default;
+        connectionOptions = (configModule as Record<string, unknown>)
+          .default as DataSourceOptions | Array<DataSourceOptions>;
       } else {
-        connectionOptions = configModule;
+        connectionOptions = configModule as
+          | DataSourceOptions
+          | Array<DataSourceOptions>;
       }
     } else if (foundFileFormat === 'json') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-require-imports
       connectionOptions = require(configFile);
     }
 
@@ -178,7 +183,7 @@ export class ConnectionOptionsReader {
     connectionOptions.forEach((options) => {
       options.baseDirectory = this.baseDirectory;
       if (options.entities) {
-        const entities = (options.entities as Array<any>).map((entity) => {
+        const entities = (options.entities as Array<unknown>).map((entity) => {
           if (typeof entity === 'string' && entity.substr(0, 1) !== '/')
             return this.baseDirectory + '/' + entity;
 
@@ -187,7 +192,7 @@ export class ConnectionOptionsReader {
         Object.assign(connectionOptions, { entities: entities });
       }
       if (options.subscribers) {
-        const subscribers = (options.subscribers as Array<any>).map(
+        const subscribers = (options.subscribers as Array<unknown>).map(
           (subscriber) => {
             if (
               typeof subscriber === 'string' &&
@@ -201,7 +206,7 @@ export class ConnectionOptionsReader {
         Object.assign(connectionOptions, { subscribers: subscribers });
       }
       if (options.migrations) {
-        const migrations = (options.migrations as Array<any>).map(
+        const migrations = (options.migrations as Array<unknown>).map(
           (migration) => {
             if (typeof migration === 'string' && migration.substr(0, 1) !== '/')
               return this.baseDirectory + '/' + migration;
@@ -213,16 +218,21 @@ export class ConnectionOptionsReader {
       }
 
       // make database path file in sqlite relative to package.json
-      if (options.type === 'sqlite' || options.type === 'better-sqlite3') {
+      if (
+        options.type === ('sqlite' as string) ||
+        options.type === ('better-sqlite3' as string)
+      ) {
+        const db = (options as DataSourceOptions & { database?: string })
+          .database;
         if (
-          typeof options.database === 'string' &&
-          !isAbsolute(options.database) &&
-          options.database.substr(0, 1) !== '/' && // unix absolute
-          options.database.substr(1, 2) !== ':\\' && // windows absolute
-          options.database !== ':memory:'
+          typeof db === 'string' &&
+          !isAbsolute(db) &&
+          db.substr(0, 1) !== '/' && // unix absolute
+          db.substr(1, 2) !== ':\\' && // windows absolute
+          db !== ':memory:'
         ) {
-          Object.assign(options, {
-            database: this.baseDirectory + '/' + options.database,
+          Object.assign(options as DataSourceOptions & { database: string }, {
+            database: this.baseDirectory + '/' + db,
           });
         }
       }

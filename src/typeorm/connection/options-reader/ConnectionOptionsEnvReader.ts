@@ -1,4 +1,5 @@
 import type { DataSourceOptions } from '../../data-source/DataSourceOptions.js';
+import type { LoggerOptions } from '../../logger/LoggerOptions.js';
 import { PlatformTools } from '../../platform/PlatformTools.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 
@@ -18,63 +19,76 @@ export class ConnectionOptionsEnvReader {
    * Reads connection options from environment variables.
    */
   public read(): Array<DataSourceOptions> {
-    return [
-      {
-        type:
-          PlatformTools.getEnvVariable('TYPEORM_CONNECTION') ||
-          (PlatformTools.getEnvVariable('TYPEORM_URL')
-            ? PlatformTools.getEnvVariable('TYPEORM_URL')!.split('://')[0]
-            : undefined),
-        url: PlatformTools.getEnvVariable('TYPEORM_URL'),
-        host: PlatformTools.getEnvVariable('TYPEORM_HOST'),
-        port: this.stringToNumber(PlatformTools.getEnvVariable('TYPEORM_PORT')),
-        username: PlatformTools.getEnvVariable('TYPEORM_USERNAME'),
-        password: PlatformTools.getEnvVariable('TYPEORM_PASSWORD'),
-        database: PlatformTools.getEnvVariable('TYPEORM_DATABASE'),
-        sid: PlatformTools.getEnvVariable('TYPEORM_SID'),
-        schema: PlatformTools.getEnvVariable('TYPEORM_SCHEMA'),
-        extra: PlatformTools.getEnvVariable('TYPEORM_DRIVER_EXTRA')
-          ? (JSON.parse(
-              PlatformTools.getEnvVariable('TYPEORM_DRIVER_EXTRA')!
-            ) as Record<string, unknown>)
-          : undefined,
-        synchronize: OrmUtils.toBoolean(
-          PlatformTools.getEnvVariable('TYPEORM_SYNCHRONIZE')
-        ),
-        dropSchema: OrmUtils.toBoolean(
-          PlatformTools.getEnvVariable('TYPEORM_DROP_SCHEMA')
-        ),
-        migrationsRun: OrmUtils.toBoolean(
-          PlatformTools.getEnvVariable('TYPEORM_MIGRATIONS_RUN')
-        ),
-        entities: this.stringToArray(
-          PlatformTools.getEnvVariable('TYPEORM_ENTITIES')
-        ),
-        migrations: this.stringToArray(
-          PlatformTools.getEnvVariable('TYPEORM_MIGRATIONS')
-        ),
-        migrationsTableName: PlatformTools.getEnvVariable(
-          'TYPEORM_MIGRATIONS_TABLE_NAME'
-        ),
-        metadataTableName: PlatformTools.getEnvVariable(
-          'TYPEORM_METADATA_TABLE_NAME'
-        ),
-        subscribers: this.stringToArray(
-          PlatformTools.getEnvVariable('TYPEORM_SUBSCRIBERS')
-        ),
-        logging: this.transformLogging(
-          PlatformTools.getEnvVariable('TYPEORM_LOGGING') as string
-        ),
-        logger: PlatformTools.getEnvVariable('TYPEORM_LOGGER'),
-        entityPrefix: PlatformTools.getEnvVariable('TYPEORM_ENTITY_PREFIX'),
-        maxQueryExecutionTime: PlatformTools.getEnvVariable(
-          'TYPEORM_MAX_QUERY_EXECUTION_TIME'
-        ),
-        debug: PlatformTools.getEnvVariable('TYPEORM_DEBUG'),
-        cache: this.transformCaching(),
-        uuidExtension: PlatformTools.getEnvVariable('TYPEORM_UUID_EXTENSION'),
-      },
-    ];
+    const options = {
+      type:
+        (PlatformTools.getEnvVariable('TYPEORM_CONNECTION') as
+          | 'oracle'
+          | 'postgres') ||
+        (PlatformTools.getEnvVariable('TYPEORM_URL')
+          ? (PlatformTools.getEnvVariable('TYPEORM_URL')!.split('://')[0] as
+              | 'oracle'
+              | 'postgres')
+          : undefined),
+      url: PlatformTools.getEnvVariable('TYPEORM_URL'),
+      host: PlatformTools.getEnvVariable('TYPEORM_HOST'),
+      port: this.stringToNumber(PlatformTools.getEnvVariable('TYPEORM_PORT')),
+      username: PlatformTools.getEnvVariable('TYPEORM_USERNAME'),
+      password: PlatformTools.getEnvVariable('TYPEORM_PASSWORD'),
+      database: PlatformTools.getEnvVariable('TYPEORM_DATABASE'),
+      sid: PlatformTools.getEnvVariable('TYPEORM_SID'),
+      schema: PlatformTools.getEnvVariable('TYPEORM_SCHEMA'),
+      extra: PlatformTools.getEnvVariable('TYPEORM_DRIVER_EXTRA')
+        ? (JSON.parse(
+            PlatformTools.getEnvVariable('TYPEORM_DRIVER_EXTRA')!
+          ) as Record<string, unknown>)
+        : undefined,
+      synchronize: OrmUtils.toBoolean(
+        PlatformTools.getEnvVariable('TYPEORM_SYNCHRONIZE')
+      ),
+      dropSchema: OrmUtils.toBoolean(
+        PlatformTools.getEnvVariable('TYPEORM_DROP_SCHEMA')
+      ),
+      migrationsRun: OrmUtils.toBoolean(
+        PlatformTools.getEnvVariable('TYPEORM_MIGRATIONS_RUN')
+      ),
+      entities: this.stringToArray(
+        PlatformTools.getEnvVariable('TYPEORM_ENTITIES')
+      ),
+      migrations: this.stringToArray(
+        PlatformTools.getEnvVariable('TYPEORM_MIGRATIONS')
+      ),
+      migrationsTableName: PlatformTools.getEnvVariable(
+        'TYPEORM_MIGRATIONS_TABLE_NAME'
+      ),
+      metadataTableName: PlatformTools.getEnvVariable(
+        'TYPEORM_METADATA_TABLE_NAME'
+      ),
+      subscribers: this.stringToArray(
+        PlatformTools.getEnvVariable('TYPEORM_SUBSCRIBERS')
+      ),
+      logging: this.transformLogging(
+        PlatformTools.getEnvVariable('TYPEORM_LOGGING')
+      ),
+      logger: PlatformTools.getEnvVariable('TYPEORM_LOGGER') as
+        | 'advanced-console'
+        | 'simple-console'
+        | 'formatted-console'
+        | 'file'
+        | 'debug'
+        | undefined,
+      entityPrefix: PlatformTools.getEnvVariable('TYPEORM_ENTITY_PREFIX'),
+      maxQueryExecutionTime: this.stringToNumber(
+        PlatformTools.getEnvVariable('TYPEORM_MAX_QUERY_EXECUTION_TIME')
+      ),
+      debug: PlatformTools.getEnvVariable('TYPEORM_DEBUG'),
+      cache: this.transformCaching(),
+      uuidExtension: PlatformTools.getEnvVariable('TYPEORM_UUID_EXTENSION') as
+        | 'pgcrypto'
+        | 'uuid-ossp'
+        | undefined,
+    };
+
+    return [options as unknown as DataSourceOptions];
   }
 
   // -------------------------------------------------------------------------
@@ -84,12 +98,17 @@ export class ConnectionOptionsEnvReader {
   /**
    * Transforms logging string into real logging value connection requires.
    */
-  protected transformLogging(logging: string): unknown {
+  protected transformLogging(
+    logging: string | undefined
+  ): LoggerOptions | undefined {
+    if (!logging) return undefined;
     if (logging === 'true' || logging === 'TRUE' || logging === '1')
       return true;
     if (logging === 'all') return 'all';
 
-    return this.stringToArray(logging);
+    return this.stringToArray(logging) as Array<
+      'query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration'
+    >;
   }
 
   /**

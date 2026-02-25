@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 /**
@@ -18,7 +19,7 @@ export interface RelationCountMetadataArgs {
   /**
    * Target's relation which it should count.
    */
-  readonly relation: string | ((object: unknown) => unknown);
+  readonly relation: string | ((object: ObjectLiteral) => unknown);
 
   /**
    * Alias of the joined (destination) table.
@@ -29,6 +30,6 @@ export interface RelationCountMetadataArgs {
    * Extra condition applied to "ON" section of join.
    */
   readonly queryBuilderFactory?: (
-    qb: SelectQueryBuilder<unknown>
-  ) => SelectQueryBuilder<unknown>;
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>;
 }

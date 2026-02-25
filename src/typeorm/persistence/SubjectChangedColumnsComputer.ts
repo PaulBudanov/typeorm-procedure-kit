@@ -1,10 +1,10 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { ApplyValueTransformers } from '../util/ApplyValueTransformers';
-import { DateUtils } from '../util/DateUtils';
-import { ObjectUtils } from '../util/ObjectUtils';
-import { OrmUtils } from '../util/OrmUtils';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
+import { DateUtils } from '../util/DateUtils.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
+import { OrmUtils } from '../util/OrmUtils.js';
 
-import { Subject } from './Subject';
+import { Subject } from './Subject.js';
 
 /**
  * Finds what columns are changed in the subject entities.
@@ -17,7 +17,7 @@ export class SubjectChangedColumnsComputer {
   /**
    * Finds what columns are changed in the subject entities.
    */
-  compute(subjects: Array<Subject>) {
+  public compute(subjects: Array<Subject>): void {
     subjects.forEach((subject) => {
       this.computeDiffColumns(subject);
       this.computeDiffRelationalColumns(subjects, subject);
@@ -81,53 +81,67 @@ export class SubjectChangedColumnsComputer {
         if (entityValue !== null && databaseValue !== null) {
           switch (column.type) {
             case 'date':
-              normalizedValue = column.isArray
-                ? entityValue.map((date: Date) =>
-                    DateUtils.mixedDateToDateString(date)
-                  )
-                : DateUtils.mixedDateToDateString(entityValue);
-              databaseValue = column.isArray
-                ? databaseValue.map((date: Date) =>
-                    DateUtils.mixedDateToDateString(date)
-                  )
-                : DateUtils.mixedDateToDateString(databaseValue);
+              normalizedValue = (
+                column.isArray
+                  ? (entityValue as unknown as Array<Date>).map((date: Date) =>
+                      DateUtils.mixedDateToUtcDatetimeString(date)
+                    )
+                  : DateUtils.mixedDateToUtcDatetimeString(entityValue)
+              ) as string;
+
+              databaseValue = (
+                column.isArray
+                  ? (databaseValue as unknown as Array<Date>).map(
+                      (date: Date) =>
+                        DateUtils.mixedDateToUtcDatetimeString(date)
+                    )
+                  : DateUtils.mixedDateToUtcDatetimeString(databaseValue)
+              ) as string;
               break;
 
             case 'time':
             case 'time with time zone':
             case 'time without time zone':
             case 'timetz':
-              normalizedValue = column.isArray
-                ? entityValue.map((date: Date) =>
-                    DateUtils.mixedDateToTimeString(date)
-                  )
-                : DateUtils.mixedDateToTimeString(entityValue);
-              databaseValue = column.isArray
-                ? databaseValue.map((date: Date) =>
-                    DateUtils.mixedDateToTimeString(date)
-                  )
-                : DateUtils.mixedDateToTimeString(databaseValue);
-              break;
+              normalizedValue = (
+                column.isArray
+                  ? (entityValue as unknown as Array<Date>).map((date: Date) =>
+                      DateUtils.mixedDateToUtcDatetimeString(date)
+                    )
+                  : DateUtils.mixedDateToUtcDatetimeString(entityValue)
+              ) as string;
 
-            case 'datetime':
-            case 'datetime2':
+              databaseValue = (
+                column.isArray
+                  ? (databaseValue as unknown as Array<Date>).map(
+                      (date: Date) =>
+                        DateUtils.mixedDateToUtcDatetimeString(date)
+                    )
+                  : DateUtils.mixedDateToUtcDatetimeString(databaseValue)
+              ) as string;
+              break;
             case Date:
             case 'timestamp':
             case 'timestamp without time zone':
             case 'timestamp with time zone':
             case 'timestamp with local time zone':
             case 'timestamptz':
-              normalizedValue = column.isArray
-                ? entityValue.map((date: Date) =>
-                    DateUtils.mixedDateToUtcDatetimeString(date)
-                  )
-                : DateUtils.mixedDateToUtcDatetimeString(entityValue);
+              normalizedValue = (
+                column.isArray
+                  ? (entityValue as unknown as Array<Date>).map((date: Date) =>
+                      DateUtils.mixedDateToUtcDatetimeString(date)
+                    )
+                  : DateUtils.mixedDateToUtcDatetimeString(entityValue)
+              ) as string;
 
-              databaseValue = column.isArray
-                ? databaseValue.map((date: Date) =>
-                    DateUtils.mixedDateToUtcDatetimeString(date)
-                  )
-                : DateUtils.mixedDateToUtcDatetimeString(databaseValue);
+              databaseValue = (
+                column.isArray
+                  ? (databaseValue as unknown as Array<Date>).map(
+                      (date: Date) =>
+                        DateUtils.mixedDateToUtcDatetimeString(date)
+                    )
+                  : DateUtils.mixedDateToUtcDatetimeString(databaseValue)
+              ) as string;
 
               break;
 
@@ -157,7 +171,7 @@ export class SubjectChangedColumnsComputer {
             normalizedValue = ApplyValueTransformers.transformTo(
               column.transformer,
               entityValue
-            );
+            ) as string | ObjectLiteral;
           }
         }
 
@@ -242,7 +256,8 @@ export class SubjectChangedColumnsComputer {
       const valueSubject = allSubjects.find(
         (subject) => subject.mustBeInserted && subject.entity === relatedEntity
       );
-      if (valueSubject) relatedEntity = valueSubject;
+      if (valueSubject)
+        relatedEntity = valueSubject as unknown as ObjectLiteral;
 
       // find if there is already a relation to be changed
       const changeMap = subject.changeMaps.find(

@@ -1,7 +1,7 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { RelationMetadata } from '../../metadata/RelationMetadata';
-import { OrmUtils } from '../../util/OrmUtils';
-import { Subject } from '../Subject';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { Subject } from '../Subject.js';
 
 /**
  * Builds operations needs to be executed for many-to-many relations of the given subjects.
@@ -16,7 +16,7 @@ export class ManyToManySubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected subjects: Array<Subject>) {}
+  public constructor(protected subjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods
@@ -25,7 +25,7 @@ export class ManyToManySubjectBuilder {
   /**
    * Builds operations for any changes in the many-to-many relations of the subjects.
    */
-  build(): void {
+  public build(): void {
     this.subjects.forEach((subject) => {
       // if subject doesn't have entity then no need to find something that should be inserted or removed
       if (!subject.entity) return;
@@ -43,7 +43,7 @@ export class ManyToManySubjectBuilder {
   /**
    * Builds operations for removal of all many-to-many records of all many-to-many relations of the given subject.
    */
-  buildForAllRemoval(subject: Subject) {
+  public buildForAllRemoval(subject: Subject): void {
     // if subject does not have a database entity then it means it does not exist in the database
     // if it does not exist in the database then we don't have anything for deletion
     if (!subject.databaseEntity) return;
@@ -56,7 +56,9 @@ export class ManyToManySubjectBuilder {
       // get all related entities (actually related entity relation ids) bind to this subject entity
       // by example: returns category ids of the post we are currently working with (subject.entity is post)
       const relatedEntityRelationIdsInDatabase: Array<ObjectLiteral> =
-        relation.getEntityValue(subject.databaseEntity!);
+        relation.getEntityValue(
+          subject.databaseEntity!
+        ) as unknown as Array<ObjectLiteral>;
 
       // go through all related entities and create a new junction subject for each row in junction table
       relatedEntityRelationIdsInDatabase.forEach((relationId) => {
@@ -91,7 +93,7 @@ export class ManyToManySubjectBuilder {
   protected buildForSubjectRelation(
     subject: Subject,
     relation: RelationMetadata
-  ) {
+  ): void {
     // load from db all relation ids of inverse entities that are "bind" to the subject's entity
     // this way we gonna check which relation ids are missing and which are new (e.g. inserted or removed)
     let databaseRelatedEntityIds: Array<ObjectLiteral> = [];
@@ -103,17 +105,17 @@ export class ManyToManySubjectBuilder {
         subject.databaseEntity
       );
       if (databaseRelatedEntityValue) {
-        databaseRelatedEntityIds = databaseRelatedEntityValue.map((e: any) =>
-          relation.inverseEntityMetadata.getEntityIdMap(e)
-        );
+        databaseRelatedEntityIds = (
+          databaseRelatedEntityValue as unknown as Array<ObjectLiteral>
+        ).map((e) => relation.inverseEntityMetadata.getEntityIdMap(e)!);
       }
     }
 
     // extract entity's relation value
     // by example: categories inside our post (subject.entity is post)
-    let relatedEntities: Array<ObjectLiteral> = relation.getEntityValue(
+    let relatedEntities = relation.getEntityValue(
       subject.entity!
-    );
+    ) as unknown as Array<ObjectLiteral>;
     if (relatedEntities === null)
       // if value set to null its equal if we set it to empty array - all items must be removed from the database
       relatedEntities = [];
@@ -255,7 +257,7 @@ export class ManyToManySubjectBuilder {
     subject: Subject,
     relation: RelationMetadata,
     relationId: ObjectLiteral
-  ) {
+  ): ObjectLiteral {
     const ownerEntityMap = relation.isOwning ? subject.entity! : relationId;
     const inverseEntityMap = relation.isOwning ? relationId : subject.entity!;
 

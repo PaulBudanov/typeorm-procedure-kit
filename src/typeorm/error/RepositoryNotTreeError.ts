@@ -17,12 +17,12 @@ export class RepositoryNotTreeError extends TypeORMError {
     if (InstanceChecker.isEntitySchema(entityClass)) {
       targetName = (entityClass as EntitySchema).options.name;
     } else if (typeof entityClass === 'function') {
-      targetName = (entityClass as TFunction).name;
+      targetName = (entityClass as unknown as TFunction).name;
     } else if (
       ObjectUtils.isObject(entityClass) &&
       'name' in (entityClass as object)
     ) {
-      targetName = (entityClass as TFunction).name;
+      targetName = (entityClass as unknown as TFunction).name;
     } else {
       targetName = entityClass as string;
     }

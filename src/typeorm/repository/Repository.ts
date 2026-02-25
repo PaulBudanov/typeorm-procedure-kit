@@ -1,24 +1,23 @@
-import { DeepPartial } from '../common/DeepPartial';
-import { EntityTarget } from '../common/EntityTarget';
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { PickKeysByType } from '../common/PickKeysByType';
-import { ObjectId } from '../driver/mongodb/typings';
-import { EntityManager } from '../entity-manager/EntityManager';
-import { FindManyOptions } from '../find-options/FindManyOptions';
-import { FindOneOptions } from '../find-options/FindOneOptions';
-import { QueryDeepPartialEntity } from '../query-builder/QueryPartialEntity';
-import { DeleteResult } from '../query-builder/result/DeleteResult';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder';
-import { QueryRunner } from '../query-runner/QueryRunner';
+import type { DeepPartial } from '../common/DeepPartial.js';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { PickKeysByType } from '../common/PickKeysByType.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
+import type { FindManyOptions } from '../find-options/FindManyOptions.js';
+import type { FindOneOptions } from '../find-options/FindOneOptions.js';
+import type { FindOptionsWhere } from '../find-options/FindOptionsWhere.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { QueryDeepPartialEntity } from '../query-builder/QueryPartialEntity.js';
+import type { DeleteResult } from '../query-builder/result/DeleteResult.js';
+import type { InsertResult } from '../query-builder/result/InsertResult.js';
+import type { UpdateResult } from '../query-builder/result/UpdateResult.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import { buildSqlTag } from '../util/SqlTagUtils.js';
 
-import { buildSqlTag } from '../util/SqlTagUtils';
-import { RemoveOptions } from './RemoveOptions';
-import { SaveOptions } from './SaveOptions';
-import { UpdateResult } from '../query-builder/result/UpdateResult';
-import { InsertResult } from '../query-builder/result/InsertResult';
-import { FindOptionsWhere } from '../find-options/FindOptionsWhere';
-
-import { UpsertOptions } from './UpsertOptions';
+import type { RemoveOptions } from './RemoveOptions.js';
+import type { SaveOptions } from './SaveOptions.js';
+import type { UpsertOptions } from './UpsertOptions.js';
 
 /**
  * Repository is supposed to work with your entity objects. Find entities, insert, update, delete, etc.
@@ -33,17 +32,17 @@ export class Repository<Entity extends ObjectLiteral> {
    * If this repository manages entity from schema,
    * then it returns a name of that schema instead.
    */
-  readonly target: EntityTarget<Entity>;
+  public readonly target: EntityTarget<Entity>;
 
   /**
    * Entity Manager used by this repository.
    */
-  readonly manager: EntityManager;
+  public readonly manager: EntityManager;
 
   /**
    * Query runner provider used for this repository.
    */
-  readonly queryRunner?: QueryRunner;
+  public readonly queryRunner?: QueryRunner;
 
   // -------------------------------------------------------------------------
   // Accessors
@@ -52,7 +51,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Entity metadata of the entity current repository manages.
    */
-  get metadata() {
+  public get metadata(): EntityMetadata {
     return this.manager.connection.getMetadata(this.target);
   }
 
@@ -60,7 +59,7 @@ export class Repository<Entity extends ObjectLiteral> {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     target: EntityTarget<Entity>,
     manager: EntityManager,
     queryRunner?: QueryRunner
@@ -77,12 +76,12 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Creates a new query builder that can be used to build a SQL query.
    */
-  createQueryBuilder(
+  public createQueryBuilder(
     alias?: string,
     queryRunner?: QueryRunner
   ): SelectQueryBuilder<Entity> {
     return this.manager.createQueryBuilder<Entity>(
-      this.metadata.target as any,
+      this.metadata.target,
       alias || this.metadata.targetName,
       queryRunner || this.queryRunner
     );
@@ -92,58 +91,58 @@ export class Repository<Entity extends ObjectLiteral> {
    * Checks if entity has an id.
    * If entity composite compose ids, it will check them all.
    */
-  hasId(entity: Entity): boolean {
+  public hasId(entity: Entity): boolean {
     return this.manager.hasId(this.metadata.target, entity);
   }
 
   /**
    * Gets entity mixed id.
    */
-  getId(entity: Entity): any {
+  public getId(entity: Entity): unknown {
     return this.manager.getId(this.metadata.target, entity);
   }
 
   /**
    * Creates a new entity instance.
    */
-  create(): Entity;
+  public create(): Entity;
 
   /**
    * Creates new entities and copies all entity properties from given objects into their new entities.
    * Note that it copies only properties that are present in entity schema.
    */
-  create(entityLikeArray: Array<DeepPartial<Entity>>): Array<Entity>;
+  public create(entityLikeArray: Array<DeepPartial<Entity>>): Array<Entity>;
 
   /**
    * Creates a new entity instance and copies all entity properties from this object into a new entity.
    * Note that it copies only properties that are present in entity schema.
    */
-  create(entityLike: DeepPartial<Entity>): Entity;
+  public create(entityLike: DeepPartial<Entity>): Entity;
 
   /**
    * Creates a new entity instance or instances.
    * Can copy properties from the given object into new entities.
    */
-  create(
+  public create(
     plainEntityLikeOrPlainEntityLikes?:
       | DeepPartial<Entity>
       | Array<DeepPartial<Entity>>
   ): Entity | Array<Entity> {
     return this.manager.create(
-      this.metadata.target as any,
-      plainEntityLikeOrPlainEntityLikes as any
+      this.metadata.target,
+      plainEntityLikeOrPlainEntityLikes
     );
   }
 
   /**
    * Merges multiple entities (or entity-like objects) into a given entity.
    */
-  merge(
+  public merge(
     mergeIntoEntity: Entity,
     ...entityLikes: Array<DeepPartial<Entity>>
   ): Entity {
     return this.manager.merge(
-      this.metadata.target as any,
+      this.metadata.target,
       mergeIntoEntity,
       ...entityLikes
     );
@@ -158,15 +157,15 @@ export class Repository<Entity extends ObjectLiteral> {
    * Note that given entity-like object must have an entity id / primary key to find entity by.
    * Returns undefined if entity with given id was not found.
    */
-  preload(entityLike: DeepPartial<Entity>): Promise<Entity | undefined> {
-    return this.manager.preload(this.metadata.target as any, entityLike);
+  public preload(entityLike: DeepPartial<Entity>): Promise<Entity | undefined> {
+    return this.manager.preload(this.metadata.target, entityLike);
   }
 
   /**
    * Saves all given entities in the database.
    * If entities do not exist in the database then inserts, otherwise updates.
    */
-  save<T extends DeepPartial<Entity>>(
+  public save<T extends DeepPartial<Entity>>(
     entities: Array<T>,
     options: SaveOptions & { reload: false }
   ): Promise<Array<T>>;
@@ -175,7 +174,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Saves all given entities in the database.
    * If entities do not exist in the database then inserts, otherwise updates.
    */
-  save<T extends DeepPartial<Entity>>(
+  public save<T extends DeepPartial<Entity>>(
     entities: Array<T>,
     options?: SaveOptions
   ): Promise<Array<T & Entity>>;
@@ -184,7 +183,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Saves a given entity in the database.
    * If entity does not exist in the database then inserts, otherwise updates.
    */
-  save<T extends DeepPartial<Entity>>(
+  public save<T extends DeepPartial<Entity>>(
     entity: T,
     options: SaveOptions & { reload: false }
   ): Promise<T>;
@@ -193,7 +192,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Saves a given entity in the database.
    * If entity does not exist in the database then inserts, otherwise updates.
    */
-  save<T extends DeepPartial<Entity>>(
+  public save<T extends DeepPartial<Entity>>(
     entity: T,
     options?: SaveOptions
   ): Promise<T & Entity>;
@@ -201,13 +200,13 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Saves one or many given entities.
    */
-  save<T extends DeepPartial<Entity>>(
+  public save<T extends DeepPartial<Entity>>(
     entityOrEntities: T | Array<T>,
     options?: SaveOptions
   ): Promise<T | Array<T>> {
     return this.manager.save<Entity, T>(
-      this.metadata.target as any,
-      entityOrEntities as any,
+      this.metadata.target,
+      entityOrEntities as Array<T>,
       options
     );
   }
@@ -215,7 +214,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Removes a given entities from the database.
    */
-  remove(
+  public remove(
     entities: Array<Entity>,
     options?: RemoveOptions
   ): Promise<Array<Entity>>;
@@ -223,26 +222,22 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Removes a given entity from the database.
    */
-  remove(entity: Entity, options?: RemoveOptions): Promise<Entity>;
+  public remove(entity: Entity, options?: RemoveOptions): Promise<Entity>;
 
   /**
    * Removes one or many given entities.
    */
-  remove(
+  public remove(
     entityOrEntities: Entity | Array<Entity>,
     options?: RemoveOptions
   ): Promise<Entity | Array<Entity>> {
-    return this.manager.remove(
-      this.metadata.target as any,
-      entityOrEntities as any,
-      options
-    );
+    return this.manager.remove(this.metadata.target, entityOrEntities, options);
   }
 
   /**
    * Records the delete date of all given entities.
    */
-  softRemove<T extends DeepPartial<Entity>>(
+  public softRemove<T extends DeepPartial<Entity>>(
     entities: Array<T>,
     options: SaveOptions & { reload: false }
   ): Promise<Array<T>>;
@@ -250,7 +245,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Records the delete date of all given entities.
    */
-  softRemove<T extends DeepPartial<Entity>>(
+  public softRemove<T extends DeepPartial<Entity>>(
     entities: Array<T>,
     options?: SaveOptions
   ): Promise<Array<T & Entity>>;
@@ -258,7 +253,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Records the delete date of a given entity.
    */
-  softRemove<T extends DeepPartial<Entity>>(
+  public softRemove<T extends DeepPartial<Entity>>(
     entity: T,
     options: SaveOptions & { reload: false }
   ): Promise<T>;
@@ -266,7 +261,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Records the delete date of a given entity.
    */
-  softRemove<T extends DeepPartial<Entity>>(
+  public softRemove<T extends DeepPartial<Entity>>(
     entity: T,
     options?: SaveOptions
   ): Promise<T & Entity>;
@@ -274,13 +269,13 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Records the delete date of one or many given entities.
    */
-  softRemove<T extends DeepPartial<Entity>>(
+  public softRemove<T extends DeepPartial<Entity>>(
     entityOrEntities: T | Array<T>,
     options?: SaveOptions
   ): Promise<T | Array<T>> {
     return this.manager.softRemove<Entity, T>(
-      this.metadata.target as any,
-      entityOrEntities as any,
+      this.metadata.target,
+      entityOrEntities as Array<T>,
       options
     );
   }
@@ -288,7 +283,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Recovers all given entities in the database.
    */
-  recover<T extends DeepPartial<Entity>>(
+  public recover<T extends DeepPartial<Entity>>(
     entities: Array<T>,
     options: SaveOptions & { reload: false }
   ): Promise<Array<T>>;
@@ -296,7 +291,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Recovers all given entities in the database.
    */
-  recover<T extends DeepPartial<Entity>>(
+  public recover<T extends DeepPartial<Entity>>(
     entities: Array<T>,
     options?: SaveOptions
   ): Promise<Array<T & Entity>>;
@@ -304,7 +299,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Recovers a given entity in the database.
    */
-  recover<T extends DeepPartial<Entity>>(
+  public recover<T extends DeepPartial<Entity>>(
     entity: T,
     options: SaveOptions & { reload: false }
   ): Promise<T>;
@@ -312,7 +307,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Recovers a given entity in the database.
    */
-  recover<T extends DeepPartial<Entity>>(
+  public recover<T extends DeepPartial<Entity>>(
     entity: T,
     options?: SaveOptions
   ): Promise<T & Entity>;
@@ -320,13 +315,13 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Recovers one or many given entities.
    */
-  recover<T extends DeepPartial<Entity>>(
+  public recover<T extends DeepPartial<Entity>>(
     entityOrEntities: T | Array<T>,
     options?: SaveOptions
   ): Promise<T | Array<T>> {
     return this.manager.recover<Entity, T>(
-      this.metadata.target as any,
-      entityOrEntities as any,
+      this.metadata.target,
+      entityOrEntities as Array<T>,
       options
     );
   }
@@ -337,12 +332,12 @@ export class Repository<Entity extends ObjectLiteral> {
    * Executes fast and efficient INSERT query.
    * Does not check if entity exist in the database, so query will fail if duplicate entity is being inserted.
    */
-  insert(
+  public insert(
     entity:
       | QueryDeepPartialEntity<Entity>
       | Array<QueryDeepPartialEntity<Entity>>
   ): Promise<InsertResult> {
-    return this.manager.insert(this.metadata.target as any, entity);
+    return this.manager.insert(this.metadata.target, entity);
   }
 
   /**
@@ -351,7 +346,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Executes fast and efficient UPDATE query.
    * Does not check if entity exist in the database.
    */
-  update(
+  public update(
     criteria:
       | string
       | Array<string>
@@ -359,8 +354,6 @@ export class Repository<Entity extends ObjectLiteral> {
       | Array<number>
       | Date
       | Array<Date>
-      | ObjectId
-      | Array<ObjectId>
       | FindOptionsWhere<Entity>
       | Array<FindOptionsWhere<Entity>>,
     partialEntity: QueryDeepPartialEntity<Entity>
@@ -375,7 +368,7 @@ export class Repository<Entity extends ObjectLiteral> {
    *
    * WARNING! This method updates ALL rows in the target table.
    */
-  updateAll(
+  public updateAll(
     partialEntity: QueryDeepPartialEntity<Entity>
   ): Promise<UpdateResult> {
     return this.manager.updateAll(this.metadata.target, partialEntity);
@@ -386,14 +379,14 @@ export class Repository<Entity extends ObjectLiteral> {
    * Unlike save method executes a primitive operation without cascades, relations and other operations included.
    * Executes fast and efficient INSERT ... ON CONFLICT DO UPDATE/ON DUPLICATE KEY UPDATE query.
    */
-  upsert(
+  public upsert(
     entityOrEntities:
       | QueryDeepPartialEntity<Entity>
       | Array<QueryDeepPartialEntity<Entity>>,
     conflictPathsOrOptions: Array<string> | UpsertOptions<Entity>
   ): Promise<InsertResult> {
     return this.manager.upsert(
-      this.metadata.target as any,
+      this.metadata.target,
       entityOrEntities,
       conflictPathsOrOptions
     );
@@ -405,7 +398,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Executes fast and efficient DELETE query.
    * Does not check if entity exist in the database.
    */
-  delete(
+  public delete(
     criteria:
       | string
       | Array<string>
@@ -413,8 +406,6 @@ export class Repository<Entity extends ObjectLiteral> {
       | Array<number>
       | Date
       | Array<Date>
-      | ObjectId
-      | Array<ObjectId>
       | FindOptionsWhere<Entity>
       | Array<FindOptionsWhere<Entity>>
   ): Promise<DeleteResult> {
@@ -428,7 +419,7 @@ export class Repository<Entity extends ObjectLiteral> {
    *
    * WARNING! This method deletes ALL rows in the target table.
    */
-  deleteAll(): Promise<DeleteResult> {
+  public deleteAll(): Promise<DeleteResult> {
     return this.manager.deleteAll(this.metadata.target);
   }
 
@@ -438,7 +429,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Executes fast and efficient UPDATE query.
    * Does not check if entity exist in the database.
    */
-  softDelete(
+  public softDelete(
     criteria:
       | string
       | Array<string>
@@ -446,14 +437,12 @@ export class Repository<Entity extends ObjectLiteral> {
       | Array<number>
       | Date
       | Array<Date>
-      | ObjectId
-      | Array<ObjectId>
       | FindOptionsWhere<Entity>
       | Array<FindOptionsWhere<Entity>>
   ): Promise<UpdateResult> {
     return this.manager.softDelete(
-      this.metadata.target as any,
-      criteria as any
+      this.metadata.target as EntityTarget<ObjectLiteral>,
+      criteria
     );
   }
 
@@ -463,7 +452,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Executes fast and efficient UPDATE query.
    * Does not check if entity exist in the database.
    */
-  restore(
+  public restore(
     criteria:
       | string
       | Array<string>
@@ -471,12 +460,13 @@ export class Repository<Entity extends ObjectLiteral> {
       | Array<number>
       | Date
       | Array<Date>
-      | ObjectId
-      | Array<ObjectId>
       | FindOptionsWhere<Entity>
       | Array<FindOptionsWhere<Entity>>
   ): Promise<UpdateResult> {
-    return this.manager.restore(this.metadata.target as any, criteria as any);
+    return this.manager.restore(
+      this.metadata.target as EntityTarget<ObjectLiteral>,
+      criteria as unknown
+    );
   }
 
   /**
@@ -486,21 +476,21 @@ export class Repository<Entity extends ObjectLiteral> {
    *
    * .exists()
    */
-  exist(options?: FindManyOptions<Entity>): Promise<boolean> {
+  public exist(options?: FindManyOptions<Entity>): Promise<boolean> {
     return this.manager.exists(this.metadata.target, options);
   }
 
   /**
    * Checks whether any entity exists that matches the given options.
    */
-  exists(options?: FindManyOptions<Entity>): Promise<boolean> {
+  public exists(options?: FindManyOptions<Entity>): Promise<boolean> {
     return this.manager.exists(this.metadata.target, options);
   }
 
   /**
    * Checks whether any entity exists that matches the given conditions.
    */
-  existsBy(
+  public existsBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<boolean> {
     return this.manager.existsBy(this.metadata.target, where);
@@ -510,7 +500,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Counts entities that match given options.
    * Useful for pagination.
    */
-  count(options?: FindManyOptions<Entity>): Promise<number> {
+  public count(options?: FindManyOptions<Entity>): Promise<number> {
     return this.manager.count(this.metadata.target, options);
   }
 
@@ -518,7 +508,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Counts entities that match given conditions.
    * Useful for pagination.
    */
-  countBy(
+  public countBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number> {
     return this.manager.countBy(this.metadata.target, where);
@@ -527,7 +517,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Return the SUM of a column
    */
-  sum(
+  public sum(
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
@@ -537,7 +527,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Return the AVG of a column
    */
-  average(
+  public average(
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
@@ -547,7 +537,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Return the MIN of a column
    */
-  minimum(
+  public minimum(
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
@@ -557,7 +547,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Return the MAX of a column
    */
-  maximum(
+  public maximum(
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
@@ -567,14 +557,14 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Finds entities that match given find options.
    */
-  async find(options?: FindManyOptions<Entity>): Promise<Array<Entity>> {
+  public async find(options?: FindManyOptions<Entity>): Promise<Array<Entity>> {
     return this.manager.find(this.metadata.target, options);
   }
 
   /**
    * Finds entities that match given find options.
    */
-  async findBy(
+  public async findBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Array<Entity>> {
     return this.manager.findBy(this.metadata.target, where);
@@ -585,7 +575,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Also counts all entities that match given conditions,
    * but ignores pagination settings (from and take options).
    */
-  findAndCount(
+  public findAndCount(
     options?: FindManyOptions<Entity>
   ): Promise<[Array<Entity>, number]> {
     return this.manager.findAndCount(this.metadata.target, options);
@@ -596,7 +586,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Also counts all entities that match given conditions,
    * but ignores pagination settings (from and take options).
    */
-  findAndCountBy(
+  public findAndCountBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<[Array<Entity>, number]> {
     return this.manager.findAndCountBy(this.metadata.target, where);
@@ -612,7 +602,7 @@ export class Repository<Entity extends ObjectLiteral> {
    *     id: In([1, 2, 3])
    * })
    */
-  async findByIds(ids: Array<any>): Promise<Array<Entity>> {
+  public async findByIds(ids: Array<unknown>): Promise<Array<Entity>> {
     return this.manager.findByIds(this.metadata.target, ids);
   }
 
@@ -620,7 +610,9 @@ export class Repository<Entity extends ObjectLiteral> {
    * Finds first entity by a given find options.
    * If entity was not found in the database - returns null.
    */
-  async findOne(options: FindOneOptions<Entity>): Promise<Entity | null> {
+  public async findOne(
+    options: FindOneOptions<Entity>
+  ): Promise<Entity | null> {
     return this.manager.findOne(this.metadata.target, options);
   }
 
@@ -628,7 +620,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Finds first entity that matches given where condition.
    * If entity was not found in the database - returns null.
    */
-  async findOneBy(
+  public async findOneBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Entity | null> {
     return this.manager.findOneBy(this.metadata.target, where);
@@ -644,9 +636,7 @@ export class Repository<Entity extends ObjectLiteral> {
    *     id: 1 // where "id" is your primary column name
    * })
    */
-  async findOneById(
-    id: number | string | Date | ObjectId
-  ): Promise<Entity | null> {
+  public async findOneById(id: number | string | Date): Promise<Entity | null> {
     return this.manager.findOneById(this.metadata.target, id);
   }
 
@@ -654,7 +644,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Finds first entity by a given find options.
    * If entity was not found in the database - rejects with error.
    */
-  async findOneOrFail(options: FindOneOptions<Entity>): Promise<Entity> {
+  public async findOneOrFail(options: FindOneOptions<Entity>): Promise<Entity> {
     return this.manager.findOneOrFail(this.metadata.target, options);
   }
 
@@ -662,7 +652,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Finds first entity that matches given where condition.
    * If entity was not found in the database - rejects with error.
    */
-  async findOneByOrFail(
+  public async findOneByOrFail(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Entity> {
     return this.manager.findOneByOrFail(this.metadata.target, where);
@@ -674,7 +664,10 @@ export class Repository<Entity extends ObjectLiteral> {
    *
    * @see [Official docs](https://typeorm.io/repository-api) for examples.
    */
-  query<T = any>(query: string, parameters?: Array<any>): Promise<T> {
+  public query<T = unknown>(
+    query: string,
+    parameters?: Array<unknown>
+  ): Promise<T> {
     return this.manager.query(query, parameters);
   }
 
@@ -685,7 +678,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * Note: Don't call this as a regular function, it is meant to be used with backticks to tag a template literal.
    * Example: repository.sql`SELECT * FROM table_name WHERE id = ${id}`
    */
-  async sql<T = any>(
+  public async sql<T = unknown>(
     strings: TemplateStringsArray,
     ...values: Array<unknown>
   ): Promise<T> {
@@ -704,14 +697,14 @@ export class Repository<Entity extends ObjectLiteral> {
    * Note: this method uses TRUNCATE and may not work as you expect in transactions on some platforms.
    * @see https://stackoverflow.com/a/5972738/925151
    */
-  clear(): Promise<void> {
+  public clear(): Promise<void> {
     return this.manager.clear(this.metadata.target);
   }
 
   /**
    * Increments some column by provided value of the entities matched given conditions.
    */
-  increment(
+  public increment(
     conditions: FindOptionsWhere<Entity>,
     propertyPath: string,
     value: number | string
@@ -727,7 +720,7 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Decrements some column by provided value of the entities matched given conditions.
    */
-  decrement(
+  public decrement(
     conditions: FindOptionsWhere<Entity>,
     propertyPath: string,
     value: number | string
@@ -743,17 +736,17 @@ export class Repository<Entity extends ObjectLiteral> {
   /**
    * Extends repository with provided functions.
    */
-  extend<CustomRepository>(
+  public extend<CustomRepository>(
     customs: CustomRepository & ThisType<this & CustomRepository>
   ): this & CustomRepository {
-    // return {
-    //     ...this,
-    //     ...custom
-    // };
-    const thisRepo: any = this.constructor;
+    const thisRepo = this.constructor as new (
+      target: EntityTarget<Entity>,
+      manager: EntityManager,
+      queryRunner?: QueryRunner
+    ) => Repository<ObjectLiteral>;
     const { target, manager, queryRunner } = this;
     const ChildClass = class extends thisRepo {
-      constructor(
+      public constructor(
         target: EntityTarget<Entity>,
         manager: EntityManager,
         queryRunner?: QueryRunner
@@ -762,7 +755,10 @@ export class Repository<Entity extends ObjectLiteral> {
       }
     };
     for (const custom in customs)
-      ChildClass.prototype[custom] = customs[custom];
-    return new ChildClass(target, manager, queryRunner) as any;
+      (ChildClass.prototype as unknown as Record<string, unknown>)[
+        custom as keyof typeof Repository
+      ] = customs[custom];
+    return new ChildClass(target, manager, queryRunner) as this &
+      CustomRepository;
   }
 }

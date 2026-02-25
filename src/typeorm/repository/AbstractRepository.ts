@@ -1,14 +1,14 @@
-import { EntityTarget } from '../common/EntityTarget';
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { ObjectType } from '../common/ObjectType';
-import { EntityManager } from '../entity-manager/EntityManager';
-import { CustomRepositoryDoesNotHaveEntityError } from '../error/CustomRepositoryDoesNotHaveEntityError';
-import { CustomRepositoryNotFoundError } from '../error/CustomRepositoryNotFoundError';
-import { getMetadataArgsStorage } from '../globals';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { ObjectType } from '../common/ObjectType.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
+import { CustomRepositoryDoesNotHaveEntityError } from '../error/CustomRepositoryDoesNotHaveEntityError.js';
+import { CustomRepositoryNotFoundError } from '../error/CustomRepositoryNotFoundError.js';
+import { getMetadataArgsStorage } from '../globals.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
-import { Repository } from './Repository';
-import { TreeRepository } from './TreeRepository';
+import type { Repository } from './Repository.js';
+import type { TreeRepository } from './TreeRepository.js';
 
 /**
  * Provides abstract class for custom repositories that do not inherit from original orm Repository.
@@ -25,7 +25,7 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
   /**
    * Gets entity manager that allows to perform repository operations with any entity.
    */
-  protected manager: EntityManager;
+  protected manager!: EntityManager;
 
   // -------------------------------------------------------------------------
   // Protected Accessors
@@ -36,11 +36,11 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
    * If current repository does not manage any entity, then exception will be thrown.
    */
   protected get repository(): Repository<Entity> {
-    const target = this.getCustomRepositoryTarget(this as any);
+    const target = this.getCustomRepositoryTarget(this as unknown);
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
 
-    return this.manager.getRepository<Entity>(target);
+    return this.manager.getRepository<Entity>(target as EntityTarget<Entity>);
   }
 
   /**
@@ -48,11 +48,13 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
    * If current repository does not manage any entity, then exception will be thrown.
    */
   protected get treeRepository(): TreeRepository<Entity> {
-    const target = this.getCustomRepositoryTarget(this as any);
+    const target = this.getCustomRepositoryTarget(this as unknown);
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
 
-    return this.manager.getTreeRepository<Entity>(target);
+    return this.manager.getTreeRepository<Entity>(
+      target as EntityTarget<Entity>
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -68,7 +70,9 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
 
-    return this.manager.getRepository<Entity>(target).createQueryBuilder(alias);
+    return this.manager
+      .getRepository<Entity>(target as EntityTarget<Entity>)
+      .createQueryBuilder(alias);
   }
 
   /**
@@ -108,19 +112,19 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
    * If given custom repository does not manage any entity then undefined will be returned.
    */
   private getCustomRepositoryTarget(
-    customRepository: any
-  ): EntityTarget<any> | undefined {
+    customRepository: unknown
+  ): EntityTarget<unknown> | undefined {
     const entityRepositoryMetadataArgs =
       getMetadataArgsStorage().entityRepositories.find((repository) => {
         return (
           repository.target ===
           (typeof customRepository === 'function'
             ? customRepository
-            : (customRepository as any).constructor)
+            : (customRepository as object).constructor)
         );
       });
     if (!entityRepositoryMetadataArgs)
-      throw new CustomRepositoryNotFoundError(customRepository);
+      throw new CustomRepositoryNotFoundError(customRepository as object);
 
     return entityRepositoryMetadataArgs.entity;
   }

@@ -1,9 +1,9 @@
-import { TableCheckOptions } from './TableCheckOptions';
-import { TableColumnOptions } from './TableColumnOptions';
-import { TableExclusionOptions } from './TableExclusionOptions';
-import { TableForeignKeyOptions } from './TableForeignKeyOptions';
-import { TableIndexOptions } from './TableIndexOptions';
-import { TableUniqueOptions } from './TableUniqueOptions';
+import type { TableCheckOptions } from './TableCheckOptions.js';
+import type { TableColumnOptions } from './TableColumnOptions.js';
+import type { TableExclusionOptions } from './TableExclusionOptions.js';
+import type { TableForeignKeyOptions } from './TableForeignKeyOptions.js';
+import type { TableIndexOptions } from './TableIndexOptions.js';
+import type { TableUniqueOptions } from './TableUniqueOptions.js';
 
 /**
  * Table options.

@@ -1,10 +1,11 @@
-import { TypeORMError } from '../../error/TypeORMError';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { RelationMetadata } from '../../metadata/RelationMetadata';
-import { ObjectUtils } from '../../util/ObjectUtils';
-import { QueryBuilderUtils } from '../QueryBuilderUtils';
-import { QueryExpressionMap } from '../QueryExpressionMap';
-import { SelectQueryBuilder } from '../SelectQueryBuilder';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { TypeORMError } from '../../error/TypeORMError.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import { QueryBuilderUtils } from '../QueryBuilderUtils.js';
+import { QueryExpressionMap } from '../QueryExpressionMap.js';
+import { SelectQueryBuilder } from '../SelectQueryBuilder.js';
 
 /**
  * Stores all join relation id attributes which will be used to build a JOIN query.
@@ -17,35 +18,35 @@ export class RelationIdAttribute {
   /**
    * Alias of the joined (destination) table.
    */
-  alias?: string;
+  public alias?: string;
 
   /**
    * Name of relation.
    */
-  relationName: string;
+  public relationName!: string;
 
   /**
    * Property + alias of the object where to joined data should be mapped.
    */
-  mapToProperty: string;
+  public mapToProperty!: string;
 
   /**
    * Extra condition applied to "ON" section of join.
    */
-  queryBuilderFactory?: (
-    qb: SelectQueryBuilder<any>
-  ) => SelectQueryBuilder<any>;
+  public queryBuilderFactory?: (
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>;
 
   /**
    * Indicates if relation id should NOT be loaded as id map.
    */
-  disableMixedMap = false;
+  public disableMixedMap = false;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     private queryExpressionMap: QueryExpressionMap,
     relationIdAttribute?: Partial<RelationIdAttribute>
   ) {
@@ -56,7 +57,7 @@ export class RelationIdAttribute {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  get joinInverseSideMetadata(): EntityMetadata {
+  public get joinInverseSideMetadata(): EntityMetadata {
     return this.relation.inverseEntityMetadata;
   }
 
@@ -66,7 +67,7 @@ export class RelationIdAttribute {
    * This value is extracted from entityOrProperty value.
    * This is available when join was made using "post.category" syntax.
    */
-  get parentAlias(): string {
+  public get parentAlias(): string {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value must be a string representation of alias property`
@@ -82,7 +83,7 @@ export class RelationIdAttribute {
    * This value is extracted from entityOrProperty value.
    * This is available when join was made using "post.category" syntax.
    */
-  get relationPropertyPath(): string {
+  public get relationPropertyPath(): string {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value must be a string representation of alias property`
@@ -96,7 +97,7 @@ export class RelationIdAttribute {
    * This is used to understand what is joined.
    * This is available when join was made using "post.category" syntax.
    */
-  get relation(): RelationMetadata {
+  public get relation(): RelationMetadata {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value must be a string representation of alias property`
@@ -119,7 +120,7 @@ export class RelationIdAttribute {
   /**
    * Generates alias of junction table, whose ids we get.
    */
-  get junctionAlias(): string {
+  public get junctionAlias(): string {
     const [parentAlias, relationProperty] = this.relationName.split('.');
     return parentAlias + '_' + relationProperty + '_rid';
   }
@@ -128,15 +129,15 @@ export class RelationIdAttribute {
    * Metadata of the joined entity.
    * If extra condition without entity was joined, then it will return undefined.
    */
-  get junctionMetadata(): EntityMetadata {
+  public get junctionMetadata(): EntityMetadata {
     return this.relation.junctionEntityMetadata!;
   }
 
-  get mapToPropertyParentAlias(): string {
+  public get mapToPropertyParentAlias(): string {
     return this.mapToProperty.substr(0, this.mapToProperty.indexOf('.'));
   }
 
-  get mapToPropertyPropertyPath(): string {
+  public get mapToPropertyPropertyPath(): string {
     return this.mapToProperty.substr(this.mapToProperty.indexOf('.') + 1);
   }
 }

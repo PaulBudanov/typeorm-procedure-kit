@@ -1,6 +1,6 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 
-import { Brackets } from './Brackets';
+import { Brackets } from './Brackets.js';
 
 /**
  * Query Builders can implement this interface to support where expression
@@ -116,7 +116,7 @@ export interface WhereExpressionBuilder {
    * If you have multiple primary keys you need to pass object with property names and values specified,
    * for example [{ firstId: 1, secondId: 2 }, { firstId: 2, secondId: 3 }, ...]
    */
-  whereInIds(ids: any | Array<any>): this;
+  whereInIds(ids: unknown | Array<unknown>): this;
 
   /**
    * Adds new AND WHERE with conditions for the given ids.
@@ -126,7 +126,7 @@ export interface WhereExpressionBuilder {
    * If you have multiple primary keys you need to pass object with property names and values specified,
    * for example [{ firstId: 1, secondId: 2 }, { firstId: 2, secondId: 3 }, ...]
    */
-  andWhereInIds(ids: any | Array<any>): this;
+  andWhereInIds(ids: unknown | Array<unknown>): this;
 
   /**
    * Adds new OR WHERE with conditions for the given ids.
@@ -136,10 +136,5 @@ export interface WhereExpressionBuilder {
    * If you have multiple primary keys you need to pass object with property names and values specified,
    * for example [{ firstId: 1, secondId: 2 }, { firstId: 2, secondId: 3 }, ...]
    */
-  orWhereInIds(ids: any | Array<any>): this;
+  orWhereInIds(ids: unknown | Array<unknown>): this;
 }
-
-/**
- * @deprecated Use `WhereExpressionBuilder` instead
- */
-export interface WhereExpression extends WhereExpressionBuilder {}

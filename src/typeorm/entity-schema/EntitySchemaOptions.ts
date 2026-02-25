@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { TableType } from '../metadata/types/TableTypes.js';
@@ -127,7 +128,7 @@ export class EntitySchemaOptions<T> {
    */
   public expression?:
     | string
-    | ((connection: DataSource) => SelectQueryBuilder<unknown>);
+    | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
 
   /**
    * Inheritance options.

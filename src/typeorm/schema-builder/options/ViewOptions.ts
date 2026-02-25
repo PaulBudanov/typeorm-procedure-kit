@@ -1,4 +1,6 @@
-import { DataSource, SelectQueryBuilder } from '../..';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 
 /**
  * View options.
@@ -26,7 +28,9 @@ export interface ViewOptions {
   /**
    * View expression.
    */
-  expression: string | ((connection: DataSource) => SelectQueryBuilder<any>);
+  expression:
+    | string
+    | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
 
   /**
    * Indicates if view is materialized

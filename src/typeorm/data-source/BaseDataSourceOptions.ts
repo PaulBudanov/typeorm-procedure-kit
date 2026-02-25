@@ -1,7 +1,7 @@
 import type { TDbConfig } from '../../types/config.types.js';
 import type { TFunction } from '../../types/utility.types.js';
 import { DbQueryResultCache } from '../cache/db-query-result-cache.js';
-import { MixedList } from '../common/MixedList';
+import type { MixedList } from '../common/MixedList.js';
 import { DataSource } from '../data-source/DataSource.js';
 import { EntitySchema } from '../entity-schema/EntitySchema.js';
 import type { Logger } from '../logger/Logger.js';
@@ -80,7 +80,6 @@ export interface BaseDataSourceOptions {
     | 'simple-console'
     | 'formatted-console'
     | 'file'
-    | 'debug'
     | Logger;
 
   /**

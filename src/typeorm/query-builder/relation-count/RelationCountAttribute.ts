@@ -1,39 +1,40 @@
-import { TypeORMError } from '../../error/TypeORMError';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { RelationMetadata } from '../../metadata/RelationMetadata';
-import { ObjectUtils } from '../../util/ObjectUtils';
-import { QueryBuilderUtils } from '../QueryBuilderUtils';
-import { QueryExpressionMap } from '../QueryExpressionMap';
-import { SelectQueryBuilder } from '../SelectQueryBuilder';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { TypeORMError } from '../../error/TypeORMError.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import { QueryBuilderUtils } from '../QueryBuilderUtils.js';
+import { QueryExpressionMap } from '../QueryExpressionMap.js';
+import { SelectQueryBuilder } from '../SelectQueryBuilder.js';
 
 export class RelationCountAttribute {
   /**
    * Alias of the joined (destination) table.
    */
-  alias?: string;
+  public alias?: string;
 
   /**
    * Name of relation.
    */
-  relationName: string;
+  public relationName!: string;
 
   /**
    * Property + alias of the object where to joined data should be mapped.
    */
-  mapToProperty: string;
+  public mapToProperty!: string;
 
   /**
    * Extra condition applied to "ON" section of join.
    */
-  queryBuilderFactory?: (
-    qb: SelectQueryBuilder<any>
-  ) => SelectQueryBuilder<any>;
+  public queryBuilderFactory?: (
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     private expressionMap: QueryExpressionMap,
     relationCountAttribute?: Partial<RelationCountAttribute>
   ) {
@@ -44,7 +45,7 @@ export class RelationCountAttribute {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  get joinInverseSideMetadata(): EntityMetadata {
+  public get joinInverseSideMetadata(): EntityMetadata {
     return this.relation.inverseEntityMetadata;
   }
 
@@ -54,13 +55,13 @@ export class RelationCountAttribute {
    * This value is extracted from entityOrProperty value.
    * This is available when join was made using "post.category" syntax.
    */
-  get parentAlias(): string {
+  public get parentAlias(): string {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value must be a string representation of alias property`
       );
 
-    return this.relationName.split('.')[0];
+    return this.relationName.split('.')[0]!;
   }
 
   /**
@@ -70,7 +71,7 @@ export class RelationCountAttribute {
    * This value is extracted from entityOrProperty value.
    * This is available when join was made using "post.category" syntax.
    */
-  get relationProperty(): string | undefined {
+  public get relationProperty(): string | undefined {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value is a string representation of alias property`
@@ -79,7 +80,7 @@ export class RelationCountAttribute {
     return this.relationName.split('.')[1];
   }
 
-  get junctionAlias(): string {
+  public get junctionAlias(): string {
     const [parentAlias, relationProperty] = this.relationName.split('.');
     return parentAlias + '_' + relationProperty + '_rc';
   }
@@ -89,18 +90,19 @@ export class RelationCountAttribute {
    * This is used to understand what is joined.
    * This is available when join was made using "post.category" syntax.
    */
-  get relation(): RelationMetadata {
+  public get relation(): RelationMetadata {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value is a string representation of alias property`
       );
 
     const [parentAlias, propertyPath] = this.relationName.split('.');
-    const relationOwnerSelection =
-      this.expressionMap.findAliasByName(parentAlias);
+    const relationOwnerSelection = this.expressionMap.findAliasByName(
+      parentAlias!
+    );
     const relation =
       relationOwnerSelection.metadata.findRelationWithPropertyPath(
-        propertyPath
+        propertyPath!
       );
     if (!relation)
       throw new TypeORMError(
@@ -113,18 +115,18 @@ export class RelationCountAttribute {
    * Metadata of the joined entity.
    * If table without entity was joined, then it will return undefined.
    */
-  get metadata(): EntityMetadata {
+  public get metadata(): EntityMetadata {
     if (!QueryBuilderUtils.isAliasProperty(this.relationName))
       throw new TypeORMError(
         `Given value is a string representation of alias property`
       );
 
     const parentAlias = this.relationName.split('.')[0];
-    const selection = this.expressionMap.findAliasByName(parentAlias);
+    const selection = this.expressionMap.findAliasByName(parentAlias!);
     return selection.metadata;
   }
 
-  get mapToPropertyPropertyName(): string {
-    return this.mapToProperty!.split('.')[1];
+  public get mapToPropertyPropertyName(): string {
+    return this.mapToProperty!.split('.')[1]!;
   }
 }

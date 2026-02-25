@@ -37,27 +37,28 @@ export class ProcedureListBase {
       this.logger.log(
         `Package was changed: ${packageName.toUpperCase()} or init get package info from DB`
       );
-      if (this.packagesWithProceduresList.has(packageName))
-        this.packagesWithProceduresList.delete(packageName);
+
+      this.packagesWithProceduresList.delete(packageName);
       await this.callbackFetchProcedureList(packageName);
       this.checkExistingProcedures(packageName);
-      return;
     } catch (error: unknown) {
+      const errorMessage = (error as Error).message;
       this.logger.error(
-        `Error fetching procedure list with arguments: ${(error as Error).message}`
+        `Error fetching procedure list with arguments: ${errorMessage}`
       );
+
       if (isRetry) {
         this.logger.error(
           'Failed to fetch procedure list with arguments. Program will exit.'
         );
         process.exit(1);
-      } else {
-        this.logger.warn(
-          `Retrying fetching procedure list with arguments in 5 minutes`
-        );
-        await AsyncUtils.delay(1000 * 60 * 5);
-        await this.fetchProcedureListWithArguments(packageName, true);
       }
+
+      this.logger.warn(
+        'Retrying fetching procedure list with arguments in 5 minutes'
+      );
+      await AsyncUtils.delay(1000 * 60 * 5);
+      await this.fetchProcedureListWithArguments(packageName, true);
     }
   }
 
@@ -69,20 +70,25 @@ export class ProcedureListBase {
   private checkExistingProcedures(searchPackageName: Lowercase<string>): void {
     const procedureObject =
       this.packagesWithProceduresList.get(searchPackageName);
+
     if (!procedureObject || Object.keys(procedureObject).length < 1) {
       this.logger.error(`No procedure list for package ${searchPackageName}`);
       return;
     }
+
     const procedureMap = Object.entries(procedureObject) as Array<
       [Lowercase<string>, object]
     >;
+
     if (procedureMap.length < 1) {
       this.logger.warn(
         `No procedures in map for package ${searchPackageName}, because you don't add they to procedure object`
       );
       return;
     }
+
     if (!this.packagesSettings) return;
+
     const notFoundProcedures = Object.entries(
       this.packagesSettings.procedureObjectList
     )
@@ -92,16 +98,15 @@ export class ProcedureListBase {
           this.packagesWithProceduresList,
           this.packagesSettings!.packages
         );
+
         if (packageName !== searchPackageName) return null;
-        if (
-          !procedureMap.some((item) => {
-            return item[0] === processName && packageName === searchPackageName;
-          })
-        )
-          return processName;
-        return null;
+
+        return procedureMap.some((item) => item[0] === processName)
+          ? null
+          : processName;
       })
-      .filter((item) => item !== null);
+      .filter((item): item is Lowercase<string> => item !== null);
+
     if (notFoundProcedures.length > 0) {
       this.logger.error(
         `Procedures not found in package ${searchPackageName.toUpperCase()}: ${notFoundProcedures.join(', ')}`
@@ -119,7 +124,6 @@ export class ProcedureListBase {
    * @throws Error - if the package does not have any procedures in the procedureObjectList
    */
 
-  //? Maybe use another algorithm
   private async callbackFetchProcedureList(
     packageName: Lowercase<string>
   ): Promise<void> {
@@ -127,21 +131,23 @@ export class ProcedureListBase {
       await this.executeBase.execute<
         IProcedureArgumentOracle | IProcedureArgumentBase
       >(this.databaseAdapter.generatePackageInfoSql(packageName))
-    ).map((item) => {
-      return Object.fromEntries(
-        Object.entries(item).map(([key, value]) => {
-          return [StringUtilities.toCamelCase(key), value];
-        })
-      );
-    });
+    ).map((item) =>
+      Object.fromEntries(
+        Object.entries(item).map(([key, value]) => [
+          StringUtilities.toCamelCase(key),
+          value,
+        ])
+      )
+    );
+
     if (rawArguments.length < 1) {
       throw new ServerError(
         `No arguments in package ${packageName} , load package and restart server or wait get notification for load package`
       );
     }
-    if (this.packagesWithProceduresList.has(packageName))
-      this.packagesWithProceduresList.delete(packageName);
-    // console.log(this.procedureObjectList);
+
+    this.packagesWithProceduresList.delete(packageName);
+
     this.packagesWithProceduresList.set(
       packageName,
       this.databaseAdapter.sortArgumentsAlgorithm(
@@ -155,23 +161,17 @@ export class ProcedureListBase {
         this.packagesSettings!.packages.length
       )
     );
-    return;
   }
 
-  /**
-   * Initializes the packages map by fetching the procedure list for each package.
-   * If no packages are set in the settings, the function does nothing.
-   * @returns {Promise<void>} - promise that resolves when the packages map is initialized
-   */
   public async initPackagesMap(): Promise<void> {
     if (!this.packagesSettings) return;
+
     await Promise.all(
-      this.packagesSettings.packages.map((item) => {
-        return this.fetchProcedureListWithArguments(
+      this.packagesSettings.packages.map((item) =>
+        this.fetchProcedureListWithArguments(
           item.toLowerCase() as Lowercase<string>
-        );
-      })
+        )
+      )
     );
-    return;
   }
 }

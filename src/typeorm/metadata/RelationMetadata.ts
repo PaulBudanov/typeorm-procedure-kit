@@ -246,7 +246,7 @@ export class RelationMetadata {
    * either can be a function that accepts a map of properties with the object and returns one of them.
    * Second approach is used to achieve type-safety.
    */
-  public givenInverseSidePropertyFactory!: PropertyTypeFactory<unknown>;
+  public givenInverseSidePropertyFactory!: PropertyTypeFactory<ObjectLiteral>;
 
   /**
    * Gets the relation metadata of the inverse side of this relation.
@@ -340,8 +340,13 @@ export class RelationMetadata {
     this.isTreeChildren = args.isTreeChildren || false;
 
     if (typeof args.type === 'function') {
+      // Check if it's a type factory function (callable) or a class constructor
+      const typeFactory = args.type as
+        | ((type?: unknown) => TFunction)
+        | TFunction;
+      // If it's a type factory (takes optional parameter), call it; otherwise it's a class constructor
       this.type = (
-        typeof args.type === 'function' ? args.type() : args.type
+        typeFactory.length === 0 ? typeFactory() : typeFactory
       ) as TFunction;
     } else if (InstanceChecker.isEntitySchema(args.type)) {
       this.type = (args.type as EntitySchema<unknown>).options.name;
@@ -524,7 +529,7 @@ export class RelationMetadata {
   /**
    * Creates entity id map from the given entity ids array.
    */
-  public createValueMap(value: ObjectLiteral): Record<string, unknown> {
+  public createValueMap(value: unknown): Record<string, unknown> {
     // extract column value from embeds of entity if column is in embedded
     if (this.embeddedMetadata) {
       // example: post[data][information][counters].id where "data", "information" and "counters" are embeddeds

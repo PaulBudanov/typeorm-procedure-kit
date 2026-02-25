@@ -9,7 +9,7 @@ import type { RelationOptions } from '../options/RelationOptions.js';
  * side of the relation.
  */
 export function OneToMany<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSide: string | ((object: T) => unknown),
   options?: RelationOptions
 ): PropertyDecorator {
@@ -38,7 +38,7 @@ export function OneToMany<T>(
       propertyName: propertyName,
       isLazy: isLazy,
       relationType: 'one-to-many',
-      type: typeFunctionOrTarget,
+      type: typeOrTarget,
       inverseSideProperty: inverseSide,
       options: options,
     } as RelationMetadataArgs);

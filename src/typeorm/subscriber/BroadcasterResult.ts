@@ -5,17 +5,17 @@ export class BroadcasterResult {
   /**
    * Number of executed listeners and subscribers.
    */
-  count = 0;
+  public count = 0;
 
   /**
    * Promises returned by listeners and subscribers which needs to be awaited.
    */
-  promises: Array<Promise<any>> = [];
+  public promises: Array<Promise<unknown>> = [];
 
   /**
    * Wait for all promises to settle
    */
-  async wait(): Promise<BroadcasterResult> {
+  public async wait(): Promise<BroadcasterResult> {
     if (this.promises.length > 0) {
       await Promise.all(this.promises);
     }

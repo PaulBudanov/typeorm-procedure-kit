@@ -1,3 +1,4 @@
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 export interface EntitySchemaRelationIdOptions {
@@ -15,6 +16,6 @@ export interface EntitySchemaRelationIdOptions {
    * Extra condition applied to "ON" section of join.
    */
   queryBuilderFactory?: (
-    qb: SelectQueryBuilder<unknown>
-  ) => SelectQueryBuilder<unknown>;
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>;
 }

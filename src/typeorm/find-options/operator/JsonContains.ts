@@ -1,4 +1,4 @@
-import { FindOperator } from '../FindOperator';
+import { FindOperator } from '../FindOperator.js';
 
 /**
  * FindOptions Operator.
@@ -6,6 +6,6 @@ import { FindOperator } from '../FindOperator';
  */
 export function JsonContains<
   T extends Record<string | number | symbol, unknown>,
->(value: T | FindOperator<T>): FindOperator<any> {
-  return new FindOperator('jsonContains', value as any);
+>(value: T | FindOperator<T>): FindOperator<unknown> {
+  return new FindOperator('jsonContains', value as unknown);
 }

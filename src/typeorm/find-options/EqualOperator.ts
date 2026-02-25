@@ -1,9 +1,9 @@
-import { FindOperator } from './FindOperator';
+import { FindOperator } from './FindOperator.js';
 
 export class EqualOperator<T> extends FindOperator<T> {
-  readonly '@instanceof' = Symbol.for('EqualOperator');
+  public readonly '@instanceof' = Symbol.for('EqualOperator');
 
-  constructor(value: T | FindOperator<T>) {
+  public constructor(value: T | FindOperator<T>) {
     super('equal', value);
   }
 }

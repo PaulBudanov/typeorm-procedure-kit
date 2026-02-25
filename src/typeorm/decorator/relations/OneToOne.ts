@@ -9,7 +9,7 @@ import type { RelationOptions } from '../options/RelationOptions.js';
  * Entity1 is the owner of the relationship, and stores Entity2 id on its own side.
  */
 export function OneToOne<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   options?: RelationOptions
 ): PropertyDecorator;
 
@@ -18,7 +18,7 @@ export function OneToOne<T>(
  * Entity1 is the owner of the relationship, and stores Entity2 id on its own side.
  */
 export function OneToOne<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSide?: string | ((object: T) => unknown),
   options?: RelationOptions
 ): PropertyDecorator;
@@ -28,7 +28,7 @@ export function OneToOne<T>(
  * Entity1 is the owner of the relationship, and stores Entity2 id on its own side.
  */
 export function OneToOne<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSideOrOptions?: string | ((object: T) => unknown) | RelationOptions,
   options?: RelationOptions
 ): PropertyDecorator {
@@ -65,7 +65,7 @@ export function OneToOne<T>(
       propertyName: propertyName,
       isLazy: isLazy,
       relationType: 'one-to-one',
-      type: typeFunctionOrTarget,
+      type: typeOrTarget,
       inverseSideProperty: inverseSideProperty,
       options: options,
     } as RelationMetadataArgs);

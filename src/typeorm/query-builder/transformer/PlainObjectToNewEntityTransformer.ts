@@ -1,6 +1,6 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { ObjectUtils } from '../../util/ObjectUtils';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
 
 /**
  * Transforms plain old javascript object
@@ -11,7 +11,7 @@ export class PlainObjectToNewEntityTransformer {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  transform<T extends ObjectLiteral>(
+  public transform<T extends ObjectLiteral>(
     newEntity: T,
     object: ObjectLiteral,
     metadata: EntityMetadata,
@@ -56,7 +56,10 @@ export class PlainObjectToNewEntityTransformer {
     // // copy relation properties from the given object
     if (metadata.relations.length) {
       metadata.relations.forEach((relation) => {
-        let entityRelatedValue = relation.getEntityValue(entity);
+        let entityRelatedValue = relation.getEntityValue(entity) as
+          | ObjectLiteral
+          | Array<ObjectLiteral>
+          | undefined;
         const objectRelatedValue = relation.getEntityValue(
           object,
           getLazyRelationsPromiseValue
@@ -67,24 +70,24 @@ export class PlainObjectToNewEntityTransformer {
           if (!Array.isArray(objectRelatedValue)) return;
 
           if (!entityRelatedValue) {
-            entityRelatedValue = [];
+            entityRelatedValue = [] as Array<ObjectLiteral>;
             relation.setEntityValue(entity, entityRelatedValue);
           }
 
           objectRelatedValue.forEach((objectRelatedValueItem) => {
             // check if we have this item from the merging object in the original entity we merge into
             let objectRelatedValueEntity = (
-              entityRelatedValue as Array<any>
+              entityRelatedValue as Array<ObjectLiteral>
             ).find((entityRelatedValueItem) => {
               return relation.inverseEntityMetadata.compareEntities(
-                objectRelatedValueItem,
-                entityRelatedValueItem
+                objectRelatedValueItem as ObjectLiteral,
+                entityRelatedValueItem as ObjectLiteral
               );
             });
 
             const inverseEntityMetadata =
               relation.inverseEntityMetadata.findInheritanceMetadata(
-                objectRelatedValueItem
+                objectRelatedValueItem as ObjectLiteral
               );
 
             // if such item already exist then merge new data into it, if its not we create a new entity and merge it into the array
@@ -94,13 +97,15 @@ export class PlainObjectToNewEntityTransformer {
                 {
                   fromDeserializer: true,
                 }
+              ) as ObjectLiteral;
+              (entityRelatedValue as Array<ObjectLiteral>).push(
+                objectRelatedValueEntity
               );
-              entityRelatedValue.push(objectRelatedValueEntity);
             }
 
             this.groupAndTransform(
               objectRelatedValueEntity,
-              objectRelatedValueItem,
+              objectRelatedValueItem as ObjectLiteral,
               inverseEntityMetadata,
               getLazyRelationsPromiseValue
             );
@@ -124,13 +129,13 @@ export class PlainObjectToNewEntityTransformer {
           if (!entityRelatedValue) {
             entityRelatedValue = inverseEntityMetadata.create(undefined, {
               fromDeserializer: true,
-            });
+            }) as ObjectLiteral;
             relation.setEntityValue(entity, entityRelatedValue);
           }
 
           this.groupAndTransform(
-            entityRelatedValue,
-            objectRelatedValue,
+            entityRelatedValue as ObjectLiteral,
+            objectRelatedValue as ObjectLiteral,
             inverseEntityMetadata,
             getLazyRelationsPromiseValue
           );

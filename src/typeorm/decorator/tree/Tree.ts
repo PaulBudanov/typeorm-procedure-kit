@@ -18,6 +18,6 @@ export function Tree(
       target: target,
       type: type,
       options: type === 'closure-table' ? options : undefined,
-    } as TreeMetadataArgs);
+    } as unknown as TreeMetadataArgs);
   };
 }

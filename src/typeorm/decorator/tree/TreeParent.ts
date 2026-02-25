@@ -1,7 +1,7 @@
-import { getMetadataArgsStorage } from '../../globals';
-import { OnDeleteType } from '../../metadata/types/OnDeleteType';
-import { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs';
-import { RelationOptions } from '../options/RelationOptions';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { OnDeleteType } from '../../metadata/types/OnDeleteType.js';
+import type { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs.js';
+import type { RelationOptions } from '../options/RelationOptions.js';
 
 /**
  * Marks an entity property as a parent of the tree.
@@ -10,13 +10,16 @@ import { RelationOptions } from '../options/RelationOptions';
 export function TreeParent(options?: {
   onDelete?: OnDeleteType;
 }): PropertyDecorator {
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     if (!options) options = {} as RelationOptions;
 
     // now try to determine it its lazy relation
     const reflectedType =
-      Reflect && (Reflect as any).getMetadata
-        ? Reflect.getMetadata('design:type', object, propertyName)
+      Reflect && (Reflect as Record<string, unknown>).getMetadata
+        ? (Reflect.getMetadata('design:type', object, propertyName) as Record<
+            string,
+            unknown
+          >)
         : undefined;
     const isLazy =
       (reflectedType &&
@@ -27,7 +30,7 @@ export function TreeParent(options?: {
     getMetadataArgsStorage().relations.push({
       isTreeParent: true,
       target: object.constructor,
-      propertyName: propertyName,
+      propertyName: propertyName.toString(),
       isLazy: isLazy,
       relationType: 'many-to-one',
       type: () => object.constructor,

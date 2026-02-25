@@ -1,16 +1,16 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { DriverUtils } from '../driver/DriverUtils';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { DriverUtils } from '../driver/DriverUtils.js';
 import {
   FindRelationsNotFoundError,
   EntityPropertyNotFoundError,
-} from '../error';
-import { EntityMetadata } from '../metadata/EntityMetadata';
-import { RelationMetadata } from '../metadata/RelationMetadata';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder';
+} from '../error/index.js';
+import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
-import { FindManyOptions } from './FindManyOptions';
-import { FindOneOptions } from './FindOneOptions';
-import { FindTreeOptions } from './FindTreeOptions';
+import type { FindManyOptions } from './FindManyOptions.js';
+import type { FindOneOptions } from './FindOneOptions.js';
+import type { FindTreeOptions } from './FindTreeOptions.js';
 
 /**
  * Utilities to work with FindOptions.
@@ -23,10 +23,11 @@ export class FindOptionsUtils {
   /**
    * Checks if given object is really instance of FindOneOptions interface.
    */
-  static isFindOneOptions<Entity = any>(
-    obj: any
+  public static isFindOneOptions<Entity = unknown>(
+    obj: unknown
   ): obj is FindOneOptions<Entity> {
-    const possibleOptions: FindOneOptions<Entity> = obj;
+    const possibleOptions: FindOneOptions<Entity> =
+      obj as FindOneOptions<Entity>;
     return (
       possibleOptions &&
       (Array.isArray(possibleOptions.select) ||
@@ -54,30 +55,36 @@ export class FindOptionsUtils {
   /**
    * Checks if given object is really instance of FindManyOptions interface.
    */
-  static isFindManyOptions<Entity = any>(
-    obj: any
+  public static isFindManyOptions<Entity = unknown>(
+    obj: unknown
   ): obj is FindManyOptions<Entity> {
-    const possibleOptions: FindManyOptions<Entity> = obj;
+    const possibleOptions: FindManyOptions<Entity> =
+      obj as FindManyOptions<Entity>;
     return (
       possibleOptions &&
       (this.isFindOneOptions(possibleOptions) ||
-        typeof (possibleOptions as FindManyOptions<any>).skip === 'number' ||
-        typeof (possibleOptions as FindManyOptions<any>).take === 'number' ||
-        typeof (possibleOptions as FindManyOptions<any>).skip === 'string' ||
-        typeof (possibleOptions as FindManyOptions<any>).take === 'string')
+        typeof (possibleOptions as FindManyOptions<unknown>).skip ===
+          'number' ||
+        typeof (possibleOptions as FindManyOptions<unknown>).take ===
+          'number' ||
+        typeof (possibleOptions as FindManyOptions<unknown>).skip ===
+          'string' ||
+        typeof (possibleOptions as FindManyOptions<unknown>).take === 'string')
     );
   }
 
   /**
    * Checks if given object is really instance of FindOptions interface.
    */
-  static extractFindManyOptionsAlias(object: any): string | undefined {
+  public static extractFindManyOptionsAlias(
+    object: unknown
+  ): string | undefined {
     if (this.isFindManyOptions(object) && object.join) return object.join.alias;
 
     return undefined;
   }
 
-  static applyOptionsToTreeQueryBuilder<T extends ObjectLiteral>(
+  public static applyOptionsToTreeQueryBuilder<T extends ObjectLiteral>(
     qb: SelectQueryBuilder<T>,
     options?: FindTreeOptions
   ): SelectQueryBuilder<T> {
@@ -86,7 +93,7 @@ export class FindOptionsUtils {
       const allRelations = [...options.relations];
 
       FindOptionsUtils.applyRelationsRecursively(
-        qb,
+        qb as SelectQueryBuilder<ObjectLiteral>,
         allRelations,
         qb.expressionMap.mainAlias!.name,
         qb.expressionMap.mainAlias!.metadata,
@@ -111,7 +118,7 @@ export class FindOptionsUtils {
    * Adds joins for all relations and sub-relations of the given relations provided in the find options.
    */
   public static applyRelationsRecursively(
-    qb: SelectQueryBuilder<any>,
+    qb: SelectQueryBuilder<ObjectLiteral>,
     allRelations: Array<string>,
     alias: string,
     metadata: EntityMetadata,
@@ -204,10 +211,10 @@ export class FindOptionsUtils {
   }
 
   public static joinEagerRelations(
-    qb: SelectQueryBuilder<any>,
+    qb: SelectQueryBuilder<ObjectLiteral>,
     alias: string,
     metadata: EntityMetadata
-  ) {
+  ): void {
     metadata.eagerRelations.forEach((relation) => {
       // generate a relation alias
       let relationAlias: string = DriverUtils.buildAlias(

@@ -1,7 +1,7 @@
-import { DataSource } from '../../data-source/DataSource';
-import { EntityManager } from '../../entity-manager/EntityManager';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { QueryRunner } from '../../query-runner/QueryRunner';
+import { DataSource } from '../../data-source/DataSource.js';
+import { EntityManager } from '../../entity-manager/EntityManager.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**
  * LoadEvent is an object that broadcaster sends to the entity subscriber when an entity is loaded from the database.

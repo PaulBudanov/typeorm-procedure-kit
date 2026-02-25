@@ -1,10 +1,10 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { FindManyOptions } from '../find-options/FindManyOptions';
-import { QueryRunner } from '../query-runner/QueryRunner';
-import { MongoRepository } from '../repository/MongoRepository';
-import { OrmUtils } from '../util/OrmUtils';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { FindManyOptions } from '../find-options/FindManyOptions.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import { OrmUtils } from '../util/OrmUtils.js';
 
-import { Subject } from './Subject';
+import type { Subject } from './Subject.js';
 
 /**
  * Loads database entities for all operate subjects which do not have database entity set.
@@ -17,7 +17,7 @@ export class SubjectDatabaseEntityLoader {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     protected queryRunner: QueryRunner,
     protected subjects: Array<Subject>
   ) {}
@@ -32,7 +32,7 @@ export class SubjectDatabaseEntityLoader {
    * loadAllRelations flag is used to load all relation ids of the object, no matter if they present in subject entity or not.
    * This option is used for deletion.
    */
-  async load(
+  public async load(
     operationType: 'save' | 'remove' | 'soft-remove' | 'recover'
   ): Promise<void> {
     // we are grouping subjects by target to perform more optimized queries using WHERE IN operator
@@ -82,13 +82,13 @@ export class SubjectDatabaseEntityLoader {
         // for remove operation
         // we only need to load junction relation ids since only they are removed by cascades
         loadRelationPropertyPaths.push(
-          ...subjectGroup.subjects[0].metadata.manyToManyRelations.map(
+          ...subjectGroup.subjects[0]!.metadata.manyToManyRelations.map(
             (relation) => relation.propertyPath
           )
         );
       }
 
-      const findOptions: FindManyOptions<any> = {
+      const findOptions: FindManyOptions<ObjectLiteral> = {
         loadEagerRelations: false,
         loadRelationIds: {
           relations: loadRelationPropertyPaths,
@@ -98,32 +98,27 @@ export class SubjectDatabaseEntityLoader {
         withDeleted: true,
       };
 
-      // load database entities for all given ids
-      let entities: Array<any> = [];
-      if (this.queryRunner.connection.driver.options.type === 'mongodb') {
-        const mongoRepo = this.queryRunner.manager.getRepository<ObjectLiteral>(
-          subjectGroup.target
-        ) as MongoRepository<ObjectLiteral>;
-        entities = await mongoRepo.findByIds(allIds, findOptions);
-      } else {
-        entities = await this.queryRunner.manager
-          .getRepository<ObjectLiteral>(subjectGroup.target)
-          .createQueryBuilder()
-          .setFindOptions(findOptions)
-          .whereInIds(allIds)
-          .getMany();
-      }
+      const entities = await this.queryRunner.manager
+        .getRepository<ObjectLiteral>(
+          subjectGroup.target as EntityTarget<ObjectLiteral>
+        )
+        .createQueryBuilder()
+        .setFindOptions(findOptions)
+        .whereInIds(allIds)
+        .getMany();
 
       // Now when we have entities we need to find subject of each entity
       // and insert that entity into database entity of the found subjects.
       // A single entity can be applied to many subjects as there might be duplicates.
       // This will likely result in the same row being updated multiple times during a transaction.
       entities.forEach((entity) => {
-        const entityId = allSubjects[0].metadata.getEntityIdMap(entity);
+        const entityId = allSubjects[0]!.metadata.getEntityIdMap(
+          entity as ObjectLiteral
+        );
         allSubjects.forEach((subject) => {
           if (subject.databaseEntity) return;
           if (OrmUtils.compareIds(subject.identifier, entityId))
-            subject.databaseEntity = entity;
+            subject.databaseEntity = entity as ObjectLiteral;
         });
       });
 
@@ -144,7 +139,7 @@ export class SubjectDatabaseEntityLoader {
    * Groups given Subject objects into groups separated by entity targets.
    */
   protected groupByEntityTargets(): Array<{
-    target: Function | string;
+    target: unknown | string;
     subjects: Array<Subject>;
   }> {
     return this.subjects.reduce(
@@ -156,10 +151,10 @@ export class SubjectDatabaseEntityLoader {
           group = { target: operatedEntity.metadata.target, subjects: [] };
           groups.push(group);
         }
-        group.subjects.push(operatedEntity);
+        group!.subjects.push(operatedEntity);
         return groups;
       },
-      [] as Array<{ target: Function | string; subjects: Array<Subject> }>
+      [] as Array<{ target: unknown | string; subjects: Array<Subject> }>
     );
   }
 }

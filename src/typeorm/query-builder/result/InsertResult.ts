@@ -1,11 +1,11 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { QueryResult } from '../../query-runner/QueryResult';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { QueryResult } from '../../query-runner/QueryResult.js';
 
 /**
  * Result object returned by InsertQueryBuilder execution.
  */
 export class InsertResult {
-  static from(queryResult: QueryResult) {
+  public static from(queryResult: QueryResult): InsertResult {
     const result = new this();
     result.raw = queryResult.raw;
     return result;
@@ -15,16 +15,16 @@ export class InsertResult {
    * Contains inserted entity id.
    * Has entity-like structure (not just column database name and values).
    */
-  identifiers: Array<ObjectLiteral> = [];
+  public identifiers: Array<ObjectLiteral> = [];
 
   /**
    * Generated values returned by a database.
    * Has entity-like structure (not just column database name and values).
    */
-  generatedMaps: Array<ObjectLiteral> = [];
+  public generatedMaps: Array<ObjectLiteral> = [];
 
   /**
    * Raw SQL result returned by executed query.
    */
-  raw: any;
+  public raw: unknown;
 }

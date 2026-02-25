@@ -1,6 +1,7 @@
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { getMetadataArgsStorage } from '../../globals.js';
-import { type RelationCountMetadataArgs } from '../../metadata-args/RelationCountMetadataArgs.js';
-import { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
+import type { RelationCountMetadataArgs } from '../../metadata-args/RelationCountMetadataArgs.js';
+import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 
 /**
  * Holds a number of children in the closure table of the column.
@@ -12,8 +13,8 @@ export function RelationCount<T>(
   relation: string | ((object: T) => unknown),
   alias?: string,
   queryBuilderFactory?: (
-    qb: SelectQueryBuilder<unknown>
-  ) => SelectQueryBuilder<unknown>
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>
 ): PropertyDecorator {
   return function (object: object, propertyName: string | symbol) {
     getMetadataArgsStorage().relationCounts.push({
@@ -22,6 +23,6 @@ export function RelationCount<T>(
       relation: relation,
       alias: alias,
       queryBuilderFactory: queryBuilderFactory,
-    } as RelationCountMetadataArgs);
+    } as unknown as RelationCountMetadataArgs);
   };
 }

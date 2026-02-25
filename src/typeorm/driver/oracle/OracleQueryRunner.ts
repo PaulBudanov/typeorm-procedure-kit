@@ -1,29 +1,33 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { TypeORMError } from '../../error';
-import { QueryFailedError } from '../../error/QueryFailedError';
-import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError';
-import { TransactionNotStartedError } from '../../error/TransactionNotStartedError';
-import { ReadStream } from '../../platform/PlatformTools';
-import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner';
-import { QueryResult } from '../../query-runner/QueryResult';
-import { QueryRunner } from '../../query-runner/QueryRunner';
-import { Table } from '../../schema-builder/table/Table';
-import { TableCheck } from '../../schema-builder/table/TableCheck';
-import { TableColumn } from '../../schema-builder/table/TableColumn';
-import { TableExclusion } from '../../schema-builder/table/TableExclusion';
-import { TableForeignKey } from '../../schema-builder/table/TableForeignKey';
-import { TableIndex } from '../../schema-builder/table/TableIndex';
-import { TableUnique } from '../../schema-builder/table/TableUnique';
-import { View } from '../../schema-builder/view/View';
-import { Broadcaster } from '../../subscriber/Broadcaster';
-import { BroadcasterResult } from '../../subscriber/BroadcasterResult';
-import { InstanceChecker } from '../../util/InstanceChecker';
-import { OrmUtils } from '../../util/OrmUtils';
-import { Query } from '../Query';
-import { ColumnType } from '../types/ColumnTypes';
-import { IsolationLevel } from '../types/IsolationLevel';
-import { MetadataTableType } from '../types/MetadataTableType';
-import { ReplicationMode } from '../types/ReplicationMode';
+import type oracledb from 'oracledb';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import { QueryFailedError } from '../../error/QueryFailedError.js';
+import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
+import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
+import { TypeORMError } from '../../error/TypeORMError.js';
+import { ReadStream } from '../../platform/PlatformTools.js';
+import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
+import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
+import { QueryResult } from '../../query-runner/QueryResult.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+import { Table } from '../../schema-builder/table/Table.js';
+import { TableCheck } from '../../schema-builder/table/TableCheck.js';
+import { TableColumn } from '../../schema-builder/table/TableColumn.js';
+import type { TableExclusion } from '../../schema-builder/table/TableExclusion.js';
+import { TableForeignKey } from '../../schema-builder/table/TableForeignKey.js';
+import { TableIndex } from '../../schema-builder/table/TableIndex.js';
+import { TableUnique } from '../../schema-builder/table/TableUnique.js';
+import { View } from '../../schema-builder/view/View.js';
+import { Broadcaster } from '../../subscriber/Broadcaster.js';
+import { BroadcasterResult } from '../../subscriber/BroadcasterResult.js';
+import { InstanceChecker } from '../../util/InstanceChecker.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { Query } from '../Query.js';
+import type { ColumnType } from '../types/ColumnTypes.js';
+import type { IsolationLevel } from '../types/IsolationLevel.js';
+import { MetadataTableType } from '../types/MetadataTableType.js';
+import type { ReplicationMode } from '../types/ReplicationMode.js';
 
 import { OracleDriver } from './OracleDriver.js';
 
@@ -38,7 +42,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Database driver used by connection.
    */
-  public driver: OracleDriver;
+  public override get driver(): OracleDriver {
+    return this.connection.driver as unknown as OracleDriver;
+  }
 
   // -------------------------------------------------------------------------
   // Protected Properties
@@ -47,18 +53,46 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Promise used to obtain a database connection for a first time.
    */
-  protected databaseConnectionPromise: Promise<unknown>;
+  protected databaseConnectionPromise: Promise<oracledb.Connection> | null =
+    null;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(driver: OracleDriver, mode: ReplicationMode) {
+  public constructor(driver: OracleDriver, mode: ReplicationMode) {
     super();
-    this.driver = driver;
     this.connection = driver.connection;
-    this.broadcaster = new Broadcaster(this);
+    this.broadcaster = new Broadcaster(this as unknown as QueryRunner);
     this.mode = mode;
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Helper Methods
+  // -------------------------------------------------------------------------
+
+  /**
+   * Type guard to check if an object has an array property.
+   */
+  private hasArrayProperty(obj: unknown, prop: string): boolean {
+    return (
+      obj != null &&
+      typeof obj === 'object' &&
+      prop in obj &&
+      Array.isArray((obj as Record<string, unknown>)[prop])
+    );
+  }
+
+  /**
+   * Type guard to check if an object has a number property.
+   */
+  private hasNumberProperty(obj: unknown, prop: string): boolean {
+    return (
+      obj != null &&
+      typeof obj === 'object' &&
+      prop in obj &&
+      typeof (obj as Record<string, unknown>)[prop] === 'number'
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -69,50 +103,50 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    * Creates/uses database connection from the connection pool to perform further operations.
    * Returns obtained database connection.
    */
-  connect(): Promise<any> {
-    if (this.databaseConnection)
-      return Promise.resolve(this.databaseConnection);
-
-    if (this.databaseConnectionPromise) return this.databaseConnectionPromise;
-
-    if (this.mode === 'slave' && this.driver.isReplicated) {
-      this.databaseConnectionPromise = this.driver
-        .obtainSlaveConnection()
-        .then((connection) => {
-          this.databaseConnection = connection;
-          return this.databaseConnection;
-        });
-    } else {
-      // master
-      this.databaseConnectionPromise = this.driver
-        .obtainMasterConnection()
-        .then((connection) => {
-          this.databaseConnection = connection;
-          return this.databaseConnection;
-        });
+  public async connect(): Promise<oracledb.Connection> {
+    if (this.databaseConnection) {
+      return this.databaseConnection as oracledb.Connection;
     }
 
-    return this.databaseConnectionPromise;
+    if (this.databaseConnectionPromise) {
+      await this.databaseConnectionPromise;
+      return this.databaseConnection! as oracledb.Connection;
+    }
+
+    const connectionPromise: Promise<oracledb.Connection> =
+      this.mode === 'slave' && this.driver.isReplicated
+        ? this.driver.obtainSlaveConnection()
+        : this.driver.obtainMasterConnection();
+
+    this.databaseConnectionPromise = connectionPromise.then((connection) => {
+      this.databaseConnection = connection;
+      return connection;
+    });
+
+    await this.databaseConnectionPromise;
+    return this.databaseConnection! as oracledb.Connection;
   }
 
   /**
    * Releases used database connection.
    * You cannot use query runner methods once its released.
    */
-  async release(): Promise<void> {
+  public async release(): Promise<void> {
     this.isReleased = true;
 
     if (!this.databaseConnection) {
       return;
     }
 
-    await this.databaseConnection.close();
+    const connection = this.databaseConnection;
+    this.databaseConnection = undefined;
+    void (connection as oracledb.Connection).close();
   }
 
   /**
    * Starts transaction.
    */
-  async startTransaction(
+  public async startTransaction(
     isolationLevel: IsolationLevel = 'READ COMMITTED'
   ): Promise<void> {
     if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
@@ -149,7 +183,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    * Commits transaction.
    * Error will be thrown if transaction was not started.
    */
-  async commitTransaction(): Promise<void> {
+  public async commitTransaction(): Promise<void> {
     if (!this.isTransactionActive) throw new TransactionNotStartedError();
 
     await this.broadcaster.broadcast('BeforeTransactionCommit');
@@ -167,7 +201,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    * Rollbacks transaction.
    * Error will be thrown if transaction was not started.
    */
-  async rollbackTransaction(): Promise<void> {
+  public async rollbackTransaction(): Promise<void> {
     if (!this.isTransactionActive) throw new TransactionNotStartedError();
 
     await this.broadcaster.broadcast('BeforeTransactionRollback');
@@ -188,28 +222,49 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Executes a given SQL query.
    */
-  async query(
+  public async query(
     query: string,
-    parameters?: Array<any>,
-    useStructuredResult = false
-  ): Promise<any> {
+    parameters?: Array<unknown>,
+    useStructuredResult?: boolean
+  ): Promise<unknown>;
+
+  public async query(
+    query: string,
+    parameters: Array<unknown> | undefined,
+    useStructuredResult: true
+  ): Promise<QueryResult>;
+
+  public async query<T>(query: string, parameters?: Array<unknown>): Promise<T>;
+
+  public async query(
+    query: string,
+    parameters?: Array<unknown>,
+    useStructuredResult?: boolean
+  ): Promise<unknown> {
     if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
 
-    const databaseConnection = await this.connect();
+    await this.connect();
 
-    this.driver.connection.logger.logQuery(query, parameters, this);
+    const databaseConnection = this.databaseConnection;
+
+    this.driver.connection.logger.logQuery(
+      query,
+      parameters,
+      this as unknown as QueryRunner
+    );
     await this.broadcaster.broadcast('BeforeQuery', query, parameters);
 
     const broadcasterResult = new BroadcasterResult();
     const queryStartTime = Date.now();
 
     try {
+      const oracleLib = this.driver.oracle as Record<string, unknown>;
       const executionOptions = {
         autoCommit: !this.isTransactionActive,
-        outFormat: this.driver.oracle.OUT_FORMAT_OBJECT,
+        outFormat: oracleLib['OUT_FORMAT_OBJECT'] as number,
       };
 
-      const raw = await databaseConnection.execute(
+      const raw = await (databaseConnection as oracledb.Connection).execute(
         query,
         parameters || {},
         executionOptions
@@ -230,36 +285,48 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         undefined
       );
 
-      if (maxQueryExecutionTime && queryExecutionTime > maxQueryExecutionTime)
+      if (maxQueryExecutionTime && queryExecutionTime > maxQueryExecutionTime) {
         this.driver.connection.logger.logQuerySlow(
           queryExecutionTime,
           query,
           parameters,
-          this
+          this as unknown as QueryRunner
         );
+      }
 
       const result = new QueryResult();
 
-      result.raw =
-        raw.rows || raw.outBinds || raw.rowsAffected || raw.implicitResults;
+      // Type guard for Oracle execute result
+      const hasRows = this.hasArrayProperty(raw, 'rows');
+      const hasOutBinds = this.hasArrayProperty(raw, 'outBinds');
+      const hasImplicitResults = this.hasArrayProperty(raw, 'implicitResults');
+      const hasRowsAffected = this.hasNumberProperty(raw, 'rowsAffected');
 
-      if (raw?.hasOwnProperty('rows') && Array.isArray(raw.rows)) {
-        result.records = raw.rows;
+      const rawRecord = raw as Record<string, unknown>;
+      result.raw = hasRows
+        ? rawRecord.rows
+        : hasOutBinds
+          ? rawRecord.outBinds
+          : hasImplicitResults
+            ? rawRecord.implicitResults
+            : hasRowsAffected
+              ? rawRecord.rowsAffected
+              : undefined;
+
+      if (hasRows) {
+        result.records = rawRecord.rows as Array<unknown>;
       }
 
-      if (raw?.hasOwnProperty('outBinds') && Array.isArray(raw.outBinds)) {
-        result.records = raw.outBinds;
+      if (hasOutBinds) {
+        result.records = rawRecord.outBinds as Array<unknown>;
       }
 
-      if (
-        raw?.hasOwnProperty('implicitResults') &&
-        Array.isArray(raw.implicitResults)
-      ) {
-        result.records = raw.implicitResults;
+      if (hasImplicitResults) {
+        result.records = rawRecord.implicitResults as Array<unknown>;
       }
 
-      if (raw?.hasOwnProperty('rowsAffected')) {
-        result.affected = raw.rowsAffected;
+      if (hasRowsAffected) {
+        result.affected = rawRecord.rowsAffected as number;
       }
 
       if (useStructuredResult) {
@@ -267,8 +334,14 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       } else {
         return result.raw;
       }
-    } catch (err) {
-      this.driver.connection.logger.logQueryError(err, query, parameters, this);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.driver.connection.logger.logQueryError(
+        error,
+        query,
+        parameters,
+        this as unknown as QueryRunner
+      );
       this.broadcaster.broadcastAfterQueryEvent(
         broadcasterResult,
         query,
@@ -276,10 +349,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         false,
         undefined,
         undefined,
-        err
+        error
       );
 
-      throw new QueryFailedError(query, parameters, err);
+      throw new QueryFailedError(query, parameters, error);
     } finally {
       await broadcasterResult.wait();
     }
@@ -288,27 +361,34 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Returns raw data stream.
    */
-  async stream(
+  public async stream(
     query: string,
-    parameters?: Array<any>,
-    onEnd?: Function,
-    onError?: Function
+    parameters: Array<unknown> = [],
+    onEnd?: () => void,
+    onError?: (err: Error) => void
   ): Promise<ReadStream> {
     if (this.isReleased) {
       throw new QueryRunnerAlreadyReleasedError();
     }
 
+    const oracleLib = this.driver.oracle as Record<string, unknown>;
     const executionOptions = {
       autoCommit: !this.isTransactionActive,
-      outFormat: this.driver.oracle.OUT_FORMAT_OBJECT,
+      outFormat: oracleLib['OUT_FORMAT_OBJECT'] as number,
     };
 
-    const databaseConnection = await this.connect();
+    await this.connect();
 
-    this.driver.connection.logger.logQuery(query, parameters, this);
+    const databaseConnection = this.databaseConnection;
+
+    this.driver.connection.logger.logQuery(
+      query,
+      parameters,
+      this as unknown as QueryRunner
+    );
 
     try {
-      const stream = databaseConnection.queryStream(
+      const stream = (databaseConnection as oracledb.Connection).queryStream(
         query,
         parameters,
         executionOptions
@@ -321,17 +401,23 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         stream.on('error', onError);
       }
 
-      return stream;
-    } catch (err) {
-      this.driver.connection.logger.logQueryError(err, query, parameters, this);
-      throw new QueryFailedError(query, parameters, err);
+      return stream as ReadStream;
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.driver.connection.logger.logQueryError(
+        error,
+        query,
+        parameters,
+        this as unknown as QueryRunner
+      );
+      throw new QueryFailedError(query, parameters, error);
     }
   }
 
   /**
    * Returns all available database names including system databases.
    */
-  async getDatabases(): Promise<Array<string>> {
+  public async getDatabases(): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
@@ -339,21 +425,21 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    * Returns all available schema names including system schemas.
    * If database parameter specified, returns schemas of that database.
    */
-  async getSchemas(database?: string): Promise<Array<string>> {
+  public async getSchemas(_database?: string): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
   /**
    * Checks if database with the given name exist.
    */
-  async hasDatabase(database: string): Promise<boolean> {
+  public async hasDatabase(database: string): Promise<boolean> {
     try {
       const query = await this.query(
         `SELECT 1 AS "exists" FROM global_name@"${database}"`
       );
 
-      return query.length > 0;
-    } catch (e) {
+      return Array.isArray(query) && query.length > 0;
+    } catch (_e) {
       return false;
     }
   }
@@ -361,69 +447,89 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Loads currently using database
    */
-  async getCurrentDatabase(): Promise<undefined> {
+  public async getCurrentDatabase(): Promise<string | undefined> {
     const query = await this.query(
       `SELECT SYS_CONTEXT('USERENV','DB_NAME') AS "db_name" FROM dual`
     );
-    return query[0]['db_name'];
+    if (Array.isArray(query) && query.length > 0) {
+      const firstRow = query[0] as Array<Record<string, string>>;
+      if (firstRow && typeof firstRow === 'object' && 'db_name' in firstRow) {
+        return (firstRow as Record<string, unknown>).db_name as string;
+      }
+    }
+    return undefined;
   }
 
   /**
    * Checks if schema with the given name exist.
    */
-  async hasSchema(schema: string): Promise<boolean> {
+  public async hasSchema(_schema: string): Promise<boolean> {
     return Promise.resolve(false);
   }
 
   /**
    * Loads currently using database schema
    */
-  async getCurrentSchema(): Promise<string> {
+  public async getCurrentSchema(): Promise<string | undefined> {
     const query = await this.query(
       `SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') AS "schema_name" FROM dual`
     );
-    return query[0]['schema_name'];
+    if (Array.isArray(query) && query.length > 0) {
+      const firstRow = query[0] as Array<Record<string, string>>;
+      if (
+        firstRow &&
+        typeof firstRow === 'object' &&
+        'schema_name' in firstRow
+      ) {
+        return (firstRow as Record<string, unknown>).schema_name as string;
+      }
+    }
+    return undefined;
   }
 
   /**
    * Checks if table with the given name exist in the database.
    */
-  async hasTable(tableOrName: Table | string): Promise<boolean> {
+  public async hasTable(tableOrName: Table | string): Promise<boolean> {
     const { tableName } = this.driver.parseTableName(tableOrName);
     const sql = `SELECT "TABLE_NAME" FROM "USER_TABLES" WHERE "TABLE_NAME" = '${tableName}'`;
     const result = await this.query(sql);
-    return result.length ? true : false;
+    return Array.isArray(result) && result.length > 0;
   }
 
   /**
    * Checks if column with the given name exist in the given table.
    */
-  async hasColumn(
+  public async hasColumn(
     tableOrName: Table | string,
     columnName: string
   ): Promise<boolean> {
     const { tableName } = this.driver.parseTableName(tableOrName);
     const sql = `SELECT "COLUMN_NAME" FROM "USER_TAB_COLS" WHERE "TABLE_NAME" = '${tableName}' AND "COLUMN_NAME" = '${columnName}'`;
     const result = await this.query(sql);
-    return result.length ? true : false;
+    return Array.isArray(result) && result.length > 0;
   }
 
   /**
    * Creates a new database.
    */
-  async createDatabase(database: string, ifNotExist?: boolean): Promise<void> {
+  public async createDatabase(
+    database: string,
+    ifNotExist?: boolean
+  ): Promise<void> {
     // Even with `IF NOT EXISTS` we get:
     //   ORA-01501: CREATE DATABASE failed
     //   ORA-01100: database already mounted
     if (ifNotExist) {
       try {
         await this.query(`CREATE DATABASE IF NOT EXISTS "${database}";`);
-      } catch (e) {
-        // if (e instanceof QueryFailedError) {
-        if (e.message.includes('ORA-01100: database already mounted')) {
+      } catch (e: unknown) {
+        if (
+          e instanceof Error &&
+          e.message.includes('ORA-01100: database already mounted')
+        ) {
           return;
         }
-        // }
 
         throw e;
       }
@@ -435,14 +541,20 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops database.
    */
-  async dropDatabase(database: string, ifExist?: boolean): Promise<void> {
+  public async dropDatabase(
+    _database: string,
+    _ifExist?: boolean
+  ): Promise<void> {
     return Promise.resolve();
   }
 
   /**
    * Creates a new table schema.
    */
-  async createSchema(schemaPath: string, ifNotExist?: boolean): Promise<void> {
+  public async createSchema(
+    _schemaPath: string,
+    _ifNotExist?: boolean
+  ): Promise<void> {
     throw new TypeORMError(
       `Schema create queries are not supported by Oracle driver.`
     );
@@ -451,7 +563,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops table schema.
    */
-  async dropSchema(schemaPath: string, ifExist?: boolean): Promise<void> {
+  public async dropSchema(
+    _schemaPath: string,
+    _ifExist?: boolean
+  ): Promise<void> {
     throw new TypeORMError(
       `Schema drop queries are not supported by Oracle driver.`
     );
@@ -460,7 +575,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new table.
    */
-  async createTable(
+  public async createTable(
     table: Table,
     ifNotExist = false,
     createForeignKeys = true,
@@ -526,7 +641,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops the table.
    */
-  async dropTable(
+  public async dropTable(
     tableOrName: Table | string,
     ifExist?: boolean,
     dropForeignKeys = true,
@@ -593,7 +708,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new view.
    */
-  async createView(view: View, syncWithMetadata = false): Promise<void> {
+  public async createView(view: View, syncWithMetadata = false): Promise<void> {
     const upQueries: Array<Query> = [];
     const downQueries: Array<Query> = [];
     upQueries.push(this.createViewSql(view));
@@ -606,7 +721,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops the view.
    */
-  async dropView(target: View | string): Promise<void> {
+  public async dropView(target: View | string): Promise<void> {
     const viewName = InstanceChecker.isView(target) ? target.name : target;
     const view = await this.getCachedView(viewName);
 
@@ -622,7 +737,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Renames the given table.
    */
-  async renameTable(
+  public async renameTable(
     oldTableOrName: Table | string,
     newTableName: string
   ): Promise<void> {
@@ -653,7 +768,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     // rename primary key constraint
     if (
       newTable.primaryColumns.length > 0 &&
-      !newTable.primaryColumns[0].primaryKeyConstraintName
+      !newTable.primaryColumns[0]!.primaryKeyConstraintName
     ) {
       const columnNames = newTable.primaryColumns.map((column) => column.name);
 
@@ -799,7 +914,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new column from the column in the table.
    */
-  async addColumn(
+  public async addColumn(
     tableOrName: Table | string,
     column: TableColumn
   ): Promise<void> {
@@ -828,8 +943,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       const primaryColumns = clonedTable.primaryColumns;
       // if table already have primary key, me must drop it and recreate again
       if (primaryColumns.length > 0) {
-        const pkName = primaryColumns[0].primaryKeyConstraintName
-          ? primaryColumns[0].primaryKeyConstraintName
+        const pkName = primaryColumns[0]!.primaryKeyConstraintName
+          ? primaryColumns[0]!.primaryKeyConstraintName
           : this.connection.namingStrategy.primaryKeyName(
               clonedTable,
               primaryColumns.map((column) => column.name)
@@ -854,8 +969,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       }
 
       primaryColumns.push(column);
-      const pkName = primaryColumns[0].primaryKeyConstraintName
-        ? primaryColumns[0].primaryKeyConstraintName
+      const pkName = primaryColumns[0]!.primaryKeyConstraintName
+        ? primaryColumns[0]!.primaryKeyConstraintName
         : this.connection.namingStrategy.primaryKeyName(
             clonedTable,
             primaryColumns.map((column) => column.name)
@@ -942,7 +1057,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new columns from the column in the table.
    */
-  async addColumns(
+  public async addColumns(
     tableOrName: Table | string,
     columns: Array<TableColumn>
   ): Promise<void> {
@@ -954,7 +1069,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Renames column in the given table.
    */
-  async renameColumn(
+  public async renameColumn(
     tableOrName: Table | string,
     oldTableColumnOrName: TableColumn | string,
     newTableColumnOrName: TableColumn | string
@@ -986,7 +1101,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Changes a column in the table.
    */
-  async changeColumn(
+  public async changeColumn(
     tableOrName: Table | string,
     oldTableColumnOrName: TableColumn | string,
     newColumn: TableColumn
@@ -1211,9 +1326,13 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         const oldTableColumn = clonedTable.columns.find(
           (column) => column.name === oldColumn.name
         );
-        clonedTable.columns[clonedTable.columns.indexOf(oldTableColumn!)].name =
-          newColumn.name;
-        oldColumn.name = newColumn.name;
+        if (oldTableColumn) {
+          const columnIndex = clonedTable.columns.indexOf(oldTableColumn);
+          if (columnIndex !== -1) {
+            clonedTable.columns[columnIndex]!.name = newColumn.name;
+          }
+          oldColumn.name = newColumn.name;
+        }
       }
 
       if (this.isColumnChanged(oldColumn, newColumn, true)) {
@@ -1254,7 +1373,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
           new Query(
             `ALTER TABLE ${this.escapePath(table)} MODIFY "${
               oldColumn.name
-            }" ${this.connection.driver.createFullType(
+            }" ${this.driver.createFullType(
               newColumn
             )} ${defaultUp} ${nullableUp}`
           )
@@ -1263,7 +1382,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
           new Query(
             `ALTER TABLE ${this.escapePath(table)} MODIFY "${
               oldColumn.name
-            }" ${this.connection.driver.createFullType(
+            }" ${this.driver.createFullType(
               oldColumn
             )} ${defaultDown} ${nullableDown}`
           )
@@ -1275,8 +1394,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
         // if primary column state changed, we must always drop existed constraint.
         if (primaryColumns.length > 0) {
-          const pkName = primaryColumns[0].primaryKeyConstraintName
-            ? primaryColumns[0].primaryKeyConstraintName
+          const pkName = primaryColumns[0]!.primaryKeyConstraintName
+            ? primaryColumns[0]!.primaryKeyConstraintName
             : this.connection.namingStrategy.primaryKeyName(
                 clonedTable,
                 primaryColumns.map((column) => column.name)
@@ -1308,9 +1427,11 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
           const column = clonedTable.columns.find(
             (column) => column.name === newColumn.name
           );
-          column!.isPrimary = true;
-          const pkName = primaryColumns[0].primaryKeyConstraintName
-            ? primaryColumns[0].primaryKeyConstraintName
+          if (column) {
+            column.isPrimary = true;
+          }
+          const pkName = primaryColumns[0]!.primaryKeyConstraintName
+            ? primaryColumns[0]!.primaryKeyConstraintName
             : this.connection.namingStrategy.primaryKeyName(
                 clonedTable,
                 primaryColumns.map((column) => column.name)
@@ -1338,18 +1459,22 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
           const primaryColumn = primaryColumns.find(
             (c) => c.name === newColumn.name
           );
-          primaryColumns.splice(primaryColumns.indexOf(primaryColumn!), 1);
+          if (primaryColumn) {
+            primaryColumns.splice(primaryColumns.indexOf(primaryColumn), 1);
+          }
 
           // update column in table
           const column = clonedTable.columns.find(
             (column) => column.name === newColumn.name
           );
-          column!.isPrimary = false;
+          if (column) {
+            column.isPrimary = false;
+          }
 
           // if we have another primary keys, we must recreate constraint.
           if (primaryColumns.length > 0) {
-            const pkName = primaryColumns[0].primaryKeyConstraintName
-              ? primaryColumns[0].primaryKeyConstraintName
+            const pkName = primaryColumns[0]!.primaryKeyConstraintName
+              ? primaryColumns[0]!.primaryKeyConstraintName
               : this.connection.namingStrategy.primaryKeyName(
                   clonedTable,
                   primaryColumns.map((column) => column.name)
@@ -1409,24 +1534,26 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               )
             );
           });
-          clonedTable.uniques.splice(
-            clonedTable.uniques.indexOf(uniqueConstraint!),
-            1
-          );
-          upQueries.push(
-            new Query(
-              `ALTER TABLE ${this.escapePath(
-                table
-              )} DROP CONSTRAINT "${uniqueConstraint!.name}"`
-            )
-          );
-          downQueries.push(
-            new Query(
-              `ALTER TABLE ${this.escapePath(table)} ADD CONSTRAINT "${
-                uniqueConstraint!.name
-              }" UNIQUE ("${newColumn.name}")`
-            )
-          );
+          if (uniqueConstraint) {
+            clonedTable.uniques.splice(
+              clonedTable.uniques.indexOf(uniqueConstraint),
+              1
+            );
+            upQueries.push(
+              new Query(
+                `ALTER TABLE ${this.escapePath(
+                  table
+                )} DROP CONSTRAINT "${uniqueConstraint.name}"`
+              )
+            );
+            downQueries.push(
+              new Query(
+                `ALTER TABLE ${this.escapePath(table)} ADD CONSTRAINT "${
+                  uniqueConstraint.name
+                }" UNIQUE ("${newColumn.name}")`
+              )
+            );
+          }
         }
       }
 
@@ -1438,7 +1565,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Changes a column in the table.
    */
-  async changeColumns(
+  public async changeColumns(
     tableOrName: Table | string,
     changedColumns: Array<{ newColumn: TableColumn; oldColumn: TableColumn }>
   ): Promise<void> {
@@ -1450,7 +1577,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops column in the table.
    */
-  async dropColumn(
+  public async dropColumn(
     tableOrName: Table | string,
     columnOrName: TableColumn | string
   ): Promise<void> {
@@ -1501,12 +1628,14 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
       // update column in table
       const tableColumn = clonedTable.findColumnByName(column.name);
-      tableColumn!.isPrimary = false;
+      if (tableColumn) {
+        tableColumn.isPrimary = false;
+      }
 
       // if primary key have multiple columns, we must recreate it without dropped column
       if (clonedTable.primaryColumns.length > 0) {
-        const pkName = clonedTable.primaryColumns[0].primaryKeyConstraintName
-          ? clonedTable.primaryColumns[0].primaryKeyConstraintName
+        const pkName = clonedTable.primaryColumns[0]!.primaryKeyConstraintName
+          ? clonedTable.primaryColumns[0]!.primaryKeyConstraintName
           : this.connection.namingStrategy.primaryKeyName(
               clonedTable,
               clonedTable.primaryColumns.map((column) => column.name)
@@ -1606,7 +1735,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops the columns in the table.
    */
-  async dropColumns(
+  public async dropColumns(
     tableOrName: Table | string,
     columns: Array<TableColumn> | Array<string>
   ): Promise<void> {
@@ -1618,7 +1747,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new primary key.
    */
-  async createPrimaryKey(
+  public async createPrimaryKey(
     tableOrName: Table | string,
     columnNames: Array<string>,
     constraintName?: string
@@ -1644,7 +1773,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Updates composite primary keys.
    */
-  async updatePrimaryKeys(
+  public async updatePrimaryKeys(
     tableOrName: Table | string,
     columns: Array<TableColumn>
   ): Promise<void> {
@@ -1659,8 +1788,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     // if table already have primary columns, we must drop them.
     const primaryColumns = clonedTable.primaryColumns;
     if (primaryColumns.length > 0) {
-      const pkName = primaryColumns[0].primaryKeyConstraintName
-        ? primaryColumns[0].primaryKeyConstraintName
+      const pkName = primaryColumns[0]!.primaryKeyConstraintName
+        ? primaryColumns[0]!.primaryKeyConstraintName
         : this.connection.namingStrategy.primaryKeyName(
             clonedTable,
             primaryColumns.map((column) => column.name)
@@ -1689,8 +1818,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       .filter((column) => columnNames.indexOf(column.name) !== -1)
       .forEach((column) => (column.isPrimary = true));
 
-    const pkName = primaryColumns[0].primaryKeyConstraintName
-      ? primaryColumns[0].primaryKeyConstraintName
+    const pkName = primaryColumns[0]!.primaryKeyConstraintName
+      ? primaryColumns[0]!.primaryKeyConstraintName
       : this.connection.namingStrategy.primaryKeyName(clonedTable, columnNames);
 
     const columnNamesString = columnNames
@@ -1716,7 +1845,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops a primary key.
    */
-  async dropPrimaryKey(
+  public async dropPrimaryKey(
     tableOrName: Table | string,
     constraintName?: string
   ): Promise<void> {
@@ -1738,7 +1867,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new unique constraint.
    */
-  async createUniqueConstraint(
+  public async createUniqueConstraint(
     tableOrName: Table | string,
     uniqueConstraint: TableUnique
   ): Promise<void> {
@@ -1763,7 +1892,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new unique constraints.
    */
-  async createUniqueConstraints(
+  public async createUniqueConstraints(
     tableOrName: Table | string,
     uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
@@ -1776,7 +1905,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops a unique constraint.
    */
-  async dropUniqueConstraint(
+  public async dropUniqueConstraint(
     tableOrName: Table | string,
     uniqueOrName: TableUnique | string
   ): Promise<void> {
@@ -1800,7 +1929,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a unique constraints.
    */
-  async dropUniqueConstraints(
+  public async dropUniqueConstraints(
     tableOrName: Table | string,
     uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
@@ -1813,7 +1942,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates new check constraint.
    */
-  async createCheckConstraint(
+  public async createCheckConstraint(
     tableOrName: Table | string,
     checkConstraint: TableCheck
   ): Promise<void> {
@@ -1837,7 +1966,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates new check constraints.
    */
-  async createCheckConstraints(
+  public async createCheckConstraints(
     tableOrName: Table | string,
     checkConstraints: Array<TableCheck>
   ): Promise<void> {
@@ -1850,7 +1979,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops check constraint.
    */
-  async dropCheckConstraint(
+  public async dropCheckConstraint(
     tableOrName: Table | string,
     checkOrName: TableCheck | string
   ): Promise<void> {
@@ -1874,7 +2003,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops check constraints.
    */
-  async dropCheckConstraints(
+  public async dropCheckConstraints(
     tableOrName: Table | string,
     checkConstraints: Array<TableCheck>
   ): Promise<void> {
@@ -1887,9 +2016,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new exclusion constraint.
    */
-  async createExclusionConstraint(
-    tableOrName: Table | string,
-    exclusionConstraint: TableExclusion
+  public async createExclusionConstraint(
+    _tableOrName: Table | string,
+    _exclusionConstraint: TableExclusion
   ): Promise<void> {
     throw new TypeORMError(`Oracle does not support exclusion constraints.`);
   }
@@ -1897,9 +2026,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new exclusion constraints.
    */
-  async createExclusionConstraints(
-    tableOrName: Table | string,
-    exclusionConstraints: Array<TableExclusion>
+  public async createExclusionConstraints(
+    _tableOrName: Table | string,
+    _exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
     throw new TypeORMError(`Oracle does not support exclusion constraints.`);
   }
@@ -1907,9 +2036,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops exclusion constraint.
    */
-  async dropExclusionConstraint(
-    tableOrName: Table | string,
-    exclusionOrName: TableExclusion | string
+  public async dropExclusionConstraint(
+    _tableOrName: Table | string,
+    _exclusionOrName: TableExclusion | string
   ): Promise<void> {
     throw new TypeORMError(`Oracle does not support exclusion constraints.`);
   }
@@ -1917,9 +2046,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops exclusion constraints.
    */
-  async dropExclusionConstraints(
-    tableOrName: Table | string,
-    exclusionConstraints: Array<TableExclusion>
+  public async dropExclusionConstraints(
+    _tableOrName: Table | string,
+    _exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
     throw new TypeORMError(`Oracle does not support exclusion constraints.`);
   }
@@ -1927,7 +2056,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new foreign key.
    */
-  async createForeignKey(
+  public async createForeignKey(
     tableOrName: Table | string,
     foreignKey: TableForeignKey
   ): Promise<void> {
@@ -1953,7 +2082,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new foreign keys.
    */
-  async createForeignKeys(
+  public async createForeignKeys(
     tableOrName: Table | string,
     foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
@@ -1966,7 +2095,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops a foreign key from the table.
    */
-  async dropForeignKey(
+  public async dropForeignKey(
     tableOrName: Table | string,
     foreignKeyOrName: TableForeignKey | string
   ): Promise<void> {
@@ -1990,7 +2119,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops a foreign keys from the table.
    */
-  async dropForeignKeys(
+  public async dropForeignKeys(
     tableOrName: Table | string,
     foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
@@ -2003,7 +2132,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new index.
    */
-  async createIndex(
+  public async createIndex(
     tableOrName: Table | string,
     index: TableIndex
   ): Promise<void> {
@@ -2023,7 +2152,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Creates a new indices
    */
-  async createIndices(
+  public async createIndices(
     tableOrName: Table | string,
     indices: Array<TableIndex>
   ): Promise<void> {
@@ -2036,7 +2165,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops an index from the table.
    */
-  async dropIndex(
+  public async dropIndex(
     tableOrName: Table | string,
     indexOrName: TableIndex | string
   ): Promise<void> {
@@ -2062,7 +2191,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Drops an indices from the table.
    */
-  async dropIndices(
+  public async dropIndices(
     tableOrName: Table | string,
     indices: Array<TableIndex>
   ): Promise<void> {
@@ -2074,46 +2203,51 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    * Clears all table contents.
    * Note: this operation uses SQL's TRUNCATE query which cannot be reverted in transactions.
    */
-  async clearTable(tableName: string): Promise<void> {
+  public async clearTable(tableName: string): Promise<void> {
     await this.query(`TRUNCATE TABLE ${this.escapePath(tableName)}`);
   }
 
   /**
    * Removes all tables from the currently connected database.
    */
-  async clearDatabase(): Promise<void> {
+  public async clearDatabase(): Promise<void> {
     const isAnotherTransactionActive = this.isTransactionActive;
     if (!isAnotherTransactionActive) await this.startTransaction();
     try {
       // drop views
       const dropViewsQuery = `SELECT 'DROP VIEW "' || VIEW_NAME || '"' AS "query" FROM "USER_VIEWS"`;
-      const dropViewQueries: Array<ObjectLiteral> =
-        await this.query(dropViewsQuery);
+      const dropViewQueries = (await this.query(dropViewsQuery)) as Array<
+        Record<string, unknown>
+      >;
       await Promise.all(
-        dropViewQueries.map((query) => this.query(query['query']))
+        dropViewQueries.map((query) => this.query(query['query'] as string))
       );
 
       // drop materialized views
       const dropMatViewsQuery = `SELECT 'DROP MATERIALIZED VIEW "' || MVIEW_NAME || '"' AS "query" FROM "USER_MVIEWS"`;
-      const dropMatViewQueries: Array<ObjectLiteral> =
-        await this.query(dropMatViewsQuery);
+      const dropMatViewQueries = (await this.query(dropMatViewsQuery)) as Array<
+        Record<string, unknown>
+      >;
       await Promise.all(
-        dropMatViewQueries.map((query) => this.query(query['query']))
+        dropMatViewQueries.map((query) => this.query(query['query'] as string))
       );
 
       // drop tables
       const dropTablesQuery = `SELECT 'DROP TABLE "' || TABLE_NAME || '" CASCADE CONSTRAINTS' AS "query" FROM "USER_TABLES"`;
-      const dropTableQueries: Array<ObjectLiteral> =
-        await this.query(dropTablesQuery);
+      const dropTableQueries = (await this.query(dropTablesQuery)) as Array<
+        Record<string, unknown>
+      >;
       await Promise.all(
-        dropTableQueries.map((query) => this.query(query['query']))
+        dropTableQueries.map((query) => this.query(query['query'] as string))
       );
       if (!isAnotherTransactionActive) await this.commitTransaction();
     } catch (error) {
       try {
         // we throw original error even if rollback thrown an error
         if (!isAnotherTransactionActive) await this.rollbackTransaction();
-      } catch (rollbackError) {}
+      } catch {
+        //no
+      }
       throw error;
     }
   }
@@ -2154,16 +2288,23 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       `WHERE "T"."type" IN ('${MetadataTableType.MATERIALIZED_VIEW}', '${MetadataTableType.VIEW}')`;
     if (viewsCondition.length > 0) query += ` AND ${viewsCondition}`;
 
-    const dbViews = await this.query(query);
-    return dbViews.map((dbView: any) => {
-      const parsedName = this.driver.parseTableName(dbView['name']);
+    const dbViews = (await this.query(query)) as Array<Record<string, unknown>>;
+    return dbViews.map((dbView) => {
+      const parsedName = this.driver.parseTableName(dbView['name'] as string);
 
       const view = new View();
       view.database =
-        parsedName.database || dbView['database'] || currentDatabase;
-      view.schema = parsedName.schema || dbView['schema'] || currentSchema;
+        parsedName.database ||
+        (dbView['database'] as string | undefined) ||
+        currentDatabase;
+      view.schema =
+        parsedName.schema ||
+        (dbView['schema'] as string | undefined) ||
+        currentSchema;
       view.name = parsedName.tableName;
-      view.expression = dbView['value'];
+      view.expression = dbView['value'] as
+        | string
+        | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
       view.materialized =
         dbView['type'] === MetadataTableType.MATERIALIZED_VIEW;
       return view;
@@ -2187,7 +2328,12 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
     if (!tableNames) {
       const tablesSql = `SELECT "TABLE_NAME", "OWNER" FROM "ALL_TABLES"`;
-      dbTables.push(...(await this.query(tablesSql)));
+      dbTables.push(
+        ...((await this.query(tablesSql)) as Array<{
+          TABLE_NAME: string;
+          OWNER: string;
+        }>)
+      );
     } else {
       const tablesCondition = tableNames
         .map((tableName) => {
@@ -2208,7 +2354,12 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         })
         .join(' OR ');
       const tablesSql = `SELECT "TABLE_NAME", "OWNER" FROM "ALL_TABLES" WHERE ${tablesCondition}`;
-      dbTables.push(...(await this.query(tablesSql)));
+      dbTables.push(
+        ...((await this.query(tablesSql)) as Array<{
+          TABLE_NAME: string;
+          OWNER: string;
+        }>)
+      );
     }
 
     // if tables were not found in the db, no need to proceed
@@ -2247,14 +2398,18 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       `INNER JOIN "ALL_CONS_COLUMNS" "COL" ON "COL"."OWNER" = "C"."OWNER" AND "COL"."CONSTRAINT_NAME" = "C"."CONSTRAINT_NAME" ` +
       `WHERE (${columnsCondition}) AND "C"."CONSTRAINT_TYPE" IN ('C', 'U', 'P') AND "C"."GENERATED" = 'USER NAME'`;
 
-    const [dbColumns, dbIndices, dbForeignKeys, dbConstraints]: Array<
-      Array<ObjectLiteral>
-    > = await Promise.all([
-      this.query(columnsSql),
-      this.query(indicesSql),
-      this.query(foreignKeysSql),
-      this.query(constraintsSql),
-    ]);
+    const [dbColumns, dbIndices, dbForeignKeys, dbConstraints] =
+      (await Promise.all([
+        this.query(columnsSql),
+        this.query(indicesSql),
+        this.query(foreignKeysSql),
+        this.query(constraintsSql),
+      ])) as [
+        Array<Record<string, unknown>>,
+        Array<Record<string, unknown>>,
+        Array<Record<string, unknown>>,
+        Array<Record<string, unknown>>,
+      ];
 
     // create tables for loaded tables
     return await Promise.all(
@@ -2310,8 +2465,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               );
 
               const tableColumn = new TableColumn();
-              tableColumn.name = dbColumn['COLUMN_NAME'];
-              tableColumn.type = dbColumn['DATA_TYPE'].toLowerCase();
+              tableColumn.name = dbColumn['COLUMN_NAME'] as string;
+              tableColumn.type = (
+                dbColumn['DATA_TYPE'] as string
+              ).toLowerCase();
               if (tableColumn.type.indexOf('(') !== -1)
                 tableColumn.type = tableColumn.type.replace(/\([0-9]*\)/, '');
 
@@ -2321,14 +2478,15 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
                   tableColumn.type as ColumnType
                 ) !== -1
               ) {
-                const length =
+                const length = (
                   tableColumn.type === 'raw'
-                    ? dbColumn['DATA_LENGTH']
-                    : dbColumn['CHAR_COL_DECL_LENGTH'];
+                    ? (dbColumn['DATA_LENGTH'] as number)
+                    : (dbColumn['CHAR_COL_DECL_LENGTH'] as number)
+                ).toString();
                 tableColumn.length =
                   length &&
                   !this.isDefaultColumnLength(table, tableColumn, length)
-                    ? length.toString()
+                    ? length
                     : '';
               }
 
@@ -2337,35 +2495,35 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
                 tableColumn.type === 'float'
               ) {
                 if (
-                  dbColumn['DATA_PRECISION'] !== null &&
+                  (dbColumn['DATA_PRECISION'] as number | null) !== null &&
                   !this.isDefaultColumnPrecision(
                     table,
                     tableColumn,
-                    dbColumn['DATA_PRECISION']
+                    dbColumn['DATA_PRECISION'] as number
                   )
                 )
-                  tableColumn.precision = dbColumn['DATA_PRECISION'];
+                  tableColumn.precision = dbColumn['DATA_PRECISION'] as number;
                 if (
-                  dbColumn['DATA_SCALE'] !== null &&
+                  (dbColumn['DATA_SCALE'] as number | null) !== null &&
                   !this.isDefaultColumnScale(
                     table,
                     tableColumn,
-                    dbColumn['DATA_SCALE']
+                    dbColumn['DATA_SCALE'] as number
                   )
                 )
-                  tableColumn.scale = dbColumn['DATA_SCALE'];
+                  tableColumn.scale = dbColumn['DATA_SCALE'] as number;
               } else if (
                 (tableColumn.type === 'timestamp' ||
                   tableColumn.type === 'timestamp with time zone' ||
                   tableColumn.type === 'timestamp with local time zone') &&
-                dbColumn['DATA_SCALE'] !== null
+                (dbColumn['DATA_SCALE'] as number | null) !== null
               ) {
                 tableColumn.precision = !this.isDefaultColumnPrecision(
                   table,
                   tableColumn,
-                  dbColumn['DATA_SCALE']
+                  dbColumn['DATA_SCALE'] as number
                 )
-                  ? dbColumn['DATA_SCALE']
+                  ? (dbColumn['DATA_SCALE'] as number)
                   : undefined;
               }
 
@@ -2373,8 +2531,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
                 dbColumn['DATA_DEFAULT'] !== null &&
                 dbColumn['DATA_DEFAULT'] !== undefined &&
                 dbColumn['VIRTUAL_COLUMN'] === 'NO' &&
-                dbColumn['DATA_DEFAULT'].trim() !== 'NULL'
-                  ? (tableColumn.default = dbColumn['DATA_DEFAULT'].trim())
+                String(dbColumn['DATA_DEFAULT']).trim() !== 'NULL'
+                  ? (tableColumn.default = String(
+                      dbColumn['DATA_DEFAULT']
+                    ).trim())
                   : undefined;
 
               const primaryConstraint = columnConstraints.find(
@@ -2393,9 +2553,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
                 // collect all column names
                 const columnNames = anotherPrimaryConstraints.map(
-                  (constraint) => constraint['COLUMN_NAME']
+                  (constraint) => constraint['COLUMN_NAME'] as string
                 );
-                columnNames.push(dbColumn['COLUMN_NAME']);
+                columnNames.push(dbColumn['COLUMN_NAME'] as string);
 
                 // build default primary key constraint name
                 const pkName = this.connection.namingStrategy.primaryKeyName(
@@ -2404,23 +2564,27 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
                 );
 
                 // if primary key has user-defined constraint name, write it in table column
-                if (primaryConstraint['CONSTRAINT_NAME'] !== pkName) {
-                  tableColumn.primaryKeyConstraintName =
-                    primaryConstraint['CONSTRAINT_NAME'];
+                if (
+                  (primaryConstraint['CONSTRAINT_NAME'] as string) !== pkName
+                ) {
+                  tableColumn.primaryKeyConstraintName = primaryConstraint[
+                    'CONSTRAINT_NAME'
+                  ] as string;
                 }
               }
 
-              tableColumn.isNullable = dbColumn['NULLABLE'] === 'Y';
+              tableColumn.isNullable = (dbColumn['NULLABLE'] as string) === 'Y';
               tableColumn.isUnique =
                 uniqueConstraints.length > 0 && !isConstraintComposite;
-              tableColumn.isGenerated = dbColumn['IDENTITY_COLUMN'] === 'YES';
+              tableColumn.isGenerated =
+                (dbColumn['IDENTITY_COLUMN'] as string) === 'YES';
               if (tableColumn.isGenerated) {
                 tableColumn.generationStrategy = 'increment';
                 tableColumn.default = undefined;
               }
               tableColumn.comment = ''; // todo
 
-              if (dbColumn['VIRTUAL_COLUMN'] === 'YES') {
+              if ((dbColumn['VIRTUAL_COLUMN'] as string) === 'YES') {
                 tableColumn.generatedType = 'VIRTUAL';
 
                 const asExpressionQuery = this.selectTypeormMetadataSql({
@@ -2429,12 +2593,12 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
                   name: tableColumn.name,
                 });
 
-                const results = await this.query(
+                const results = (await this.query(
                   asExpressionQuery.query,
                   asExpressionQuery.parameters
-                );
-                if (results[0] && results[0].value) {
-                  tableColumn.asExpression = results[0].value;
+                )) as Array<Record<string, unknown>>;
+                if (results.length > 0 && 'value' in results[0]!) {
+                  tableColumn.asExpression = results[0]!['value'] as string;
                 } else {
                   tableColumn.asExpression = '';
                 }
@@ -2453,7 +2617,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               dbConstraint['CONSTRAINT_TYPE'] === 'U'
             );
           }),
-          (dbConstraint) => dbConstraint['CONSTRAINT_NAME']
+          (dbConstraint) => dbConstraint['CONSTRAINT_NAME'] as string
         );
 
         table.uniques = tableUniqueConstraints.map((constraint) => {
@@ -2461,8 +2625,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
             (dbC) => dbC['CONSTRAINT_NAME'] === constraint['CONSTRAINT_NAME']
           );
           return new TableUnique({
-            name: constraint['CONSTRAINT_NAME'],
-            columnNames: uniques.map((u) => u['COLUMN_NAME']),
+            name: constraint['CONSTRAINT_NAME'] as string,
+            columnNames: uniques.map((u) => u['COLUMN_NAME'] as string),
           });
         });
 
@@ -2475,7 +2639,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               dbConstraint['CONSTRAINT_TYPE'] === 'C'
             );
           }),
-          (dbConstraint) => dbConstraint['CONSTRAINT_NAME']
+          (dbConstraint) => dbConstraint['CONSTRAINT_NAME'] as string
         );
 
         table.checks = tableCheckConstraints.map((constraint) => {
@@ -2486,9 +2650,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               dbC['CONSTRAINT_NAME'] === constraint['CONSTRAINT_NAME']
           );
           return new TableCheck({
-            name: constraint['CONSTRAINT_NAME'],
-            columnNames: checks.map((c) => c['COLUMN_NAME']),
-            expression: constraint['SEARCH_CONDITION'],
+            name: constraint['CONSTRAINT_NAME'] as string,
+            columnNames: checks.map((c) => c['COLUMN_NAME'] as string),
+            expression: constraint['SEARCH_CONDITION'] as string | undefined,
           });
         });
 
@@ -2499,7 +2663,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               dbForeignKey['OWNER'] === dbTable['OWNER'] &&
               dbForeignKey['TABLE_NAME'] === dbTable['TABLE_NAME']
           ),
-          (dbForeignKey) => dbForeignKey['CONSTRAINT_NAME']
+          (dbForeignKey) => dbForeignKey['CONSTRAINT_NAME'] as string
         );
 
         table.foreignKeys = tableForeignKeyConstraints.map((dbForeignKey) => {
@@ -2510,15 +2674,19 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
               dbFk['CONSTRAINT_NAME'] === dbForeignKey['CONSTRAINT_NAME']
           );
           return new TableForeignKey({
-            name: dbForeignKey['CONSTRAINT_NAME'],
-            columnNames: foreignKeys.map((dbFk) => dbFk['COLUMN_NAME']),
-            referencedDatabase: table.database,
-            referencedSchema: dbForeignKey['OWNER'],
-            referencedTableName: dbForeignKey['REFERENCED_TABLE_NAME'],
-            referencedColumnNames: foreignKeys.map(
-              (dbFk) => dbFk['REFERENCED_COLUMN_NAME']
+            name: dbForeignKey['CONSTRAINT_NAME'] as string,
+            columnNames: foreignKeys.map(
+              (dbFk) => dbFk['COLUMN_NAME'] as string
             ),
-            onDelete: dbForeignKey['ON_DELETE'],
+            referencedDatabase: table.database,
+            referencedSchema: dbForeignKey['OWNER'] as string,
+            referencedTableName: dbForeignKey[
+              'REFERENCED_TABLE_NAME'
+            ] as string,
+            referencedColumnNames: foreignKeys.map(
+              (dbFk) => dbFk['REFERENCED_COLUMN_NAME'] as string
+            ),
+            onDelete: dbForeignKey['ON_DELETE'] as string | undefined,
             onUpdate: 'NO ACTION', // Oracle does not have onUpdate option in FK's, but we need it for proper synchronization
           });
         });
@@ -2535,21 +2703,28 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
             (dbColumn) =>
               dbColumn['OWNER'] === dbTable['OWNER'] &&
               dbColumn['TABLE_NAME'] === dbTable['TABLE_NAME'] &&
-              dbColumn['VIRTUAL_COLUMN'] === 'YES' &&
-              dbColumn['USER_GENERATED'] === 'NO'
+              (dbColumn['VIRTUAL_COLUMN'] as string) === 'YES' &&
+              (dbColumn['USER_GENERATED'] as string) === 'NO'
           )
-          .reduce((acc, x) => {
-            const referencedDbColumn = dbColumns.find((dbColumn) =>
-              x['DATA_DEFAULT'].includes(dbColumn['COLUMN_NAME'])
-            );
+          .reduce(
+            (acc, x) => {
+              const referencedDbColumn = dbColumns.find((dbColumn) =>
+                (x['DATA_DEFAULT'] as string).includes(
+                  dbColumn['COLUMN_NAME'] as string
+                )
+              );
 
-            if (!referencedDbColumn) return acc;
+              if (!referencedDbColumn) return acc;
 
-            return {
-              ...acc,
-              [x['COLUMN_NAME']]: referencedDbColumn['COLUMN_NAME'],
-            };
-          }, {});
+              return {
+                ...acc,
+                [x['COLUMN_NAME'] as string]: referencedDbColumn[
+                  'COLUMN_NAME'
+                ] as string,
+              };
+            },
+            {} as Record<string, string>
+          );
 
         // create TableIndex objects from the loaded indices
         table.indices = dbIndices
@@ -2560,17 +2735,17 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
           )
           .map((dbIndex) => {
             //
-            const columnNames = dbIndex['COLUMN_NAMES']
+            const columnNames = (dbIndex['COLUMN_NAMES'] as string)
               .split(',')
               .map(
-                (columnName: keyof typeof autoGenVirtualDbColumns) =>
+                (columnName: string) =>
                   autoGenVirtualDbColumns[columnName] ?? columnName
-              );
+              ) as Array<string>;
 
             return new TableIndex({
-              name: dbIndex['INDEX_NAME'],
+              name: dbIndex['INDEX_NAME'] as string | undefined,
               columnNames,
-              isUnique: dbIndex['UNIQUENESS'] === 'UNIQUE',
+              isUnique: (dbIndex['UNIQUENESS'] as string) === 'UNIQUE',
             });
           });
 
@@ -2676,8 +2851,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
     const primaryColumns = table.columns.filter((column) => column.isPrimary);
     if (primaryColumns.length > 0) {
-      const primaryKeyName = primaryColumns[0].primaryKeyConstraintName
-        ? primaryColumns[0].primaryKeyConstraintName
+      const primaryKeyName = primaryColumns[0]!.primaryKeyConstraintName
+        ? primaryColumns[0]!.primaryKeyConstraintName
         : this.connection.namingStrategy.primaryKeyName(
             table,
             primaryColumns.map((column) => column.name)
@@ -2814,7 +2989,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       throw new TypeORMError(`Table ${table} has no primary keys.`);
 
     const columnNames = table.primaryColumns.map((column) => column.name);
-    const constraintName = table.primaryColumns[0].primaryKeyConstraintName;
+    const constraintName = table.primaryColumns[0]!.primaryKeyConstraintName;
     const primaryKeyName = constraintName
       ? constraintName
       : this.connection.namingStrategy.primaryKeyName(table, columnNames);
@@ -2934,8 +3109,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Builds a query for create column.
    */
-  protected buildCreateColumnSql(column: TableColumn) {
-    let c = `"${column.name}" ` + this.connection.driver.createFullType(column);
+  protected buildCreateColumnSql(column: TableColumn): string {
+    let c = `"${column.name}" ` + this.driver.createFullType(column);
     if (column.charset) c += ' CHARACTER SET ' + column.charset;
     if (column.collation) c += ' COLLATE ' + column.collation;
 
@@ -2973,9 +3148,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   /**
    * Change table comment.
    */
-  changeTableComment(
-    tableOrName: Table | string,
-    comment?: string
+  public changeTableComment(
+    _tableOrName: Table | string,
+    _comment?: string
   ): Promise<void> {
     throw new TypeORMError(
       `oracle driver does not support change table comment.`

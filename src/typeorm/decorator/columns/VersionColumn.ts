@@ -1,6 +1,6 @@
-import { getMetadataArgsStorage } from '../../globals';
-import { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs';
-import { ColumnOptions } from '../options/ColumnOptions';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
+import type { ColumnOptions } from '../options/ColumnOptions.js';
 
 /**
  * This column will store a number - version of the entity.
@@ -8,12 +8,12 @@ import { ColumnOptions } from '../options/ColumnOptions';
  * so you can organize visioning and update strategies of your entity.
  */
 export function VersionColumn(options?: ColumnOptions): PropertyDecorator {
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     getMetadataArgsStorage().columns.push({
       target: object.constructor,
-      propertyName: propertyName,
+      propertyName: propertyName.toString(),
       mode: 'version',
-      options: options || {},
+      options: options ?? {},
     } as ColumnMetadataArgs);
   };
 }

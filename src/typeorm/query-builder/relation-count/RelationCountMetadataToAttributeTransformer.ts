@@ -1,20 +1,20 @@
-import { RelationCountMetadata } from '../../metadata/RelationCountMetadata';
-import { QueryExpressionMap } from '../QueryExpressionMap';
+import { RelationCountMetadata } from '../../metadata/RelationCountMetadata.js';
+import { QueryExpressionMap } from '../QueryExpressionMap.js';
 
-import { RelationCountAttribute } from './RelationCountAttribute';
+import { RelationCountAttribute } from './RelationCountAttribute.js';
 
 export class RelationCountMetadataToAttributeTransformer {
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(protected expressionMap: QueryExpressionMap) {}
+  public constructor(protected expressionMap: QueryExpressionMap) {}
 
   // -------------------------------------------------------------------------
   // Public Methods
   // -------------------------------------------------------------------------
 
-  transform() {
+  public transform(): void {
     // by example:
     // post has relation count:
     // @RelationCount(post => post.categories) categoryCount

@@ -1,6 +1,7 @@
 import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { DataSource } from '../data-source/DataSource.js';
-import { DriverUtils } from '../driver/DriverUtils.js';
+import type { Driver } from '../driver/Driver.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { CheckMetadata } from '../metadata/CheckMetadata.js';
 import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
@@ -29,6 +30,17 @@ import { RelationJoinColumnBuilder } from './RelationJoinColumnBuilder.js';
  * Builds EntityMetadata objects and all its sub-metadatas.
  */
 export class EntityMetadataBuilder {
+  // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
+
+  /**
+   * Driver used by this builder.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
+
   // -------------------------------------------------------------------------
   // Protected Properties
   // -------------------------------------------------------------------------
@@ -282,7 +294,7 @@ export class EntityMetadataBuilder {
           .forEach((relation) => {
             this.connection.relationLoader.enableLazyLoad(
               relation,
-              (entityMetadata.target as TFunction).prototype
+              (entityMetadata.target as TFunction).prototype as ObjectLiteral
             );
           });
       });
@@ -586,19 +598,20 @@ export class EntityMetadataBuilder {
 
     entityMetadata.ownRelations = this.metadataArgsStorage
       .filterRelations(entityMetadata.inheritanceTree)
-      .map((args) => {
+      .map<RelationMetadata>((args) => {
         // for single table children we reuse relations created for their parents
         if (entityMetadata.tableType === 'entity-child') {
           const parentRelation =
             entityMetadata.parentEntityMetadata.ownRelations.find(
               (relation) => relation.propertyName === args.propertyName
             )!;
-          const type =
+          const type = (
             typeof args.type === 'function'
-              ? (args.type as () => any)()
-              : args.type;
+              ? ((args.type as TFunction)() as string)
+              : args.type
+          ) as TFunction | string;
           if (parentRelation.type !== type) {
-            const clone = Object.create(parentRelation);
+            const clone = Object.create(parentRelation) as RelationMetadata;
             clone.type = type;
             return clone;
           }
@@ -645,7 +658,7 @@ export class EntityMetadataBuilder {
       });
 
     // Only PostgreSQL supports exclusion constraints.
-    if (this.connection.driver.options.type === 'postgres') {
+    if (this.driver.options.type === 'postgres') {
       entityMetadata.exclusions = this.metadataArgsStorage
         .filterExclusions(entityMetadata.inheritanceTree)
         .map((args) => {
@@ -653,66 +666,18 @@ export class EntityMetadataBuilder {
         });
     }
 
-    if (this.connection.driver.options.type === 'cockroachdb') {
-      entityMetadata.ownIndices = this.metadataArgsStorage
-        .filterIndices(entityMetadata.inheritanceTree)
-        .filter((args) => !args.unique)
-        .map((args) => {
-          return new IndexMetadata({ entityMetadata, args });
-        });
+    entityMetadata.ownIndices = this.metadataArgsStorage
+      .filterIndices(entityMetadata.inheritanceTree)
+      .map((args) => {
+        return new IndexMetadata({ entityMetadata, args });
+      });
 
-      const uniques = this.metadataArgsStorage
-        .filterIndices(entityMetadata.inheritanceTree)
-        .filter((args) => args.unique)
-        .map((args) => {
-          return new UniqueMetadata({
-            entityMetadata: entityMetadata,
-            args: {
-              target: args.target,
-              name: args.name,
-              columns: args.columns,
-            },
-          });
-        });
-      entityMetadata.ownUniques.push(...uniques);
-    } else {
-      entityMetadata.ownIndices = this.metadataArgsStorage
-        .filterIndices(entityMetadata.inheritanceTree)
-        .map((args) => {
-          return new IndexMetadata({ entityMetadata, args });
-        });
-    }
-
-    // This drivers stores unique constraints as unique indices.
-    if (
-      DriverUtils.isMySQLFamily(this.connection.driver) ||
-      this.connection.driver.options.type === 'aurora-mysql' ||
-      this.connection.driver.options.type === 'sap' ||
-      this.connection.driver.options.type === 'spanner'
-    ) {
-      const indices = this.metadataArgsStorage
-        .filterUniques(entityMetadata.inheritanceTree)
-        .map((args) => {
-          return new IndexMetadata({
-            entityMetadata: entityMetadata,
-            args: {
-              target: args.target,
-              name: args.name,
-              columns: args.columns,
-              unique: true,
-              synchronize: true,
-            },
-          });
-        });
-      entityMetadata.ownIndices.push(...indices);
-    } else {
-      const uniques = this.metadataArgsStorage
-        .filterUniques(entityMetadata.inheritanceTree)
-        .map((args) => {
-          return new UniqueMetadata({ entityMetadata, args });
-        });
-      entityMetadata.ownUniques.push(...uniques);
-    }
+    const uniques = this.metadataArgsStorage
+      .filterUniques(entityMetadata.inheritanceTree)
+      .map((args) => {
+        return new UniqueMetadata({ entityMetadata, args });
+      });
+    entityMetadata.ownUniques.push(...uniques);
   }
 
   /**
@@ -728,7 +693,7 @@ export class EntityMetadataBuilder {
         entityMetadata: entityMetadata,
         args: embeddedArgs,
       });
-      const targets: Array<any> =
+      const targets: Array<string> | Array<TFunction> =
         typeof embeddedMetadata.type === 'function'
           ? MetadataUtils.getInheritanceTree(embeddedMetadata.type)
           : [embeddedMetadata.type]; // todo: implement later here inheritance for string-targets
@@ -804,7 +769,7 @@ export class EntityMetadataBuilder {
   /**
    * Computes all entity metadata's computed properties, and all its sub-metadatas (relations, columns, embeds, etc).
    */
-  protected computeEntityMetadataStep2(entityMetadata: EntityMetadata) {
+  protected computeEntityMetadataStep2(entityMetadata: EntityMetadata): void {
     entityMetadata.embeddeds.forEach((embedded) =>
       embedded.build(this.connection)
     );
@@ -974,7 +939,7 @@ export class EntityMetadataBuilder {
   protected computeInverseProperties(
     entityMetadata: EntityMetadata,
     entityMetadatas: Array<EntityMetadata>
-  ) {
+  ): void {
     entityMetadata.relations.forEach((relation) => {
       // compute inverse side (related) entity metadatas for all relation metadatas
       const inverseEntityMetadata = entityMetadatas.find(
@@ -1008,7 +973,9 @@ export class EntityMetadataBuilder {
   /**
    * Creates indices for the table of single table inheritance.
    */
-  protected createKeysForTableInheritance(entityMetadata: EntityMetadata) {
+  protected createKeysForTableInheritance(
+    entityMetadata: EntityMetadata
+  ): void {
     const isDiscriminatorColumnAlreadyIndexed = entityMetadata.indices.some(
       ({ givenColumnNames }) =>
         !!givenColumnNames &&
@@ -1041,14 +1008,15 @@ export class EntityMetadataBuilder {
   protected createForeignKeys(
     entityMetadata: EntityMetadata,
     entityMetadatas: Array<EntityMetadata>
-  ) {
+  ): void {
     this.metadataArgsStorage
       .filterForeignKeys(entityMetadata.inheritanceTree)
       .forEach((foreignKeyArgs) => {
-        const foreignKeyType =
+        const foreignKeyType = (
           typeof foreignKeyArgs.type === 'function'
-            ? (foreignKeyArgs.type as () => any)()
-            : foreignKeyArgs.type;
+            ? (foreignKeyArgs.type as TFunction)()
+            : foreignKeyArgs.type
+        ) as TFunction | string;
 
         const referencedEntityMetadata = entityMetadatas.find((m) =>
           typeof foreignKeyType === 'string'
@@ -1086,7 +1054,7 @@ export class EntityMetadataBuilder {
               referencedColumnNames.push(
                 foreignKeyArgs.inverseSide(
                   referencedEntityMetadata.propertiesMap
-                )
+                ) as string
               );
             } else {
               referencedColumnNames.push(foreignKeyArgs.inverseSide);

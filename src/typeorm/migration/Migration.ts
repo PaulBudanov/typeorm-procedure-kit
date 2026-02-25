@@ -1,4 +1,4 @@
-import { MigrationInterface } from './MigrationInterface';
+import type { MigrationInterface } from './MigrationInterface.js';
 
 /**
  * Represents entity of the migration in the database.
@@ -12,33 +12,33 @@ export class Migration {
    * Migration id.
    * Indicates order of the executed migrations.
    */
-  id: number | undefined;
+  public id: number | undefined;
 
   /**
    * Timestamp of the migration.
    */
-  timestamp: number;
+  public timestamp: number;
 
   /**
    * Name of the migration (class name).
    */
-  name: string;
+  public name: string;
 
   /**
    * Migration instance that needs to be run.
    */
-  instance?: MigrationInterface;
+  public instance?: MigrationInterface;
 
   /**
    * Whether to run this migration within a transaction
    */
-  transaction?: boolean;
+  public transaction?: boolean;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     id: number | undefined,
     timestamp: number,
     name: string,

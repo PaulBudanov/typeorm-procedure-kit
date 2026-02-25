@@ -1,10 +1,10 @@
-import { getMetadataArgsStorage } from '../../globals';
-import { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs';
-import { ObjectUtils } from '../../util/ObjectUtils';
-import { ColumnOptions } from '../options/ColumnOptions';
-import { PrimaryGeneratedColumnIdentityOptions } from '../options/PrimaryGeneratedColumnIdentityOptions';
-import { PrimaryGeneratedColumnNumericOptions } from '../options/PrimaryGeneratedColumnNumericOptions';
-import { PrimaryGeneratedColumnUUIDOptions } from '../options/PrimaryGeneratedColumnUUIDOptions';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
+import type { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import type { ColumnOptions } from '../options/ColumnOptions.js';
+import type { PrimaryGeneratedColumnNumericOptions } from '../options/PrimaryGeneratedColumnNumericOptions.js';
+import type { PrimaryGeneratedColumnUUIDOptions } from '../options/PrimaryGeneratedColumnUUIDOptions.js';
 
 /**
  * Column decorator is used to mark a specific class property as a table column.
@@ -36,19 +36,6 @@ export function PrimaryGeneratedColumn(
 
 /**
  * Column decorator is used to mark a specific class property as a table column.
- */
-export function PrimaryGeneratedColumn(
-  strategy: 'rowid',
-  options?: PrimaryGeneratedColumnUUIDOptions
-): PropertyDecorator;
-
-export function PrimaryGeneratedColumn(
-  strategy: 'identity',
-  options?: PrimaryGeneratedColumnIdentityOptions
-): PropertyDecorator;
-
-/**
- * Column decorator is used to mark a specific class property as a table column.
  * Only properties decorated with this decorator will be persisted to the database when entity be saved.
  * This column creates an integer PRIMARY COLUMN with generated set to true.
  */
@@ -56,26 +43,18 @@ export function PrimaryGeneratedColumn(
   strategyOrOptions?:
     | 'increment'
     | 'uuid'
-    | 'rowid'
-    | 'identity'
     | PrimaryGeneratedColumnNumericOptions
-    | PrimaryGeneratedColumnUUIDOptions
-    | PrimaryGeneratedColumnIdentityOptions,
+    | PrimaryGeneratedColumnUUIDOptions,
   maybeOptions?:
     | PrimaryGeneratedColumnNumericOptions
     | PrimaryGeneratedColumnUUIDOptions
-    | PrimaryGeneratedColumnIdentityOptions
 ): PropertyDecorator {
   // normalize parameters
   const options: ColumnOptions = {};
-  let strategy: 'increment' | 'uuid' | 'rowid' | 'identity';
+  let strategy: 'increment' | 'uuid';
   if (strategyOrOptions) {
     if (typeof strategyOrOptions === 'string')
-      strategy = strategyOrOptions as
-        | 'increment'
-        | 'uuid'
-        | 'rowid'
-        | 'identity';
+      strategy = strategyOrOptions as 'increment' | 'uuid';
 
     if (ObjectUtils.isObject(strategyOrOptions)) {
       strategy = 'increment';
@@ -86,15 +65,13 @@ export function PrimaryGeneratedColumn(
   }
   if (ObjectUtils.isObject(maybeOptions)) Object.assign(options, maybeOptions);
 
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     // if column type is not explicitly set then determine it based on generation strategy
     if (!options.type) {
-      if (strategy === 'increment' || strategy === 'identity') {
+      if (strategy === 'increment') {
         options.type = Number;
       } else if (strategy === 'uuid') {
         options.type = 'uuid';
-      } else if (strategy === 'rowid') {
-        options.type = 'int';
       }
     }
 
@@ -103,17 +80,17 @@ export function PrimaryGeneratedColumn(
 
     // register column metadata args
     getMetadataArgsStorage().columns.push({
-      target: object.constructor,
-      propertyName: propertyName,
+      target: object.constructor as unknown,
+      propertyName: propertyName.toString(),
       mode: 'regular',
       options: options,
-    });
+    } as unknown as ColumnMetadataArgs);
 
     // register generated metadata args
     getMetadataArgsStorage().generations.push({
-      target: object.constructor,
-      propertyName: propertyName,
+      target: object.constructor as unknown,
+      propertyName: propertyName.toString(),
       strategy: strategy,
-    } as GeneratedMetadataArgs);
+    } as unknown as GeneratedMetadataArgs);
   };
 }

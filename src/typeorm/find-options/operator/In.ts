@@ -1,4 +1,4 @@
-import { FindOperator } from '../FindOperator';
+import { FindOperator } from '../FindOperator.js';
 
 /**
  * Find Options Operator.
@@ -6,6 +6,6 @@ import { FindOperator } from '../FindOperator';
  */
 export function In<T>(
   value: ReadonlyArray<T> | FindOperator<T>
-): FindOperator<any> {
-  return new FindOperator('in', value as any, true, true);
+): FindOperator<T> {
+  return new FindOperator('in', value as FindOperator<T>, true, true);
 }

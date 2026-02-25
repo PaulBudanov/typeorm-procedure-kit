@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { appendFileSync, existsSync } from 'fs';
 import { extname, normalize, resolve } from 'path';
 
 import { format as sqlFormat } from '@sqltools/formatter';
@@ -30,7 +30,7 @@ export class PlatformTools {
     return global;
   }
 
-  public static load(name: string): unknown {
+  public static load(name: string): Promise<unknown> {
     try {
       switch (name) {
         /**
@@ -46,12 +46,20 @@ export class PlatformTools {
           return import('pg');
         case 'pg-native':
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          return require('pg-native');
+          return Promise.resolve(require('pg-native') as unknown);
         case 'pg-query-stream':
-          return import('pg-query-stream');
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          return Promise.resolve(require('pg-query-stream') as unknown);
       }
     } catch {
-      return import(resolve(process.cwd() + '/node_modules/' + name));
+      // If package is not found in switch, try to dynamically import it
+      return import(resolve(process.cwd() + '/node_modules/' + name)).catch(
+        () => {
+          throw new TypeError(
+            `Invalid Package for PlatformTools.load: ${name}`
+          );
+        }
+      );
     }
 
     // If nothing above matched and we get here, the package was not listed within PlatformTools
@@ -65,10 +73,10 @@ export class PlatformTools {
    * Normalizes given path. Does "path.normalize" and replaces backslashes with forward slashes on Windows.
    */
   public static pathNormalize(pathStr: string): string {
-    let normalizedPath = normalize(pathStr);
-    if (process.platform === 'win32')
-      normalizedPath = normalizedPath.replace(/\\/g, '/');
-    return normalizedPath;
+    const normalizedPath = normalize(pathStr);
+    return process.platform === 'win32'
+      ? normalizedPath.replace(/\\/g, '/')
+      : normalizedPath;
   }
 
   /**
@@ -191,5 +199,12 @@ export class PlatformTools {
   public static logCmdErr(prefix: string, err?: unknown): void {
     console.log(ansi.black.bgRed(prefix));
     if (err) console.error(err);
+  }
+
+  public static appendFileSync(
+    path: string,
+    data: string | NodeJS.ArrayBufferView
+  ): void {
+    appendFileSync(path, data as string);
   }
 }

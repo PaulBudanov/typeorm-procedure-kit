@@ -1,13 +1,14 @@
-import { DataSource } from '../data-source/DataSource';
-import { DriverUtils } from '../driver/DriverUtils';
-import { TypeORMError } from '../error';
-import { EntityMetadata } from '../metadata/EntityMetadata';
-import { RelationMetadata } from '../metadata/RelationMetadata';
-import { ObjectUtils } from '../util/ObjectUtils';
+import type { TFunction } from '../../types/utility.types.js';
+import { DataSource } from '../data-source/DataSource.js';
+import { DriverUtils } from '../driver/DriverUtils.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { Alias } from './Alias';
-import { QueryBuilderUtils } from './QueryBuilderUtils';
-import { QueryExpressionMap } from './QueryExpressionMap';
+import { Alias } from './Alias.js';
+import { QueryBuilderUtils } from './QueryBuilderUtils.js';
+import { QueryExpressionMap } from './QueryExpressionMap.js';
 
 /**
  * Stores all join attributes which will be used to build a JOIN query.
@@ -20,43 +21,43 @@ export class JoinAttribute {
   /**
    * Join direction.
    */
-  direction: 'LEFT' | 'INNER';
+  public direction!: 'LEFT' | 'INNER';
 
   /**
    * Alias of the joined (destination) table.
    */
-  alias: Alias;
+  public alias!: Alias;
 
   /**
    * Joined table, entity target, or relation in "post.category" format.
    */
-  entityOrProperty: Function | string;
+  public entityOrProperty!: TFunction | string;
 
   /**
    * Extra condition applied to "ON" section of join.
    */
-  condition?: string;
+  public condition?: string;
 
   /**
    * Property + alias of the object where to joined data should be mapped.
    */
-  mapToProperty?: string;
+  public mapToProperty?: string;
 
   /**
    * Indicates if user maps one or many objects from the join.
    */
-  isMappingMany?: boolean;
+  public isMappingMany?: boolean;
 
   /**
    * Useful when the joined expression is a custom query to support mapping.
    */
-  mapAsEntity?: Function | string;
+  public mapAsEntity?: TFunction | string;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     private connection: DataSource,
     private queryExpressionMap: QueryExpressionMap,
     joinAttribute?: JoinAttribute
@@ -70,7 +71,7 @@ export class JoinAttribute {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  get isMany(): boolean {
+  public get isMany(): boolean {
     if (this.isMappingMany !== undefined) return this.isMappingMany;
 
     if (this.relation)
@@ -79,14 +80,14 @@ export class JoinAttribute {
     return false;
   }
 
-  isSelectedCache: boolean;
-  isSelectedEvaluated = false;
+  public isSelectedCache!: boolean;
+  public isSelectedEvaluated = false;
   /**
    * Indicates if this join is selected.
    */
-  get isSelected(): boolean {
+  public get isSelected(): boolean {
     if (!this.isSelectedEvaluated) {
-      const getValue = () => {
+      const getValue = (): boolean => {
         for (const select of this.queryExpressionMap.selects) {
           if (select.selection === this.alias.name) return true;
 
@@ -111,7 +112,7 @@ export class JoinAttribute {
   /**
    * Name of the table which we should join.
    */
-  get tablePath(): string {
+  public get tablePath(): string {
     return this.metadata
       ? this.metadata.tablePath
       : (this.entityOrProperty as string);
@@ -123,11 +124,14 @@ export class JoinAttribute {
    * This value is extracted from entityOrProperty value.
    * This is available when join was made using "post.category" syntax.
    */
-  get parentAlias(): string | undefined {
-    if (!QueryBuilderUtils.isAliasProperty(this.entityOrProperty))
+  public get parentAlias(): string | undefined {
+    if (!QueryBuilderUtils.isAliasProperty(this.entityOrProperty as string))
       return undefined;
 
-    return this.entityOrProperty.substr(0, this.entityOrProperty.indexOf('.'));
+    return (this.entityOrProperty as string).substr(
+      0,
+      (this.entityOrProperty as string).indexOf('.')
+    );
   }
 
   /**
@@ -137,25 +141,27 @@ export class JoinAttribute {
    * This value is extracted from entityOrProperty value.
    * This is available when join was made using "post.category" syntax.
    */
-  get relationPropertyPath(): string | undefined {
-    if (!QueryBuilderUtils.isAliasProperty(this.entityOrProperty))
+  public get relationPropertyPath(): string | undefined {
+    if (!QueryBuilderUtils.isAliasProperty(this.entityOrProperty as string))
       return undefined;
 
-    return this.entityOrProperty.substr(this.entityOrProperty.indexOf('.') + 1);
+    return (this.entityOrProperty as string).substr(
+      (this.entityOrProperty as string).indexOf('.') + 1
+    );
   }
 
-  relationCache: RelationMetadata | undefined;
-  relationEvaluated = false;
+  public relationCache: RelationMetadata | undefined;
+  public relationEvaluated = false;
   /**
    * Relation of the parent.
    * This is used to understand what is joined.
    * This is available when join was made using "post.category" syntax.
    * Relation can be undefined if entityOrProperty is regular entity or custom table.
    */
-  get relation(): RelationMetadata | undefined {
+  public get relation(): RelationMetadata | undefined {
     if (!this.relationEvaluated) {
-      const getValue = () => {
-        if (!QueryBuilderUtils.isAliasProperty(this.entityOrProperty))
+      const getValue = (): RelationMetadata | undefined => {
+        if (!QueryBuilderUtils.isAliasProperty(this.entityOrProperty as string))
           return undefined;
 
         const relationOwnerSelection = this.queryExpressionMap.findAliasByName(
@@ -194,7 +200,7 @@ export class JoinAttribute {
    * Metadata of the joined entity.
    * If table without entity was joined, then it will return undefined.
    */
-  get metadata(): EntityMetadata | undefined {
+  public get metadata(): EntityMetadata | undefined {
     // entityOrProperty is relation, e.g. "post.category"
     if (this.relation) return this.relation.inverseEntityMetadata;
 
@@ -225,7 +231,7 @@ export class JoinAttribute {
   /**
    * Generates alias of junction table, whose ids we get.
    */
-  get junctionAlias(): string {
+  public get junctionAlias(): string {
     if (!this.relation) {
       throw new TypeORMError(
         `Cannot get junction table for join without relation.`
@@ -257,13 +263,13 @@ export class JoinAttribute {
     }
   }
 
-  get mapToPropertyParentAlias(): string | undefined {
+  public get mapToPropertyParentAlias(): string | undefined {
     if (!this.mapToProperty) return undefined;
 
     return this.mapToProperty!.split('.')[0];
   }
 
-  get mapToPropertyPropertyName(): string | undefined {
+  public get mapToPropertyPropertyName(): string | undefined {
     if (!this.mapToProperty) return undefined;
 
     return this.mapToProperty!.split('.')[1];

@@ -1,6 +1,6 @@
 import oracledb from 'oracledb';
-import type { EntityManager } from 'typeorm';
 
+import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type {
   TConnectionClassTypes,
   TNotifyClassTypes,
@@ -13,7 +13,7 @@ import type {
 } from '../../types/notification.types.js';
 import type {
   IProcedureArgumentBase,
-  IProcedureArgumentList,
+  TProcedureArgumentList,
 } from '../../types/procedure.types.js';
 import type {
   ISetSerializer,
@@ -60,9 +60,9 @@ export abstract class DatabaseAdapter<
     procedureListBase: Array<Lowercase<string>>,
     packageName: Lowercase<string>,
     packagesLength: number
-  ): IProcedureArgumentList {
+  ): TProcedureArgumentList {
     const sortedProcedures = rawArguments.reduce(
-      (acc: IProcedureArgumentList, item: IProcedureArgumentBase) => {
+      (acc: TProcedureArgumentList, item: IProcedureArgumentBase) => {
         const itemObjectNameToLowerCase =
           item.procedureName.toLowerCase() as Lowercase<string>;
         if (
@@ -85,7 +85,7 @@ export abstract class DatabaseAdapter<
 
         return acc;
       },
-      {} as IProcedureArgumentList
+      {} as TProcedureArgumentList
     );
     return sortedProcedures;
   }
@@ -143,7 +143,7 @@ export abstract class DatabaseAdapter<
   >(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
-    procedures: IProcedureArgumentList | undefined,
+    procedures: TProcedureArgumentList | undefined,
     payload?: U
   ): IBindingsObjectReturn;
 

@@ -1,11 +1,11 @@
-import { UniqueMetadata } from '../../metadata/UniqueMetadata';
-import { TableUniqueOptions } from '../options/TableUniqueOptions';
+import type { UniqueMetadata } from '../../metadata/UniqueMetadata.js';
+import type { TableUniqueOptions } from '../options/TableUniqueOptions.js';
 
 /**
  * Database's table unique constraint stored in this class.
  */
 export class TableUnique {
-  readonly '@instanceof' = Symbol.for('TableUnique');
+  public readonly '@instanceof' = Symbol.for('TableUnique');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -14,24 +14,24 @@ export class TableUnique {
   /**
    * Constraint name.
    */
-  name?: string;
+  public name?: string;
 
   /**
    * Columns that contains this constraint.
    */
-  columnNames: Array<string> = [];
+  public columnNames: Array<string> = [];
 
   /**
    * Set this foreign key constraint as "DEFERRABLE" e.g. check constraints at start
    * or at the end of a transaction
    */
-  deferrable?: string;
+  public deferrable?: string;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(options: TableUniqueOptions) {
+  public constructor(options: TableUniqueOptions) {
     this.name = options.name;
     this.columnNames = options.columnNames;
     this.deferrable = options.deferrable;
@@ -44,7 +44,7 @@ export class TableUnique {
   /**
    * Creates a new copy of this constraint with exactly same properties.
    */
-  clone(): TableUnique {
+  public clone(): TableUnique {
     return new TableUnique({
       name: this.name,
       columnNames: [...this.columnNames],
@@ -59,7 +59,7 @@ export class TableUnique {
   /**
    * Creates unique from the unique metadata object.
    */
-  static create(uniqueMetadata: UniqueMetadata): TableUnique {
+  public static create(uniqueMetadata: UniqueMetadata): TableUnique {
     return new TableUnique({
       name: uniqueMetadata.name,
       columnNames: uniqueMetadata.columns.map((column) => column.databaseName),

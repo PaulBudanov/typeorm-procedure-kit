@@ -16,9 +16,9 @@ export class DriverFactory {
     const { type } = connection.options;
     switch (type) {
       case 'postgres':
-        return new PostgresDriver(connection);
+        return new PostgresDriver(connection) as unknown as Driver;
       case 'oracle':
-        return new OracleDriver(connection);
+        return new OracleDriver(connection) as unknown as Driver;
       default:
         throw new MissingDriverError(type, ['oracle', 'postgres']);
     }

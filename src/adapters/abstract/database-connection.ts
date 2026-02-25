@@ -1,5 +1,4 @@
-import type { DataSource } from 'typeorm';
-
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type {
   TConnectionOptions,
   TConnectionTypes,

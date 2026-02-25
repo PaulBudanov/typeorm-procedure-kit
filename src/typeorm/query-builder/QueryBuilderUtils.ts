@@ -6,7 +6,7 @@ export class QueryBuilderUtils {
    * Checks if given value is a string representation of alias property,
    * e.g. "post.category" or "post.id".
    */
-  static isAliasProperty(str: any): str is string {
+  public static isAliasProperty(str: string): str is string {
     // alias property must be a string and must have a dot separator
     if (typeof str !== 'string' || str.indexOf('.') === -1) return false;
 

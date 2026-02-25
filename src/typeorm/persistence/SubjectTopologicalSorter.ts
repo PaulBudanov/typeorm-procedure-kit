@@ -1,7 +1,7 @@
-import { TypeORMError } from '../error';
-import { EntityMetadata } from '../metadata/EntityMetadata';
+import { TypeORMError } from '../error/index.js';
+import { EntityMetadata } from '../metadata/EntityMetadata.js';
 
-import { Subject } from './Subject';
+import type { Subject } from './Subject.js';
 
 /**
  * Orders insert or remove subjects in proper order (using topological sorting)
@@ -15,18 +15,23 @@ export class SubjectTopologicalSorter {
   /**
    * Insert subjects needs to be sorted.
    */
-  subjects: Array<Subject>;
+  public subjects: Array<Subject>;
 
   /**
    * Unique list of entity metadatas of this subject.
    */
-  metadatas: Array<EntityMetadata>;
+  public metadatas: Array<EntityMetadata>;
+
+  /**
+   * Internal cursor for topological sort algorithm.
+   */
+  private toposortCursor = 0;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(subjects: Array<Subject>) {
+  public constructor(subjects: Array<Subject>) {
     this.subjects = [...subjects]; // copy subjects to prevent changing of sent array
     this.metadatas = this.getUniqueMetadatas(this.subjects);
   }
@@ -38,7 +43,7 @@ export class SubjectTopologicalSorter {
   /**
    * Sorts (orders) subjects in their topological order.
    */
-  sort(direction: 'insert' | 'delete'): Array<Subject> {
+  public sort(direction: 'insert' | 'delete'): Array<Subject> {
     // if there are no metadatas it probably mean there is no subjects... we don't have to do anything here
     if (!this.metadatas.length) return this.subjects;
 
@@ -57,8 +62,9 @@ export class SubjectTopologicalSorter {
     // next we always insert entities with non-nullable relations, sort them first
     const nonNullableDependencies = this.getNonNullableDependencies();
     let sortedNonNullableEntityTargets = this.toposort(nonNullableDependencies);
-    if (direction === 'insert')
+    if (direction === 'insert') {
       sortedNonNullableEntityTargets = sortedNonNullableEntityTargets.reverse();
+    }
 
     // so we have a sorted entity targets
     // go thought each of them and find all subjects with sorted entity target
@@ -79,8 +85,9 @@ export class SubjectTopologicalSorter {
     // same process as in above but with other entities
     const otherDependencies: Array<Array<string>> = this.getDependencies();
     let sortedOtherEntityTargets = this.toposort(otherDependencies);
-    if (direction === 'insert')
+    if (direction === 'insert') {
       sortedOtherEntityTargets = sortedOtherEntityTargets.reverse();
+    }
 
     sortedOtherEntityTargets.forEach((sortedEntityTarget) => {
       const entityTargetSubjects = this.subjects.filter(
@@ -102,20 +109,26 @@ export class SubjectTopologicalSorter {
   /**
    * Removes already sorted subjects from this.subjects list of subjects.
    */
-  protected removeAlreadySorted(subjects: Array<Subject>) {
+  protected removeAlreadySorted(subjects: Array<Subject>): void {
     subjects.forEach((subject) => {
-      this.subjects.splice(this.subjects.indexOf(subject), 1);
+      const index = this.subjects.indexOf(subject);
+      if (index !== -1) {
+        this.subjects.splice(index, 1);
+      }
     });
   }
 
   /**
    * Extracts all unique metadatas from the given subjects.
    */
-  protected getUniqueMetadatas(subjects: Array<Subject>) {
+  protected getUniqueMetadatas(
+    subjects: Array<Subject>
+  ): Array<EntityMetadata> {
     const metadatas: Array<EntityMetadata> = [];
     subjects.forEach((subject) => {
-      if (metadatas.indexOf(subject.metadata) === -1)
+      if (!metadatas.includes(subject.metadata)) {
         metadatas.push(subject.metadata);
+      }
     });
     return metadatas;
   }
@@ -168,57 +181,76 @@ export class SubjectTopologicalSorter {
    *
    * Algorithm is kindly taken from https://github.com/marcelklehr/toposort repository.
    */
-  protected toposort(edges: Array<Array<any>>) {
-    function uniqueNodes(arr: Array<any>) {
-      const res = [];
+  protected toposort(edges: Array<Array<string>>): Array<string> {
+    const uniqueNodes = (arr: Array<Array<string>>): Array<string> => {
+      const res: Array<string> = [];
       for (let i = 0, len = arr.length; i < len; i++) {
-        const edge: any = arr[i];
-        if (res.indexOf(edge[0]) < 0) res.push(edge[0]);
-        if (res.indexOf(edge[1]) < 0) res.push(edge[1]);
+        const edge = arr[i]!;
+        if (!res.includes(edge[0]!)) res.push(edge[0]!);
+        if (!res.includes(edge[1]!)) res.push(edge[1]!);
       }
       return res;
-    }
+    };
 
     const nodes = uniqueNodes(edges);
-    let cursor = nodes.length,
-      i = cursor;
-    const sorted = new Array(cursor),
-      visited = new Set<number>();
+    this.toposortCursor = nodes.length;
+    let i = this.toposortCursor;
+    const sorted: Array<string> = new Array<string>(this.toposortCursor);
+    const visited = new Set<number>();
 
     while (i--) {
-      if (!visited.has(i)) visit(nodes[i], i, []);
-    }
-
-    function visit(node: any, i: number, predecessors: Array<any>) {
-      if (predecessors.indexOf(node) >= 0) {
-        throw new TypeORMError('Cyclic dependency: ' + JSON.stringify(node)); // todo: better error
+      if (!visited.has(i)) {
+        this.visitNode(nodes[i]!, i, [], nodes, edges, sorted, visited);
       }
-
-      if (!~nodes.indexOf(node)) {
-        throw new TypeORMError(
-          'Found unknown node. Make sure to provided all involved nodes. Unknown node: ' +
-            JSON.stringify(node)
-        );
-      }
-
-      if (visited.has(i)) return;
-      visited.add(i);
-
-      // outgoing edges
-      const outgoing = edges.filter(function (edge) {
-        return edge[0] === node;
-      });
-      if ((i = outgoing.length)) {
-        const preds = predecessors.concat(node);
-        do {
-          const child = outgoing[--i][1];
-          visit(child, nodes.indexOf(child), preds);
-        } while (i);
-      }
-
-      sorted[--cursor] = node;
     }
 
     return sorted;
+  }
+
+  /**
+   * Visits a node during topological sort and processes its dependencies.
+   */
+  private visitNode(
+    node: string,
+    i: number,
+    predecessors: Array<string>,
+    nodes: Array<string>,
+    edges: Array<Array<string>>,
+    sorted: Array<string>,
+    visited: Set<number>
+  ): void {
+    if (predecessors.includes(node)) {
+      throw new TypeORMError(`Cyclic dependency: ${JSON.stringify(node)}`);
+    }
+
+    if (!nodes.includes(node)) {
+      throw new TypeORMError(
+        `Found unknown node. Make sure to provided all involved nodes. Unknown node: ${JSON.stringify(node)}`
+      );
+    }
+
+    if (visited.has(i)) return;
+    visited.add(i);
+
+    // outgoing edges
+    const outgoing = edges.filter((edge) => edge[0] === node);
+    if (outgoing.length) {
+      const preds = predecessors.concat(node);
+      let idx = outgoing.length;
+      do {
+        const child = outgoing[--idx]![1]!;
+        this.visitNode(
+          child,
+          nodes.indexOf(child),
+          preds,
+          nodes,
+          edges,
+          sorted,
+          visited
+        );
+      } while (idx);
+    }
+
+    sorted[--this.toposortCursor] = node;
   }
 }

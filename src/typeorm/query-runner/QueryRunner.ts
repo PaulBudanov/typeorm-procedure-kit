@@ -1,4 +1,6 @@
-import type { TConnectionTypes } from '../../types/adapter.types.js';
+import type oracledb from 'oracledb';
+import type { PoolClient } from 'pg';
+
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { DataSource } from '../data-source/DataSource.js';
@@ -73,7 +75,7 @@ export interface QueryRunner {
    * Creates/uses database connection from the connection pool to perform further operations.
    * Returns obtained database connection.
    */
-  connect(): Promise<TConnectionTypes>;
+  connect(): Promise<PoolClient | oracledb.Connection>;
 
   /**
    * Called before migrations are run.

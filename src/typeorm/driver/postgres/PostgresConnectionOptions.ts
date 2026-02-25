@@ -1,3 +1,5 @@
+import type pg from 'pg';
+
 import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
 import type { ReplicationMode } from '../types/ReplicationMode.js';
 
@@ -22,7 +24,7 @@ export interface PostgresConnectionOptions
    * The driver object
    * This defaults to `import("pg")`.
    */
-  readonly driver?: unknown;
+  readonly driver?: typeof pg;
 
   /**
    * The driver object
@@ -70,7 +72,7 @@ export interface PostgresConnectionOptions
   readonly uuidExtension?: 'pgcrypto' | 'uuid-ossp';
 
   /*
-   * Function handling errors thrown by drivers pool.
+   * () => unknown handling errors thrown by drivers pool.
    * Defaults to logging error with `warn` level.
    */
   readonly poolErrorHandler?: (err: unknown) => unknown;

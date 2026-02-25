@@ -1,8 +1,8 @@
-import { PlatformTools } from '../platform/PlatformTools';
-import { QueryRunner } from '../query-runner/QueryRunner';
+import { PlatformTools } from '../platform/PlatformTools.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
-import { AbstractLogger } from './AbstractLogger';
-import { LogLevel, LogMessage } from './Logger';
+import { AbstractLogger } from './AbstractLogger.js';
+import type { LogLevel, LogMessage } from './Logger.js';
 
 /**
  * Performs logging of the events in TypeORM.
@@ -16,7 +16,7 @@ export class FormattedConsoleLogger extends AbstractLogger {
     level: LogLevel,
     logMessage: LogMessage | Array<LogMessage>,
     queryRunner?: QueryRunner
-  ) {
+  ): void {
     const messages = this.prepareLogMessages(
       logMessage,
       {

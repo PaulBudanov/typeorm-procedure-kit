@@ -1,10 +1,10 @@
-import { EntityMetadata } from '../../metadata/EntityMetadata';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
 
 export class ViewUtils {
   /**
    * Comparator for .sort() that will order views bases on dependencies in creation order
    */
-  static viewMetadataCmp(
+  public static viewMetadataCmp(
     metadataA: EntityMetadata | undefined,
     metadataB: EntityMetadata | undefined
   ): number {

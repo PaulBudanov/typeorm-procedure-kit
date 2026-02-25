@@ -442,9 +442,7 @@ export class MetadataArgsStorage {
           existingIndex !== -1 &&
           target.indexOf(item.target as TFunction | string) <
             target.indexOf(
-              newArray[existingIndex]?.target as (
-                ...args: Array<unknown>
-              ) => unknown
+              newArray[existingIndex]?.target as TFunction | string
             )
         ) {
           const clone = Object.create(newArray[existingIndex] as T) as Record<

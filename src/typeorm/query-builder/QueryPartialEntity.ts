@@ -1,4 +1,4 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 
 /**
  * Make all properties in T optional

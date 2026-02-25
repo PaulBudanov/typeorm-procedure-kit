@@ -11,16 +11,16 @@ export class RandomGenerator {
    *   example 1: sha1('Kevin van Zonneveld')
    *   returns 1: '54916d2e62f65b3afa6e192e6a601cdbe5cb5897'
    */
-  static sha1(str: string) {
-    const _rotLeft = function (n: any, s: any) {
+  public static sha1(str: string): string {
+    const _rotLeft = function (n: number, s: number): number {
       const t4 = (n << s) | (n >>> (32 - s));
       return t4;
     };
 
-    const _cvtHex = function (val: any) {
+    const _cvtHex = function (val: number): string {
       let str = '';
-      let i;
-      let v;
+      let i: number;
+      let v: number;
 
       for (i = 7; i >= 0; i--) {
         v = (val >>> (i * 4)) & 0x0f;

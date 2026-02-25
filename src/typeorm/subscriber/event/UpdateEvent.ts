@@ -1,10 +1,10 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { DataSource } from '../../data-source/DataSource';
-import { EntityManager } from '../../entity-manager/EntityManager';
-import { ColumnMetadata } from '../../metadata/ColumnMetadata';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { RelationMetadata } from '../../metadata/RelationMetadata';
-import { QueryRunner } from '../../query-runner/QueryRunner';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { DataSource } from '../../data-source/DataSource.js';
+import { EntityManager } from '../../entity-manager/EntityManager.js';
+import { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**
  * UpdateEvent is an object that broadcaster sends to the entity subscriber when entity is being updated in the database.

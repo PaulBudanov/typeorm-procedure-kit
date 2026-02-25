@@ -1,22 +1,23 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { ColumnMetadata } from '../metadata/ColumnMetadata';
-import { EntityMetadata } from '../metadata/EntityMetadata';
-import { RelationMetadata } from '../metadata/RelationMetadata';
-import { QueryRunner } from '../query-runner/QueryRunner';
-import { ObjectUtils } from '../util/ObjectUtils';
+import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { BroadcasterResult } from './BroadcasterResult';
-import { EntitySubscriberInterface } from './EntitySubscriberInterface';
+import { BroadcasterResult } from './BroadcasterResult.js';
+import type { EntitySubscriberInterface } from './EntitySubscriberInterface.js';
 
 interface BroadcasterEvents {
-  BeforeQuery: (query: string, parameters: Array<any> | undefined) => void;
+  BeforeQuery: (query: string, parameters: Array<unknown> | undefined) => void;
   AfterQuery: (
     query: string,
-    parameters: Array<any> | undefined,
+    parameters: Array<unknown> | undefined,
     success: boolean,
     executionTime: number | undefined,
-    rawResults: any | undefined,
-    error: any | undefined
+    rawResults: unknown | undefined,
+    error: unknown | undefined
   ) => void;
 
   BeforeTransactionCommit: () => void;
@@ -94,13 +95,13 @@ export class Broadcaster {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(private queryRunner: QueryRunner) {}
+  public constructor(private queryRunner: QueryRunner) {}
 
   // -------------------------------------------------------------------------
   // Public Methods
   // -------------------------------------------------------------------------
 
-  async broadcast<U extends keyof BroadcasterEvents>(
+  public async broadcast<U extends keyof BroadcasterEvents>(
     event: U,
     ...args: Parameters<BroadcasterEvents[U]>
   ): Promise<void> {
@@ -109,7 +110,7 @@ export class Broadcaster {
     const broadcastFunction = this[`broadcast${event}Event` as keyof this];
 
     if (typeof broadcastFunction === 'function') {
-      (broadcastFunction as any).call(this, result, ...args);
+      (broadcastFunction as TFunction).call(this, result, ...args);
     }
 
     await result.wait();
@@ -123,7 +124,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastBeforeInsertEvent(
+  public broadcastBeforeInsertEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity: undefined | ObjectLiteral
@@ -142,7 +143,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.beforeInsert
         ) {
           const executionResult = subscriber.beforeInsert({
@@ -168,7 +169,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastBeforeUpdateEvent(
+  public broadcastBeforeUpdateEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -191,7 +192,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.beforeUpdate
         ) {
           const executionResult = subscriber.beforeUpdate({
@@ -220,7 +221,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastBeforeRemoveEvent(
+  public broadcastBeforeRemoveEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -241,7 +242,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.beforeRemove
         ) {
           const executionResult = subscriber.beforeRemove({
@@ -271,7 +272,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastBeforeSoftRemoveEvent(
+  public broadcastBeforeSoftRemoveEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -292,7 +293,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.beforeSoftRemove
         ) {
           const executionResult = subscriber.beforeSoftRemove({
@@ -322,7 +323,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastBeforeRecoverEvent(
+  public broadcastBeforeRecoverEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -343,7 +344,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.beforeRecover
         ) {
           const executionResult = subscriber.beforeRecover({
@@ -373,7 +374,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastAfterInsertEvent(
+  public broadcastAfterInsertEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -393,7 +394,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.afterInsert
         ) {
           const executionResult = subscriber.afterInsert({
@@ -402,7 +403,9 @@ export class Broadcaster {
             manager: this.queryRunner.manager,
             entity: entity,
             metadata: metadata,
-            entityId: metadata.getEntityIdMixedMap(identifier),
+            entityId: metadata.getEntityIdMixedMap(identifier) as
+              | ObjectLiteral
+              | undefined,
           });
           if (executionResult instanceof Promise)
             result.promises.push(executionResult);
@@ -415,10 +418,10 @@ export class Broadcaster {
   /**
    * Broadcasts "BEFORE_QUERY" event.
    */
-  broadcastBeforeQueryEvent(
+  public broadcastBeforeQueryEvent(
     result: BroadcasterResult,
     query: string,
-    parameters: undefined | Array<any>
+    parameters: undefined | Array<unknown>
   ): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
@@ -441,14 +444,14 @@ export class Broadcaster {
   /**
    * Broadcasts "AFTER_QUERY" event.
    */
-  broadcastAfterQueryEvent(
+  public broadcastAfterQueryEvent(
     result: BroadcasterResult,
     query: string,
-    parameters: undefined | Array<any>,
+    parameters: undefined | Array<unknown>,
     success: boolean,
     executionTime: undefined | number,
-    rawResults: undefined | any,
-    error: undefined | any
+    rawResults: undefined | unknown,
+    error: undefined | unknown
   ): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
@@ -475,7 +478,7 @@ export class Broadcaster {
   /**
    * Broadcasts "BEFORE_TRANSACTION_START" event.
    */
-  broadcastBeforeTransactionStartEvent(result: BroadcasterResult): void {
+  public broadcastBeforeTransactionStartEvent(result: BroadcasterResult): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (subscriber.beforeTransactionStart) {
@@ -495,7 +498,7 @@ export class Broadcaster {
   /**
    * Broadcasts "AFTER_TRANSACTION_START" event.
    */
-  broadcastAfterTransactionStartEvent(result: BroadcasterResult): void {
+  public broadcastAfterTransactionStartEvent(result: BroadcasterResult): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (subscriber.afterTransactionStart) {
@@ -515,7 +518,9 @@ export class Broadcaster {
   /**
    * Broadcasts "BEFORE_TRANSACTION_COMMIT" event.
    */
-  broadcastBeforeTransactionCommitEvent(result: BroadcasterResult): void {
+  public broadcastBeforeTransactionCommitEvent(
+    result: BroadcasterResult
+  ): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (subscriber.beforeTransactionCommit) {
@@ -535,7 +540,7 @@ export class Broadcaster {
   /**
    * Broadcasts "AFTER_TRANSACTION_COMMIT" event.
    */
-  broadcastAfterTransactionCommitEvent(result: BroadcasterResult): void {
+  public broadcastAfterTransactionCommitEvent(result: BroadcasterResult): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (subscriber.afterTransactionCommit) {
@@ -555,7 +560,9 @@ export class Broadcaster {
   /**
    * Broadcasts "BEFORE_TRANSACTION_ROLLBACK" event.
    */
-  broadcastBeforeTransactionRollbackEvent(result: BroadcasterResult): void {
+  public broadcastBeforeTransactionRollbackEvent(
+    result: BroadcasterResult
+  ): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (subscriber.beforeTransactionRollback) {
@@ -575,7 +582,9 @@ export class Broadcaster {
   /**
    * Broadcasts "AFTER_TRANSACTION_ROLLBACK" event.
    */
-  broadcastAfterTransactionRollbackEvent(result: BroadcasterResult): void {
+  public broadcastAfterTransactionRollbackEvent(
+    result: BroadcasterResult
+  ): void {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (subscriber.afterTransactionRollback) {
@@ -600,7 +609,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastAfterUpdateEvent(
+  public broadcastAfterUpdateEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -622,7 +631,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.afterUpdate
         ) {
           const executionResult = subscriber.afterUpdate({
@@ -651,7 +660,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastAfterRemoveEvent(
+  public broadcastAfterRemoveEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -672,7 +681,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.afterRemove
         ) {
           const executionResult = subscriber.afterRemove({
@@ -702,7 +711,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastAfterSoftRemoveEvent(
+  public broadcastAfterSoftRemoveEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -723,7 +732,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.afterSoftRemove
         ) {
           const executionResult = subscriber.afterSoftRemove({
@@ -753,7 +762,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastAfterRecoverEvent(
+  public broadcastAfterRecoverEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entity?: ObjectLiteral,
@@ -774,7 +783,7 @@ export class Broadcaster {
     if (this.queryRunner.connection.subscribers.length) {
       this.queryRunner.connection.subscribers.forEach((subscriber) => {
         if (
-          this.isAllowedSubscriber(subscriber, metadata.target) &&
+          this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
           subscriber.afterRecover
         ) {
           const executionResult = subscriber.afterRecover({
@@ -799,7 +808,7 @@ export class Broadcaster {
   /**
    * @deprecated Use `broadcastLoadForAllEvent`
    */
-  broadcastLoadEventsForAll(
+  public broadcastLoadEventsForAll(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entities: Array<ObjectLiteral>
@@ -815,7 +824,7 @@ export class Broadcaster {
    *
    * Note: this method has a performance-optimized code organization, do not change code structure.
    */
-  broadcastLoadEvent(
+  public broadcastLoadEvent(
     result: BroadcasterResult,
     metadata: EntityMetadata,
     entities: Array<ObjectLiteral>
@@ -823,7 +832,7 @@ export class Broadcaster {
     // Calculate which subscribers are fitting for the given entity type
     const fittingSubscribers = this.queryRunner.connection.subscribers.filter(
       (subscriber) =>
-        this.isAllowedSubscriber(subscriber, metadata.target) &&
+        this.isAllowedSubscriber(subscriber, metadata.target as TFunction) &&
         subscriber.afterLoad
     );
 
@@ -844,7 +853,10 @@ export class Broadcaster {
             // in lazy relations we cannot simply access to entity property because it will cause a getter and a database query
             if (
               relation.isLazy &&
-              !entity.hasOwnProperty(relation.propertyName)
+              !Object.prototype.hasOwnProperty.call(
+                entity,
+                relation.propertyName
+              )
             )
               return;
 
@@ -898,15 +910,15 @@ export class Broadcaster {
    * or listens our entity.
    */
   protected isAllowedSubscriber(
-    subscriber: EntitySubscriberInterface<any>,
-    target: Function | string
+    subscriber: EntitySubscriberInterface<unknown>,
+    target: () => unknown | string
   ): boolean {
     return (
       !subscriber.listenTo ||
       !subscriber.listenTo() ||
       subscriber.listenTo() === Object ||
       subscriber.listenTo() === target ||
-      subscriber.listenTo().isPrototypeOf(target)
+      Object.prototype.isPrototypeOf.call(subscriber.listenTo(), target)
     );
   }
 }

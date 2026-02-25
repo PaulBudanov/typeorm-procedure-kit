@@ -1,11 +1,11 @@
 import appRootPath from 'app-root-path';
 
-import { PlatformTools } from '../platform/PlatformTools';
-import { QueryRunner } from '../query-runner/QueryRunner';
+import { PlatformTools } from '../platform/PlatformTools.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
-import { AbstractLogger } from './AbstractLogger';
-import { LogLevel, LogMessage } from './Logger';
-import { FileLoggerOptions, LoggerOptions } from './LoggerOptions';
+import { AbstractLogger } from './AbstractLogger.js';
+import type { LogLevel, LogMessage } from './Logger.js';
+import type { FileLoggerOptions, LoggerOptions } from './LoggerOptions.js';
 
 /**
  * Performs logging of the events in TypeORM.
@@ -16,7 +16,7 @@ export class FileLogger extends AbstractLogger {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     options?: LoggerOptions,
     private fileLoggerOptions?: FileLoggerOptions
   ) {
@@ -33,8 +33,8 @@ export class FileLogger extends AbstractLogger {
   protected writeLog(
     level: LogLevel,
     logMessage: LogMessage | Array<LogMessage>,
-    queryRunner?: QueryRunner
-  ) {
+    _queryRunner?: QueryRunner
+  ): void {
     const messages = this.prepareLogMessages(logMessage, {
       highlightSql: false,
       addColonToPrefix: false,
@@ -94,7 +94,7 @@ export class FileLogger extends AbstractLogger {
   /**
    * Writes given strings into the log file.
    */
-  protected write(strings: string | Array<string>) {
+  protected write(strings: string | Array<string>): void {
     strings = Array.isArray(strings) ? strings : [strings];
     const basePath = appRootPath.path + '/';
     let logPath = 'ormlogs.log';

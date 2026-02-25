@@ -1,10 +1,11 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { CannotAttachTreeChildrenEntityError } from '../../error/CannotAttachTreeChildrenEntityError';
-import { ColumnMetadata } from '../../metadata/ColumnMetadata';
-import { DeleteQueryBuilder } from '../../query-builder/DeleteQueryBuilder';
-import { QueryRunner } from '../../query-runner/QueryRunner';
-import { OrmUtils } from '../../util/OrmUtils';
-import { Subject } from '../Subject';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { CannotAttachTreeChildrenEntityError } from '../../error/CannotAttachTreeChildrenEntityError.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { DeleteQueryBuilder } from '../../query-builder/DeleteQueryBuilder.js';
+import { QueryBuilder } from '../../query-builder/QueryBuilder.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { Subject } from '../Subject.js';
 
 /**
  * Executes subject operations for closure entities.
@@ -14,7 +15,7 @@ export class ClosureSubjectExecutor {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(protected queryRunner: QueryRunner) {}
+  public constructor(protected queryRunner: QueryRunner) {}
 
   // -------------------------------------------------------------------------
   // Public Methods
@@ -23,7 +24,7 @@ export class ClosureSubjectExecutor {
   /**
    * Executes operations when subject is being inserted.
    */
-  async insert(subject: Subject): Promise<void> {
+  public async insert(subject: Subject): Promise<void> {
     // create values to be inserted into the closure junction
     const closureJunctionInsertMap: ObjectLiteral = {};
     subject.metadata.closureJunctionTable.ancestorColumns.forEach((column) => {
@@ -55,12 +56,12 @@ export class ClosureSubjectExecutor {
         : subject.parentSubject.entity;
 
     if (parent) {
-      const escape = (alias: string) =>
+      const escape = (alias: string): string =>
         this.queryRunner.connection.driver.escape(alias);
       const tableName = this.getTableName(
         subject.metadata.closureJunctionTable.tablePath
       );
-      const queryParams: Array<any> = [];
+      const queryParams: Array<unknown> = [];
 
       const ancestorColumnNames =
         subject.metadata.closureJunctionTable.ancestorColumns.map((column) => {
@@ -123,7 +124,7 @@ export class ClosureSubjectExecutor {
   /**
    * Executes operations when subject is being updated.
    */
-  async update(subject: Subject): Promise<void> {
+  public async update(subject: Subject): Promise<void> {
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
@@ -132,15 +133,18 @@ export class ClosureSubjectExecutor {
       parent = subject.parentSubject.entity;
 
     let entity = subject.databaseEntity; // if entity was attached via parent
-    if (!entity && parent)
+    if (!entity && parent) {
       // if entity was attached via children
-      entity = subject.metadata
-        .treeChildrenRelation!.getEntityValue(parent)
-        .find((child: any) => {
+      const childrenValue =
+        subject.metadata.treeChildrenRelation!.getEntityValue(parent);
+      entity = (childrenValue as unknown as Array<ObjectLiteral>).find(
+        (child) => {
           return Object.entries(subject.identifier!).every(
             ([key, value]) => child[key] === value
           );
-        });
+        }
+      );
+    }
 
     // Exit if the parent or the entity where never set
     if (entity === undefined || parent === undefined) {
@@ -158,7 +162,7 @@ export class ClosureSubjectExecutor {
       return;
     }
 
-    const escape = (alias: string) =>
+    const escape = (alias: string): string =>
       this.queryRunner.connection.driver.escape(alias);
     const closureTable = subject.metadata.closureJunctionTable;
 
@@ -173,11 +177,14 @@ export class ClosureSubjectExecutor {
     );
 
     // Delete logic
-    const createSubQuery = (qb: DeleteQueryBuilder<any>, alias: string) => {
+    const createSubQuery = (
+      qb: DeleteQueryBuilder<ObjectLiteral>,
+      alias: string
+    ): string => {
       const subAlias = `sub${alias}`;
 
       const subSelect = qb
-        .createQueryBuilder()
+        .createQueryBuilder<QueryBuilder<ObjectLiteral>>()
         .select(descendantColumnNames.join(', '))
         .from(closureTable.tablePath, subAlias);
 
@@ -191,7 +198,7 @@ export class ClosureSubjectExecutor {
       }
 
       return qb
-        .createQueryBuilder()
+        .createQueryBuilder<QueryBuilder<ObjectLiteral>>()
         .select(descendantColumnNames.join(', '))
         .from(`(${subSelect.getQuery()})`, alias)
         .setParameters(subSelect.getParameters())
@@ -200,7 +207,9 @@ export class ClosureSubjectExecutor {
 
     const parameters: ObjectLiteral = {};
     for (const column of subject.metadata.primaryColumns) {
-      parameters[`value_${column.databaseName}`] = entity![column.databaseName];
+      parameters[`value_${column.databaseName}`] = (entity! as ObjectLiteral)[
+        column.databaseName!
+      ];
     }
 
     await this.queryRunner.manager
@@ -230,7 +239,7 @@ export class ClosureSubjectExecutor {
      */
     if (parent) {
       // Insert logic
-      const queryParams: Array<any> = [];
+      const queryParams: Array<unknown> = [];
 
       const tableName = this.getTableName(closureTable.tablePath);
       const superAlias = escape('supertree');
@@ -298,24 +307,20 @@ export class ClosureSubjectExecutor {
   /**
    * Executes operations when subject is being removed.
    */
-  async remove(subjects: Subject | Array<Subject>): Promise<void> {
-    // Only mssql need to execute deletes for the juntion table as it doesn't support multi cascade paths.
-    if (!(this.queryRunner.connection.driver.options.type === 'mssql')) {
-      return;
-    }
-
+  public async remove(subjects: Subject | Array<Subject>): Promise<void> {
     if (!Array.isArray(subjects)) subjects = [subjects];
 
-    const escape = (alias: string) =>
+    const escape = (alias: string): string =>
       this.queryRunner.connection.driver.escape(alias);
     const identifiers = subjects.map((subject) => subject.identifier);
-    const closureTable = subjects[0].metadata.closureJunctionTable;
+    const closureTable = subjects[0]!.metadata.closureJunctionTable;
 
-    const generateWheres = (columns: Array<ColumnMetadata>) => {
+    const generateWheres = (columns: Array<ColumnMetadata>): string => {
       return columns
         .map((column) => {
           const data = identifiers.map(
-            (identifier) => identifier![column.referencedColumn!.databaseName]
+            (identifier) =>
+              (identifier ?? {})[column.referencedColumn!.databaseName]!
           );
           return `${escape(column.databaseName)} IN (${data.join(', ')})`;
         })

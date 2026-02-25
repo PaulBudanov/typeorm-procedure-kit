@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { IBindingsObjectReturn } from '../types/utility.types.js';
@@ -41,7 +42,7 @@ export class ExecuteBase {
     queryId: string = randomUUID()
   ): Promise<Awaited<Array<T>>> {
     const queryTimer = new QueryTimer(sql, this.logger, queryId, bindings);
-    const client = await this.connectionBase.getEntityManager();
+    const client: EntityManager = await this.connectionBase.getEntityManager();
     try {
       const result: Awaited<Array<T> | T> =
         await this.databaseAdapter.execute<T>(

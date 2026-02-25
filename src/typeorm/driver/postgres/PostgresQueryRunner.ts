@@ -1,33 +1,36 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { TypeORMError } from '../../error';
-import { QueryFailedError } from '../../error/QueryFailedError';
-import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError';
-import { TransactionNotStartedError } from '../../error/TransactionNotStartedError';
-import { ReadStream } from '../../platform/PlatformTools';
-import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner';
-import { QueryResult } from '../../query-runner/QueryResult';
-import { QueryRunner } from '../../query-runner/QueryRunner';
-import { TableIndexOptions } from '../../schema-builder/options/TableIndexOptions';
-import { Table } from '../../schema-builder/table/Table';
-import { TableCheck } from '../../schema-builder/table/TableCheck';
-import { TableColumn } from '../../schema-builder/table/TableColumn';
-import { TableExclusion } from '../../schema-builder/table/TableExclusion';
-import { TableForeignKey } from '../../schema-builder/table/TableForeignKey';
-import { TableIndex } from '../../schema-builder/table/TableIndex';
-import { TableUnique } from '../../schema-builder/table/TableUnique';
-import { View } from '../../schema-builder/view/View';
-import { Broadcaster } from '../../subscriber/Broadcaster';
-import { BroadcasterResult } from '../../subscriber/BroadcasterResult';
-import { InstanceChecker } from '../../util/InstanceChecker';
-import { OrmUtils } from '../../util/OrmUtils';
-import { DriverUtils } from '../DriverUtils';
-import { Query } from '../Query';
-import { ColumnType } from '../types/ColumnTypes';
-import { IsolationLevel } from '../types/IsolationLevel';
-import { MetadataTableType } from '../types/MetadataTableType';
-import { ReplicationMode } from '../types/ReplicationMode';
+import type { PoolClient } from 'pg';
+import QueryStream from 'pg-query-stream';
 
-import { PostgresDriver } from './PostgresDriver';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { QueryFailedError } from '../../error/QueryFailedError.js';
+import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
+import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
+import { TypeORMError } from '../../error/TypeORMError.js';
+import { ReadStream } from '../../platform/PlatformTools.js';
+import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
+import { QueryResult } from '../../query-runner/QueryResult.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+import type { TableIndexOptions } from '../../schema-builder/options/TableIndexOptions.js';
+import { Table } from '../../schema-builder/table/Table.js';
+import { TableCheck } from '../../schema-builder/table/TableCheck.js';
+import { TableColumn } from '../../schema-builder/table/TableColumn.js';
+import { TableExclusion } from '../../schema-builder/table/TableExclusion.js';
+import { TableForeignKey } from '../../schema-builder/table/TableForeignKey.js';
+import { TableIndex } from '../../schema-builder/table/TableIndex.js';
+import { TableUnique } from '../../schema-builder/table/TableUnique.js';
+import { View } from '../../schema-builder/view/View.js';
+import { Broadcaster } from '../../subscriber/Broadcaster.js';
+import { BroadcasterResult } from '../../subscriber/BroadcasterResult.js';
+import { InstanceChecker } from '../../util/InstanceChecker.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { DriverUtils } from '../DriverUtils.js';
+import { Query } from '../Query.js';
+import type { ColumnType } from '../types/ColumnTypes.js';
+import type { IsolationLevel } from '../types/IsolationLevel.js';
+import { MetadataTableType } from '../types/MetadataTableType.js';
+import type { ReplicationMode } from '../types/ReplicationMode.js';
+
+import { PostgresDriver } from './PostgresDriver.js';
 
 /**
  * Runs queries on a single postgres database connection.
@@ -43,7 +46,9 @@ export class PostgresQueryRunner
   /**
    * Database driver used by connection.
    */
-  driver: PostgresDriver;
+  public override get driver(): PostgresDriver {
+    return this.connection.driver as PostgresDriver;
+  }
 
   // -------------------------------------------------------------------------
   // Protected Properties
@@ -52,23 +57,50 @@ export class PostgresQueryRunner
   /**
    * Promise used to obtain a database connection for a first time.
    */
-  protected databaseConnectionPromise: Promise<any>;
+  protected databaseConnectionPromise: Promise<PoolClient> | null = null;
 
   /**
    * Special callback provided by a driver used to release a created connection.
    */
-  protected releaseCallback?: (err: any) => void;
+  protected releaseCallback?: (err?: Error) => void;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(driver: PostgresDriver, mode: ReplicationMode) {
+  public constructor(driver: PostgresDriver, mode: ReplicationMode) {
     super();
-    this.driver = driver;
     this.connection = driver.connection;
     this.mode = mode;
-    this.broadcaster = new Broadcaster(this);
+    this.broadcaster = new Broadcaster(this as unknown as QueryRunner);
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Helper Methods
+  // -------------------------------------------------------------------------
+
+  /**
+   * Type guard to check if an object has an array property.
+   */
+  private hasArrayProperty(obj: unknown, prop: string): boolean {
+    return (
+      obj != null &&
+      typeof obj === 'object' &&
+      prop in obj &&
+      Array.isArray((obj as Record<string, unknown>)[prop])
+    );
+  }
+
+  /**
+   * Type guard to check if an object has a number property.
+   */
+  private hasNumberProperty(obj: unknown, prop: string): boolean {
+    return (
+      obj != null &&
+      typeof obj === 'object' &&
+      prop in obj &&
+      typeof (obj as Record<string, unknown>)[prop] === 'number'
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -79,57 +111,77 @@ export class PostgresQueryRunner
    * Creates/uses database connection from the connection pool to perform further operations.
    * Returns obtained database connection.
    */
-  connect(): Promise<any> {
-    if (this.databaseConnection)
-      return Promise.resolve(this.databaseConnection);
+  public async connect(): Promise<PoolClient> {
+    if (this.databaseConnection != null) {
+      return this.databaseConnection as PoolClient;
+    }
 
-    if (this.databaseConnectionPromise) return this.databaseConnectionPromise;
+    if (this.databaseConnectionPromise != null) {
+      await this.databaseConnectionPromise;
+      return this.databaseConnection! as PoolClient;
+    }
 
     if (this.mode === 'slave' && this.driver.isReplicated) {
       this.databaseConnectionPromise = this.driver
         .obtainSlaveConnection()
-        .then(([connection, release]: Array<any>) => {
-          this.driver.connectedQueryRunners.push(this);
-          this.databaseConnection = connection;
+        .then(
+          ([connection, release]: [
+            PoolClient,
+            PoolClient['release'],
+          ]): PoolClient => {
+            this.driver.connectedQueryRunners.push(
+              this as unknown as QueryRunner
+            );
+            this.databaseConnection = connection;
 
-          const onErrorCallback = (err: Error) =>
-            this.releasePostgresConnection(err);
-          this.releaseCallback = (err?: Error) => {
-            this.databaseConnection.removeListener('error', onErrorCallback);
-            release(err);
-          };
-          this.databaseConnection.on('error', onErrorCallback);
+            const onErrorCallback = (err: Error): void =>
+              this.releasePostgresConnection(err);
+            this.releaseCallback = (err?: Error): void => {
+              (this.databaseConnection as PoolClient).removeListener(
+                'error',
+                onErrorCallback
+              );
+              release(err);
+            };
+            this.databaseConnection.on('error', onErrorCallback);
 
-          return this.databaseConnection;
-        });
+            return this.databaseConnection;
+          }
+        ) as Promise<PoolClient>;
     } else {
       // master
       this.databaseConnectionPromise = this.driver
         .obtainMasterConnection()
-        .then(([connection, release]: Array<any>) => {
-          this.driver.connectedQueryRunners.push(this);
+        .then(([connection, release]: [PoolClient, PoolClient['release']]) => {
+          this.driver.connectedQueryRunners.push(
+            this as unknown as QueryRunner
+          );
           this.databaseConnection = connection;
 
-          const onErrorCallback = (err: Error) =>
+          const onErrorCallback = (err: Error): void =>
             this.releasePostgresConnection(err);
-          this.releaseCallback = (err?: Error) => {
-            this.databaseConnection.removeListener('error', onErrorCallback);
+          this.releaseCallback = (err?: Error): void => {
+            (this.databaseConnection as PoolClient).removeListener(
+              'error',
+              onErrorCallback
+            );
             release(err);
           };
           this.databaseConnection.on('error', onErrorCallback);
 
           return this.databaseConnection;
-        });
+        }) as Promise<PoolClient>;
     }
 
-    return this.databaseConnectionPromise;
+    await this.databaseConnectionPromise;
+    return this.databaseConnection! as PoolClient;
   }
 
   /**
    * Release a connection back to the pool, optionally specifying an Error to release with.
    * Per pg-pool documentation this will prevent the pool from re-using the broken connection.
    */
-  private async releasePostgresConnection(err?: Error) {
+  private releasePostgresConnection(err?: Error): void {
     if (this.isReleased) {
       return;
     }
@@ -140,7 +192,9 @@ export class PostgresQueryRunner
       this.releaseCallback = undefined;
     }
 
-    const index = this.driver.connectedQueryRunners.indexOf(this);
+    const index = this.driver.connectedQueryRunners.indexOf(
+      this as unknown as QueryRunner
+    );
 
     if (index !== -1) {
       this.driver.connectedQueryRunners.splice(index, 1);
@@ -151,14 +205,36 @@ export class PostgresQueryRunner
    * Releases used database connection.
    * You cannot use query runner methods once its released.
    */
-  release(): Promise<void> {
-    return this.releasePostgresConnection();
+  public async release(): Promise<void> {
+    this.isReleased = true;
+
+    if (!this.databaseConnection) {
+      return;
+    }
+
+    const connection = this.databaseConnection;
+    this.databaseConnection = undefined;
+
+    try {
+      await (connection as PoolClient).release();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.driver.connection.logger.logQueryError(
+          error,
+          '',
+          undefined,
+          this as unknown as QueryRunner
+        );
+      }
+    }
   }
 
   /**
    * Starts transaction.
    */
-  async startTransaction(isolationLevel?: IsolationLevel): Promise<void> {
+  public async startTransaction(
+    isolationLevel?: IsolationLevel
+  ): Promise<void> {
     this.isTransactionActive = true;
     try {
       await this.broadcaster.broadcast('BeforeTransactionStart');
@@ -184,7 +260,7 @@ export class PostgresQueryRunner
    * Commits transaction.
    * Error will be thrown if transaction was not started.
    */
-  async commitTransaction(): Promise<void> {
+  public async commitTransaction(): Promise<void> {
     if (!this.isTransactionActive) throw new TransactionNotStartedError();
 
     await this.broadcaster.broadcast('BeforeTransactionCommit');
@@ -206,7 +282,7 @@ export class PostgresQueryRunner
    * Rollbacks transaction.
    * Error will be thrown if transaction was not started.
    */
-  async rollbackTransaction(): Promise<void> {
+  public async rollbackTransaction(): Promise<void> {
     if (!this.isTransactionActive) throw new TransactionNotStartedError();
 
     await this.broadcaster.broadcast('BeforeTransactionRollback');
@@ -227,23 +303,41 @@ export class PostgresQueryRunner
   /**
    * Executes a given SQL query.
    */
-  async query(
+  public async query(
     query: string,
-    parameters?: Array<any>,
+    parameters: Array<unknown> | undefined,
+    useStructuredResult: true
+  ): Promise<QueryResult>;
+  public async query<T = unknown>(
+    query: string,
+    parameters?: Array<unknown>
+  ): Promise<T>;
+  public async query(
+    query: string,
+    parameters?: Array<unknown>,
     useStructuredResult = false
-  ): Promise<any> {
+  ): Promise<unknown> {
     if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
 
-    const databaseConnection = await this.connect();
+    await this.connect();
 
-    this.driver.connection.logger.logQuery(query, parameters, this);
+    const databaseConnection = this.databaseConnection;
+
+    this.driver.connection.logger.logQuery(
+      query,
+      parameters,
+      this as unknown as QueryRunner
+    );
     await this.broadcaster.broadcast('BeforeQuery', query, parameters);
 
     const broadcasterResult = new BroadcasterResult();
 
     try {
       const queryStartTime = Date.now();
-      const raw = await databaseConnection.query(query, parameters);
+      const raw = (await (databaseConnection as PoolClient).query(
+        query,
+        parameters
+      )) as unknown;
       // log slow queries if maxQueryExecution time is set
       const maxQueryExecutionTime = this.driver.options.maxQueryExecutionTime;
       const queryEndTime = Date.now();
@@ -259,32 +353,42 @@ export class PostgresQueryRunner
         undefined
       );
 
-      if (maxQueryExecutionTime && queryExecutionTime > maxQueryExecutionTime)
+      if (maxQueryExecutionTime && queryExecutionTime > maxQueryExecutionTime) {
         this.driver.connection.logger.logQuerySlow(
           queryExecutionTime,
           query,
           parameters,
-          this
+          this as unknown as QueryRunner
         );
+      }
 
       const result = new QueryResult();
+
+      // Type guard for Postgres query result
+      const hasRows = this.hasArrayProperty(raw, 'rows');
+      const hasRowCount = this.hasNumberProperty(raw, 'rowCount');
+
+      const rawRecord = raw as Record<string, unknown>;
+
+      if (hasRows) {
+        result.records = rawRecord.rows as Array<unknown>;
+      }
+
+      if (hasRowCount) {
+        result.affected = rawRecord.rowCount as number;
+      }
+
       if (raw) {
-        if (raw.hasOwnProperty('rows')) {
-          result.records = raw.rows;
-        }
-
-        if (raw.hasOwnProperty('rowCount')) {
-          result.affected = raw.rowCount;
-        }
-
-        switch (raw.command) {
+        switch (rawRecord['command']) {
           case 'DELETE':
           case 'UPDATE':
             // for UPDATE and DELETE query additionally return number of affected rows
-            result.raw = [raw.rows, raw.rowCount];
+            result.raw = hasRows
+              ? [rawRecord.rows, rawRecord.rowCount]
+              : undefined;
             break;
           default:
-            result.raw = raw.rows;
+            result.raw = hasRows ? rawRecord.rows : undefined;
         }
 
         if (!useStructuredResult) {
@@ -293,8 +397,19 @@ export class PostgresQueryRunner
       }
 
       return result;
-    } catch (err) {
-      this.driver.connection.logger.logQueryError(err, query, parameters, this);
+    } catch (err: unknown) {
+      const error = err as Error & {
+        code?: string;
+        detail?: string;
+        hint?: string;
+        constraint?: string;
+      };
+      this.driver.connection.logger.logQueryError(
+        error,
+        query,
+        parameters,
+        this as unknown as QueryRunner
+      );
       this.broadcaster.broadcastAfterQueryEvent(
         broadcasterResult,
         query,
@@ -302,10 +417,10 @@ export class PostgresQueryRunner
         false,
         undefined,
         undefined,
-        err
+        error
       );
 
-      throw new QueryFailedError(query, parameters, err);
+      throw new QueryFailedError(query, parameters, error);
     } finally {
       await broadcasterResult.wait();
     }
@@ -314,28 +429,41 @@ export class PostgresQueryRunner
   /**
    * Returns raw data stream.
    */
-  async stream(
+  public async stream(
     query: string,
-    parameters?: Array<any>,
-    onEnd?: Function,
-    onError?: Function
+    parameters: Array<unknown> = [],
+    onEnd?: () => void,
+    onError?: (err: Error) => void
   ): Promise<ReadStream> {
-    const QueryStream = this.driver.loadStreamDependency();
-    if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
+    if (this.isReleased) {
+      throw new QueryRunnerAlreadyReleasedError();
+    }
 
-    const databaseConnection = await this.connect();
-    this.driver.connection.logger.logQuery(query, parameters, this);
-    const stream = databaseConnection.query(new QueryStream(query, parameters));
-    if (onEnd) stream.on('end', onEnd);
-    if (onError) stream.on('error', onError);
+    await this.connect();
 
-    return stream;
+    const databaseConnection = this.databaseConnection as PoolClient;
+    this.driver.connection.logger.logQuery(
+      query,
+      parameters,
+      this as unknown as QueryRunner
+    );
+    const stream = databaseConnection!.query(
+      new QueryStream(query, parameters)
+    );
+    if (onEnd) {
+      stream.on('end', onEnd);
+    }
+    if (onError) {
+      stream.on('error', onError);
+    }
+
+    return stream as unknown as ReadStream;
   }
 
   /**
    * Returns all available database names including system databases.
    */
-  async getDatabases(): Promise<Array<string>> {
+  public async getDatabases(): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
@@ -343,50 +471,74 @@ export class PostgresQueryRunner
    * Returns all available schema names including system schemas.
    * If database parameter specified, returns schemas of that database.
    */
-  async getSchemas(database?: string): Promise<Array<string>> {
+  public async getSchemas(_database?: string): Promise<Array<string>> {
     return Promise.resolve([]);
   }
 
   /**
    * Checks if database with the given name exist.
    */
-  async hasDatabase(database: string): Promise<boolean> {
+  public async hasDatabase(database: string): Promise<boolean> {
     const result = await this.query(
       `SELECT * FROM pg_database WHERE datname='${database}';`
     );
-    return result.length ? true : false;
+    return Array.isArray(result) && result.length > 0;
   }
 
   /**
    * Loads currently using database
    */
-  async getCurrentDatabase(): Promise<string> {
+  public async getCurrentDatabase(): Promise<string> {
     const query = await this.query(`SELECT * FROM current_database()`);
-    return query[0]['current_database'];
+    if (Array.isArray(query) && query.length > 0) {
+      const firstRow = query[0] as unknown;
+      if (
+        firstRow &&
+        typeof firstRow === 'object' &&
+        'current_database' in firstRow
+      ) {
+        return (firstRow as Record<string, unknown>).current_database as string;
+      }
+    }
+    return (query as Array<Record<string, unknown>>)[0]![
+      'current_database'
+    ] as string;
   }
 
   /**
    * Checks if schema with the given name exist.
    */
-  async hasSchema(schema: string): Promise<boolean> {
+  public async hasSchema(schema: string): Promise<boolean> {
     const result = await this.query(
       `SELECT * FROM "information_schema"."schemata" WHERE "schema_name" = '${schema}'`
     );
-    return result.length ? true : false;
+    return Array.isArray(result) && result.length > 0;
   }
 
   /**
    * Loads currently using database schema
    */
-  async getCurrentSchema(): Promise<string> {
+  public async getCurrentSchema(): Promise<string> {
     const query = await this.query(`SELECT * FROM current_schema()`);
-    return query[0]['current_schema'];
+    if (Array.isArray(query) && query.length > 0) {
+      const firstRow = query[0] as unknown;
+      if (
+        firstRow &&
+        typeof firstRow === 'object' &&
+        'current_schema' in firstRow
+      ) {
+        return (firstRow as Record<string, unknown>).current_schema as string;
+      }
+    }
+    return (query as Array<Record<string, unknown>>)[0]![
+      'current_schema'
+    ] as string;
   }
 
   /**
    * Checks if table with the given name exist in the database.
    */
-  async hasTable(tableOrName: Table | string): Promise<boolean> {
+  public async hasTable(tableOrName: Table | string): Promise<boolean> {
     const parsedTableName = this.driver.parseTableName(tableOrName);
 
     if (!parsedTableName.schema) {
@@ -395,13 +547,13 @@ export class PostgresQueryRunner
 
     const sql = `SELECT * FROM "information_schema"."tables" WHERE "table_schema" = '${parsedTableName.schema}' AND "table_name" = '${parsedTableName.tableName}'`;
     const result = await this.query(sql);
-    return result.length ? true : false;
+    return Array.isArray(result) && result.length > 0;
   }
 
   /**
    * Checks if column with the given name exist in the given table.
    */
-  async hasColumn(
+  public async hasColumn(
     tableOrName: Table | string,
     columnName: string
   ): Promise<boolean> {
@@ -413,14 +565,17 @@ export class PostgresQueryRunner
 
     const sql = `SELECT * FROM "information_schema"."columns" WHERE "table_schema" = '${parsedTableName.schema}' AND "table_name" = '${parsedTableName.tableName}' AND "column_name" = '${columnName}'`;
     const result = await this.query(sql);
-    return result.length ? true : false;
+    return Array.isArray(result) && result.length > 0;
   }
 
   /**
    * Creates a new database.
    * Note: Postgres does not support database creation inside a transaction block.
    */
-  async createDatabase(database: string, ifNotExist?: boolean): Promise<void> {
+  public async createDatabase(
+    database: string,
+    ifNotExist?: boolean
+  ): Promise<void> {
     if (ifNotExist) {
       const databaseAlreadyExists = await this.hasDatabase(database);
 
@@ -436,7 +591,10 @@ export class PostgresQueryRunner
    * Drops database.
    * Note: Postgres does not support database dropping inside a transaction block.
    */
-  async dropDatabase(database: string, ifExist?: boolean): Promise<void> {
+  public async dropDatabase(
+    database: string,
+    ifExist?: boolean
+  ): Promise<void> {
     const up = ifExist
       ? `DROP DATABASE IF EXISTS "${database}"`
       : `DROP DATABASE "${database}"`;
@@ -447,7 +605,10 @@ export class PostgresQueryRunner
   /**
    * Creates a new table schema.
    */
-  async createSchema(schemaPath: string, ifNotExist?: boolean): Promise<void> {
+  public async createSchema(
+    schemaPath: string,
+    ifNotExist?: boolean
+  ): Promise<void> {
     const schema =
       schemaPath.indexOf('.') === -1 ? schemaPath : schemaPath.split('.')[1];
 
@@ -461,7 +622,7 @@ export class PostgresQueryRunner
   /**
    * Drops table schema.
    */
-  async dropSchema(
+  public async dropSchema(
     schemaPath: string,
     ifExist?: boolean,
     isCascade?: boolean
@@ -479,7 +640,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new table.
    */
-  async createTable(
+  public async createTable(
     table: Table,
     ifNotExist = false,
     createForeignKeys = true,
@@ -587,7 +748,7 @@ export class PostgresQueryRunner
   /**
    * Drops the table.
    */
-  async dropTable(
+  public async dropTable(
     target: Table | string,
     ifExist?: boolean,
     dropForeignKeys = true,
@@ -660,7 +821,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new view.
    */
-  async createView(view: View, syncWithMetadata = false): Promise<void> {
+  public async createView(view: View, syncWithMetadata = false): Promise<void> {
     const upQueries: Array<Query> = [];
     const downQueries: Array<Query> = [];
     upQueries.push(this.createViewSql(view));
@@ -675,7 +836,7 @@ export class PostgresQueryRunner
   /**
    * Drops the view.
    */
-  async dropView(target: View | string): Promise<void> {
+  public async dropView(target: View | string): Promise<void> {
     const viewName = InstanceChecker.isView(target) ? target.name : target;
     const view = await this.getCachedView(viewName);
 
@@ -691,7 +852,7 @@ export class PostgresQueryRunner
   /**
    * Renames the given table.
    */
-  async renameTable(
+  public async renameTable(
     oldTableOrName: Table | string,
     newTableName: string
   ): Promise<void> {
@@ -721,7 +882,7 @@ export class PostgresQueryRunner
     // rename column primary key constraint if it has default constraint name
     if (
       newTable.primaryColumns.length > 0 &&
-      !newTable.primaryColumns[0].primaryKeyConstraintName
+      !newTable.primaryColumns[0]!.primaryKeyConstraintName
     ) {
       const columnNames = newTable.primaryColumns.map((column) => column.name);
 
@@ -912,7 +1073,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new column from the column in the table.
    */
-  async addColumn(
+  public async addColumn(
     tableOrName: Table | string,
     column: TableColumn
   ): Promise<void> {
@@ -949,8 +1110,8 @@ export class PostgresQueryRunner
       const primaryColumns = clonedTable.primaryColumns;
       // if table already have primary key, me must drop it and recreate again
       if (primaryColumns.length > 0) {
-        const pkName = primaryColumns[0].primaryKeyConstraintName
-          ? primaryColumns[0].primaryKeyConstraintName
+        const pkName = primaryColumns[0]!.primaryKeyConstraintName
+          ? primaryColumns[0]!.primaryKeyConstraintName
           : this.connection.namingStrategy.primaryKeyName(
               clonedTable,
               primaryColumns.map((column) => column.name)
@@ -975,8 +1136,8 @@ export class PostgresQueryRunner
       }
 
       primaryColumns.push(column);
-      const pkName = primaryColumns[0].primaryKeyConstraintName
-        ? primaryColumns[0].primaryKeyConstraintName
+      const pkName = primaryColumns[0]!.primaryKeyConstraintName
+        ? primaryColumns[0]!.primaryKeyConstraintName
         : this.connection.namingStrategy.primaryKeyName(
             clonedTable,
             primaryColumns.map((column) => column.name)
@@ -1090,7 +1251,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new columns from the column in the table.
    */
-  async addColumns(
+  public async addColumns(
     tableOrName: Table | string,
     columns: Array<TableColumn>
   ): Promise<void> {
@@ -1102,7 +1263,7 @@ export class PostgresQueryRunner
   /**
    * Renames column in the given table.
    */
-  async renameColumn(
+  public async renameColumn(
     tableOrName: Table | string,
     oldTableColumnOrName: TableColumn | string,
     newTableColumnOrName: TableColumn | string
@@ -1132,7 +1293,7 @@ export class PostgresQueryRunner
   /**
    * Changes a column in the table.
    */
-  async changeColumn(
+  public async changeColumn(
     tableOrName: Table | string,
     oldTableColumnOrName: TableColumn | string,
     newColumn: TableColumn
@@ -1404,8 +1565,9 @@ export class PostgresQueryRunner
         const oldTableColumn = clonedTable.columns.find(
           (column) => column.name === oldColumn.name
         );
-        clonedTable.columns[clonedTable.columns.indexOf(oldTableColumn!)].name =
-          newColumn.name;
+        clonedTable.columns[
+          clonedTable.columns.indexOf(oldTableColumn!)
+        ]!.name = newColumn.name;
         oldColumn.name = newColumn.name;
       }
 
@@ -1611,8 +1773,8 @@ export class PostgresQueryRunner
 
         // if primary column state changed, we must always drop existed constraint.
         if (primaryColumns.length > 0) {
-          const pkName = primaryColumns[0].primaryKeyConstraintName
-            ? primaryColumns[0].primaryKeyConstraintName
+          const pkName = primaryColumns[0]!.primaryKeyConstraintName
+            ? primaryColumns[0]!.primaryKeyConstraintName
             : this.connection.namingStrategy.primaryKeyName(
                 clonedTable,
                 primaryColumns.map((column) => column.name)
@@ -1645,8 +1807,8 @@ export class PostgresQueryRunner
             (column) => column.name === newColumn.name
           );
           column!.isPrimary = true;
-          const pkName = primaryColumns[0].primaryKeyConstraintName
-            ? primaryColumns[0].primaryKeyConstraintName
+          const pkName = primaryColumns[0]!.primaryKeyConstraintName
+            ? primaryColumns[0]!.primaryKeyConstraintName
             : this.connection.namingStrategy.primaryKeyName(
                 clonedTable,
                 primaryColumns.map((column) => column.name)
@@ -1684,8 +1846,8 @@ export class PostgresQueryRunner
 
           // if we have another primary keys, we must recreate constraint.
           if (primaryColumns.length > 0) {
-            const pkName = primaryColumns[0].primaryKeyConstraintName
-              ? primaryColumns[0].primaryKeyConstraintName
+            const pkName = primaryColumns[0]!.primaryKeyConstraintName
+              ? primaryColumns[0]!.primaryKeyConstraintName
               : this.connection.namingStrategy.primaryKeyName(
                   clonedTable,
                   primaryColumns.map((column) => column.name)
@@ -2111,7 +2273,7 @@ export class PostgresQueryRunner
   /**
    * Changes a column in the table.
    */
-  async changeColumns(
+  public async changeColumns(
     tableOrName: Table | string,
     changedColumns: Array<{ newColumn: TableColumn; oldColumn: TableColumn }>
   ): Promise<void> {
@@ -2123,7 +2285,7 @@ export class PostgresQueryRunner
   /**
    * Drops column in the table.
    */
-  async dropColumn(
+  public async dropColumn(
     tableOrName: Table | string,
     columnOrName: TableColumn | string
   ): Promise<void> {
@@ -2176,8 +2338,8 @@ export class PostgresQueryRunner
 
       // if primary key have multiple columns, we must recreate it without dropped column
       if (clonedTable.primaryColumns.length > 0) {
-        const pkName = clonedTable.primaryColumns[0].primaryKeyConstraintName
-          ? clonedTable.primaryColumns[0].primaryKeyConstraintName
+        const pkName = clonedTable.primaryColumns[0]!.primaryKeyConstraintName
+          ? clonedTable.primaryColumns[0]!.primaryKeyConstraintName
           : this.connection.namingStrategy.primaryKeyName(
               clonedTable,
               clonedTable.primaryColumns.map((column) => column.name)
@@ -2300,7 +2462,7 @@ export class PostgresQueryRunner
   /**
    * Drops the columns in the table.
    */
-  async dropColumns(
+  public async dropColumns(
     tableOrName: Table | string,
     columns: Array<TableColumn> | Array<string>
   ): Promise<void> {
@@ -2312,7 +2474,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new primary key.
    */
-  async createPrimaryKey(
+  public async createPrimaryKey(
     tableOrName: Table | string,
     columnNames: Array<string>,
     constraintName?: string
@@ -2338,7 +2500,7 @@ export class PostgresQueryRunner
   /**
    * Updates composite primary keys.
    */
-  async updatePrimaryKeys(
+  public async updatePrimaryKeys(
     tableOrName: Table | string,
     columns: Array<TableColumn>
   ): Promise<void> {
@@ -2353,8 +2515,8 @@ export class PostgresQueryRunner
     // if table already have primary columns, we must drop them.
     const primaryColumns = clonedTable.primaryColumns;
     if (primaryColumns.length > 0) {
-      const pkName = primaryColumns[0].primaryKeyConstraintName
-        ? primaryColumns[0].primaryKeyConstraintName
+      const pkName = primaryColumns[0]!.primaryKeyConstraintName
+        ? primaryColumns[0]!.primaryKeyConstraintName
         : this.connection.namingStrategy.primaryKeyName(
             clonedTable,
             primaryColumns.map((column) => column.name)
@@ -2411,7 +2573,7 @@ export class PostgresQueryRunner
   /**
    * Drops a primary key.
    */
-  async dropPrimaryKey(
+  public async dropPrimaryKey(
     tableOrName: Table | string,
     constraintName?: string
   ): Promise<void> {
@@ -2433,7 +2595,7 @@ export class PostgresQueryRunner
   /**
    * Creates new unique constraint.
    */
-  async createUniqueConstraint(
+  public async createUniqueConstraint(
     tableOrName: Table | string,
     uniqueConstraint: TableUnique
   ): Promise<void> {
@@ -2458,7 +2620,7 @@ export class PostgresQueryRunner
   /**
    * Creates new unique constraints.
    */
-  async createUniqueConstraints(
+  public async createUniqueConstraints(
     tableOrName: Table | string,
     uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
@@ -2470,7 +2632,7 @@ export class PostgresQueryRunner
   /**
    * Drops unique constraint.
    */
-  async dropUniqueConstraint(
+  public async dropUniqueConstraint(
     tableOrName: Table | string,
     uniqueOrName: TableUnique | string
   ): Promise<void> {
@@ -2494,7 +2656,7 @@ export class PostgresQueryRunner
   /**
    * Drops unique constraints.
    */
-  async dropUniqueConstraints(
+  public async dropUniqueConstraints(
     tableOrName: Table | string,
     uniqueConstraints: Array<TableUnique>
   ): Promise<void> {
@@ -2506,7 +2668,7 @@ export class PostgresQueryRunner
   /**
    * Creates new check constraint.
    */
-  async createCheckConstraint(
+  public async createCheckConstraint(
     tableOrName: Table | string,
     checkConstraint: TableCheck
   ): Promise<void> {
@@ -2530,7 +2692,7 @@ export class PostgresQueryRunner
   /**
    * Creates new check constraints.
    */
-  async createCheckConstraints(
+  public async createCheckConstraints(
     tableOrName: Table | string,
     checkConstraints: Array<TableCheck>
   ): Promise<void> {
@@ -2543,7 +2705,7 @@ export class PostgresQueryRunner
   /**
    * Drops check constraint.
    */
-  async dropCheckConstraint(
+  public async dropCheckConstraint(
     tableOrName: Table | string,
     checkOrName: TableCheck | string
   ): Promise<void> {
@@ -2567,7 +2729,7 @@ export class PostgresQueryRunner
   /**
    * Drops check constraints.
    */
-  async dropCheckConstraints(
+  public async dropCheckConstraints(
     tableOrName: Table | string,
     checkConstraints: Array<TableCheck>
   ): Promise<void> {
@@ -2580,7 +2742,7 @@ export class PostgresQueryRunner
   /**
    * Creates new exclusion constraint.
    */
-  async createExclusionConstraint(
+  public async createExclusionConstraint(
     tableOrName: Table | string,
     exclusionConstraint: TableExclusion
   ): Promise<void> {
@@ -2605,7 +2767,7 @@ export class PostgresQueryRunner
   /**
    * Creates new exclusion constraints.
    */
-  async createExclusionConstraints(
+  public async createExclusionConstraints(
     tableOrName: Table | string,
     exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
@@ -2618,7 +2780,7 @@ export class PostgresQueryRunner
   /**
    * Drops exclusion constraint.
    */
-  async dropExclusionConstraint(
+  public async dropExclusionConstraint(
     tableOrName: Table | string,
     exclusionOrName: TableExclusion | string
   ): Promise<void> {
@@ -2644,7 +2806,7 @@ export class PostgresQueryRunner
   /**
    * Drops exclusion constraints.
    */
-  async dropExclusionConstraints(
+  public async dropExclusionConstraints(
     tableOrName: Table | string,
     exclusionConstraints: Array<TableExclusion>
   ): Promise<void> {
@@ -2657,7 +2819,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new foreign key.
    */
-  async createForeignKey(
+  public async createForeignKey(
     tableOrName: Table | string,
     foreignKey: TableForeignKey
   ): Promise<void> {
@@ -2683,7 +2845,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new foreign keys.
    */
-  async createForeignKeys(
+  public async createForeignKeys(
     tableOrName: Table | string,
     foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
@@ -2695,7 +2857,7 @@ export class PostgresQueryRunner
   /**
    * Drops a foreign key from the table.
    */
-  async dropForeignKey(
+  public async dropForeignKey(
     tableOrName: Table | string,
     foreignKeyOrName: TableForeignKey | string
   ): Promise<void> {
@@ -2728,7 +2890,7 @@ export class PostgresQueryRunner
   /**
    * Drops a foreign keys from the table.
    */
-  async dropForeignKeys(
+  public async dropForeignKeys(
     tableOrName: Table | string,
     foreignKeys: Array<TableForeignKey>
   ): Promise<void> {
@@ -2740,7 +2902,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new index.
    */
-  async createIndex(
+  public async createIndex(
     tableOrName: Table | string,
     index: TableIndex
   ): Promise<void> {
@@ -2760,7 +2922,7 @@ export class PostgresQueryRunner
   /**
    * Create a new view index.
    */
-  async createViewIndex(
+  public async createViewIndex(
     viewOrName: View | string,
     index: TableIndex
   ): Promise<void> {
@@ -2780,7 +2942,7 @@ export class PostgresQueryRunner
   /**
    * Creates a new indices
    */
-  async createIndices(
+  public async createIndices(
     tableOrName: Table | string,
     indices: Array<TableIndex>
   ): Promise<void> {
@@ -2792,7 +2954,7 @@ export class PostgresQueryRunner
   /**
    * Creates new view indices
    */
-  async createViewIndices(
+  public async createViewIndices(
     viewOrName: View | string,
     indices: Array<TableIndex>
   ): Promise<void> {
@@ -2804,7 +2966,7 @@ export class PostgresQueryRunner
   /**
    * Drops an index from the table.
    */
-  async dropIndex(
+  public async dropIndex(
     tableOrName: Table | string,
     indexOrName: TableIndex | string
   ): Promise<void> {
@@ -2830,7 +2992,7 @@ export class PostgresQueryRunner
   /**
    * Drops an index from a view.
    */
-  async dropViewIndex(
+  public async dropViewIndex(
     viewOrName: View | string,
     indexOrName: TableIndex | string
   ): Promise<void> {
@@ -2856,7 +3018,7 @@ export class PostgresQueryRunner
   /**
    * Drops an indices from the table.
    */
-  async dropIndices(
+  public async dropIndices(
     tableOrName: Table | string,
     indices: Array<TableIndex>
   ): Promise<void> {
@@ -2869,14 +3031,14 @@ export class PostgresQueryRunner
    * Clears all table contents.
    * Note: this operation uses SQL's TRUNCATE query which cannot be reverted in transactions.
    */
-  async clearTable(tableName: string): Promise<void> {
+  public async clearTable(tableName: string): Promise<void> {
     await this.query(`TRUNCATE TABLE ${this.escapePath(tableName)}`);
   }
 
   /**
    * Removes all tables from the currently connected database.
    */
-  async clearDatabase(): Promise<void> {
+  public async clearDatabase(): Promise<void> {
     const schemas: Array<string> = [];
     this.connection.entityMetadatas
       .filter((metadata) => metadata.schema)
@@ -2900,9 +3062,12 @@ export class PostgresQueryRunner
       const selectViewDropsQuery =
         `SELECT 'DROP VIEW IF EXISTS "' || schemaname || '"."' || viewname || '" CASCADE;' as "query" ` +
         `FROM "pg_views" WHERE "schemaname" IN (${schemaNamesString}) AND "viewname" NOT IN ('geography_columns', 'geometry_columns', 'raster_columns', 'raster_overviews')`;
-      const dropViewQueries: Array<ObjectLiteral> =
-        await this.query(selectViewDropsQuery);
-      await Promise.all(dropViewQueries.map((q) => this.query(q['query'])));
+      const dropViewQueries: Array<ObjectLiteral> = (await this.query(
+        selectViewDropsQuery
+      )) as Array<ObjectLiteral>;
+      await Promise.all(
+        dropViewQueries.map((q) => this.query(q['query'] as string))
+      );
 
       // drop materialized views
       // Note: materialized views introduced in Postgres 9.3
@@ -2910,23 +3075,25 @@ export class PostgresQueryRunner
         const selectMatViewDropsQuery =
           `SELECT 'DROP MATERIALIZED VIEW IF EXISTS "' || schemaname || '"."' || matviewname || '" CASCADE;' as "query" ` +
           `FROM "pg_matviews" WHERE "schemaname" IN (${schemaNamesString})`;
-        const dropMatViewQueries: Array<ObjectLiteral> = await this.query(
+        const dropMatViewQueries: Array<ObjectLiteral> = (await this.query(
           selectMatViewDropsQuery
-        );
+        )) as Array<ObjectLiteral>;
         await Promise.all(
-          dropMatViewQueries.map((q) => this.query(q['query']))
+          dropMatViewQueries.map((q) => this.query(q['query'] as string))
         );
       }
 
       // ignore spatial_ref_sys; it's a special table supporting PostGIS
-      // TODO generalize this as this.driver.ignoreTables
+      // TODO generalize as this.driver.ignoreTables
 
       // drop tables
       const selectTableDropsQuery = `SELECT 'DROP TABLE IF EXISTS "' || schemaname || '"."' || tablename || '" CASCADE;' as "query" FROM "pg_tables" WHERE "schemaname" IN (${schemaNamesString}) AND "tablename" NOT IN ('spatial_ref_sys')`;
-      const dropTableQueries: Array<ObjectLiteral> = await this.query(
+      const dropTableQueries: Array<ObjectLiteral> = (await this.query(
         selectTableDropsQuery
+      )) as Array<ObjectLiteral>;
+      await Promise.all(
+        dropTableQueries.map((q) => this.query(q['query'] as string))
       );
-      await Promise.all(dropTableQueries.map((q) => this.query(q['query'])));
 
       // drop enum types
       await this.dropEnumTypes(schemaNamesString);
@@ -2934,7 +3101,7 @@ export class PostgresQueryRunner
       if (!isAnotherTransactionActive) {
         await this.commitTransaction();
       }
-    } catch (error) {
+    } catch (error: unknown) {
       try {
         // we throw original error even if rollback thrown an error
         if (!isAnotherTransactionActive) {
@@ -3013,9 +3180,11 @@ export class PostgresQueryRunner
         MetadataTableType.MATERIALIZED_VIEW
       }') ${viewsCondition ? `AND (${viewsCondition})` : ''}`;
 
-    const dbViews = await this.query(query);
-    const dbIndices: Array<ObjectLiteral> = await this.query(indicesSql);
-    return dbViews.map((dbView: any) => {
+    const dbViews = (await this.query(query)) as Array<ObjectLiteral>;
+    const dbIndices: Array<ObjectLiteral> = (await this.query(
+      indicesSql
+    )) as Array<ObjectLiteral>;
+    return dbViews.map((dbView: ObjectLiteral) => {
       // find index constraints of table, group them by constraint name and build TableIndex.
       const tableIndexConstraints = OrmUtils.uniq(
         dbIndices.filter((dbIndex) => {
@@ -3028,13 +3197,14 @@ export class PostgresQueryRunner
       );
       const view = new View();
       const schema =
-        dbView['schema'] === currentSchema && !this.driver.options.schema
+        (dbView['schema'] as string) === currentSchema &&
+        !this.driver.options.schema
           ? undefined
-          : dbView['schema'];
+          : (dbView['schema'] as string);
       view.database = currentDatabase;
-      view.schema = dbView['schema'];
-      view.name = this.driver.buildTableName(dbView['name'], schema);
-      view.expression = dbView['value'];
+      view.schema = dbView['schema'] as string;
+      view.name = this.driver.buildTableName(dbView['name'] as string, schema);
+      view.expression = dbView['value'] as string;
       view.materialized =
         dbView['type'] === MetadataTableType.MATERIALIZED_VIEW;
       view.indices = tableIndexConstraints.map((constraint) => {
@@ -3080,7 +3250,13 @@ export class PostgresQueryRunner
 
     if (!tableNames) {
       const tablesSql = `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables"`;
-      dbTables.push(...(await this.query(tablesSql)));
+      dbTables.push(
+        ...((await this.query(tablesSql)) as Array<{
+          table_schema: string;
+          table_name: string;
+          table_comment: string;
+        }>)
+      );
     } else {
       const tablesCondition = tableNames
         .map((tableName) => this.driver.parseTableName(tableName))
@@ -3094,7 +3270,13 @@ export class PostgresQueryRunner
       const tablesSql =
         `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ` +
         tablesCondition;
-      dbTables.push(...(await this.query(tablesSql)));
+      dbTables.push(
+        ...((await this.query(tablesSql)) as Array<{
+          table_schema: string;
+          table_name: string;
+          table_comment: string;
+        }>)
+      );
     }
 
     // if tables were not found in the db, no need to proceed
@@ -3187,21 +3369,26 @@ export class PostgresQueryRunner
       `INNER JOIN "pg_namespace" "ns" ON "cl"."relnamespace" = "ns"."oid" ` +
       `INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent"`;
 
-    const [dbColumns, dbConstraints, dbIndices, dbForeignKeys]: Array<
-      Array<ObjectLiteral>
-    > = await Promise.all([
+    const queryResults = await Promise.all([
       this.query(columnsSql),
       this.query(constraintsSql),
       this.query(indicesSql),
       this.query(foreignKeysSql),
     ]);
+    const dbColumns = queryResults[0] as Array<ObjectLiteral>;
+    const dbConstraints = queryResults[1] as Array<ObjectLiteral>;
+    const dbIndices = queryResults[2] as Array<ObjectLiteral>;
+    const dbForeignKeys = queryResults[3] as Array<ObjectLiteral>;
 
     // create tables for loaded tables
     return Promise.all(
       dbTables.map(async (dbTable) => {
         const table = new Table();
 
-        const getSchemaFromKey = (dbObject: any, key: string) => {
+        const getSchemaFromKey = (
+          dbObject: Record<string, unknown>,
+          key: string
+        ): unknown => {
           return dbObject[key] === currentSchema &&
             (!this.driver.options.schema ||
               this.driver.options.schema === currentSchema)
@@ -3211,9 +3398,12 @@ export class PostgresQueryRunner
         // We do not need to join schema name, when database is by default.
         const schema = getSchemaFromKey(dbTable, 'table_schema');
         table.database = currentDatabase;
-        table.schema = dbTable['table_schema'];
-        table.comment = dbTable['table_comment'];
-        table.name = this.driver.buildTableName(dbTable['table_name'], schema);
+        table.schema = dbTable['table_schema'] as string;
+        table.comment = dbTable['table_comment'] as string;
+        table.name = this.driver.buildTableName(
+          dbTable['table_name'] as string,
+          schema as string | undefined
+        );
 
         // create columns from the loaded columns
         table.columns = await Promise.all(
@@ -3233,18 +3423,18 @@ export class PostgresQueryRunner
               });
 
               const tableColumn = new TableColumn();
-              tableColumn.name = dbColumn['column_name'];
-              tableColumn.type = dbColumn['regtype'].toLowerCase();
+              tableColumn.name = dbColumn['column_name'] as string;
+              tableColumn.type = (dbColumn['regtype'] as string).toLowerCase();
 
               if (
                 tableColumn.type === 'vector' ||
                 tableColumn.type === 'halfvec'
               ) {
-                const lengthMatch = dbColumn['format_type'].match(
+                const lengthMatch = (dbColumn['format_type'] as string).match(
                   /^(?:vector|halfvec)\((\d+)\)$/
                 );
                 if (lengthMatch && lengthMatch[1]) {
-                  tableColumn.length = lengthMatch[1];
+                  tableColumn.length = lengthMatch[1] as string;
                 }
               }
 
@@ -3254,15 +3444,17 @@ export class PostgresQueryRunner
                 tableColumn.type === 'decimal' ||
                 tableColumn.type === 'float'
               ) {
-                let numericPrecision = dbColumn['numeric_precision'];
-                let numericScale = dbColumn['numeric_scale'];
+                let numericPrecision = dbColumn['numeric_precision'] as
+                  | number
+                  | null;
+                let numericScale = dbColumn['numeric_scale'] as number | null;
                 if (dbColumn['data_type'] === 'ARRAY') {
-                  const numericSize = dbColumn['format_type'].match(
+                  const numericSize = (dbColumn['format_type'] as string).match(
                     /^numeric\(([0-9]+),([0-9]+)\)\[\]$/
                   );
                   if (numericSize) {
-                    numericPrecision = +numericSize[1];
-                    numericScale = +numericSize[2];
+                    numericPrecision = +numericSize[1]!;
+                    numericScale = +numericSize[2]!;
                   }
                 }
                 // If one of these properties was set, and another was not, Postgres sets '0' in to unspecified property
@@ -3306,13 +3498,21 @@ export class PostgresQueryRunner
                 tableColumn.type === 'timestamp without time zone' ||
                 tableColumn.type === 'timestamp with time zone'
               ) {
-                tableColumn.precision = !this.isDefaultColumnPrecision(
-                  table,
-                  tableColumn,
-                  dbColumn['datetime_precision']
-                )
-                  ? dbColumn['datetime_precision']
-                  : undefined;
+                const datetimePrecision = dbColumn['datetime_precision'] as
+                  | number
+                  | undefined;
+                if (
+                  datetimePrecision !== undefined &&
+                  !this.isDefaultColumnPrecision(
+                    table,
+                    tableColumn,
+                    datetimePrecision
+                  )
+                ) {
+                  tableColumn.precision = datetimePrecision;
+                } else {
+                  tableColumn.precision = undefined;
+                }
               }
 
               // check if column has user-defined data type.
@@ -3343,19 +3543,23 @@ export class PostgresQueryRunner
                   `WHERE "n"."nspname" = '${
                     dbTable['table_schema']
                   }' AND "t"."typname" = '${enumName || name}'`;
-                const results: Array<ObjectLiteral> = await this.query(sql);
+                const results: Array<ObjectLiteral> = (await this.query(
+                  sql
+                )) as Array<ObjectLiteral>;
 
                 if (results.length) {
                   tableColumn.type = 'enum';
-                  tableColumn.enum = results.map((result) => result['value']);
+                  tableColumn.enum = results.map(
+                    (result) => result['value'] as string
+                  );
                   tableColumn.enumName = enumName;
                 }
 
                 if (dbColumn['data_type'] === 'ARRAY') {
                   tableColumn.isArray = true;
-                  const type = tableColumn.type.replace('[]', '');
-                  tableColumn.type = this.connection.driver.normalizeType({
-                    type: type,
+                  const type = (tableColumn.type as string).replace('[]', '');
+                  tableColumn.type = this.driver.normalizeType({
+                    type: type as ColumnType,
                   });
                 }
               }
@@ -3374,11 +3578,13 @@ export class PostgresQueryRunner
                   `"table_schema" = '${dbColumn['table_schema']}' AND ` +
                   `"table_name" = '${dbColumn['table_name']}'`;
 
-                const results: Array<ObjectLiteral> = await this.query(sql);
+                const results: Array<ObjectLiteral> = (await this.query(
+                  sql
+                )) as Array<ObjectLiteral>;
 
                 if (results.length > 0) {
-                  tableColumn.spatialFeatureType = results[0].type;
-                  tableColumn.srid = results[0].srid;
+                  tableColumn.spatialFeatureType = results[0]!.type as string;
+                  tableColumn.srid = results[0]!.srid as number;
                 }
               }
 
@@ -3390,10 +3596,14 @@ export class PostgresQueryRunner
               ) {
                 let length;
                 if (tableColumn.isArray) {
-                  const match = /\((\d+)\)/.exec(dbColumn['format_type']);
+                  const match = /\((\d+)\)/.exec(
+                    dbColumn['format_type'] as string
+                  );
                   length = match ? match[1] : undefined;
                 } else if (dbColumn['character_maximum_length']) {
-                  length = dbColumn['character_maximum_length'].toString();
+                  length = (
+                    dbColumn['character_maximum_length'] as number
+                  ).toString();
                 }
                 if (length) {
                   tableColumn.length = !this.isDefaultColumnLength(
@@ -3423,9 +3633,9 @@ export class PostgresQueryRunner
 
                 // collect all column names
                 const columnNames = anotherPrimaryConstraints.map(
-                  (constraint) => constraint['column_name']
+                  (constraint) => constraint['column_name'] as string
                 );
-                columnNames.push(dbColumn['column_name']);
+                columnNames.push(dbColumn['column_name'] as string);
 
                 // build default primary key constraint name
                 const pkName = this.connection.namingStrategy.primaryKeyName(
@@ -3435,8 +3645,9 @@ export class PostgresQueryRunner
 
                 // if primary key has user-defined constraint name, write it in table column
                 if (primaryConstraint['constraint_name'] !== pkName) {
-                  tableColumn.primaryKeyConstraintName =
-                    primaryConstraint['constraint_name'];
+                  tableColumn.primaryKeyConstraintName = primaryConstraint[
+                    'constraint_name'
+                  ] as string | undefined;
                 }
               }
 
@@ -3461,24 +3672,26 @@ export class PostgresQueryRunner
                 // Postgres 10+ Identity column
                 tableColumn.isGenerated = true;
                 tableColumn.generationStrategy = 'identity';
-                tableColumn.generatedIdentity = dbColumn.identity_generation;
+                tableColumn.generatedIdentity = dbColumn.identity_generation as
+                  | 'ALWAYS'
+                  | 'BY DEFAULT'
+                  | undefined;
               } else if (
                 dbColumn['column_default'] !== null &&
                 dbColumn['column_default'] !== undefined
               ) {
                 const serialDefaultName = `nextval('${this.buildSequenceName(
                   table,
-                  dbColumn['column_name']
+                  dbColumn['column_name'] as string
                 )}'::regclass)`;
                 const serialDefaultPath = `nextval('${this.buildSequencePath(
                   table,
-                  dbColumn['column_name']
+                  dbColumn['column_name'] as string
                 )}'::regclass)`;
 
-                const defaultWithoutQuotes = dbColumn['column_default'].replace(
-                  /"/g,
-                  ''
-                );
+                const defaultWithoutQuotes = String(
+                  dbColumn['column_default']
+                ).replace(/"/g, '');
 
                 if (
                   defaultWithoutQuotes === serialDefaultName ||
@@ -3488,7 +3701,9 @@ export class PostgresQueryRunner
                   tableColumn.generationStrategy = 'increment';
                 } else if (
                   dbColumn['column_default'] === 'gen_random_uuid()' ||
-                  /^uuid_generate_v\d\(\)/.test(dbColumn['column_default'])
+                  /^uuid_generate_v\d\(\)/.test(
+                    String(dbColumn['column_default'])
+                  )
                 ) {
                   if (tableColumn.type === 'uuid') {
                     tableColumn.isGenerated = true;
@@ -3498,15 +3713,15 @@ export class PostgresQueryRunner
                   }
                 } else if (
                   dbColumn['column_default'] === 'now()' ||
-                  dbColumn['column_default'].indexOf("'now'::text") !== -1
+                  String(dbColumn['column_default']).indexOf("'now'::text") !==
+                    -1
                 ) {
                   tableColumn.default = dbColumn['column_default'];
                 } else {
-                  tableColumn.default = dbColumn['column_default'].replace(
-                    /::[\w\s.[\]\-"]+/g,
-                    ''
-                  );
-                  tableColumn.default = tableColumn.default.replace(
+                  tableColumn.default = String(
+                    dbColumn['column_default']
+                  ).replace(/::[\w\s.[\]\-"]+/g, '');
+                  tableColumn.default = (tableColumn.default as string).replace(
                     /^(-?\d+)$/,
                     "'$1'"
                   );
@@ -3528,24 +3743,24 @@ export class PostgresQueryRunner
                   name: tableColumn.name,
                 });
 
-                const results = await this.query(
+                const results = (await this.query(
                   asExpressionQuery.query,
                   asExpressionQuery.parameters
-                );
+                )) as Array<ObjectLiteral>;
                 if (results[0] && results[0].value) {
-                  tableColumn.asExpression = results[0].value;
+                  tableColumn.asExpression = results[0].value as string;
                 } else {
                   tableColumn.asExpression = '';
                 }
               }
 
               tableColumn.comment = dbColumn['description']
-                ? dbColumn['description']
+                ? (dbColumn['description'] as string)
                 : undefined;
               if (dbColumn['character_set_name'])
-                tableColumn.charset = dbColumn['character_set_name'];
+                tableColumn.charset = dbColumn['character_set_name'] as string;
               if (dbColumn['collation_name'])
-                tableColumn.collation = dbColumn['collation_name'];
+                tableColumn.collation = dbColumn['collation_name'] as string;
               return tableColumn;
             })
         );
@@ -3567,10 +3782,10 @@ export class PostgresQueryRunner
             (dbC) => dbC['constraint_name'] === constraint['constraint_name']
           );
           return new TableUnique({
-            name: constraint['constraint_name'],
-            columnNames: uniques.map((u) => u['column_name']),
-            deferrable: constraint['deferrable']
-              ? constraint['deferred']
+            name: constraint['constraint_name'] as string,
+            columnNames: uniques.map((u) => u['column_name'] as string),
+            deferrable: (constraint['deferrable'] as string | undefined)
+              ? (constraint['deferred'] as string | undefined)
               : undefined,
           });
         });
@@ -3592,9 +3807,9 @@ export class PostgresQueryRunner
             (dbC) => dbC['constraint_name'] === constraint['constraint_name']
           );
           return new TableCheck({
-            name: constraint['constraint_name'],
-            columnNames: checks.map((c) => c['column_name']),
-            expression: constraint['expression'].replace(
+            name: constraint['constraint_name'] as string,
+            columnNames: checks.map((c) => c['column_name'] as string),
+            expression: (constraint['expression'] as string).replace(
               /^\s*CHECK\s*\((.*)\)\s*$/i,
               '$1'
             ),
@@ -3615,8 +3830,8 @@ export class PostgresQueryRunner
 
         table.exclusions = tableExclusionConstraints.map((constraint) => {
           return new TableExclusion({
-            name: constraint['constraint_name'],
-            expression: constraint['expression'].substring(8), // trim EXCLUDE from start of expression
+            name: constraint['constraint_name'] as string,
+            expression: (constraint['expression'] as string).substring(8), // trim EXCLUDE from start of expression
           });
         });
 
@@ -3641,24 +3856,28 @@ export class PostgresQueryRunner
           const schema = getSchemaFromKey(
             dbForeignKey,
             'referenced_table_schema'
-          );
+          ) as string;
           const referencedTableName = this.driver.buildTableName(
-            dbForeignKey['referenced_table_name'],
+            dbForeignKey['referenced_table_name'] as string,
             schema
           );
 
           return new TableForeignKey({
-            name: dbForeignKey['constraint_name'],
-            columnNames: foreignKeys.map((dbFk) => dbFk['column_name']),
-            referencedSchema: dbForeignKey['referenced_table_schema'],
+            name: dbForeignKey['constraint_name'] as string,
+            columnNames: foreignKeys.map(
+              (dbFk) => dbFk['column_name'] as string
+            ),
+            referencedSchema: dbForeignKey['referenced_table_schema'] as
+              | string
+              | undefined,
             referencedTableName: referencedTableName,
             referencedColumnNames: foreignKeys.map(
-              (dbFk) => dbFk['referenced_column_name']
+              (dbFk) => dbFk['referenced_column_name'] as string
             ),
-            onDelete: dbForeignKey['on_delete'],
-            onUpdate: dbForeignKey['on_update'],
-            deferrable: dbForeignKey['deferrable']
-              ? dbForeignKey['deferred']
+            onDelete: dbForeignKey['on_delete'] as string | undefined,
+            onUpdate: dbForeignKey['on_update'] as string | undefined,
+            deferrable: (dbForeignKey['deferrable'] as string | undefined)
+              ? (dbForeignKey['deferred'] as string | undefined)
               : undefined,
           });
         });
@@ -3684,11 +3903,11 @@ export class PostgresQueryRunner
           });
           return new TableIndex({
             table: table,
-            name: constraint['constraint_name'],
-            columnNames: indices.map((i) => i['column_name']),
-            isUnique: constraint['is_unique'] === 'TRUE',
-            where: constraint['condition'],
-            isSpatial: constraint['index_type'] === 'gist',
+            name: constraint['constraint_name'] as string,
+            columnNames: indices.map((i) => i['column_name'] as string),
+            isUnique: (constraint['is_unique'] as string) === 'TRUE',
+            where: constraint['condition'] as string | undefined,
+            isSpatial: (constraint['index_type'] as string) === 'gist',
             isFulltext: false,
           } as TableIndexOptions);
         });
@@ -3816,8 +4035,9 @@ export class PostgresQueryRunner
 
     const primaryColumns = table.columns.filter((column) => column.isPrimary);
     if (primaryColumns.length > 0) {
-      const primaryKeyName = primaryColumns[0].primaryKeyConstraintName
-        ? primaryColumns[0].primaryKeyConstraintName
+      const constraintName = primaryColumns[0]!.primaryKeyConstraintName;
+      const primaryKeyName = constraintName
+        ? constraintName
         : this.connection.namingStrategy.primaryKeyName(
             table,
             primaryColumns.map((column) => column.name)
@@ -3846,14 +4066,16 @@ export class PostgresQueryRunner
   /**
    * Loads Postgres version.
    */
-  async getVersion(): Promise<string> {
+  public async getVersion(): Promise<string> {
     // we use `SELECT version()` instead of `SHOW server_version` or `SHOW server_version_num`
     // to maintain compatability with Amazon Redshift.
     //
     // see:
     //  - https://github.com/typeorm/typeorm/pull/9319
     //  - https://docs.aws.amazon.com/redshift/latest/dg/c_unsupported-postgresql-functions.html
-    const result: [{ version: string }] = await this.query(`SELECT version()`);
+    const result: [{ version: string }] = (await this.query(
+      `SELECT version()`
+    )) as [{ version: string }];
 
     // Examples:
     // Postgres: "PostgreSQL 14.10 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 8.5.0 20210514 (Red Hat 8.5.0-20), 64-bit"
@@ -3888,7 +4110,9 @@ export class PostgresQueryRunner
   protected async insertViewDefinitionSql(view: View): Promise<Query> {
     const currentSchema = await this.getCurrentSchema();
 
-    let { schema, tableName: name } = this.driver.parseTableName(view);
+    const parsedTableName = this.driver.parseTableName(view);
+    let schema = parsedTableName.schema;
+    const name = parsedTableName.tableName;
 
     if (!schema) {
       schema = currentSchema;
@@ -3923,7 +4147,9 @@ export class PostgresQueryRunner
   protected async deleteViewDefinitionSql(view: View): Promise<Query> {
     const currentSchema = await this.getCurrentSchema();
 
-    let { schema, tableName: name } = this.driver.parseTableName(view);
+    const parsedTableName = this.driver.parseTableName(view);
+    let schema = parsedTableName.schema;
+    const name = parsedTableName.tableName;
 
     if (!schema) {
       schema = currentSchema;
@@ -3944,9 +4170,10 @@ export class PostgresQueryRunner
       `INNER JOIN "pg_enum" "e" ON "e"."enumtypid" = "t"."oid" ` +
       `INNER JOIN "pg_namespace" "n" ON "n"."oid" = "t"."typnamespace" ` +
       `WHERE "n"."nspname" IN (${schemaNames}) GROUP BY "n"."nspname", "t"."typname"`;
-    const dropQueries: Array<ObjectLiteral> =
-      await this.query(selectDropsQuery);
-    await Promise.all(dropQueries.map((q) => this.query(q['query'])));
+    const dropQueries: Array<ObjectLiteral> = (await this.query(
+      selectDropsQuery
+    )) as Array<ObjectLiteral>;
+    await Promise.all(dropQueries.map((q) => this.query(q['query'] as string)));
   }
 
   /**
@@ -3967,7 +4194,7 @@ export class PostgresQueryRunner
       `SELECT "n"."nspname", "t"."typname" FROM "pg_type" "t" ` +
       `INNER JOIN "pg_namespace" "n" ON "n"."oid" = "t"."typnamespace" ` +
       `WHERE "n"."nspname" = '${schema}' AND "t"."typname" = '${enumName}'`;
-    const result = await this.query(sql);
+    const result = (await this.query(sql)) as Array<ObjectLiteral>;
     return result.length ? true : false;
   }
 
@@ -4086,7 +4313,7 @@ export class PostgresQueryRunner
       throw new TypeORMError(`Table ${table} has no primary keys.`);
 
     const columnNames = table.primaryColumns.map((column) => column.name);
-    const constraintName = table.primaryColumns[0].primaryKeyConstraintName;
+    const constraintName = table.primaryColumns[0]?.primaryKeyConstraintName;
     const primaryKeyName = constraintName
       ? constraintName
       : this.connection.namingStrategy.primaryKeyName(table, columnNames);
@@ -4248,7 +4475,7 @@ export class PostgresQueryRunner
 
     let seqName = `${tableName}_${columnName}_seq`;
 
-    if (seqName.length > this.connection.driver.maxAliasLength!) {
+    if (seqName.length > this.driver.maxAliasLength!) {
       // note doesn't yet handle corner cases where .length differs from number of UTF-8 bytes
       seqName = `${tableName.substring(0, 29)}_${columnName.substring(
         0,
@@ -4294,29 +4521,34 @@ export class PostgresQueryRunner
       .join('.');
   }
 
-  protected async getUserDefinedTypeName(table: Table, column: TableColumn) {
-    let { schema, tableName: name } = this.driver.parseTableName(table);
+  protected async getUserDefinedTypeName(
+    table: Table,
+    column: TableColumn
+  ): Promise<{ schema: string; name: string }> {
+    const parsedTableName = this.driver.parseTableName(table);
+    let schema = parsedTableName.schema;
+    const name = parsedTableName.tableName;
 
     if (!schema) {
       schema = await this.getCurrentSchema();
     }
 
-    const result = await this.query(
+    const result = (await this.query(
       `SELECT "udt_schema", "udt_name" ` +
         `FROM "information_schema"."columns" WHERE "table_schema" = '${schema}' AND "table_name" = '${name}' AND "column_name"='${column.name}'`
-    );
+    )) as Array<ObjectLiteral>;
 
     // docs: https://www.postgresql.org/docs/current/xtypes.html
     // When you define a new base type, PostgreSQL automatically provides support for arrays of that type.
     // The array type typically has the same name as the base type with the underscore character (_) prepended.
     // ----
     // so, we must remove this underscore character from enum type name
-    let udtName = result[0]['udt_name'];
+    let udtName = result[0]!['udt_name'] as string;
     if (udtName.indexOf('_') === 0) {
       udtName = udtName.substr(1, udtName.length);
     }
     return {
-      schema: result[0]['udt_schema'],
+      schema: result[0]!['udt_schema'] as string,
       name: udtName,
     };
   }
@@ -4324,12 +4556,13 @@ export class PostgresQueryRunner
   /**
    * Escapes a given comment so it's safe to include in a query.
    */
-  protected escapeComment(comment?: string) {
+  protected escapeComment(comment?: string): string {
     if (!comment || comment.length === 0) {
       return 'NULL';
     }
 
-    comment = comment.replace(/'/g, "''").replace(/\u0000/g, ''); // Null bytes aren't allowed in comments
+    // Null bytes aren't allowed in comments
+    comment = comment.replace(/'/g, "''").replace(String.fromCharCode(0), '');
 
     return `'${comment}'`;
   }
@@ -4351,11 +4584,17 @@ export class PostgresQueryRunner
    * Get the table name with table schema
    * Note: Without ' or "
    */
-  protected async getTableNameWithSchema(target: Table | string) {
+  protected async getTableNameWithSchema(
+    target: Table | string
+  ): Promise<string> {
     const tableName = InstanceChecker.isTable(target) ? target.name : target;
     if (tableName.indexOf('.') === -1) {
-      const schemaResult = await this.query(`SELECT current_schema()`);
-      const schema = schemaResult[0]['current_schema'];
+      const schemaResult = await this.query<Array<{ current_schema: string }>>(
+        `SELECT current_schema()`
+      );
+      const schema = schemaResult[0]
+        ? schemaResult[0]['current_schema']
+        : undefined;
       return `${schema}.${tableName}`;
     } else {
       return `${tableName.split('.')[0]}.${tableName.split('.')[1]}`;
@@ -4365,7 +4604,7 @@ export class PostgresQueryRunner
   /**
    * Builds a query for create column.
    */
-  protected buildCreateColumnSql(table: Table, column: TableColumn) {
+  protected buildCreateColumnSql(table: Table, column: TableColumn): string {
     let c = '"' + column.name + '"';
     if (column.isGenerated === true && column.generationStrategy !== 'uuid') {
       if (column.generationStrategy === 'identity') {
@@ -4391,7 +4630,7 @@ export class PostgresQueryRunner
       c += ' ' + this.buildEnumName(table, column);
       if (column.isArray) c += ' array';
     } else if (!column.isGenerated || column.type === 'uuid') {
-      c += ' ' + this.connection.driver.createFullType(column);
+      c += ' ' + this.driver.createFullType(column);
     }
 
     // Postgres only supports the stored generated column type
@@ -4417,17 +4656,17 @@ export class PostgresQueryRunner
   /**
    * Checks if the PostgreSQL server has support for partitioned tables
    */
-  protected async hasSupportForPartitionedTables() {
-    const result = await this.query(
+  protected async hasSupportForPartitionedTables(): Promise<boolean> {
+    const result = (await this.query(
       `SELECT TRUE FROM information_schema.columns WHERE table_name = 'pg_class' and column_name = 'relispartition'`
-    );
+    )) as Array<ObjectLiteral>;
     return result.length ? true : false;
   }
 
   /**
    * Change table comment.
    */
-  async changeTableComment(
+  public async changeTableComment(
     tableOrName: Table | string,
     newComment?: string
   ): Promise<void> {

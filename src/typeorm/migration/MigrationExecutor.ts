@@ -1,5 +1,6 @@
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { Table } from '../schema-builder/table/Table.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
@@ -15,12 +16,19 @@ export class MigrationExecutor {
   // -------------------------------------------------------------------------
 
   /**
+   * Driver used by this executor.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
+
+  /**
    * Indicates how migrations should be run in transactions.
    *   all: all migrations are run in a single transaction
    *   none: all migrations are run without a transaction
    *   each: each migration is run in a separate transaction
    */
-  transaction: 'all' | 'none' | 'each' = 'all';
+  public transaction: 'all' | 'none' | 'each' = 'all';
 
   /**
    * Option to fake-run or fake-revert a migration, adding to the
@@ -29,7 +37,7 @@ export class MigrationExecutor {
    * interoperability between applications which are desired to each keep
    * a consistent migration history.
    */
-  fake: boolean;
+  public fake = false;
 
   // -------------------------------------------------------------------------
   // Private Properties
@@ -44,17 +52,17 @@ export class MigrationExecutor {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     protected connection: DataSource,
     protected queryRunner?: QueryRunner
   ) {
-    const { schema } = this.connection.driver.options as any;
-    const database = this.connection.driver.database;
+    const { schema } = this.driver;
+    const database = this.driver.database;
     this.migrationsDatabase = database;
     this.migrationsSchema = schema;
     this.migrationsTableName =
       connection.options.migrationsTableName || 'migrations';
-    this.migrationsTable = this.connection.driver.buildTableName(
+    this.migrationsTable = this.driver.buildTableName(
       this.migrationsTableName,
       schema,
       database
@@ -73,13 +81,13 @@ export class MigrationExecutor {
       await this.createMigrationsTableIfNotExist(queryRunner);
 
       // create typeorm_metadata table if it's not created yet
-      const schemaBuilder = this.connection.driver.createSchemaBuilder();
+      const schemaBuilder = this.driver.createSchemaBuilder();
       if (InstanceChecker.isRdbmsSchemaBuilder(schemaBuilder)) {
         await schemaBuilder.createMetadataTableIfNecessary(queryRunner);
       }
 
       await queryRunner.beforeMigration();
-      await (migration.instance as any).up(queryRunner);
+      await migration.instance?.up(queryRunner);
       await queryRunner.afterMigration();
       await this.insertExecutedMigration(queryRunner, migration);
 
@@ -142,7 +150,7 @@ export class MigrationExecutor {
    * Lists all migrations and whether they have been executed or not
    * returns true if there are unapplied migrations
    */
-  async showMigrations(): Promise<boolean> {
+  public async showMigrations(): Promise<boolean> {
     let hasUnappliedMigrations = false;
     const queryRunner = this.queryRunner || this.connection.createQueryRunner();
     // create migrations table if its not created yet
@@ -187,7 +195,7 @@ export class MigrationExecutor {
     await this.createMigrationsTableIfNotExist(queryRunner);
 
     // create the typeorm_metadata table if it's not created yet
-    const schemaBuilder = this.connection.driver.createSchemaBuilder();
+    const schemaBuilder = this.driver.createSchemaBuilder();
     if (InstanceChecker.isRdbmsSchemaBuilder(schemaBuilder)) {
       await schemaBuilder.createMetadataTableIfNecessary(queryRunner);
     }
@@ -259,8 +267,8 @@ export class MigrationExecutor {
       );
 
       if (migrationsOverridingTransactionMode.length > 0) {
-        const error = new ForbiddenTransactionModeOverrideError(
-          migrationsOverridingTransactionMode
+        const error = new Error(
+          `Migrations cannot override transaction mode when running all migrations in a single transaction. Conflicting migrations: ${migrationsOverridingTransactionMode.map((m) => m.name).join(', ')}`
         );
         this.connection.logger.logMigration(
           `Migrations failed, error: ${error.message}`
@@ -325,7 +333,7 @@ export class MigrationExecutor {
           .catch((error) => {
             // informative log about migration failure
             this.connection.logger.logMigration(
-              `Migration "${migration.name}" failed, error: ${error?.message}`
+              `Migration "${migration.name}" failed, error: ${(error as Error)?.message}`
             );
             throw error;
           })
@@ -360,7 +368,9 @@ export class MigrationExecutor {
         try {
           // we throw original error even if rollback thrown an error
           await queryRunner.rollbackTransaction();
-        } catch (rollbackError) {}
+        } catch {
+          //nothing
+        }
       }
 
       throw err;
@@ -374,14 +384,14 @@ export class MigrationExecutor {
   /**
    * Reverts last migration that were run.
    */
-  async undoLastMigration(): Promise<void> {
+  public async undoLastMigration(): Promise<void> {
     const queryRunner = this.queryRunner || this.connection.createQueryRunner();
 
     // create migrations table if it's not created yet
     await this.createMigrationsTableIfNotExist(queryRunner);
 
     // create typeorm_metadata table if it's not created yet
-    const schemaBuilder = this.connection.driver.createSchemaBuilder();
+    const schemaBuilder = this.driver.createSchemaBuilder();
     if (InstanceChecker.isRdbmsSchemaBuilder(schemaBuilder)) {
       await schemaBuilder.createMetadataTableIfNecessary(queryRunner);
     }
@@ -411,7 +421,7 @@ export class MigrationExecutor {
 
     // if no migrations found in the database then nothing to revert
     if (!migrationToRevert)
-      throw new TypeORMError(
+      throw new Error(
         `No migration ${lastTimeExecutedMigration.name} was found in the source code. Make sure you have this migration in your codebase and its included in the connection options.`
       );
 
@@ -457,7 +467,9 @@ export class MigrationExecutor {
         try {
           // we throw original error even if rollback thrown an error
           await queryRunner.rollbackTransaction();
-        } catch (rollbackError) {}
+        } catch {
+          //nothing
+        }
       }
 
       throw err;
@@ -477,10 +489,6 @@ export class MigrationExecutor {
   protected async createMigrationsTableIfNotExist(
     queryRunner: QueryRunner
   ): Promise<void> {
-    // If driver is mongo no need to create
-    if (this.connection.driver.options.type === 'mongodb') {
-      return;
-    }
     const tableExist = await queryRunner.hasTable(this.migrationsTable); // todo: table name should be configurable
     if (!tableExist) {
       await queryRunner.createTable(
@@ -491,8 +499,8 @@ export class MigrationExecutor {
           columns: [
             {
               name: 'id',
-              type: this.connection.driver.normalizeType({
-                type: this.connection.driver.mappedDataTypes.migrationId,
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.migrationId,
               }),
               isGenerated: true,
               generationStrategy: 'increment',
@@ -501,16 +509,16 @@ export class MigrationExecutor {
             },
             {
               name: 'timestamp',
-              type: this.connection.driver.normalizeType({
-                type: this.connection.driver.mappedDataTypes.migrationTimestamp,
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.migrationTimestamp,
               }),
               isPrimary: false,
               isNullable: false,
             },
             {
               name: 'name',
-              type: this.connection.driver.normalizeType({
-                type: this.connection.driver.mappedDataTypes.migrationName,
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.migrationName,
               }),
               isNullable: false,
             },
@@ -526,27 +534,19 @@ export class MigrationExecutor {
   protected async loadExecutedMigrations(
     queryRunner: QueryRunner
   ): Promise<Array<Migration>> {
-    if (this.connection.driver.options.type === 'mongodb') {
-      const mongoRunner = queryRunner as MongoQueryRunner;
-      return mongoRunner
-        .cursor(this.migrationsTableName, {})
-        .sort({ _id: -1 })
-        .toArray();
-    } else {
-      const migrationsRaw: Array<ObjectLiteral> = await this.connection.manager
-        .createQueryBuilder(queryRunner)
-        .select()
-        .orderBy(this.connection.driver.escape('id'), 'DESC')
-        .from(this.migrationsTable, this.migrationsTableName)
-        .getRawMany();
-      return migrationsRaw.map((migrationRaw) => {
-        return new Migration(
-          parseInt(migrationRaw['id']),
-          parseInt(migrationRaw['timestamp']),
-          migrationRaw['name']
-        );
-      });
-    }
+    const migrationsRaw: Array<ObjectLiteral> = await this.connection.manager
+      .createQueryBuilder(queryRunner)
+      .select()
+      .orderBy(this.driver.escape('id'), 'DESC')
+      .from(this.migrationsTable, this.migrationsTableName)
+      .getRawMany();
+    return migrationsRaw.map((migrationRaw) => {
+      return new Migration(
+        parseInt(migrationRaw['id'] as string),
+        parseInt(migrationRaw['timestamp'] as string),
+        migrationRaw['name'] as string
+      );
+    });
   }
 
   /**
@@ -554,11 +554,10 @@ export class MigrationExecutor {
    */
   protected getMigrations(): Array<Migration> {
     const migrations = this.connection.migrations.map((migration) => {
-      const migrationClassName =
-        migration.name || (migration.constructor as any).name;
+      const migrationClassName = migration.name ?? migration.constructor.name;
       const migrationTimestamp = parseInt(migrationClassName.substr(-13), 10);
       if (!migrationTimestamp || isNaN(migrationTimestamp)) {
-        throw new TypeORMError(
+        throw new Error(
           `${migrationClassName} migration name is wrong. Migration class name should have a JavaScript timestamp appended.`
         );
       }
@@ -577,7 +576,7 @@ export class MigrationExecutor {
     return migrations.sort((a, b) => a.timestamp - b.timestamp);
   }
 
-  protected checkForDuplicateMigrations(migrations: Array<Migration>) {
+  protected checkForDuplicateMigrations(migrations: Array<Migration>): void {
     const migrationNames = migrations.map((migration) => migration.name);
     const duplicates = Array.from(
       new Set(
@@ -622,33 +621,12 @@ export class MigrationExecutor {
     migration: Migration
   ): Promise<void> {
     const values: ObjectLiteral = {};
-    if (this.connection.driver.options.type === 'mssql') {
-      values['timestamp'] = new MssqlParameter(
-        migration.timestamp,
-        this.connection.driver.normalizeType({
-          type: this.connection.driver.mappedDataTypes.migrationTimestamp,
-        }) as any
-      );
-      values['name'] = new MssqlParameter(
-        migration.name,
-        this.connection.driver.normalizeType({
-          type: this.connection.driver.mappedDataTypes.migrationName,
-        }) as any
-      );
-    } else {
-      values['timestamp'] = migration.timestamp;
-      values['name'] = migration.name;
-    }
-    if (this.connection.driver.options.type === 'mongodb') {
-      const mongoRunner = queryRunner as MongoQueryRunner;
-      await mongoRunner.databaseConnection
-        .db(this.connection.driver.database!)
-        .collection(this.migrationsTableName)
-        .insertOne(values);
-    } else {
-      const qb = queryRunner.manager.createQueryBuilder();
-      await qb.insert().into(this.migrationsTable).values(values).execute();
-    }
+
+    values['timestamp'] = migration.timestamp;
+    values['name'] = migration.name;
+
+    const qb = queryRunner.manager.createQueryBuilder();
+    await qb.insert().into(this.migrationsTable).values(values).execute();
   }
 
   /**
@@ -659,46 +637,24 @@ export class MigrationExecutor {
     migration: Migration
   ): Promise<void> {
     const conditions: ObjectLiteral = {};
-    if (this.connection.driver.options.type === 'mssql') {
-      conditions['timestamp'] = new MssqlParameter(
-        migration.timestamp,
-        this.connection.driver.normalizeType({
-          type: this.connection.driver.mappedDataTypes.migrationTimestamp,
-        }) as any
-      );
-      conditions['name'] = new MssqlParameter(
-        migration.name,
-        this.connection.driver.normalizeType({
-          type: this.connection.driver.mappedDataTypes.migrationName,
-        }) as any
-      );
-    } else {
-      conditions['timestamp'] = migration.timestamp;
-      conditions['name'] = migration.name;
-    }
 
-    if (this.connection.driver.options.type === 'mongodb') {
-      const mongoRunner = queryRunner as MongoQueryRunner;
-      await mongoRunner.databaseConnection
-        .db(this.connection.driver.database!)
-        .collection(this.migrationsTableName)
-        .deleteOne(conditions);
-    } else {
-      const qb = queryRunner.manager.createQueryBuilder();
-      await qb
-        .delete()
-        .from(this.migrationsTable)
-        .where(`${qb.escape('timestamp')} = :timestamp`)
-        .andWhere(`${qb.escape('name')} = :name`)
-        .setParameters(conditions)
-        .execute();
-    }
+    conditions['timestamp'] = migration.timestamp;
+    conditions['name'] = migration.name;
+
+    const qb = queryRunner.manager.createQueryBuilder();
+    await qb
+      .delete()
+      .from(this.migrationsTable)
+      .where(`${qb.escape('timestamp')} = :timestamp`)
+      .andWhere(`${qb.escape('name')} = :name`)
+      .setParameters(conditions)
+      .execute();
   }
 
-  protected async withQueryRunner<T extends any>(
+  protected async withQueryRunner<T = unknown>(
     callback: (queryRunner: QueryRunner) => T | Promise<T>
-  ) {
-    const queryRunner = this.queryRunner || this.connection.createQueryRunner();
+  ): Promise<T> {
+    const queryRunner = this.queryRunner ?? this.connection.createQueryRunner();
 
     try {
       return await callback(queryRunner);

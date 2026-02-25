@@ -10,7 +10,7 @@ import type { RelationOptions } from '../options/RelationOptions.js';
  * Entity2 on its side of the relation.
  */
 export function ManyToOne<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   options?: RelationOptions
 ): PropertyDecorator;
 
@@ -20,7 +20,7 @@ export function ManyToOne<T>(
  * Entity2 on its side of the relation.
  */
 export function ManyToOne<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSide?: string | ((object: T) => unknown),
   options?: RelationOptions
 ): PropertyDecorator;
@@ -31,7 +31,7 @@ export function ManyToOne<T>(
  * Entity2 on its side of the relation.
  */
 export function ManyToOne<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSideOrOptions?: string | ((object: T) => unknown) | RelationOptions,
   options?: RelationOptions
 ): PropertyDecorator {
@@ -68,7 +68,7 @@ export function ManyToOne<T>(
       propertyName: propertyName,
       relationType: 'many-to-one',
       isLazy: isLazy,
-      type: typeFunctionOrTarget,
+      type: typeOrTarget,
       inverseSideProperty: inverseSideProperty,
       options: options,
     } as RelationMetadataArgs);

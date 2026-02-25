@@ -1,3 +1,4 @@
+import type { TFunction } from '../../../types/utility.types.js';
 import { getMetadataArgsStorage } from '../../globals.js';
 import type { JoinColumnMetadataArgs } from '../../metadata-args/JoinColumnMetadataArgs.js';
 import type { JoinColumnOptions } from '../options/JoinColumnOptions.js';
@@ -39,12 +40,12 @@ export function JoinColumn(
       : [optionsOrOptionsArray || {}];
     options.forEach((options) => {
       getMetadataArgsStorage().joinColumns.push({
-        target: object.constructor,
+        target: object.constructor as unknown as TFunction | string,
         propertyName: propertyKey,
         name: options.name,
         referencedColumn: options.referencedColumn,
         foreignKeyConstraintName: options.foreignKeyConstraintName,
-      } as JoinColumnMetadataArgs);
+      } as unknown as JoinColumnMetadataArgs);
     });
   };
 }

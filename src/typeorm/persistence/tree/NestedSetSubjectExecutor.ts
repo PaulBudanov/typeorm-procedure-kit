@@ -1,13 +1,13 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { NestedSetMultipleRootError } from '../../error/NestedSetMultipleRootError';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { QueryRunner } from '../../query-runner/QueryRunner';
-import { OrmUtils } from '../../util/OrmUtils';
-import { Subject } from '../Subject';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { NestedSetMultipleRootError } from '../../error/NestedSetMultipleRootError.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { Subject } from '../Subject.js';
 
 class NestedSetIds {
-  left: number;
-  right: number;
+  public left!: number;
+  public right!: number;
 }
 
 /**
@@ -18,7 +18,7 @@ export class NestedSetSubjectExecutor {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(protected queryRunner: QueryRunner) {}
+  public constructor(protected queryRunner: QueryRunner) {}
 
   // -------------------------------------------------------------------------
   // Public Methods
@@ -27,8 +27,8 @@ export class NestedSetSubjectExecutor {
   /**
    * Executes operations when subject is being inserted.
    */
-  async insert(subject: Subject): Promise<void> {
-    const escape = (alias: string) =>
+  public async insert(subject: Subject): Promise<void> {
+    const escape = (alias: string): string =>
       this.queryRunner.connection.driver.escape(alias);
     const tableName = this.getTableName(subject.metadata.tablePath);
     const leftColumnName = escape(
@@ -62,9 +62,13 @@ export class NestedSetSubjectExecutor {
         .whereInIds(parentId)
         .getRawOne()
         .then((result) => {
-          const value: any = result ? result['right'] : undefined;
+          const value = result
+            ? (result as Record<string, unknown>)['right']
+            : undefined;
           // CockroachDB returns numeric types as string
-          return typeof value === 'string' ? parseInt(value) : value;
+          return typeof value === 'string'
+            ? parseInt(value)
+            : (value as number);
         });
     }
 
@@ -98,7 +102,7 @@ export class NestedSetSubjectExecutor {
   /**
    * Executes operations when subject is being updated.
    */
-  async update(subject: Subject): Promise<void> {
+  public async update(subject: Subject): Promise<void> {
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
@@ -107,15 +111,18 @@ export class NestedSetSubjectExecutor {
       parent = subject.parentSubject.entity;
 
     let entity = subject.databaseEntity; // if entity was attached via parent
-    if (!entity && parent)
+    if (!entity && parent) {
       // if entity was attached via children
-      entity = subject.metadata
-        .treeChildrenRelation!.getEntityValue(parent)
-        .find((child: any) => {
+      const childrenValue =
+        subject.metadata.treeChildrenRelation!.getEntityValue(parent);
+      entity = (childrenValue as unknown as Array<ObjectLiteral>).find(
+        (child) => {
           return Object.entries(subject.identifier!).every(
             ([key, value]) => child[key] === value
           );
-        });
+        }
+      );
+    }
 
     // Exit if the parent or the entity where never set
     if (entity === undefined || parent === undefined) {
@@ -134,7 +141,7 @@ export class NestedSetSubjectExecutor {
     }
 
     if (parent) {
-      const escape = (alias: string) =>
+      const escape = (alias: string): string =>
         this.queryRunner.connection.driver.escape(alias);
       const tableName = this.getTableName(subject.metadata.tablePath);
       const leftColumnName = escape(
@@ -228,12 +235,12 @@ export class NestedSetSubjectExecutor {
   /**
    * Executes operations when subject is being removed.
    */
-  async remove(subjects: Subject | Array<Subject>): Promise<void> {
+  public async remove(subjects: Subject | Array<Subject>): Promise<void> {
     if (!Array.isArray(subjects)) subjects = [subjects];
 
-    const metadata = subjects[0].metadata;
+    const metadata = subjects[0]!.metadata;
 
-    const escape = (alias: string) =>
+    const escape = (alias: string): string =>
       this.queryRunner.connection.driver.escape(alias);
     const tableName = this.getTableName(metadata.tablePath);
     const leftColumnName = escape(metadata.nestedSetLeftColumn!.databaseName);
@@ -298,12 +305,15 @@ export class NestedSetSubjectExecutor {
         const data: Array<NestedSetIds> = [];
 
         for (const result of results) {
-          const entry: any = {};
+          const entry: NestedSetIds = new NestedSetIds();
           for (const key of Object.keys(select)) {
-            const value = result ? result[key] : undefined;
+            const value = result
+              ? (result as Record<string, unknown>)[key]
+              : undefined;
 
             // CockroachDB returns numeric types as string
-            entry[key] = typeof value === 'string' ? parseInt(value) : value;
+            entry[key as 'left' | 'right'] =
+              typeof value === 'string' ? parseInt(value) : (value as number);
           }
           data.push(entry);
         }
@@ -314,16 +324,16 @@ export class NestedSetSubjectExecutor {
 
   private async isUniqueRootEntity(
     subject: Subject,
-    parent: any
+    parent: unknown
   ): Promise<boolean> {
-    const escape = (alias: string) =>
+    const escape = (alias: string): string =>
       this.queryRunner.connection.driver.escape(alias);
     const tableName = this.getTableName(subject.metadata.tablePath);
-    const parameters: Array<any> = [];
+    const parameters: Array<unknown> = [];
     const whereCondition = subject.metadata
       .treeParentRelation!.joinColumns.map((column) => {
         const columnName = escape(column.databaseName);
-        const parameter = column.getEntityValue(parent);
+        const parameter = column.getEntityValue(parent as ObjectLiteral);
 
         if (parameter == null) {
           return `${columnName} IS NULL`;
@@ -348,7 +358,11 @@ export class NestedSetSubjectExecutor {
       true
     );
 
-    return parseInt(result.records[0][countAlias]) === 0;
+    return (
+      parseInt(
+        (result.records[0] as Record<string, string>)[countAlias] as string
+      ) === 0
+    );
   }
 
   /**

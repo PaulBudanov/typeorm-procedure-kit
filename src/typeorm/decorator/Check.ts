@@ -1,6 +1,6 @@
-import { TypeORMError } from '../error';
-import { getMetadataArgsStorage } from '../globals';
-import { CheckMetadataArgs } from '../metadata-args/CheckMetadataArgs';
+import { TypeORMError } from '../error/TypeORMError.js';
+import { getMetadataArgsStorage } from '../globals.js';
+import type { CheckMetadataArgs } from '../metadata-args/CheckMetadataArgs.js';
 
 /**
  * Creates a database check.
@@ -34,13 +34,13 @@ export function Check(
   if (!expression) throw new TypeORMError(`Check expression is required`);
 
   return function (
-    clsOrObject: Function | object,
+    clsOrObject: ((...args: Array<unknown>) => unknown) | object,
     propertyName?: string | symbol
   ) {
     getMetadataArgsStorage().checks.push({
       target: propertyName
         ? clsOrObject.constructor
-        : (clsOrObject as Function),
+        : (clsOrObject as (...args: Array<unknown>) => unknown),
       name: name,
       expression: expression,
     } as CheckMetadataArgs);

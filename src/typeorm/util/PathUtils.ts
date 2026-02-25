@@ -11,7 +11,7 @@ export function toPortablePath(filepath: string): string {
   else if (filepath.match(UNC_WINDOWS_PATH_REGEXP))
     filepath = filepath.replace(
       UNC_WINDOWS_PATH_REGEXP,
-      (match, p1, p2) => `/unc/${p1 ? `.dot/` : ``}${p2}`
+      (_match, p1, p2) => `/unc/${p1 ? `.dot/` : ``}${p2}`
     );
 
   return filepath.replace(/\\/g, `/`);

@@ -1,4 +1,4 @@
-import { SqlInMemory } from '../driver/SqlInMemory';
+import { SqlInMemory } from '../driver/SqlInMemory.js';
 
 /**
  * Creates complete tables schemas in the database based on the entity metadatas.

@@ -1,10 +1,12 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { TypeORMError } from '../error';
-import { ObjectUtils } from '../util/ObjectUtils';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import { TypeORMError } from '../error/index.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { QueryBuilder } from './QueryBuilder';
-import { RelationRemover } from './RelationRemover';
-import { RelationUpdater } from './RelationUpdater';
+import { QueryBuilder } from './QueryBuilder.js';
+import { RelationRemover } from './RelationRemover.js';
+import { RelationUpdater } from './RelationUpdater.js';
 
 /**
  * Allows to work with entity relations and perform specific operations with those relations.
@@ -14,7 +16,18 @@ import { RelationUpdater } from './RelationUpdater';
 export class RelationQueryBuilder<
   Entity extends ObjectLiteral,
 > extends QueryBuilder<Entity> {
-  readonly '@instanceof' = Symbol.for('RelationQueryBuilder');
+  public readonly '@instanceof' = Symbol.for('RelationQueryBuilder');
+
+  // -------------------------------------------------------------------------
+  // Constructor
+  // -------------------------------------------------------------------------
+
+  public constructor(
+    connectionOrQueryBuilder: DataSource | QueryBuilder<Entity>,
+    queryRunner?: QueryRunner
+  ) {
+    super(connectionOrQueryBuilder as DataSource, queryRunner);
+  }
 
   // -------------------------------------------------------------------------
   // Public Implemented Methods
@@ -23,7 +36,7 @@ export class RelationQueryBuilder<
   /**
    * Gets generated SQL query without parameters being replaced.
    */
-  getQuery(): string {
+  public getQuery(): string {
     return '';
   }
 
@@ -34,7 +47,7 @@ export class RelationQueryBuilder<
   /**
    * Sets entity (target) which relations will be updated.
    */
-  of(entity: any | Array<any>): this {
+  public of(entity: unknown | Array<unknown>): this {
     this.expressionMap.of = entity;
     return this;
   }
@@ -45,7 +58,7 @@ export class RelationQueryBuilder<
    * Works only for many-to-one and one-to-one relations.
    * For many-to-many and one-to-many relations use #add and #remove methods instead.
    */
-  async set(value: any): Promise<void> {
+  public async set(value: unknown): Promise<void> {
     const relation = this.expressionMap.relationMetadata;
 
     if (!this.expressionMap.of)
@@ -72,7 +85,10 @@ export class RelationQueryBuilder<
         `Value to be set into the relation must be a map of relation ids, for example: .set({ firstName: "...", lastName: "..." })`
       );
 
-    const updater = new RelationUpdater(this, this.expressionMap);
+    const updater = new RelationUpdater(
+      this as unknown as QueryBuilder<ObjectLiteral>,
+      this.expressionMap
+    );
     return updater.update(value);
   }
 
@@ -83,7 +99,7 @@ export class RelationQueryBuilder<
    * Works only for many-to-many and one-to-many relations.
    * For many-to-one and one-to-one use #set method instead.
    */
-  async add(value: any | Array<any>): Promise<void> {
+  public async add(value: unknown | Array<unknown>): Promise<void> {
     if (Array.isArray(value) && value.length === 0) return;
 
     const relation = this.expressionMap.relationMetadata;
@@ -112,7 +128,10 @@ export class RelationQueryBuilder<
         `Value to be set into the relation must be a map of relation ids, for example: .set({ firstName: "...", lastName: "..." })`
       );
 
-    const updater = new RelationUpdater(this, this.expressionMap);
+    const updater = new RelationUpdater(
+      this as unknown as QueryBuilder<ObjectLiteral>,
+      this.expressionMap
+    );
     return updater.update(value);
   }
 
@@ -123,7 +142,7 @@ export class RelationQueryBuilder<
    * Works only for many-to-many and one-to-many relations.
    * For many-to-one and one-to-one use #set method instead.
    */
-  async remove(value: any | Array<any>): Promise<void> {
+  public async remove(value: unknown | Array<unknown>): Promise<void> {
     if (Array.isArray(value) && value.length === 0) return;
 
     const relation = this.expressionMap.relationMetadata;
@@ -141,8 +160,11 @@ export class RelationQueryBuilder<
           `Use .set(null) method instead.`
       );
 
-    const remover = new RelationRemover(this, this.expressionMap);
-    return remover.remove(value);
+    const remover = new RelationRemover(
+      this as unknown as QueryBuilder<ObjectLiteral>,
+      this.expressionMap
+    );
+    return remover.remove(value as Array<unknown>);
   }
 
   /**
@@ -152,9 +174,9 @@ export class RelationQueryBuilder<
    * Works only for many-to-many and one-to-many relations.
    * For many-to-one and one-to-one use #set method instead.
    */
-  async addAndRemove(
-    added: any | Array<any>,
-    removed: any | Array<any>
+  public async addAndRemove(
+    added: unknown | Array<unknown>,
+    removed: unknown | Array<unknown>
   ): Promise<void> {
     await this.remove(removed);
     await this.add(added);
@@ -162,7 +184,7 @@ export class RelationQueryBuilder<
 
   /**
      * Gets entity's relation id.
-    async getId(): Promise<any> {
+    async getId(): Promise<unknown> {
 
     }*/
 
@@ -176,7 +198,7 @@ export class RelationQueryBuilder<
    * Loads a single entity (relational) from the relation.
    * You can also provide id of relational entity to filter by.
    */
-  async loadOne<T = any>(): Promise<T | undefined> {
+  public async loadOne<T = unknown>(): Promise<T | undefined> {
     return this.loadMany<T>().then((results) => results[0]);
   }
 
@@ -184,7 +206,7 @@ export class RelationQueryBuilder<
    * Loads many entities (relational) from the relation.
    * You can also provide ids of relational entities to filter by.
    */
-  async loadMany<T = any>(): Promise<Array<T>> {
+  public async loadMany<T = unknown>(): Promise<Array<T>> {
     let of = this.expressionMap.of;
     if (!ObjectUtils.isObject(of)) {
       const metadata = this.expressionMap.mainAlias!.metadata;
@@ -193,13 +215,15 @@ export class RelationQueryBuilder<
           `Cannot load entity because only one primary key was specified, however entity contains multiple primary keys`
         );
 
-      of = metadata.primaryColumns[0].createValueMap(of);
+      of = metadata.primaryColumns[0]!.createValueMap(of);
     }
 
-    return this.connection.relationLoader.load(
-      this.expressionMap.relationMetadata,
-      of,
-      this.queryRunner
-    );
+    const connection = this.connection!;
+    const relationLoader = connection.relationLoader;
+    return relationLoader.load(
+      this.expressionMap.relationMetadata!,
+      of as ObjectLiteral,
+      this.queryRunner!
+    ) as Promise<Array<T>>;
   }
 }

@@ -1,7 +1,7 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { RelationMetadata } from '../../metadata/RelationMetadata';
-import { OrmUtils } from '../../util/OrmUtils';
-import { Subject } from '../Subject';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { Subject } from '../Subject.js';
 
 /**
  * Builds operations needs to be executed for one-to-one non-owner relations of the given subjects.
@@ -19,7 +19,7 @@ export class OneToOneInverseSideSubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected subjects: Array<Subject>) {}
+  public constructor(protected subjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods
@@ -28,7 +28,7 @@ export class OneToOneInverseSideSubjectBuilder {
   /**
    * Builds all required operations.
    */
-  build(): void {
+  public build(): void {
     this.subjects.forEach((subject) => {
       subject.metadata.oneToOneRelations.forEach((relation) => {
         // we don't need owning relations, this operation is only for inverse side of one-to-one relations
@@ -52,7 +52,7 @@ export class OneToOneInverseSideSubjectBuilder {
   protected buildForSubjectRelation(
     subject: Subject,
     relation: RelationMetadata
-  ) {
+  ): void {
     // prepare objects (relation id map) for the database entity
     // note: subject.databaseEntity contains relation with loaded relation id only (id map)
     // by example: since subject is a post, we are expecting to get post's category saved in the database here,
@@ -62,13 +62,14 @@ export class OneToOneInverseSideSubjectBuilder {
       // related entity in the database can exist only if this entity (post) is saved
       relatedEntityDatabaseRelationId = relation.getEntityValue(
         subject.databaseEntity
-      );
+      ) as ObjectLiteral | undefined;
 
     // get related entities of persisted entity
     // by example: get category from the passed to persist post entity
-    const relatedEntity: ObjectLiteral | null = relation.getEntityValue(
-      subject.entity!
-    ); // by example: relatedEntity is a category here
+    const relatedEntity = relation.getEntityValue(subject.entity!) as
+      | ObjectLiteral
+      | null
+      | undefined; // by example: relatedEntity is a category here
     if (relatedEntity === undefined)
       // if relation is undefined then nothing to update
       return;

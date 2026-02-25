@@ -28,7 +28,7 @@ export class RelationIdMetadata {
   /**
    * Relation name which need to count.
    */
-  public relationNameOrFactory: string | ((object: unknown) => unknown);
+  public relationNameOrFactory: string | ((object: ObjectLiteral) => unknown);
 
   /**
    * Target class to which metadata is applied.
@@ -49,8 +49,8 @@ export class RelationIdMetadata {
    * Extra condition applied to "ON" section of join.
    */
   public queryBuilderFactory?: (
-    qb: SelectQueryBuilder<unknown>
-  ) => SelectQueryBuilder<unknown>;
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>;
 
   // ---------------------------------------------------------------------
   // Constructor

@@ -4,6 +4,9 @@ import type { PostgresConnectionOptions } from '../driver/postgres/PostgresConne
 /**
  * DataSourceOptions is an interface with settings and options for specific DataSource.
  */
-export type DataSourceOptions =
+export type DataSourceOptions = (
   | PostgresConnectionOptions
-  | OracleConnectionOptions;
+  | OracleConnectionOptions
+) & {
+  isQuotingDisabled?: boolean;
+};

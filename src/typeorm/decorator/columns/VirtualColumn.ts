@@ -1,8 +1,10 @@
-import { ColumnType } from '../../driver/types/ColumnTypes';
-import { ColumnTypeUndefinedError } from '../../error';
-import { getMetadataArgsStorage } from '../../globals';
-import { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs';
-import { VirtualColumnOptions } from '../options/VirtualColumnOptions';
+import type { TFunction } from '../../../types/utility.types.js';
+import type { ColumnType } from '../../driver/types/ColumnTypes.js';
+import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError.js';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
+import type { VirtualColumnOptions } from '../options/VirtualColumnOptions.js';
+
 /**
  * VirtualColumn decorator is used to mark a specific class property as a Virtual column.
  */
@@ -23,7 +25,7 @@ export function VirtualColumn(
   typeOrOptions?: ColumnType | VirtualColumnOptions,
   options?: VirtualColumnOptions
 ): PropertyDecorator {
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     // normalize parameters
     let type: ColumnType | undefined;
     if (typeof typeOrOptions === 'string') {
@@ -38,10 +40,16 @@ export function VirtualColumn(
     }
 
     // if type is not given explicitly then try to guess it
-    const reflectMetadataType =
-      Reflect && (Reflect as any).getMetadata
-        ? (Reflect as any).getMetadata('design:type', object, propertyName)
-        : undefined;
+    const reflectMetadataType: ColumnType | undefined = (():
+      | ColumnType
+      | undefined => {
+      if (!Reflect) return undefined;
+      const reflect = Reflect as Record<string, TFunction>;
+      if (typeof reflect.getMetadata !== 'function') return undefined;
+      return reflect.getMetadata('design:type', object, propertyName) as
+        | ColumnType
+        | undefined;
+    })();
     if (!type && reflectMetadataType)
       // if type is not given explicitly then try to guess it
       type = reflectMetadataType;
@@ -51,16 +59,17 @@ export function VirtualColumn(
 
     // specify HSTORE type if column is HSTORE
     if (options.type === 'hstore' && !options.hstoreType)
-      options.hstoreType = reflectMetadataType === Object ? 'object' : 'string';
+      options.hstoreType = 'string';
 
     // if we still don't have a type then we need to give error to user that type is required
-    if (!options.type) throw new ColumnTypeUndefinedError(object, propertyName);
+    if (!options.type)
+      throw new ColumnTypeUndefinedError(object, propertyName.toString());
 
     getMetadataArgsStorage().columns.push({
       target: object.constructor,
-      propertyName: propertyName,
+      propertyName: propertyName.toString(),
       mode: 'virtual-property',
-      options: options || {},
+      options: options ?? {},
     } as ColumnMetadataArgs);
   };
 }

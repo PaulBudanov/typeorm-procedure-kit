@@ -1,7 +1,7 @@
-import { DataSource } from '../../data-source/DataSource';
-import { EntityManager } from '../../entity-manager/EntityManager';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { QueryRunner } from '../../query-runner/QueryRunner';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**
  * RemoveEvent is an object that broadcaster sends to the entity subscriber when entity is being removed to the database.
@@ -43,5 +43,5 @@ export interface RemoveEvent<Entity> {
   /**
    * Id or ids of the entity that is being removed.
    */
-  entityId?: any;
+  entityId?: unknown;
 }

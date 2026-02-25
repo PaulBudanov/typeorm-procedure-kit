@@ -1,3 +1,5 @@
-import { ObjectId } from '../driver/mongodb/typings';
-
-export type EntityId = string | number | Date | ObjectId;
+/**
+ * Entity ID type supporting Oracle and PostgreSQL only.
+ * MongoDB ObjectId is not supported in this library.
+ */
+export type EntityId = string | number | Date;

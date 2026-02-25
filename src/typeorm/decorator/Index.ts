@@ -1,8 +1,12 @@
-import { getMetadataArgsStorage } from '../globals';
-import { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs';
-import { ObjectUtils } from '../util/ObjectUtils';
+import { getMetadataArgsStorage } from '../globals.js';
+import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { IndexOptions } from './options/IndexOptions';
+import type { IndexOptions } from './options/IndexOptions.js';
+
+type FieldsFunction = (
+  object?: unknown
+) => Array<unknown> | Record<string, number>;
 
 /**
  * Creates a database index.
@@ -50,17 +54,7 @@ export function Index(
  * Can create indices with composite columns when used on entity.
  */
 export function Index(
-  fields: Array<string>,
-  options?: IndexOptions
-): ClassDecorator & PropertyDecorator;
-
-/**
- * Creates a database index.
- * Can be used on entity property or on entity.
- * Can create indices with composite columns when used on entity.
- */
-export function Index(
-  fields: (object?: any) => Array<any> | Record<string, number>,
+  fields: FieldsFunction,
   options?: IndexOptions
 ): ClassDecorator & PropertyDecorator;
 
@@ -71,7 +65,7 @@ export function Index(
  */
 export function Index(
   name: string,
-  fields: (object?: any) => Array<any> | Record<string, number>,
+  fields: FieldsFunction,
   options?: IndexOptions
 ): ClassDecorator & PropertyDecorator;
 
@@ -84,10 +78,10 @@ export function Index(
   nameOrFieldsOrOptions?:
     | string
     | Array<string>
-    | ((object: any) => Array<any> | Record<string, number>)
+    | FieldsFunction
     | IndexOptions,
   maybeFieldsOrOptions?:
-    | ((object?: any) => Array<any> | Record<string, number>)
+    | FieldsFunction
     | IndexOptions
     | Array<string>
     | { synchronize: false },
@@ -100,9 +94,7 @@ export function Index(
       : undefined;
   const fields =
     typeof nameOrFieldsOrOptions === 'string'
-      ? (maybeFieldsOrOptions as
-          | ((object?: any) => Array<any> | Record<string, number>)
-          | Array<string>)
+      ? (maybeFieldsOrOptions as FieldsFunction | Array<string>)
       : (nameOrFieldsOrOptions as Array<string>);
   let options =
     ObjectUtils.isObject(nameOrFieldsOrOptions) &&
@@ -117,13 +109,13 @@ export function Index(
         : maybeOptions;
 
   return function (
-    clsOrObject: Function | object,
+    clsOrObject: ((...args: Array<unknown>) => unknown) | object,
     propertyName?: string | symbol
   ) {
     getMetadataArgsStorage().indices.push({
       target: propertyName
         ? clsOrObject.constructor
-        : (clsOrObject as Function),
+        : (clsOrObject as (...args: Array<unknown>) => unknown),
       name: name,
       columns: propertyName ? [propertyName] : fields,
       synchronize:

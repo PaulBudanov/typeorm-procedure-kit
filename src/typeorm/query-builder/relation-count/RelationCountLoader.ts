@@ -1,16 +1,16 @@
-import { DataSource } from '../../data-source/DataSource';
-import { ColumnMetadata } from '../../metadata/ColumnMetadata';
-import { QueryRunner } from '../../query-runner/QueryRunner';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
-import { RelationCountAttribute } from './RelationCountAttribute';
-import { RelationCountLoadResult } from './RelationCountLoadResult';
+import type { RelationCountAttribute } from './RelationCountAttribute.js';
+import type { RelationCountLoadResult } from './RelationCountLoadResult.js';
 
 export class RelationCountLoader {
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     protected connection: DataSource,
     protected queryRunner: QueryRunner | undefined,
     protected relationCountAttributes: Array<RelationCountAttribute>
@@ -20,8 +20,14 @@ export class RelationCountLoader {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  async load(rawEntities: Array<any>): Promise<Array<RelationCountLoadResult>> {
-    const onlyUnique = (value: any, index: number, self: any) => {
+  public async load(
+    rawEntities: Array<unknown>
+  ): Promise<Array<RelationCountLoadResult>> {
+    const onlyUnique = (
+      value: unknown,
+      index: number,
+      self: Array<unknown>
+    ): boolean => {
       return self.indexOf(value) === index;
     };
 
@@ -36,7 +42,7 @@ export class RelationCountLoader {
           const relation = relationCountAttr.relation; // "category.posts"
           const inverseRelation = relation.inverseRelation!; // "post.category"
           const referenceColumnName =
-            inverseRelation.joinColumns[0].referencedColumn!.propertyName; // post id
+            inverseRelation.joinColumns[0]!.referencedColumn!.propertyName; // post id
           const inverseSideTable = relation.inverseEntityMetadata.target; // Post
           const inverseSideTableName = relation.inverseEntityMetadata.tableName; // post
           const inverseSideTableAlias =
@@ -46,7 +52,7 @@ export class RelationCountLoader {
           let referenceColumnValues = rawEntities
             .map(
               (rawEntity) =>
-                rawEntity[
+                (rawEntity as Record<string, unknown>)[
                   relationCountAttr.parentAlias + '_' + referenceColumnName
                 ]
             )
@@ -85,7 +91,10 @@ export class RelationCountLoader {
 
           return {
             relationCountAttribute: relationCountAttr,
-            results: await qb.getRawMany(),
+            results: (await qb.getRawMany()) as Array<{
+              cnt: unknown;
+              parentId: unknown;
+            }>,
           };
         } else {
           // example: Post and Category
@@ -95,38 +104,38 @@ export class RelationCountLoader {
 
           let joinTableColumnName: string;
           let inverseJoinColumnName: string;
-          let firstJunctionColumn: ColumnMetadata;
-          let secondJunctionColumn: ColumnMetadata;
+          let firstJunctionColumn!: ColumnMetadata;
+          let secondJunctionColumn!: ColumnMetadata;
 
           if (relationCountAttr.relation.isOwning) {
             // todo fix joinColumns[0] and inverseJoinColumns[0].
             joinTableColumnName =
-              relationCountAttr.relation.joinColumns[0].referencedColumn!
+              relationCountAttr.relation.joinColumns[0]!.referencedColumn!
                 .databaseName;
             inverseJoinColumnName =
-              relationCountAttr.relation.inverseJoinColumns[0].referencedColumn!
-                .databaseName;
+              relationCountAttr.relation.inverseJoinColumns[0]!
+                .referencedColumn!.databaseName;
             firstJunctionColumn =
-              relationCountAttr.relation.junctionEntityMetadata!.columns[0];
+              relationCountAttr.relation.junctionEntityMetadata!.columns[0]!;
             secondJunctionColumn =
-              relationCountAttr.relation.junctionEntityMetadata!.columns[1];
+              relationCountAttr.relation.junctionEntityMetadata!.columns[1]!;
           } else {
             joinTableColumnName =
-              relationCountAttr.relation.inverseRelation!.inverseJoinColumns[0]
+              relationCountAttr.relation.inverseRelation!.inverseJoinColumns[0]!
                 .referencedColumn!.databaseName;
             inverseJoinColumnName =
-              relationCountAttr.relation.inverseRelation!.joinColumns[0]
+              relationCountAttr.relation.inverseRelation!.joinColumns[0]!
                 .referencedColumn!.databaseName;
             firstJunctionColumn =
-              relationCountAttr.relation.junctionEntityMetadata!.columns[1];
+              relationCountAttr.relation.junctionEntityMetadata!.columns[1]!;
             secondJunctionColumn =
-              relationCountAttr.relation.junctionEntityMetadata!.columns[0];
+              relationCountAttr.relation.junctionEntityMetadata!.columns[0]!;
           }
 
           let referenceColumnValues = rawEntities
             .map(
               (rawEntity) =>
-                rawEntity[
+                (rawEntity as Record<string, unknown>)[
                   relationCountAttr.parentAlias + '_' + joinTableColumnName
                 ]
             )
@@ -155,7 +164,7 @@ export class RelationCountLoader {
             firstJunctionColumn.propertyName +
             ' IN (' +
             referenceColumnValues.map((vals) =>
-              isNaN(vals) ? "'" + vals + "'" : vals
+              isNaN(vals as number) ? "'" + vals + "'" : vals
             ) +
             ')' +
             ' AND ' +
@@ -190,7 +199,10 @@ export class RelationCountLoader {
 
           return {
             relationCountAttribute: relationCountAttr,
-            results: await qb.getRawMany(),
+            results: (await qb.getRawMany()) as Array<{
+              cnt: unknown;
+              parentId: unknown;
+            }>,
           };
         }
       }

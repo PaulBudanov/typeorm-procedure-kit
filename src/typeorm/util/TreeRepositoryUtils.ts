@@ -1,3 +1,4 @@
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { EntityManager } from '../entity-manager/EntityManager.js';
 import { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { FindTreesOptions } from '../repository/FindTreesOptions.js';
@@ -43,8 +44,8 @@ export class TreeRepositoryUtils {
 
   public static buildChildrenEntityTree(
     metadata: EntityMetadata,
-    entity: unknown,
-    entities: Array<unknown>,
+    entity: ObjectLiteral,
+    entities: Array<ObjectLiteral>,
     relationMaps: Array<{ id: unknown; parentId: unknown }>,
     options: FindTreesOptions & { depth: number }
   ): void {
@@ -53,9 +54,9 @@ export class TreeRepositoryUtils {
       entity[childProperty] = [];
       return;
     }
-    const joinColumn = metadata.treeParentRelation!.joinColumns[0];
+    const joinColumn = metadata.treeParentRelation!.joinColumns[0]!;
     const referencedColumn =
-      joinColumn.referencedColumn ?? metadata.primaryColumns[0];
+      joinColumn.referencedColumn ?? metadata.primaryColumns[0]!;
     const parentEntityId = referencedColumn.getEntityValue(entity);
     const childRelationMaps = relationMaps.filter(
       (relationMap) => relationMap.parentId === parentEntityId
@@ -66,7 +67,7 @@ export class TreeRepositoryUtils {
     entity[childProperty] = entities.filter((entity) =>
       childIds.has(referencedColumn.getEntityValue(entity))
     );
-    entity[childProperty].forEach((childEntity: unknown) => {
+    (entity[childProperty] as Array<ObjectLiteral>).forEach((childEntity) => {
       TreeRepositoryUtils.buildChildrenEntityTree(
         metadata,
         childEntity,
@@ -82,14 +83,14 @@ export class TreeRepositoryUtils {
 
   public static buildParentEntityTree(
     metadata: EntityMetadata,
-    entity: unknown,
-    entities: Array<unknown>,
+    entity: ObjectLiteral,
+    entities: Array<ObjectLiteral>,
     relationMaps: Array<{ id: unknown; parentId: unknown }>
   ): void {
     const parentProperty = metadata.treeParentRelation!.propertyName;
-    const joinColumn = metadata.treeParentRelation!.joinColumns[0];
+    const joinColumn = metadata.treeParentRelation!.joinColumns[0]!;
     const referencedColumn =
-      joinColumn.referencedColumn ?? metadata.primaryColumns[0];
+      joinColumn.referencedColumn ?? metadata.primaryColumns[0]!;
     const entityId = referencedColumn.getEntityValue(entity);
     const parentRelationMap = relationMaps.find(
       (relationMap) => relationMap.id === entityId
@@ -105,7 +106,7 @@ export class TreeRepositoryUtils {
       entity[parentProperty] = parentEntity;
       TreeRepositoryUtils.buildParentEntityTree(
         metadata,
-        entity[parentProperty],
+        entity[parentProperty] as ObjectLiteral,
         entities,
         relationMaps
       );

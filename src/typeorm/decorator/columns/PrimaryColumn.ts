@@ -1,10 +1,10 @@
-import { ColumnType } from '../../driver/types/ColumnTypes';
-import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError';
-import { PrimaryColumnCannotBeNullableError } from '../../error/PrimaryColumnCannotBeNullableError';
-import { getMetadataArgsStorage } from '../../globals';
-import { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs';
-import { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs';
-import { ColumnOptions } from '../options/ColumnOptions';
+import type { TFunction } from '../../../types/utility.types.js';
+import type { ColumnType } from '../../driver/types/ColumnTypes.js';
+import { PrimaryColumnCannotBeNullableError } from '../../error/PrimaryColumnCannotBeNullableError.js';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
+import type { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs.js';
+import type { ColumnOptions } from '../options/ColumnOptions.js';
 
 /**
  * Describes all primary key column's options.
@@ -40,7 +40,7 @@ export function PrimaryColumn(
   typeOrOptions?: ColumnType | PrimaryColumnOptions,
   options?: PrimaryColumnOptions
 ): PropertyDecorator {
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     // normalize parameters
     let type: ColumnType | undefined;
     if (
@@ -53,24 +53,30 @@ export function PrimaryColumn(
     } else {
       options = Object.assign({}, typeOrOptions as PrimaryColumnOptions);
     }
-    if (!options) options = {} as PrimaryColumnOptions;
+    if (!options) options = {};
 
     // if type is not given explicitly then try to guess it
-    const reflectMetadataType =
-      Reflect && (Reflect as any).getMetadata
-        ? (Reflect as any).getMetadata('design:type', object, propertyName)
-        : undefined;
+    const reflectMetadataType: ColumnType | undefined = (():
+      | ColumnType
+      | undefined => {
+      if (!Reflect) return undefined;
+      const reflect = Reflect as Record<string, TFunction>;
+      if (typeof reflect.getMetadata !== 'function') return undefined;
+      return reflect.getMetadata('design:type', object, propertyName) as
+        | ColumnType
+        | undefined;
+    })();
     if (!type && reflectMetadataType) type = reflectMetadataType;
 
     // check if there is no type in column options then set type from first function argument, or guessed one
     if (!options.type && type) options.type = type;
 
-    // if we still don't have a type then we need to give error to user that type is required
-    if (!options.type) throw new ColumnTypeUndefinedError(object, propertyName);
-
     // check if column is not nullable, because we cannot allow a primary key to be nullable
     if (options.nullable)
-      throw new PrimaryColumnCannotBeNullableError(object, propertyName);
+      throw new PrimaryColumnCannotBeNullableError(
+        object,
+        propertyName.toString()
+      );
 
     // explicitly set a primary to column options
     options.primary = true;
@@ -78,7 +84,7 @@ export function PrimaryColumn(
     // create and register a new column metadata
     getMetadataArgsStorage().columns.push({
       target: object.constructor,
-      propertyName: propertyName,
+      propertyName: propertyName.toString(),
       mode: 'regular',
       options: options,
     } as ColumnMetadataArgs);
@@ -86,7 +92,7 @@ export function PrimaryColumn(
     if (options.generated) {
       getMetadataArgsStorage().generations.push({
         target: object.constructor,
-        propertyName: propertyName,
+        propertyName: propertyName.toString(),
         strategy:
           typeof options.generated === 'string'
             ? options.generated

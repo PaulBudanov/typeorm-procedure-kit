@@ -1,8 +1,15 @@
-import { getMetadataArgsStorage } from '../globals';
-import { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs';
-import { ObjectUtils } from '../util/ObjectUtils';
+import { getMetadataArgsStorage } from '../globals.js';
+import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { UniqueOptions } from './options/UniqueOptions';
+import type { UniqueOptions } from './options/UniqueOptions.js';
+
+type FieldsFunction = (
+  object?: unknown
+) => Array<unknown> | Record<string, number>;
+
+// Type alias to avoid ESLint no-unsafe-function-type
+type AnyFunction = (...args: Array<unknown>) => unknown;
 
 /**
  * Composite unique constraint must be set on entity classes and must specify entity's fields to be unique.
@@ -25,7 +32,7 @@ export function Unique(
  * Composite unique constraint must be set on entity classes and must specify entity's fields to be unique.
  */
 export function Unique(
-  fields: (object?: any) => Array<any> | Record<string, number>,
+  fields: FieldsFunction,
   options?: UniqueOptions
 ): ClassDecorator & PropertyDecorator;
 
@@ -34,7 +41,7 @@ export function Unique(
  */
 export function Unique(
   name: string,
-  fields: (object?: any) => Array<any> | Record<string, number>,
+  fields: FieldsFunction,
   options?: UniqueOptions
 ): ClassDecorator & PropertyDecorator;
 
@@ -45,12 +52,9 @@ export function Unique(
   nameOrFieldsOrOptions?:
     | string
     | Array<string>
-    | ((object: any) => Array<any> | Record<string, number>)
+    | FieldsFunction
     | UniqueOptions,
-  maybeFieldsOrOptions?:
-    | ((object?: any) => Array<any> | Record<string, number>)
-    | Array<string>
-    | UniqueOptions,
+  maybeFieldsOrOptions?: FieldsFunction | Array<string> | UniqueOptions,
   maybeOptions?: UniqueOptions
 ): ClassDecorator & PropertyDecorator {
   const name =
@@ -59,9 +63,7 @@ export function Unique(
       : undefined;
   const fields =
     typeof nameOrFieldsOrOptions === 'string'
-      ? (maybeFieldsOrOptions as
-          | ((object?: any) => Array<any> | Record<string, number>)
-          | Array<string>)
+      ? (maybeFieldsOrOptions as FieldsFunction | Array<string>)
       : (nameOrFieldsOrOptions as Array<string>);
   let options =
     ObjectUtils.isObject(nameOrFieldsOrOptions) &&
@@ -75,10 +77,10 @@ export function Unique(
         ? (maybeFieldsOrOptions as UniqueOptions)
         : maybeOptions;
 
-  return function (
-    clsOrObject: Function | object,
+  return function <T extends AnyFunction | object>(
+    clsOrObject: T,
     propertyName?: string | symbol
-  ) {
+  ): void {
     let columns = fields;
 
     if (propertyName !== undefined) {
@@ -93,14 +95,13 @@ export function Unique(
       }
     }
 
-    const args: UniqueMetadataArgs = {
+    getMetadataArgsStorage().uniques.push({
       target: propertyName
-        ? clsOrObject.constructor
-        : (clsOrObject as Function),
+        ? (clsOrObject.constructor as unknown)
+        : (clsOrObject as unknown),
       name: name,
       columns,
       deferrable: options ? options.deferrable : undefined,
-    };
-    getMetadataArgsStorage().uniques.push(args);
+    } as unknown as UniqueMetadataArgs);
   };
 }

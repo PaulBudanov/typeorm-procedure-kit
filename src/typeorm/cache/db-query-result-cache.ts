@@ -37,7 +37,7 @@ export class DbQueryResultCache implements QueryResultCache {
 
     this.queryResultCacheDatabase = database;
     this.queryResultCacheSchema = this.driver.schema;
-    this.queryResultCacheTable = this.connection.driver.buildTableName(
+    this.queryResultCacheTable = this.driver.buildTableName(
       cacheTableName,
       this.driver.schema,
       database
@@ -122,15 +122,12 @@ export class DbQueryResultCache implements QueryResultCache {
       return qb
         .where(`${qb.escape('cache')}.${qb.escape('identifier')} = :identifier`)
         .setParameters({
-          identifier:
-            this.connection.driver.options.type === 'mssql'
-              ? new MssqlParameter(options.identifier, 'nvarchar')
-              : options.identifier,
+          identifier: options.identifier,
         })
         .cache(false)
         .getRawOne();
     } else if (options.query) {
-      if (this.connection.driver.options.type === 'oracle') {
+      if (this.driver.options.type === 'oracle') {
         return qb
           .where(
             `dbms_lob.compare(${qb.escape('cache')}.${qb.escape(
@@ -145,10 +142,7 @@ export class DbQueryResultCache implements QueryResultCache {
       return qb
         .where(`${qb.escape('cache')}.${qb.escape('query')} = :query`)
         .setParameters({
-          query:
-            this.connection.driver.options.type === 'mssql'
-              ? new MssqlParameter(options.query, 'nvarchar')
-              : options.query,
+          query: options.query,
         })
         .cache(false)
         .getRawOne();
@@ -172,6 +166,7 @@ export class DbQueryResultCache implements QueryResultCache {
   }
 
   public async storeInCache(
+    options: QueryResultCacheOptions,
     savedCache: QueryResultCacheOptions | undefined,
     queryRunner?: QueryRunner
   ): Promise<void> {
@@ -183,43 +178,42 @@ export class DbQueryResultCache implements QueryResultCache {
     }
     if (savedCache && savedCache.identifier) {
       // if exist then update
-      const qb = queryRunner.manager
+      const qb = queryRunner!.manager
         .createQueryBuilder()
         .update(this.queryResultCacheTable)
-        .set(insertedValues);
+        .set(options);
 
       qb.where(`${qb.escape('identifier')} = :condition`, {
-        condition: insertedValues.identifier,
+        condition: options.identifier,
       });
       await qb.execute();
     } else if (savedCache && savedCache.query) {
-      const qb = queryRunner.manager
+      const qb = queryRunner!.manager
         .createQueryBuilder()
         .update(this.queryResultCacheTable)
-        .set(insertedValues);
+        .set(options);
 
-      if (this.connection.driver.options.type === 'oracle') {
+      if (this.driver.options.type === 'oracle') {
         qb.where(`dbms_lob.compare("query", :condition) = 0`, {
-          condition: insertedValues.query,
+          condition: options.query,
         });
       } else {
         qb.where(`${qb.escape('query')} = :condition`, {
-          condition: insertedValues.query,
+          condition: options.query,
         });
       }
 
       await qb.execute();
     } else {
-      // otherwise insert
-      await queryRunner.manager
+      await queryRunner!.manager
         .createQueryBuilder()
         .insert()
         .into(this.queryResultCacheTable)
-        .values(insertedValues)
+        .values(options)
         .execute();
     }
     if (shouldCreateQueryRunner) {
-      await queryRunner.release();
+      await queryRunner!.release();
     }
   }
 

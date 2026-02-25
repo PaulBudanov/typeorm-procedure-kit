@@ -1,5 +1,3 @@
-import { ObjectId } from '../driver/mongodb/typings';
-
 /**
  * A single property handler for FindOptionsOrder.
  */
@@ -8,7 +6,7 @@ export type FindOptionsOrderProperty<Property> =
     ? FindOptionsOrderProperty<NonNullable<I>>
     : Property extends Array<infer I>
       ? FindOptionsOrderProperty<NonNullable<I>>
-      : Property extends Function
+      : Property extends () => unknown
         ? never
         : Property extends string
           ? FindOptionsOrderValue
@@ -20,11 +18,9 @@ export type FindOptionsOrderProperty<Property> =
                 ? FindOptionsOrderValue
                 : Property extends Date
                   ? FindOptionsOrderValue
-                  : Property extends ObjectId
-                    ? FindOptionsOrderValue
-                    : Property extends object
-                      ? FindOptionsOrder<Property> | FindOptionsOrderValue
-                      : FindOptionsOrderValue;
+                  : Property extends object
+                    ? FindOptionsOrder<Property> | FindOptionsOrderValue
+                    : FindOptionsOrderValue;
 
 /**
  * Order by find options.

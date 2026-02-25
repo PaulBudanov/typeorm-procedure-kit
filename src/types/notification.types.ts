@@ -22,7 +22,7 @@ export type TOracleNormilizeOptionsNotify = Omit<
   operations?: number;
 };
 
-export type INotifyPackageCallback =
+export type TNotifyPackageCallback =
   | Array<INotifyPackageCallbackOracle>
   | INotifyPackageCallbackPostgre;
 

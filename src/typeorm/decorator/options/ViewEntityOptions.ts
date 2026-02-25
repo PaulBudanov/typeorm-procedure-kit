@@ -2,8 +2,9 @@
  * Describes all entity view's options.
  */
 import type { TFunction } from '../../../types/utility.types.js';
-import { DataSource } from '../../data-source/DataSource.js';
-import { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 
 export interface ViewEntityOptions {
   /**
@@ -17,7 +18,7 @@ export interface ViewEntityOptions {
    */
   expression?:
     | string
-    | ((connection: DataSource) => SelectQueryBuilder<unknown>);
+    | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
 
   /**
    * Database name. Used in Mysql and Sql Server.

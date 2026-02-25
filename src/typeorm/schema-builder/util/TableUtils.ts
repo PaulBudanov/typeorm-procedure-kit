@@ -1,9 +1,9 @@
-import { Driver } from '../../driver/Driver';
-import { ColumnMetadata } from '../../metadata/ColumnMetadata';
-import { TableColumnOptions } from '../options/TableColumnOptions';
+import type { Driver } from '../../driver/Driver.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { TableColumnOptions } from '../options/TableColumnOptions.js';
 
 export class TableUtils {
-  static createTableColumnOptions(
+  public static createTableColumnOptions(
     columnMetadata: ColumnMetadata,
     driver: Driver
   ): TableColumnOptions {

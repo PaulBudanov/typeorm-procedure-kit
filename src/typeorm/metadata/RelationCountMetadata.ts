@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import type { RelationCountMetadataArgs } from '../metadata-args/RelationCountMetadataArgs.js';
 import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
@@ -27,7 +28,7 @@ export class RelationCountMetadata {
   /**
    * Relation name which need to count.
    */
-  public relationNameOrFactory: string | ((object: unknown) => unknown);
+  public relationNameOrFactory: string | ((object: ObjectLiteral) => unknown);
 
   /**
    * Target class to which metadata is applied.
@@ -48,8 +49,8 @@ export class RelationCountMetadata {
    * Extra condition applied to "ON" section of join.
    */
   public queryBuilderFactory?: (
-    qb: SelectQueryBuilder<unknown>
-  ) => SelectQueryBuilder<unknown>;
+    qb: SelectQueryBuilder<ObjectLiteral>
+  ) => SelectQueryBuilder<ObjectLiteral>;
 
   // ---------------------------------------------------------------------
   // Constructor

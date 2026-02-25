@@ -1,11 +1,11 @@
-import { DataSource } from '../../data-source/DataSource';
-import { EntityManager } from '../../entity-manager/EntityManager';
-import { QueryRunner } from '../../query-runner/QueryRunner';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**
  * BeforeQueryEvent is an object that broadcaster sends to the entity subscriber before query is ran against the database.
  */
-export interface QueryEvent<Entity> {
+export interface QueryEvent {
   /**
    * Connection used in the event.
    */
@@ -31,12 +31,12 @@ export interface QueryEvent<Entity> {
   /**
    * Parameters used in the query.
    */
-  parameters?: Array<any>;
+  parameters?: Array<unknown>;
 }
 
-export interface BeforeQueryEvent<Entity> extends QueryEvent<Entity> {}
+export type BeforeQueryEvent = QueryEvent;
 
-export interface AfterQueryEvent<Entity> extends QueryEvent<Entity> {
+export interface AfterQueryEvent extends QueryEvent {
   /**
    * Whether the query was successful.
    */
@@ -50,10 +50,10 @@ export interface AfterQueryEvent<Entity> extends QueryEvent<Entity> {
   /**
    * The raw results from the database if the query was successful.
    */
-  rawResults?: any;
+  rawResults?: unknown;
 
   /**
    * The error thrown if the query was unsuccessful.
    */
-  error?: any;
+  error?: unknown;
 }

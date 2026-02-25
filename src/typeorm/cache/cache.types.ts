@@ -9,6 +9,7 @@ export interface QueryResultCache {
   ): Promise<QueryResultCacheOptions | void>;
 
   storeInCache(
+    options: QueryResultCacheOptions,
     savedCache: QueryResultCacheOptions | void,
     queryRunner?: QueryRunner
   ): Promise<void>;

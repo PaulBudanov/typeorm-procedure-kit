@@ -56,6 +56,20 @@ export type WithLengthColumnType =
   | 'halfvec'; // postgres
 
 /**
+ * Column types that can be unsigned. Works only for MySQL.
+ */
+export type UnsignedColumnType =
+  | 'tinyint'
+  | 'smallint'
+  | 'mediumint'
+  | 'int'
+  | 'integer'
+  | 'bigint'
+  | 'float'
+  | 'double'
+  | 'decimal';
+
+/**
  * All other regular column types.
  */
 export type SimpleColumnType =
@@ -161,3 +175,5 @@ export type ColumnType =
   | DateConstructor
   | NumberConstructor
   | StringConstructor;
+// | ObjectConstructor
+// | BigIntConstructor;

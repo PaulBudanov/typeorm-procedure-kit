@@ -1,34 +1,40 @@
-import { DeleteQueryBuilder } from './DeleteQueryBuilder';
-import { InsertQueryBuilder } from './InsertQueryBuilder';
-import { QueryBuilder } from './QueryBuilder';
-import { RelationQueryBuilder } from './RelationQueryBuilder';
-import { SelectQueryBuilder } from './SelectQueryBuilder';
-import { SoftDeleteQueryBuilder } from './SoftDeleteQueryBuilder';
-import { UpdateQueryBuilder } from './UpdateQueryBuilder';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
 
-export function registerQueryBuilders() {
+import { DeleteQueryBuilder } from './DeleteQueryBuilder.js';
+import { InsertQueryBuilder } from './InsertQueryBuilder.js';
+import { QueryBuilder } from './QueryBuilder.js';
+import { RelationQueryBuilder } from './RelationQueryBuilder.js';
+import { SelectQueryBuilder } from './SelectQueryBuilder.js';
+import { SoftDeleteQueryBuilder } from './SoftDeleteQueryBuilder.js';
+import { UpdateQueryBuilder } from './UpdateQueryBuilder.js';
+
+export function registerQueryBuilders(): void {
   QueryBuilder.registerQueryBuilderClass(
     'DeleteQueryBuilder',
-    (qb: QueryBuilder<any>) => new DeleteQueryBuilder(qb)
+    (qb: DataSource | QueryBuilder<ObjectLiteral>) =>
+      new DeleteQueryBuilder<ObjectLiteral>(qb)
   );
   QueryBuilder.registerQueryBuilderClass(
     'InsertQueryBuilder',
-    (qb: QueryBuilder<any>) => new InsertQueryBuilder(qb)
+    (qb: DataSource | QueryBuilder<ObjectLiteral>) => new InsertQueryBuilder(qb)
   );
   QueryBuilder.registerQueryBuilderClass(
     'RelationQueryBuilder',
-    (qb: QueryBuilder<any>) => new RelationQueryBuilder(qb)
+    (qb: DataSource | QueryBuilder<ObjectLiteral>) =>
+      new RelationQueryBuilder(qb)
   );
   QueryBuilder.registerQueryBuilderClass(
     'SelectQueryBuilder',
-    (qb: QueryBuilder<any>) => new SelectQueryBuilder(qb)
+    (qb: DataSource | QueryBuilder<ObjectLiteral>) => new SelectQueryBuilder(qb)
   );
   QueryBuilder.registerQueryBuilderClass(
     'SoftDeleteQueryBuilder',
-    (qb: QueryBuilder<any>) => new SoftDeleteQueryBuilder(qb)
+    (qb: DataSource | QueryBuilder<ObjectLiteral>) =>
+      new SoftDeleteQueryBuilder(qb)
   );
   QueryBuilder.registerQueryBuilderClass(
     'UpdateQueryBuilder',
-    (qb: QueryBuilder<any>) => new UpdateQueryBuilder(qb)
+    (qb: DataSource | QueryBuilder<ObjectLiteral>) => new UpdateQueryBuilder(qb)
   );
 }

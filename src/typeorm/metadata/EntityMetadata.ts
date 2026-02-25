@@ -1,6 +1,7 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
 import { CannotCreateEntityIdMapError } from '../error/CannotCreateEntityIdMapError.js';
 // import { OrderByCondition } from '../find-options/OrderByCondition.js';
 import { EntityPropertyNotFoundError } from '../error/EntityPropertyNotFoundError.js';
@@ -13,20 +14,20 @@ import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 import { shorten } from '../util/StringUtils.js';
 
-import { CheckMetadata } from './CheckMetadata.js';
-import { ColumnMetadata } from './ColumnMetadata.js';
-import { EmbeddedMetadata } from './EmbeddedMetadata.js';
-import { EntityListenerMetadata } from './EntityListenerMetadata.js';
-import { ExclusionMetadata } from './ExclusionMetadata.js';
-import { ForeignKeyMetadata } from './ForeignKeyMetadata.js';
-import { IndexMetadata } from './IndexMetadata.js';
-import { RelationCountMetadata } from './RelationCountMetadata.js';
-import { RelationIdMetadata } from './RelationIdMetadata.js';
-import { RelationMetadata } from './RelationMetadata.js';
+import type { CheckMetadata } from './CheckMetadata.js';
+import type { ColumnMetadata } from './ColumnMetadata.js';
+import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
+import type { EntityListenerMetadata } from './EntityListenerMetadata.js';
+import type { ExclusionMetadata } from './ExclusionMetadata.js';
+import type { ForeignKeyMetadata } from './ForeignKeyMetadata.js';
+import type { IndexMetadata } from './IndexMetadata.js';
+import type { RelationCountMetadata } from './RelationCountMetadata.js';
+import type { RelationIdMetadata } from './RelationIdMetadata.js';
+import type { RelationMetadata } from './RelationMetadata.js';
 import type { ClosureTreeOptions } from './types/ClosureTreeOptions.js';
 import type { TableType } from './types/TableTypes.js';
 import type { TreeType } from './types/TreeTypes.js';
-import { UniqueMetadata } from './UniqueMetadata.js';
+import type { UniqueMetadata } from './UniqueMetadata.js';
 
 /**
  * Contains all entity metadata.
@@ -42,6 +43,13 @@ export class EntityMetadata {
    * Connection where this entity metadata is created.
    */
   public connection: DataSource;
+
+  /**
+   * Driver used by this entity metadata.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
 
   /**
    * Metadata arguments used to build this entity metadata.
@@ -105,7 +113,7 @@ export class EntityMetadata {
    */
   public expression?:
     | string
-    | ((connection: DataSource) => SelectQueryBuilder<unknown>);
+    | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
 
   /**
    * View's dependencies.
@@ -565,7 +573,7 @@ export class EntityMetadata {
   public create(
     queryRunner?: QueryRunner,
     options?: { fromDeserializer?: boolean; pojo?: boolean }
-  ): unknown {
+  ): ObjectLiteral {
     const pojo = options && options.pojo === true ? true : false;
     // if target is set to a function (e.g. class) that can be created then create it
     let ret: unknown;
@@ -573,7 +581,7 @@ export class EntityMetadata {
       if (!options?.fromDeserializer || this.isAlwaysUsingConstructor) {
         // ret = new (this.target as unknown as typeof this)();
         //TODO: FIX TYPES
-        ret = new this.target();
+        ret = new (this.target as unknown as new () => unknown)();
       } else {
         ret = Object.create(this.target.prototype as object);
       }
@@ -583,9 +591,13 @@ export class EntityMetadata {
     }
 
     this.lazyRelations.forEach((relation) =>
-      this.connection.relationLoader.enableLazyLoad(relation, ret, queryRunner)
+      this.connection.relationLoader.enableLazyLoad(
+        relation,
+        ret as ObjectLiteral,
+        queryRunner
+      )
     );
-    return ret;
+    return ret as ObjectLiteral;
   }
 
   /**
@@ -958,6 +970,9 @@ export class EntityMetadata {
         if (map === undefined || value === null || value === undefined)
           return undefined;
 
+        // Skip array values as they are not supported in mergeDeep
+        if (Array.isArray(value)) return map;
+
         return OrmUtils.mergeDeep(map, value);
       },
       {} as ObjectLiteral | undefined
@@ -1018,10 +1033,9 @@ export class EntityMetadata {
 
       if (
         this.tableMetadataArgs.type === 'junction' &&
-        this.connection.driver.maxAliasLength &&
-        this.connection.driver.maxAliasLength > 0 &&
-        this.tableNameWithoutPrefix.length >
-          this.connection.driver.maxAliasLength
+        this.driver.maxAliasLength &&
+        this.driver.maxAliasLength > 0 &&
+        this.tableNameWithoutPrefix.length > this.driver.maxAliasLength
       ) {
         // note: we are not using DriverUtils.buildAlias here because we would like to avoid
         // hashed table names. However, current algorithm also isn't perfect, but we cannot
@@ -1038,7 +1052,7 @@ export class EntityMetadata {
     this.expression = this.tableMetadataArgs.expression;
     this.withoutRowid =
       this.tableMetadataArgs.withoutRowid === true ? true : false;
-    this.tablePath = this.connection.driver.buildTableName(
+    this.tablePath = this.driver.buildTableName(
       this.tableName,
       this.schema,
       this.database
@@ -1088,8 +1102,8 @@ export class EntityMetadata {
    * This method will create following object:
    * { id: "id", counterEmbed: { count: "counterEmbed.count" }, category: "category" }
    */
-  public createPropertiesMap(): Record<string, string | unknown> {
-    const map: Record<string, string | unknown> = {};
+  public createPropertiesMap(): ObjectLiteral {
+    const map: ObjectLiteral = {};
     this.columns.forEach((column) =>
       OrmUtils.mergeDeep(map, column.createValueMap(column.propertyPath))
     );

@@ -1,5 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
-import { getFromContainer } from '../container';
+import { getFromContainer } from '../container.js';
 import { DataSource } from '../data-source/DataSource.js';
 import { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { EntitySchemaTransformer } from '../entity-schema/EntitySchemaTransformer.js';
@@ -79,12 +79,14 @@ export class ConnectionMetadataBuilder {
     const [entityClassesOrSchemas, entityDirectories] =
       OrmUtils.splitClassesAndStrings(entities || []);
     const entityClasses: Array<TFunction> = entityClassesOrSchemas.filter(
-      (entityClass) => !InstanceChecker.isEntitySchema(entityClass)
-    ) as unknown;
+      (entityClass): entityClass is TFunction =>
+        !InstanceChecker.isEntitySchema(entityClass)
+    ) as Array<TFunction>;
     const entitySchemas: Array<EntitySchema<unknown>> =
-      entityClassesOrSchemas.filter((entityClass) =>
-        InstanceChecker.isEntitySchema(entityClass)
-      ) as unknown;
+      entityClassesOrSchemas.filter(
+        (entityClass): entityClass is EntitySchema<unknown> =>
+          InstanceChecker.isEntitySchema(entityClass)
+      );
 
     const allEntityClasses = [
       ...entityClasses,

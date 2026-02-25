@@ -29,9 +29,9 @@ export class EntityNotFoundError extends TypeORMError {
     if (InstanceChecker.isEntitySchema(target)) {
       return (target as EntitySchema).options.name;
     } else if (typeof target === 'function') {
-      return (target as TFunction).name;
+      return (target as unknown as TFunction).name;
     } else if (ObjectUtils.isObject(target) && 'name' in (target as object)) {
-      return (target as TFunction).name;
+      return (target as unknown as TFunction).name;
     } else {
       return target as string;
     }

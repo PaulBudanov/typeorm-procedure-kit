@@ -1,7 +1,6 @@
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import { AdvancedConsoleLogger } from './AdvancedConsoleLogger.js';
-import { DebugLogger } from './DebugLogger.js';
 import { FileLogger } from './FileLogger.js';
 import { FormattedConsoleLogger } from './FormattedConsoleLogger.js';
 import type { Logger } from './Logger.js';
@@ -21,7 +20,6 @@ export class LoggerFactory {
       | 'simple-console'
       | 'formatted-console'
       | 'file'
-      | 'debug'
       | Logger,
     options?: LoggerOptions
   ): Logger {
@@ -40,9 +38,6 @@ export class LoggerFactory {
 
         case 'formatted-console':
           return new FormattedConsoleLogger(options);
-
-        case 'debug':
-          return new DebugLogger();
       }
     }
 

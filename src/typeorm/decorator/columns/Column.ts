@@ -1,25 +1,28 @@
-import {
+import type {
   ColumnType,
   SimpleColumnType,
   SpatialColumnType,
   UnsignedColumnType,
   WithLengthColumnType,
   WithPrecisionColumnType,
-} from '../../driver/types/ColumnTypes';
-import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError';
-import { getMetadataArgsStorage } from '../../globals';
-import { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs';
-import { EmbeddedMetadataArgs } from '../../metadata-args/EmbeddedMetadataArgs';
-import { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs';
-import { ColumnCommonOptions } from '../options/ColumnCommonOptions';
-import { ColumnEmbeddedOptions } from '../options/ColumnEmbeddedOptions';
-import { ColumnEnumOptions } from '../options/ColumnEnumOptions';
-import { ColumnHstoreOptions } from '../options/ColumnHstoreOptions';
-import { ColumnNumericOptions } from '../options/ColumnNumericOptions';
-import { ColumnOptions } from '../options/ColumnOptions';
-import { ColumnUnsignedOptions } from '../options/ColumnUnsignedOptions';
-import { ColumnWithLengthOptions } from '../options/ColumnWithLengthOptions';
-import { SpatialColumnOptions } from '../options/SpatialColumnOptions';
+} from '../../driver/types/ColumnTypes.js';
+import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError.js';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
+import type { EmbeddedMetadataArgs } from '../../metadata-args/EmbeddedMetadataArgs.js';
+import type { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs.js';
+import type { UniqueMetadataArgs } from '../../metadata-args/UniqueMetadataArgs.js';
+import type { ColumnCommonOptions } from '../options/ColumnCommonOptions.js';
+import type { ColumnEmbeddedOptions } from '../options/ColumnEmbeddedOptions.js';
+import type { ColumnEnumOptions } from '../options/ColumnEnumOptions.js';
+import type { ColumnHstoreOptions } from '../options/ColumnHstoreOptions.js';
+import type { ColumnNumericOptions } from '../options/ColumnNumericOptions.js';
+import type { ColumnOptions } from '../options/ColumnOptions.js';
+import type { ColumnUnsignedOptions } from '../options/ColumnUnsignedOptions.js';
+import type { ColumnWithLengthOptions } from '../options/ColumnWithLengthOptions.js';
+import type { SpatialColumnOptions } from '../options/SpatialColumnOptions.js';
+
+type EmbeddedTypeFunction = (type?: unknown) => unknown;
 
 /**
  * Column decorator is used to mark a specific class property as a table column. Only properties decorated with this
@@ -111,7 +114,7 @@ export function Column(
  */
 export function Column(
   type: 'hstore',
-  options?: ColumnCommonOptions & ColumnHstoreOptions
+  options?: ColumnOptions & ColumnHstoreOptions
 ): PropertyDecorator;
 
 /**
@@ -123,7 +126,7 @@ export function Column(
  * embedded will be mapped to it from the single table.
  */
 export function Column(
-  type: (type?: any) => Function,
+  type: EmbeddedTypeFunction,
   options?: ColumnEmbeddedOptions
 ): PropertyDecorator;
 
@@ -133,12 +136,18 @@ export function Column(
  */
 export function Column(
   typeOrOptions?:
-    | ((type?: any) => Function)
+    | EmbeddedTypeFunction
     | ColumnType
-    | (ColumnOptions & ColumnEmbeddedOptions),
-  options?: ColumnOptions & ColumnEmbeddedOptions
+    | (ColumnOptions &
+        ColumnEmbeddedOptions &
+        ColumnHstoreOptions &
+        ColumnEnumOptions),
+  options?: ColumnOptions &
+    ColumnEmbeddedOptions &
+    ColumnHstoreOptions &
+    ColumnEnumOptions
 ): PropertyDecorator {
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     // normalize parameters
     let type: ColumnType | undefined;
     if (
@@ -150,16 +159,17 @@ export function Column(
       options = typeOrOptions as ColumnOptions;
       type = typeOrOptions.type;
     }
-    if (!options) options = {} as ColumnOptions;
+    if (!options) options = {};
 
     // if type is not given explicitly then try to guess it
-    const reflectMetadataType =
-      Reflect && (Reflect as any).getMetadata
-        ? (Reflect as any).getMetadata('design:type', object, propertyName)
+    const reflectMetadataType: unknown =
+      Reflect && typeof Reflect.getMetadata === 'function'
+        ? Reflect.getMetadata('design:type', object, propertyName)
         : undefined;
-    if (!type && reflectMetadataType)
+    if (!type && reflectMetadataType) {
       // if type is not given explicitly then try to guess it
-      type = reflectMetadataType;
+      type = reflectMetadataType as ColumnType;
+    }
 
     // check if there is no type in column options then set type from first function argument, or guessed one
     if (!options.type && type) options.type = type;
@@ -172,28 +182,28 @@ export function Column(
       // register an embedded
       getMetadataArgsStorage().embeddeds.push({
         target: object.constructor,
-        propertyName: propertyName,
+        propertyName: propertyName.toString(),
         isArray: reflectMetadataType === Array || options.array === true,
         prefix: options.prefix !== undefined ? options.prefix : undefined,
-        type: typeOrOptions as (type?: any) => Function,
+        type: typeOrOptions as EmbeddedTypeFunction,
       } as EmbeddedMetadataArgs);
     } else {
       // register a regular column
 
       // if we still don't have a type then we need to give error to user that type is required
       if (!options.type)
-        throw new ColumnTypeUndefinedError(object, propertyName);
+        throw new ColumnTypeUndefinedError(object, propertyName.toString());
 
       // create unique
       if (options.unique === true)
         getMetadataArgsStorage().uniques.push({
           target: object.constructor,
-          columns: [propertyName],
-        });
+          columns: [propertyName.toString()],
+        } as UniqueMetadataArgs);
 
       getMetadataArgsStorage().columns.push({
         target: object.constructor,
-        propertyName: propertyName,
+        propertyName: propertyName.toString(),
         mode: 'regular',
         options: options,
       } as ColumnMetadataArgs);
@@ -201,7 +211,7 @@ export function Column(
       if (options.generated) {
         getMetadataArgsStorage().generations.push({
           target: object.constructor,
-          propertyName: propertyName,
+          propertyName: propertyName.toString(),
           strategy:
             typeof options.generated === 'string'
               ? options.generated

@@ -1,6 +1,6 @@
-import { TypeORMError } from '../error';
-import { getMetadataArgsStorage } from '../globals';
-import { ExclusionMetadataArgs } from '../metadata-args/ExclusionMetadataArgs';
+import { TypeORMError } from '../error/TypeORMError.js';
+import { getMetadataArgsStorage } from '../globals.js';
+import type { ExclusionMetadataArgs } from '../metadata-args/ExclusionMetadataArgs.js';
 
 /**
  * Creates a database exclusion.
@@ -36,13 +36,13 @@ export function Exclusion(
   if (!expression) throw new TypeORMError(`Exclusion expression is required`);
 
   return function (
-    clsOrObject: Function | object,
+    clsOrObject: ((...args: Array<unknown>) => unknown) | object,
     propertyName?: string | symbol
   ) {
     getMetadataArgsStorage().exclusions.push({
       target: propertyName
         ? clsOrObject.constructor
-        : (clsOrObject as Function),
+        : (clsOrObject as (...args: Array<unknown>) => unknown),
       name: name,
       expression: expression,
     } as ExclusionMetadataArgs);

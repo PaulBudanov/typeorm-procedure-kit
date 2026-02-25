@@ -7,5 +7,5 @@ import { FindOperator } from '../FindOperator.js';
 export function Any<T>(
   value: ReadonlyArray<T> | FindOperator<T>
 ): FindOperator<T> {
-  return new FindOperator('any', value);
+  return new FindOperator('any', value as T);
 }

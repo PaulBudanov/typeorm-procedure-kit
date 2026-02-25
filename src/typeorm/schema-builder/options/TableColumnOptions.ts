@@ -19,7 +19,7 @@ export interface TableColumnOptions {
   /**
    * Column's default value.
    */
-  default?: any;
+  default?: unknown;
 
   /**
    * ON UPDATE trigger. Works only for MySQL.

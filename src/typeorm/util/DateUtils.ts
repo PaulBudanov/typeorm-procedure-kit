@@ -1,6 +1,4 @@
-import dayjs from 'dayjs';
-
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 
 /**
  * Provides utilities to transform hydrated and persisted data.
@@ -13,7 +11,7 @@ export class DateUtils {
   /**
    * Normalizes date object hydrated from the database.
    */
-  static normalizeHydratedDate(
+  public static normalizeHydratedDate(
     mixedDate: Date | string | undefined
   ): Date | string | undefined {
     if (!mixedDate) return mixedDate;
@@ -26,7 +24,7 @@ export class DateUtils {
   /**
    * Converts given value into date string in a "YYYY-MM-DD" format.
    */
-  static mixedDateToDateString(
+  public static mixedDateToDateString(
     value: string | Date,
     options?: { utc?: boolean }
   ): string {
@@ -56,14 +54,14 @@ export class DateUtils {
   /**
    * Converts given value into date object.
    */
-  static mixedDateToDate(
+  public static mixedDateToDate(
     mixedDate: Date | string,
     toUtc = false,
     useMilliseconds = true
   ): Date {
     /**
      * new Date(ISOString) is not a reliable parser to date strings.
-     * It's better to use 'date-fns' parser to parser string in ISO Format.
+     * It's better to use native Date parser to parse string in ISO Format.
      *
      * The problem here is with wrong timezone.
      *
@@ -75,8 +73,7 @@ export class DateUtils {
      *
      * https://stackoverflow.com/a/2587398
      */
-    let date =
-      typeof mixedDate === 'string' ? dayjs(mixedDate).toDate() : mixedDate;
+    let date = typeof mixedDate === 'string' ? new Date(mixedDate) : mixedDate;
 
     if (toUtc)
       date = new Date(
@@ -97,10 +94,10 @@ export class DateUtils {
   /**
    * Converts given value into time string in a "HH:mm:ss" format.
    */
-  static mixedDateToTimeString(
-    value: Date | any,
+  public static mixedDateToTimeString(
+    value: Date | unknown,
     skipSeconds = false
-  ): string | any {
+  ): string | unknown {
     if (value instanceof Date)
       return (
         this.formatZerolessValue(value.getHours()) +
@@ -115,7 +112,7 @@ export class DateUtils {
   /**
    * Converts given value into time string in a "HH:mm:ss" format.
    */
-  static mixedTimeToDate(value: Date | any): string | any {
+  public static mixedTimeToDate(value: Date | unknown): string | unknown {
     if (typeof value === 'string') {
       const [hours, minutes, seconds] = value.split(':');
       const date = new Date();
@@ -131,10 +128,10 @@ export class DateUtils {
   /**
    * Converts given string value with "-" separator into a "HH:mm:ss" format.
    */
-  static mixedTimeToString(
-    value: string | any,
+  public static mixedTimeToString(
+    value: string | unknown,
     skipSeconds = false
-  ): string | any {
+  ): string | unknown {
     value =
       value instanceof Date
         ? value.getHours() +
@@ -155,10 +152,10 @@ export class DateUtils {
   /**
    * Converts given value into datetime string in a "YYYY-MM-DD HH-mm-ss" format.
    */
-  static mixedDateToDatetimeString(
-    value: Date | any,
+  public static mixedDateToDatetimeString(
+    value: Date | unknown,
     useMilliseconds?: boolean
-  ): string | any {
+  ): string | unknown {
     if (typeof value === 'string') {
       value = new Date(value);
     }
@@ -188,7 +185,9 @@ export class DateUtils {
   /**
    * Converts given value into utc datetime string in a "YYYY-MM-DD HH-mm-ss.sss" format.
    */
-  static mixedDateToUtcDatetimeString(value: Date | any): string | any {
+  public static mixedDateToUtcDatetimeString(
+    value: Date | unknown
+  ): string | unknown {
     if (typeof value === 'string') {
       value = new Date(value);
     }
@@ -216,18 +215,18 @@ export class DateUtils {
   /**
    * Converts each item in the given array to string joined by "," separator.
    */
-  static simpleArrayToString(value: Array<any> | any): Array<string> | any {
+  public static simpleArrayToString(value: Array<unknown> | unknown): string {
     if (Array.isArray(value)) {
-      return (value as Array<any>).map((i) => String(i)).join(',');
+      return (value as Array<unknown>).map((i) => String(i)).join(',');
     }
 
-    return value;
+    return String(value);
   }
 
   /**
    * Converts given string to simple array split by "," separator.
    */
-  static stringToSimpleArray(value: string | any): string | any {
+  public static stringToSimpleArray(value: string | unknown): string | unknown {
     if (typeof value === 'string') {
       if (value.length > 0) {
         return value.split(',');
@@ -239,26 +238,29 @@ export class DateUtils {
     return value;
   }
 
-  static simpleJsonToString(value: any): string {
+  public static simpleJsonToString(value: unknown): string {
     return JSON.stringify(value);
   }
 
-  static stringToSimpleJson(value: any) {
+  public static stringToSimpleJson(value: unknown): unknown {
     return typeof value === 'string' ? JSON.parse(value) : value;
   }
 
-  static simpleEnumToString(value: any) {
+  public static simpleEnumToString(value: unknown): string {
     return '' + value;
   }
 
-  static stringToSimpleEnum(value: any, columnMetadata: ColumnMetadata) {
+  public static stringToSimpleEnum(
+    value: unknown,
+    columnMetadata: ColumnMetadata
+  ): unknown {
     if (
       columnMetadata.enum &&
-      !isNaN(value) &&
-      columnMetadata.enum.indexOf(parseInt(value)) >= 0
+      !isNaN(value as number) &&
+      columnMetadata.enum.indexOf(parseInt(value as string)) >= 0
     ) {
       // convert to number if that exists in poosible enum options
-      value = parseInt(value);
+      value = parseInt(value as string);
     }
 
     return value;

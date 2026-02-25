@@ -13,9 +13,12 @@ export function getMetadataArgsStorage(): MetadataArgsStorage {
   // another reason is that when we run migrations typeorm is being called from a global package
   // and it may load entities which register decorators in typeorm of local package
   // this leads to impossibility of usage of entities in migrations and cli related operations
-  const globalScope = PlatformTools.getGlobalVariable();
+  const globalScope = PlatformTools.getGlobalVariable() as Record<
+    string,
+    unknown
+  >;
   if (!globalScope.typeormMetadataArgsStorage)
     globalScope.typeormMetadataArgsStorage = new MetadataArgsStorage();
 
-  return globalScope.typeormMetadataArgsStorage;
+  return globalScope.typeormMetadataArgsStorage as MetadataArgsStorage;
 }

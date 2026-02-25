@@ -1,14 +1,14 @@
-import { getMetadataArgsStorage } from '../../globals';
-import { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
 
 /**
  * Creates a "level"/"length" column to the table that holds a closure table.
  */
 export function TreeLevelColumn(): PropertyDecorator {
-  return function (object: object, propertyName: string) {
+  return function (object: object, propertyName: string | symbol): void {
     getMetadataArgsStorage().columns.push({
       target: object.constructor,
-      propertyName: propertyName,
+      propertyName: propertyName.toString(),
       mode: 'treeLevel',
       options: {},
     } as ColumnMetadataArgs);

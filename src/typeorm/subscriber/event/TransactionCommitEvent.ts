@@ -1,6 +1,6 @@
-import { DataSource } from '../../data-source/DataSource';
-import { EntityManager } from '../../entity-manager/EntityManager';
-import { QueryRunner } from '../../query-runner/QueryRunner';
+import { DataSource } from '../../data-source/DataSource.js';
+import { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**
  * TransactionCommitEvent is an object that broadcaster sends to the entity subscriber when an transaction is committed.

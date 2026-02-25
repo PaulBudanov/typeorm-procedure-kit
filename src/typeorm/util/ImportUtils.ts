@@ -6,9 +6,10 @@ export async function importOrRequireFile(
   filePath: string
 ): Promise<[unknown, 'esm' | 'commonjs']> {
   const tryToImport = async (): Promise<[unknown, 'esm']> => {
-    // `Function` is required to make sure the `import` statement wil stay `import` after
+    // `Function` constructor is required to make sure the `import` statement wil stay `import` after
     // transpilation and won't be converted to `require`
     return [
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await Function('return filePath => import(filePath)')()(
         filePath.startsWith('file://')
           ? filePath
@@ -17,23 +18,26 @@ export async function importOrRequireFile(
       'esm',
     ];
   };
-  const tryToRequire = (): [unknown, 'commonjs'] => {
-    return [require(filePath), 'commonjs'];
-  };
 
-  const extension = filePath.substring(filePath.lastIndexOf('.') + '.'.length);
+  const tryToRequire = (): [unknown, 'commonjs'] => [
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require(filePath),
+    'commonjs',
+  ];
+
+  const extension = filePath.substring(filePath.lastIndexOf('.') + 1);
 
   if (extension === 'mjs' || extension === 'mts') return tryToImport();
-  else if (extension === 'cjs' || extension === 'cts') return tryToRequire();
-  else if (extension === 'js' || extension === 'ts') {
+  if (extension === 'cjs' || extension === 'cts') return tryToRequire();
+  if (extension === 'js' || extension === 'ts') {
     const packageJson = await getNearestPackageJson(filePath);
 
-    if (packageJson != null) {
-      const isModule = (packageJson as any)?.type === 'module';
-
-      if (isModule) return tryToImport();
-      else return tryToRequire();
-    } else return tryToRequire();
+    if (packageJson !== null) {
+      const isModule =
+        (packageJson as Record<string, unknown>)?.type === 'module';
+      return isModule ? tryToImport() : tryToRequire();
+    }
+    return tryToRequire();
   }
 
   return tryToRequire();
@@ -42,7 +46,10 @@ export async function importOrRequireFile(
 const packageJsonCache = new Map<string, object | null>();
 const MAX_CACHE_SIZE = 1000;
 
-function setPackageJsonCache(paths: Array<string>, packageJson: object | null) {
+function setPackageJsonCache(
+  paths: ReadonlyArray<string>,
+  packageJson: object | null
+): void {
   for (const path of paths) {
     // Simple LRU-like behavior: if we're at capacity, remove oldest entry
     if (
@@ -50,7 +57,7 @@ function setPackageJsonCache(paths: Array<string>, packageJson: object | null) {
       !packageJsonCache.has(path)
     ) {
       const firstKey = packageJsonCache.keys().next().value;
-      if (firstKey) packageJsonCache.delete(firstKey);
+      if (firstKey !== undefined) packageJsonCache.delete(firstKey);
     }
     packageJsonCache.set(path, packageJson);
   }
@@ -64,9 +71,10 @@ async function getNearestPackageJson(filePath: string): Promise<object | null> {
     currentPath = path.dirname(currentPath);
 
     // Check if we have already cached the package.json for this path
-    if (packageJsonCache.has(currentPath)) {
-      setPackageJsonCache(paths, packageJsonCache.get(currentPath)!);
-      return packageJsonCache.get(currentPath)!;
+    const cachedPackageJson = packageJsonCache.get(currentPath);
+    if (cachedPackageJson !== undefined) {
+      setPackageJsonCache(paths, cachedPackageJson);
+      return cachedPackageJson;
     }
 
     // Add the current path to the list of paths to cache
@@ -76,24 +84,18 @@ async function getNearestPackageJson(filePath: string): Promise<object | null> {
 
     try {
       const stats = await fs.stat(potentialPackageJson);
-      if (!stats.isFile()) {
-        continue;
-      }
+      if (!stats.isFile()) continue;
 
-      try {
-        const parsedPackage = JSON.parse(
-          await fs.readFile(potentialPackageJson, 'utf8')
-        );
-        // Cache the parsed package.json object and return it
-        setPackageJsonCache(paths, parsedPackage);
-        return parsedPackage;
-      } catch {
-        // If parsing fails, we still cache null to avoid repeated attempts
-        setPackageJsonCache(paths, null);
-        return null;
-      }
+      const parsedPackage = JSON.parse(
+        await fs.readFile(potentialPackageJson, 'utf8')
+      ) as object | null;
+      // Cache the parsed package.json object and return it
+      setPackageJsonCache(paths, parsedPackage);
+      return parsedPackage;
     } catch {
-      continue;
+      // If file doesn't exist or parsing fails, cache null to avoid repeated attempts
+      setPackageJsonCache(paths, null);
+      return null;
     }
   }
 

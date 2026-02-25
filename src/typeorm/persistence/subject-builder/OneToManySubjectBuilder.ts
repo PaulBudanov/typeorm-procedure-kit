@@ -1,8 +1,8 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
-import { RelationMetadata } from '../../metadata/RelationMetadata';
-import { OrmUtils } from '../../util/OrmUtils';
-import { Subject } from '../Subject';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+import { Subject } from '../Subject.js';
 
 /**
  * Builds operations needs to be executed for one-to-many relations of the given subjects.
@@ -20,7 +20,7 @@ export class OneToManySubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected subjects: Array<Subject>) {}
+  public constructor(protected subjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods
@@ -29,7 +29,7 @@ export class OneToManySubjectBuilder {
   /**
    * Builds all required operations.
    */
-  build(): void {
+  public build(): void {
     this.subjects.forEach((subject) => {
       subject.metadata.oneToManyRelations.forEach((relation) => {
         // skip relations for which persistence is disabled
@@ -52,7 +52,7 @@ export class OneToManySubjectBuilder {
   protected buildForSubjectRelation(
     subject: Subject,
     relation: RelationMetadata
-  ) {
+  ): void {
     // prepare objects (relation id maps) for the database entity
     // by example: since subject is a post, we are expecting to get all post's categories saved in the database here,
     //             particularly their relation ids, e.g. category ids stored in the database
@@ -65,8 +65,9 @@ export class OneToManySubjectBuilder {
     let relatedEntityDatabaseRelationIds: Array<ObjectLiteral> = [];
     if (subject.databaseEntity) {
       // related entities in the database can exist only if this entity (post) is saved
-      const relatedEntityDatabaseRelation: Array<ObjectLiteral> | undefined =
-        relation.getEntityValue(subject.databaseEntity);
+      const relatedEntityDatabaseRelation = relation.getEntityValue(
+        subject.databaseEntity
+      ) as Array<ObjectLiteral> | undefined;
       if (relatedEntityDatabaseRelation) {
         relatedEntityDatabaseRelationIds = relatedEntityDatabaseRelation.map(
           (entity) => relation.inverseEntityMetadata.getEntityIdMap(entity)!
@@ -76,9 +77,10 @@ export class OneToManySubjectBuilder {
 
     // get related entities of persisted entity
     // by example: get categories from the passed to persist post entity
-    let relatedEntities: Array<ObjectLiteral> = relation.getEntityValue(
-      subject.entity!
-    );
+    let relatedEntities = relation.getEntityValue(subject.entity!) as
+      | Array<ObjectLiteral>
+      | null
+      | undefined;
     if (relatedEntities === null)
       // we treat relations set to null as removed, so we don't skip it
       relatedEntities = [] as Array<ObjectLiteral>;

@@ -1,9 +1,11 @@
-import { FindOneOptions } from './FindOneOptions';
+import type { FindOneOptions } from './FindOneOptions.js';
 
 /**
  * Defines a special criteria to find specific entities.
  */
-export interface FindManyOptions<Entity = any> extends FindOneOptions<Entity> {
+export interface FindManyOptions<
+  Entity = unknown,
+> extends FindOneOptions<Entity> {
   /**
    * Offset (paginated) where from entities should be taken.
    */

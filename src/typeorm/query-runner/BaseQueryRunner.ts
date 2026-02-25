@@ -1,22 +1,25 @@
-import { DataSource } from '../data-source/DataSource';
-import { PostgresConnectionOptions } from '../driver/postgres/PostgresConnectionOptions';
-import { Query } from '../driver/Query';
-import { SqlInMemory } from '../driver/SqlInMemory';
-import { SqlServerConnectionOptions } from '../driver/sqlserver/SqlServerConnectionOptions';
-import { MetadataTableType } from '../driver/types/MetadataTableType';
-import { ReplicationMode } from '../driver/types/ReplicationMode';
-import { EntityManager } from '../entity-manager/EntityManager';
-import { TypeORMError } from '../error/TypeORMError';
-import { EntityMetadata } from '../metadata/EntityMetadata';
-import { Table } from '../schema-builder/table/Table';
-import { TableColumn } from '../schema-builder/table/TableColumn';
-import { TableForeignKey } from '../schema-builder/table/TableForeignKey';
-import { TableIndex } from '../schema-builder/table/TableIndex';
-import { View } from '../schema-builder/view/View';
-import { Broadcaster } from '../subscriber/Broadcaster';
-import { InstanceChecker } from '../util/InstanceChecker';
-import { OrmUtils } from '../util/OrmUtils';
-import { buildSqlTag } from '../util/SqlTagUtils';
+import type oracledb from 'oracledb';
+import type { PoolClient } from 'pg';
+
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
+import type { PostgresConnectionOptions } from '../driver/postgres/PostgresConnectionOptions.js';
+import { Query } from '../driver/Query.js';
+import { SqlInMemory } from '../driver/SqlInMemory.js';
+import type { MetadataTableType } from '../driver/types/MetadataTableType.js';
+import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { Table } from '../schema-builder/table/Table.js';
+import type { TableColumn } from '../schema-builder/table/TableColumn.js';
+import type { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
+import type { TableIndex } from '../schema-builder/table/TableIndex.js';
+import type { View } from '../schema-builder/view/View.js';
+import { Broadcaster } from '../subscriber/Broadcaster.js';
+import { InstanceChecker } from '../util/InstanceChecker.js';
+import { OrmUtils } from '../util/OrmUtils.js';
+import { buildSqlTag } from '../util/SqlTagUtils.js';
 
 export abstract class BaseQueryRunner {
   // -------------------------------------------------------------------------
@@ -26,44 +29,51 @@ export abstract class BaseQueryRunner {
   /**
    * Connection used by this query runner.
    */
-  connection: DataSource;
+  public connection!: DataSource;
+
+  /**
+   * Driver used by this query runner.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
 
   /**
    * Entity manager working only with current query runner.
    */
-  manager: EntityManager;
+  public manager!: EntityManager;
 
   /**
    * Indicates if connection for this query runner is released.
    * Once its released, query runner cannot run queries anymore.
    */
-  isReleased = false;
+  public isReleased = false;
 
   /**
    * Indicates if transaction is in progress.
    */
-  isTransactionActive = false;
+  public isTransactionActive = false;
 
   /**
    * Stores temporarily user data.
    * Useful for sharing data with subscribers.
    */
-  data = {};
+  public data = {};
 
   /**
    * All synchronized tables in the database.
    */
-  loadedTables: Array<Table> = [];
+  public loadedTables: Array<Table> = [];
 
   /**
    * All synchronized views in the database.
    */
-  loadedViews: Array<View> = [];
+  public loadedViews: Array<View> = [];
 
   /**
    * Broadcaster used on this query runner to broadcast entity events.
    */
-  broadcaster: Broadcaster;
+  public broadcaster!: Broadcaster;
 
   // -------------------------------------------------------------------------
   // Protected Properties
@@ -72,7 +82,7 @@ export abstract class BaseQueryRunner {
   /**
    * Real database connection from a connection pool used to perform queries.
    */
-  protected databaseConnection: any;
+  protected databaseConnection: oracledb.Connection | PoolClient | undefined;
 
   /**
    * Indicates if special query runner mode in which sql queries won't be executed is enabled.
@@ -89,7 +99,7 @@ export abstract class BaseQueryRunner {
    * Used for replication.
    * If replication is not setup its value is ignored.
    */
-  protected mode: ReplicationMode;
+  protected mode!: ReplicationMode;
 
   /**
    * current depth of transaction.
@@ -106,11 +116,11 @@ export abstract class BaseQueryRunner {
   /**
    * Executes a given SQL query.
    */
-  abstract query(
+  public abstract query(
     query: string,
-    parameters?: Array<any>,
+    parameters?: Array<unknown>,
     useStructuredResult?: boolean
-  ): Promise<any>;
+  ): Promise<unknown>;
 
   /**
    * Tagged template function that executes raw SQL query and returns raw database results.
@@ -119,7 +129,7 @@ export abstract class BaseQueryRunner {
    * Note: Don't call this as a regular function, it is meant to be used with backticks to tag a template literal.
    * Example: queryRunner.sql`SELECT * FROM table_name WHERE id = ${id}`
    */
-  async sql<T = any>(
+  public async sql<T = unknown>(
     strings: TemplateStringsArray,
     ...values: Array<unknown>
   ): Promise<T> {
@@ -129,7 +139,7 @@ export abstract class BaseQueryRunner {
       expressions: values,
     });
 
-    return await this.query(query, parameters);
+    return (await this.query(query, parameters)) as T;
   }
 
   // -------------------------------------------------------------------------
@@ -151,21 +161,21 @@ export abstract class BaseQueryRunner {
   /**
    * Called before migrations are run.
    */
-  async beforeMigration(): Promise<void> {
+  public async beforeMigration(): Promise<void> {
     // Do nothing
   }
 
   /**
    * Called after migrations are run.
    */
-  async afterMigration(): Promise<void> {
+  public async afterMigration(): Promise<void> {
     // Do nothing
   }
 
   /**
    * Loads given table's data from the database.
    */
-  async getTable(tablePath: string): Promise<Table | undefined> {
+  public async getTable(tablePath: string): Promise<Table | undefined> {
     this.loadedTables = await this.loadTables([tablePath]);
     return this.loadedTables.length > 0 ? this.loadedTables[0] : undefined;
   }
@@ -173,7 +183,7 @@ export abstract class BaseQueryRunner {
   /**
    * Loads all tables (with given names) from the database.
    */
-  async getTables(tableNames?: Array<string>): Promise<Array<Table>> {
+  public async getTables(tableNames?: Array<string>): Promise<Array<Table>> {
     if (!tableNames) {
       // Don't cache in this case.
       // This is the new case & isn't used anywhere else anyway.
@@ -187,7 +197,7 @@ export abstract class BaseQueryRunner {
   /**
    * Loads given view's data from the database.
    */
-  async getView(viewPath: string): Promise<View | undefined> {
+  public async getView(viewPath: string): Promise<View | undefined> {
     this.loadedViews = await this.loadViews([viewPath]);
     return this.loadedViews.length > 0 ? this.loadedViews[0] : undefined;
   }
@@ -195,7 +205,7 @@ export abstract class BaseQueryRunner {
   /**
    * Loads given view's data from the database.
    */
-  async getViews(viewPaths?: Array<string>): Promise<Array<View>> {
+  public async getViews(viewPaths?: Array<string>): Promise<Array<View>> {
     this.loadedViews = await this.loadViews(viewPaths);
     return this.loadedViews;
   }
@@ -205,7 +215,7 @@ export abstract class BaseQueryRunner {
    * instead they will be memorized into a special variable inside query runner.
    * You can get memorized sql using getMemorySql() method.
    */
-  enableSqlMemory(): void {
+  public enableSqlMemory(): void {
     this.sqlInMemory = new SqlInMemory();
     this.sqlMemoryMode = true;
   }
@@ -216,7 +226,7 @@ export abstract class BaseQueryRunner {
    *
    * Previously memorized sql will be flushed.
    */
-  disableSqlMemory(): void {
+  public disableSqlMemory(): void {
     this.sqlInMemory = new SqlInMemory();
     this.sqlMemoryMode = false;
   }
@@ -224,21 +234,21 @@ export abstract class BaseQueryRunner {
   /**
    * Flushes all memorized sqls.
    */
-  clearSqlMemory(): void {
+  public clearSqlMemory(): void {
     this.sqlInMemory = new SqlInMemory();
   }
 
   /**
    * Gets sql stored in the memory. Parameters in the sql are already replaced.
    */
-  getMemorySql(): SqlInMemory {
+  public getMemorySql(): SqlInMemory {
     return this.sqlInMemory;
   }
 
   /**
    * Executes up sql queries.
    */
-  async executeMemoryUpSql(): Promise<void> {
+  public async executeMemoryUpSql(): Promise<void> {
     for (const { query, parameters } of this.sqlInMemory.upQueries) {
       await this.query(query, parameters);
     }
@@ -247,7 +257,7 @@ export abstract class BaseQueryRunner {
   /**
    * Executes down sql queries.
    */
-  async executeMemoryDownSql(): Promise<void> {
+  public async executeMemoryDownSql(): Promise<void> {
     for (const {
       query,
       parameters,
@@ -256,7 +266,7 @@ export abstract class BaseQueryRunner {
     }
   }
 
-  getReplicationMode(): ReplicationMode {
+  public getReplicationMode(): ReplicationMode {
     return this.mode;
   }
 
@@ -273,8 +283,8 @@ export abstract class BaseQueryRunner {
 
     const foundViews = await this.loadViews([viewName]);
     if (foundViews.length > 0) {
-      this.loadedViews.push(foundViews[0]);
-      return foundViews[0];
+      this.loadedViews.push(foundViews[0]!);
+      return foundViews[0]!;
     } else {
       throw new TypeORMError(`View "${viewName}" does not exist.`);
     }
@@ -298,16 +308,16 @@ export abstract class BaseQueryRunner {
     const foundTables = await this.loadTables([tableName]);
 
     if (foundTables.length > 0) {
-      const foundTablePath = this.getTablePath(foundTables[0]);
+      const foundTablePath = this.getTablePath(foundTables[0]!);
 
       const cachedTable = this.loadedTables.find(
         (table) => this.getTablePath(table) === foundTablePath
       );
 
       if (!cachedTable) {
-        this.cachedTablePaths[tableName] = this.getTablePath(foundTables[0]);
-        this.loadedTables.push(foundTables[0]);
-        return foundTables[0];
+        this.cachedTablePaths[tableName] = this.getTablePath(foundTables[0]!);
+        this.loadedTables.push(foundTables[0]!);
+        return foundTables[0]!;
       } else {
         return cachedTable;
       }
@@ -350,9 +360,9 @@ export abstract class BaseQueryRunner {
   protected getTablePath(
     target: EntityMetadata | Table | View | TableForeignKey | string
   ): string {
-    const parsed = this.connection.driver.parseTableName(target);
+    const parsed = this.driver.parseTableName(target);
 
-    return this.connection.driver.buildTableName(
+    return this.driver.buildTableName(
       parsed.tableName,
       parsed.schema,
       parsed.database
@@ -360,10 +370,8 @@ export abstract class BaseQueryRunner {
   }
 
   protected getTypeormMetadataTableName(): string {
-    const options = this.connection.driver.options as
-      | SqlServerConnectionOptions
-      | PostgresConnectionOptions;
-    return this.connection.driver.buildTableName(
+    const options = this.driver.options as PostgresConnectionOptions;
+    return this.driver.buildTableName(
       this.connection.metadataTableName,
       options.schema,
       options.database
@@ -542,7 +550,10 @@ export abstract class BaseQueryRunner {
     );
   }
 
-  protected isEnumChanged(oldColumn: TableColumn, newColumn: TableColumn) {
+  protected isEnumChanged(
+    oldColumn: TableColumn,
+    newColumn: TableColumn
+  ): boolean {
     return !OrmUtils.isArraysEqual(oldColumn.enum || [], newColumn.enum || []);
   }
 
@@ -561,21 +572,14 @@ export abstract class BaseQueryRunner {
 
       if (columnMetadata) {
         const columnMetadataLength =
-          this.connection.driver.getColumnLength(columnMetadata);
+          this.driver.getColumnLength(columnMetadata);
         if (columnMetadataLength) return false;
       }
     }
 
-    if (
-      this.connection.driver.dataTypeDefaults &&
-      this.connection.driver.dataTypeDefaults[column.type] &&
-      this.connection.driver.dataTypeDefaults[column.type].length
-    ) {
-      return (
-        this.connection.driver.dataTypeDefaults[
-          column.type
-        ].length!.toString() === length.toString()
-      );
+    const dataTypeDefault = this.driver.dataTypeDefaults?.[column.type];
+    if (dataTypeDefault?.length) {
+      return dataTypeDefault.length.toString() === length.toString();
     }
 
     return false;
@@ -601,17 +605,14 @@ export abstract class BaseQueryRunner {
         return false;
     }
 
+    const dataTypeDefault = this.driver.dataTypeDefaults?.[column.type];
     if (
-      this.connection.driver.dataTypeDefaults &&
-      this.connection.driver.dataTypeDefaults[column.type] &&
-      this.connection.driver.dataTypeDefaults[column.type].precision !== null &&
-      this.connection.driver.dataTypeDefaults[column.type].precision !==
-        undefined
-    )
-      return (
-        this.connection.driver.dataTypeDefaults[column.type].precision ===
-        precision
-      );
+      dataTypeDefault &&
+      dataTypeDefault.precision !== null &&
+      dataTypeDefault.precision !== undefined
+    ) {
+      return dataTypeDefault.precision === precision;
+    }
 
     return false;
   }
@@ -636,15 +637,14 @@ export abstract class BaseQueryRunner {
         return false;
     }
 
+    const dataTypeDefault = this.driver.dataTypeDefaults?.[column.type];
     if (
-      this.connection.driver.dataTypeDefaults &&
-      this.connection.driver.dataTypeDefaults[column.type] &&
-      this.connection.driver.dataTypeDefaults[column.type].scale !== null &&
-      this.connection.driver.dataTypeDefaults[column.type].scale !== undefined
-    )
-      return (
-        this.connection.driver.dataTypeDefaults[column.type].scale === scale
-      );
+      dataTypeDefault &&
+      dataTypeDefault.scale !== null &&
+      dataTypeDefault.scale !== undefined
+    ) {
+      return dataTypeDefault.scale === scale;
+    }
 
     return false;
   }
@@ -663,7 +663,7 @@ export abstract class BaseQueryRunner {
     this.sqlInMemory.downQueries.push(...downQueries);
 
     // if sql-in-memory mode is enabled then simply store sql in memory and return
-    if (this.sqlMemoryMode === true) return Promise.resolve() as Promise<any>;
+    if (this.sqlMemoryMode === true) return;
 
     for (const { query, parameters } of upQueries) {
       await this.query(query, parameters);

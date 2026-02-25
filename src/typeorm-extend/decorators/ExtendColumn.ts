@@ -1,6 +1,7 @@
 import { merge } from 'lodash-es';
-import { getMetadataArgsStorage, type ColumnOptions } from 'typeorm';
 
+import type { ColumnOptions } from '../../typeorm/decorator/options/ColumnOptions.js';
+import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
 

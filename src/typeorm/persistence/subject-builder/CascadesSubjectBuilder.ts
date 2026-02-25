@@ -1,6 +1,6 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { ObjectUtils } from '../../util/ObjectUtils';
-import { Subject } from '../Subject';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import { Subject } from '../Subject.js';
 
 /**
  * Finds all cascade operations of the given subject and cascade operations of the found cascaded subjects,
@@ -11,7 +11,7 @@ export class CascadesSubjectBuilder {
   // Constructor
   // ---------------------------------------------------------------------
 
-  constructor(protected allSubjects: Array<Subject>) {}
+  public constructor(protected allSubjects: Array<Subject>) {}
 
   // ---------------------------------------------------------------------
   // Public Methods
@@ -20,10 +20,10 @@ export class CascadesSubjectBuilder {
   /**
    * Builds a cascade subjects tree and pushes them in into the given array of subjects.
    */
-  build(
+  public build(
     subject: Subject,
     operationType: 'save' | 'remove' | 'soft-remove' | 'recover'
-  ) {
+  ): void {
     subject.metadata
       .extractRelationValuesFromEntity(
         subject.entity!,
@@ -48,7 +48,7 @@ export class CascadesSubjectBuilder {
         // if we already has this entity in list of operated subjects then skip it to avoid recursion
         const alreadyExistRelationEntitySubject = this.findByPersistEntityLike(
           relationEntityMetadata.target,
-          relationEntity
+          relationEntity as ObjectLiteral
         );
         if (alreadyExistRelationEntitySubject) {
           if (alreadyExistRelationEntitySubject.canBeInserted === false)
@@ -76,7 +76,7 @@ export class CascadesSubjectBuilder {
         const relationEntitySubject = new Subject({
           metadata: relationEntityMetadata,
           parentSubject: subject,
-          entity: relationEntity,
+          entity: relationEntity as ObjectLiteral,
           canBeInserted:
             relation.isCascadeInsert === true && operationType === 'save',
           canBeUpdated:
@@ -103,7 +103,7 @@ export class CascadesSubjectBuilder {
    * Comparison made by entity id.
    */
   protected findByPersistEntityLike(
-    entityTarget: Function | string,
+    entityTarget: unknown | string,
     entity: ObjectLiteral
   ): Subject | undefined {
     return this.allSubjects.find((subject) => {

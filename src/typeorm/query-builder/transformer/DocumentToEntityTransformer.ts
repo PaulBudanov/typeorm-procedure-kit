@@ -1,6 +1,6 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { EmbeddedMetadata } from '../../metadata/EmbeddedMetadata';
-import { EntityMetadata } from '../../metadata/EntityMetadata';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { EmbeddedMetadata } from '../../metadata/EmbeddedMetadata.js';
+import { EntityMetadata } from '../../metadata/EntityMetadata.js';
 
 /**
  * Transforms raw document into entity object.
@@ -11,7 +11,7 @@ export class DocumentToEntityTransformer {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     // private selectionMap: AliasMap,
     // private joinMappings: JoinMapping[],
     // private relationCountMetas: RelationCountAttribute[],
@@ -22,12 +22,18 @@ export class DocumentToEntityTransformer {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  transformAll(documents: Array<ObjectLiteral>, metadata: EntityMetadata) {
+  public transformAll(
+    documents: Array<ObjectLiteral>,
+    metadata: EntityMetadata
+  ): Array<ObjectLiteral | null> {
     return documents.map((document) => this.transform(document, metadata));
   }
 
-  transform(document: any, metadata: EntityMetadata) {
-    const entity: any = metadata.create(undefined, {
+  public transform(
+    document: unknown,
+    metadata: EntityMetadata
+  ): ObjectLiteral | null {
+    const entity = metadata.create(undefined, {
       fromDeserializer: true,
     });
     let hasData = false;
@@ -40,8 +46,9 @@ export class DocumentToEntityTransformer {
       const { databaseNameWithoutPrefixes, propertyName } =
         metadata.objectIdColumn;
 
-      const documentIdWithoutPrefixes = document[databaseNameWithoutPrefixes];
-      const documentIdWithPropertyName = document[propertyName];
+      const doc = document as ObjectLiteral;
+      const documentIdWithoutPrefixes = doc[databaseNameWithoutPrefixes];
+      const documentIdWithPropertyName = doc[propertyName];
 
       if (documentIdWithoutPrefixes) {
         entity[propertyName] = documentIdWithoutPrefixes;
@@ -57,7 +64,8 @@ export class DocumentToEntityTransformer {
       metadata.columns
         .filter((column) => !!column.relationMetadata)
         .forEach((column) => {
-          const valueInObject = document[column.databaseNameWithoutPrefixes];
+          const doc = document as ObjectLiteral;
+          const valueInObject = doc[column.databaseNameWithoutPrefixes];
           if (
             valueInObject !== undefined &&
             valueInObject !== null &&
@@ -86,7 +94,8 @@ export class DocumentToEntityTransformer {
 
     // get value from columns selections and put them into object
     metadata.ownColumns.forEach((column) => {
-      const valueInObject = document[column.databaseNameWithoutPrefixes];
+      const doc = document as ObjectLiteral;
+      const valueInObject = doc[column.databaseNameWithoutPrefixes];
       if (
         valueInObject !== undefined &&
         column.propertyName &&
@@ -100,31 +109,36 @@ export class DocumentToEntityTransformer {
     });
 
     const addEmbeddedValuesRecursively = (
-      entity: any,
-      document: any,
+      entity: ObjectLiteral,
+      document: ObjectLiteral,
       embeddeds: Array<EmbeddedMetadata>
-    ) => {
+    ): void => {
       embeddeds.forEach((embedded) => {
         if (!document[embedded.prefix]) return;
 
         if (embedded.isArray) {
-          entity[embedded.propertyName] = (
-            document[embedded.prefix] as Array<any>
-          ).map((subValue: any, index: number) => {
-            const newItem = embedded.create({
-              fromDeserializer: true,
-            });
-            embedded.columns.forEach((column) => {
-              newItem[column.propertyName] =
-                subValue[column.databaseNameWithoutPrefixes];
-            });
-            addEmbeddedValuesRecursively(
-              newItem,
-              document[embedded.prefix][index],
-              embedded.embeddeds
-            );
-            return newItem;
-          });
+          const embeddedArray = document[
+            embedded.prefix
+          ] as Array<ObjectLiteral>;
+          entity[embedded.propertyName] = embeddedArray.map(
+            (subValue, index: number) => {
+              const newItem = embedded.create({
+                fromDeserializer: true,
+              }) as ObjectLiteral;
+              embedded.columns.forEach((column) => {
+                const val = (subValue as ObjectLiteral)[
+                  column.databaseNameWithoutPrefixes
+                ];
+                newItem[column.propertyName] = val;
+              });
+              addEmbeddedValuesRecursively(
+                newItem,
+                embeddedArray[index] as ObjectLiteral,
+                embedded.embeddeds
+              );
+              return newItem;
+            }
+          ) as Array<ObjectLiteral>;
         } else {
           if (embedded.embeddeds.length && !entity[embedded.propertyName])
             entity[embedded.propertyName] = embedded.create({
@@ -132,8 +146,9 @@ export class DocumentToEntityTransformer {
             });
 
           embedded.columns.forEach((column) => {
-            const value =
-              document[embedded.prefix][column.databaseNameWithoutPrefixes];
+            const value = (document[embedded.prefix] as ObjectLiteral)[
+              column.databaseNameWithoutPrefixes
+            ];
             if (value === undefined) return;
 
             if (!entity[embedded.propertyName])
@@ -141,19 +156,25 @@ export class DocumentToEntityTransformer {
                 fromDeserializer: true,
               });
 
-            entity[embedded.propertyName][column.propertyName] = value;
+            (entity[embedded.propertyName] as Record<string, unknown>)[
+              column.propertyName
+            ] = value;
           });
 
           addEmbeddedValuesRecursively(
-            entity[embedded.propertyName],
-            document[embedded.prefix],
+            entity[embedded.propertyName] as ObjectLiteral,
+            document[embedded.prefix] as ObjectLiteral,
             embedded.embeddeds
           );
         }
       });
     };
 
-    addEmbeddedValuesRecursively(entity, document, metadata.embeddeds);
+    addEmbeddedValuesRecursively(
+      entity as ObjectLiteral,
+      document as ObjectLiteral,
+      metadata.embeddeds
+    );
 
     // if relation is loaded then go into it recursively and transform its values too
     /*metadata.relations.forEach(relation => {

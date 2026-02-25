@@ -1,11 +1,11 @@
-import { ObjectLiteral } from '../../common/ObjectLiteral';
-import { QueryResult } from '../../query-runner/QueryResult';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { QueryResult } from '../../query-runner/QueryResult.js';
 
 /**
  * Result object returned by UpdateQueryBuilder execution.
  */
 export class UpdateResult {
-  static from(queryResult: QueryResult) {
+  public static from(queryResult: QueryResult): UpdateResult {
     const result = new this();
     result.raw = queryResult.records;
     result.affected = queryResult.affected;
@@ -15,13 +15,13 @@ export class UpdateResult {
   /**
    * Raw SQL result returned by executed query.
    */
-  raw: any;
+  public raw: unknown;
 
   /**
    * Number of affected rows/documents
    * Not all drivers support this
    */
-  affected?: number;
+  public affected?: number;
 
   /**
    * Contains inserted entity id.
@@ -33,5 +33,5 @@ export class UpdateResult {
    * Generated values returned by a database.
    * Has entity-like structure (not just column database name and values).
    */
-  generatedMaps: Array<ObjectLiteral> = [];
+  public generatedMaps: Array<ObjectLiteral> = [];
 }

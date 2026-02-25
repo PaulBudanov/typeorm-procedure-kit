@@ -1,7 +1,7 @@
 import oracledb from 'oracledb';
-import type { DataSource } from 'typeorm';
-import type { OracleConnectionOptions } from 'typeorm/driver/oracle/OracleConnectionOptions.js';
 
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { OracleConnectionOptions } from '../../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import { DatabaseConnection } from '../abstract/database-connection.js';
 

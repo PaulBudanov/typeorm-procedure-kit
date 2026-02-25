@@ -1,3 +1,5 @@
+import type { TFunction } from '../../types/utility.types.js';
+
 /**
  * Metadata args utility functions.
  */
@@ -8,10 +10,10 @@ export class MetadataUtils {
    * For example Post extends ContentModel which extends Unit it will give
    * [Unit, ContentModel, Post]
    */
-  static getInheritanceTree(entity: Function): Array<Function> {
-    const tree: Array<Function> = [entity];
-    const getPrototypeOf = (object: Function): void => {
-      const proto = Object.getPrototypeOf(object);
+  public static getInheritanceTree(entity: TFunction): Array<TFunction> {
+    const tree: Array<TFunction> = [entity];
+    const getPrototypeOf = (object: TFunction): void => {
+      const proto = Object.getPrototypeOf(object) as TFunction;
       if (proto && proto.name) {
         tree.push(proto);
         getPrototypeOf(proto);
@@ -24,7 +26,7 @@ export class MetadataUtils {
   /**
    * Checks if this table is inherited from another table.
    */
-  static isInherited(target1: Function, target2: Function) {
+  public static isInherited(target1: TFunction, target2: TFunction): boolean {
     return target1.prototype instanceof target2;
   }
 
@@ -32,9 +34,9 @@ export class MetadataUtils {
    * Filters given array of targets by a given classes.
    * If classes are not given, then it returns array itself.
    */
-  static filterByTarget<T extends { target?: any }>(
+  public static filterByTarget<T extends { target?: unknown }>(
     array: Array<T>,
-    classes?: Array<any>
+    classes?: Array<unknown>
   ): Array<T> {
     if (!classes) return array;
     return array.filter(

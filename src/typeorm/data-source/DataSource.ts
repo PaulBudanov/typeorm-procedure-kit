@@ -9,7 +9,6 @@ import type { Driver } from '../driver/Driver.js';
 import { DriverFactory } from '../driver/DriverFactory.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
-import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
 import { EntityManager } from '../entity-manager/EntityManager.js';
 import { EntityManagerFactory } from '../entity-manager/EntityManagerFactory.js';
 import type { EntitySchema } from '../entity-schema/EntitySchema.js';
@@ -122,6 +121,8 @@ export class DataSource {
    */
   public queryResultCache?: QueryResultCache;
 
+  public isQuotingDisabled?: boolean;
+
   /**
    * Used to load relations and work with lazy relations.
    */
@@ -150,6 +151,7 @@ export class DataSource {
     this.relationLoader = new RelationLoader(this);
     this.relationIdLoader = new RelationIdLoader(this);
     this.isInitialized = false;
+    this.isQuotingDisabled = options.isQuotingDisabled;
   }
 
   // -------------------------------------------------------------------------
@@ -307,12 +309,6 @@ export class DataSource {
     throw new ServerError(
       'Method not implemented.IT`S NOT SAFE TO DROP DATABASE.'
     );
-    const queryRunner = this.createQueryRunner();
-    try {
-      await queryRunner.clearDatabase();
-    } finally {
-      await queryRunner.release();
-    }
   }
 
   /**
@@ -369,14 +365,14 @@ export class DataSource {
   /**
    * Checks if entity metadata exist for the given entity class, target name or table name.
    */
-  public hasMetadata(target: EntityTarget<unknown>): boolean {
+  public hasMetadata(target: EntityTarget<ObjectLiteral>): boolean {
     return !!this.findMetadata(target);
   }
 
   /**
    * Gets entity metadata for the given entity class or schema name.
    */
-  public getMetadata(target: EntityTarget<unknown>): EntityMetadata {
+  public getMetadata(target: EntityTarget<ObjectLiteral>): EntityMetadata {
     const metadata = this.findMetadata(target);
     if (!metadata) throw new EntityMetadataNotFoundError(target);
 
@@ -515,7 +511,7 @@ export class DataSource {
    * If you perform writes you must use master database,
    * if you perform reads you can use slave databases.
    */
-  public createQueryRunner(mode: ReplicationMode = 'master'): QueryRunner {
+  public createQueryRunner(mode: 'master' | 'slave' = 'master'): QueryRunner {
     const queryRunner = this.driver.createQueryRunner(mode);
     const manager = this.createEntityManager(queryRunner);
     Object.assign(queryRunner, { manager: manager });
@@ -526,7 +522,7 @@ export class DataSource {
    * Gets entity metadata of the junction table (many-to-many table).
    */
   public getManyToManyMetadata(
-    entityTarget: EntityTarget<unknown>,
+    entityTarget: EntityTarget<ObjectLiteral>,
     relationPropertyPath: string
   ): EntityMetadata | undefined {
     const relationMetadata =
@@ -659,14 +655,14 @@ export class DataSource {
   /**
    * Get the replication mode SELECT queries should use for this datasource by default
    */
-  public defaultReplicationModeForReads(): ReplicationMode {
+  public defaultReplicationModeForReads(): 'master' | 'slave' {
     if (
       'replication' in this.driver.options &&
       this.driver.options.replication
     ) {
       const value = (
         this.driver.options.replication as {
-          defaultMode?: ReplicationMode;
+          defaultMode?: 'master' | 'slave';
         }
       ).defaultMode;
       if (value) {

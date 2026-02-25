@@ -1,5 +1,5 @@
-import { UpsertType } from '../driver/types/UpsertType';
-import { InsertOrUpdateOptions } from '../query-builder/InsertOrUpdateOptions';
+import type { UpsertType } from '../driver/types/UpsertType.js';
+import type { InsertOrUpdateOptions } from '../query-builder/InsertOrUpdateOptions.js';
 
 /**
  * Special options passed to Repository#upsert

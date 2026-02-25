@@ -17,7 +17,10 @@ export function TreeChildren(options?: {
     // now try to determine it its lazy relation
     const reflectedType =
       Reflect && (Reflect as typeof Reflect).getMetadata
-        ? Reflect.getMetadata('design:type', object, propertyName)
+        ? (Reflect.getMetadata('design:type', object, propertyName) as Record<
+            string,
+            unknown
+          >)
         : undefined;
     const isLazy =
       (reflectedType &&

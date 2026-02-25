@@ -11,13 +11,13 @@ export type { IDatabaseFactory } from './config.types.js';
 // Procedures
 export type { IProcedureArgumentOracle } from './procedure.types.js';
 export type { IProcedureArgumentBase } from './procedure.types.js';
-export type { IProcedureArgumentList } from './procedure.types.js';
+export type { TProcedureArgumentList } from './procedure.types.js';
 export type { TDBMapStructure } from './procedure.types.js';
 
 // Notification
 export type { ICreateNotify } from './notification.types.js';
 export type { IOracleOptionsNotify } from './notification.types.js';
-export type { INotifyPackageCallback } from './notification.types.js';
+export type { TNotifyPackageCallback } from './notification.types.js';
 export type { INotifyPackageCallbackOracle } from './notification.types.js';
 export type { INotifyPackageCallbackPostgre } from './notification.types.js';
 export type { TNotifyCallbackGeneric } from './notification.types.js';

@@ -1,8 +1,8 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { ObjectUtils } from '../util/ObjectUtils';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { QueryBuilder } from './QueryBuilder';
-import { QueryExpressionMap } from './QueryExpressionMap';
+import { QueryBuilder } from './QueryBuilder.js';
+import type { QueryExpressionMap } from './QueryExpressionMap.js';
 
 /**
  * Allows to work with entity relations and perform specific operations with those relations.
@@ -14,8 +14,8 @@ export class RelationRemover {
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
-    protected queryBuilder: QueryBuilder<any>,
+  public constructor(
+    protected queryBuilder: QueryBuilder<ObjectLiteral>,
     protected expressionMap: QueryExpressionMap
   ) {}
 
@@ -26,7 +26,7 @@ export class RelationRemover {
   /**
    * Performs remove operation on a relation.
    */
-  async remove(value: any | Array<any>): Promise<void> {
+  public async remove(value: ObjectLiteral | Array<unknown>): Promise<void> {
     const relation = this.expressionMap.relationMetadata;
 
     if (relation.isOneToMany) {
@@ -34,10 +34,16 @@ export class RelationRemover {
       //     throw new TypeORMError(`You cannot update relations of multiple entities with the same related object. Provide a single entity into .of method.`);
 
       // DELETE FROM post WHERE post.categoryId = of AND post.id = id
-      const ofs = Array.isArray(this.expressionMap.of)
-        ? this.expressionMap.of
-        : [this.expressionMap.of];
-      const values = Array.isArray(value) ? value : [value];
+      const expressionMapOf = this.expressionMap.of as
+        | ObjectLiteral
+        | Array<ObjectLiteral>;
+      const ofs = (
+        Array.isArray(expressionMapOf) ? expressionMapOf : [expressionMapOf]
+      ) as Array<ObjectLiteral>;
+      const valuesArray = value as ObjectLiteral | Array<ObjectLiteral>;
+      const values = (
+        Array.isArray(valuesArray) ? valuesArray : [valuesArray]
+      ) as Array<ObjectLiteral>;
 
       const updateSet: ObjectLiteral = {};
       relation.inverseRelation!.joinColumns.forEach((column) => {
@@ -60,7 +66,9 @@ export class RelationRemover {
                     '_' +
                     columnIndex;
                   parameters[parameterName] = ObjectUtils.isObject(of)
-                    ? column.referencedColumn!.getEntityValue(of)
+                    ? column.referencedColumn!.getEntityValue(
+                        of as ObjectLiteral
+                      )
                     : of;
                   return `${column.propertyPath} = :${parameterName}`;
                 }
@@ -75,7 +83,7 @@ export class RelationRemover {
                     '_' +
                     columnIndex;
                   parameters[parameterName] = ObjectUtils.isObject(value)
-                    ? column.getEntityValue(value)
+                    ? column.getEntityValue(value as ObjectLiteral)
                     : value;
                   return `${column.propertyPath} = :${parameterName}`;
                 }
@@ -88,7 +96,7 @@ export class RelationRemover {
       if (!condition) return;
 
       await this.queryBuilder
-        .createQueryBuilder()
+        .createQueryBuilder<QueryBuilder<ObjectLiteral>>()
         .update(relation.inverseEntityMetadata.target)
         .set(updateSet)
         .where(condition)
@@ -98,10 +106,16 @@ export class RelationRemover {
       // many to many
 
       const junctionMetadata = relation.junctionEntityMetadata!;
-      const ofs = Array.isArray(this.expressionMap.of)
-        ? this.expressionMap.of
-        : [this.expressionMap.of];
-      const values = Array.isArray(value) ? value : [value];
+      const expressionMapOf = this.expressionMap.of as
+        | ObjectLiteral
+        | Array<ObjectLiteral>;
+      const ofs = (
+        Array.isArray(expressionMapOf) ? expressionMapOf : [expressionMapOf]
+      ) as Array<ObjectLiteral>;
+      const valuesArray = value as ObjectLiteral | Array<ObjectLiteral>;
+      const values = (
+        Array.isArray(valuesArray) ? valuesArray : [valuesArray]
+      ) as Array<ObjectLiteral>;
       const firstColumnValues = relation.isManyToManyOwner ? ofs : values;
       const secondColumnValues = relation.isManyToManyOwner ? values : ofs;
 
@@ -120,7 +134,9 @@ export class RelationRemover {
                   '_' +
                   columnIndex;
                 parameters[parameterName] = ObjectUtils.isObject(firstColumnVal)
-                  ? column.referencedColumn!.getEntityValue(firstColumnVal)
+                  ? column.referencedColumn!.getEntityValue(
+                      firstColumnVal as ObjectLiteral
+                    )
                   : firstColumnVal;
                 return `${column.databaseName} = :${parameterName}`;
               }),
@@ -135,7 +151,9 @@ export class RelationRemover {
                 parameters[parameterName] = ObjectUtils.isObject(
                   secondColumnVal
                 )
-                  ? column.referencedColumn!.getEntityValue(secondColumnVal)
+                  ? column.referencedColumn!.getEntityValue(
+                      secondColumnVal as ObjectLiteral
+                    )
                   : secondColumnVal;
                 return `${column.databaseName} = :${parameterName}`;
               }),
@@ -146,7 +164,7 @@ export class RelationRemover {
       const condition = conditions.map((str) => '(' + str + ')').join(' OR ');
 
       await this.queryBuilder
-        .createQueryBuilder()
+        .createQueryBuilder<QueryBuilder<ObjectLiteral>>()
         .delete()
         .from(junctionMetadata.tableName)
         .where(condition)

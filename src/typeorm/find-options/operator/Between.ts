@@ -1,4 +1,4 @@
-import { FindOperator } from '../FindOperator';
+import { FindOperator } from '../FindOperator.js';
 
 /**
  * Find Options Operator.
@@ -8,5 +8,5 @@ export function Between<T>(
   from: T | FindOperator<T>,
   to: T | FindOperator<T>
 ): FindOperator<T> {
-  return new FindOperator('between', [from, to] as any, true, true);
+  return new FindOperator('between', [from, to] as T, true, true);
 }

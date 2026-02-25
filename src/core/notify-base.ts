@@ -4,8 +4,8 @@ import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type {
   ICreateNotify,
-  INotifyPackageCallback,
   IOracleOptionsNotify,
+  TNotifyPackageCallback,
 } from '../types/notification.types.js';
 
 import type { ProcedureListBase } from './procedure-list-base.js';
@@ -57,7 +57,7 @@ export class NotifyBase {
    * }
    * @returns void
    */
-  public packageNotifyCallback(notifyData: INotifyPackageCallback): void {
+  public packageNotifyCallback(notifyData: TNotifyPackageCallback): void {
     const processPackage = (packageNameRaw: string): void => {
       const packageName = packageNameRaw.toLowerCase() as Lowercase<string>;
       if (

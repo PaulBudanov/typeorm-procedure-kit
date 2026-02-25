@@ -1,10 +1,10 @@
-import { TableColumnOptions } from '../options/TableColumnOptions';
+import type { TableColumnOptions } from '../options/TableColumnOptions.js';
 
 /**
  * Table's columns in the database represented in this class.
  */
 export class TableColumn {
-  readonly '@instanceof' = Symbol.for('TableColumn');
+  public readonly '@instanceof' = Symbol.for('TableColumn');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -13,149 +13,149 @@ export class TableColumn {
   /**
    * Column name.
    */
-  name: string;
+  public name!: string;
 
   /**
    * Column type.
    */
-  type: string;
+  public type!: string;
 
   /**
    * Column's default value.
    */
-  default?: any;
+  public default?: unknown;
 
   /**
    * ON UPDATE trigger. Works only for MySQL.
    */
-  onUpdate?: string;
+  public onUpdate?: string;
 
   /**
    * Indicates if column is NULL, or is NOT NULL in the database.
    */
-  isNullable = false;
+  public isNullable = false;
 
   /**
    * Indicates if column is auto-generated sequence.
    */
-  isGenerated = false;
+  public isGenerated = false;
 
   /**
    * Specifies generation strategy if this column will use auto increment.
    * `rowid` option supported only in CockroachDB.
    */
-  generationStrategy?: 'uuid' | 'increment' | 'rowid' | 'identity';
+  public generationStrategy?: 'uuid' | 'increment' | 'rowid' | 'identity';
 
   /**
    * Indicates if column is a primary key.
    */
-  isPrimary = false;
+  public isPrimary = false;
 
   /**
    * Indicates if column has unique value.
    */
-  isUnique = false;
+  public isUnique = false;
 
   /**
    * Indicates if column stores array.
    */
-  isArray = false;
+  public isArray = false;
 
   /**
    * Column's comment.
    */
-  comment?: string;
+  public comment?: string;
 
   /**
    * Column type's length. Used only on some column types.
    * For example type = "string" and length = "100" means that ORM will create a column with type varchar(100).
    */
-  length = '';
+  public length = '';
 
   /**
    * Column type's display width. Used only on some column types in MySQL.
    * For example, INT(4) specifies an INT with a display width of four digits.
    */
-  width?: number;
+  public width?: number;
 
   /**
    * Defines column character set.
    */
-  charset?: string;
+  public charset?: string;
 
   /**
    * Defines column collation.
    */
-  collation?: string;
+  public collation?: string;
 
   /**
    * The precision for a decimal (exact numeric) column (applies only for decimal column), which is the maximum
    * number of digits that are stored for the values.
    */
-  precision?: number | null;
+  public precision?: number | null;
 
   /**
    * The scale for a decimal (exact numeric) column (applies only for decimal column), which represents the number
    * of digits to the right of the decimal point and must not be greater than precision.
    */
-  scale?: number;
+  public scale?: number;
 
   /**
    * Puts ZEROFILL attribute on to numeric column. Works only for MySQL.
    * If you specify ZEROFILL for a numeric column, MySQL automatically adds the UNSIGNED attribute to the column
    */
-  zerofill = false;
+  public zerofill = false;
 
   /**
    * Puts UNSIGNED attribute on to numeric column. Works only for MySQL.
    */
-  unsigned = false;
+  public unsigned = false;
 
   /**
    * Array of possible enumerated values.
    */
-  enum?: Array<string>;
+  public enum?: Array<string>;
 
   /**
    * Exact name of enum
    */
-  enumName?: string;
+  public enumName?: string;
 
   /**
    * Name of the primary key constraint for primary column.
    */
-  primaryKeyConstraintName?: string;
+  public primaryKeyConstraintName?: string;
 
   /**
    * Generated column expression.
    */
-  asExpression?: string;
+  public asExpression?: string;
 
   /**
    * Generated column type.
    */
-  generatedType?: 'VIRTUAL' | 'STORED';
+  public generatedType?: 'VIRTUAL' | 'STORED';
 
   /**
    * Identity column type. Supports only in Postgres 10+.
    */
-  generatedIdentity?: 'ALWAYS' | 'BY DEFAULT';
+  public generatedIdentity?: 'ALWAYS' | 'BY DEFAULT';
 
   /**
    * Spatial Feature Type (Geometry, Point, Polygon, etc.)
    */
-  spatialFeatureType?: string;
+  public spatialFeatureType?: string;
 
   /**
    * SRID (Spatial Reference ID (EPSG code))
    */
-  srid?: number;
+  public srid?: number;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(options?: TableColumnOptions) {
+  public constructor(options?: TableColumnOptions) {
     if (options) {
       this.name = options.name;
       this.type = options.type || '';
@@ -194,7 +194,7 @@ export class TableColumn {
   /**
    * Clones this column to a new column with exact same properties as this column has.
    */
-  clone(): TableColumn {
+  public clone(): TableColumn {
     return new TableColumn({
       name: this.name,
       type: this.type,

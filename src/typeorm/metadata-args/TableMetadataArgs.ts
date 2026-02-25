@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { TableType } from '../metadata/types/TableTypes.js';
@@ -10,7 +11,7 @@ import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js'
 export interface TableMetadataArgs {
   /**
    * Class to which table is applied.
-   * Function target is a table defined in the class.
+   * TFunction target is a table defined in the class.
    * String target is a table defined in a json schema.
    */
   target: TFunction | string;
@@ -30,7 +31,7 @@ export interface TableMetadataArgs {
    */
   orderBy?:
     | OrderByCondition
-    | ((object: unknown) => OrderByCondition | undefined);
+    | ((object: ObjectLiteral) => OrderByCondition | undefined);
 
   /**
    * Table's database engine type (like "InnoDB", "MyISAM", etc).
@@ -59,7 +60,7 @@ export interface TableMetadataArgs {
    */
   expression?:
     | string
-    | ((connection: DataSource) => SelectQueryBuilder<unknown>);
+    | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
 
   /**
    * View dependencies.

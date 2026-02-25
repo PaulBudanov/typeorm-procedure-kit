@@ -10,7 +10,7 @@ import type { RelationOptions } from '../options/RelationOptions.js';
  * entity1 and entity2 ids. This is owner side of the relationship.
  */
 export function ManyToMany<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   options?: RelationOptions
 ): PropertyDecorator;
 
@@ -20,7 +20,7 @@ export function ManyToMany<T>(
  * entity1 and entity2 ids. This is owner side of the relationship.
  */
 export function ManyToMany<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSide?: string | ((object: T) => unknown),
   options?: RelationOptions
 ): PropertyDecorator;
@@ -31,7 +31,7 @@ export function ManyToMany<T>(
  * entity1 and entity2 ids. This is owner side of the relationship.
  */
 export function ManyToMany<T>(
-  typeFunctionOrTarget: string | ((type?: unknown) => ObjectType<T>),
+  typeOrTarget: string | ((type?: unknown) => ObjectType<T>),
   inverseSideOrOptions?: string | ((object: T) => unknown) | RelationOptions,
   options?: RelationOptions
 ): PropertyDecorator {
@@ -68,7 +68,7 @@ export function ManyToMany<T>(
       propertyName: propertyName,
       relationType: 'many-to-many',
       isLazy: isLazy,
-      type: typeFunctionOrTarget,
+      type: typeOrTarget,
       inverseSideProperty: inverseSideProperty,
       options: options,
     } as RelationMetadataArgs);

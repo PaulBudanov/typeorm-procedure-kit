@@ -1,4 +1,17 @@
-import type { Geometry } from '../../driver/types/GeoJsonTypes.js';
+/**
+ * Geometry type for spatial columns.
+ */
+export interface Geometry {
+  type:
+    | 'Point'
+    | 'LineString'
+    | 'Polygon'
+    | 'MultiPoint'
+    | 'MultiLineString'
+    | 'MultiPolygon'
+    | 'GeometryCollection';
+  coordinates: unknown;
+}
 
 /**
  * Options for spatial columns.

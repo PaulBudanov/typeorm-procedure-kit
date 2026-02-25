@@ -1,33 +1,46 @@
-import { ObjectLiteral } from '../common/ObjectLiteral';
-import { DataSource } from '../data-source/DataSource';
-import { CannotDetermineEntityError } from '../error/CannotDetermineEntityError';
-import { MustBeEntityError } from '../error/MustBeEntityError';
-import { QueryRunner } from '../query-runner/QueryRunner';
-import { RemoveOptions } from '../repository/RemoveOptions';
-import { SaveOptions } from '../repository/SaveOptions';
-import { OrmUtils } from '../util/OrmUtils';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
+import { CannotDetermineEntityError } from '../error/CannotDetermineEntityError.js';
+import { MustBeEntityError } from '../error/MustBeEntityError.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import type { RemoveOptions } from '../repository/RemoveOptions.js';
+import type { SaveOptions } from '../repository/SaveOptions.js';
+import { OrmUtils } from '../util/OrmUtils.js';
 
-import { Subject } from './Subject';
-import { CascadesSubjectBuilder } from './subject-builder/CascadesSubjectBuilder';
-import { ManyToManySubjectBuilder } from './subject-builder/ManyToManySubjectBuilder';
-import { OneToManySubjectBuilder } from './subject-builder/OneToManySubjectBuilder';
-import { OneToOneInverseSideSubjectBuilder } from './subject-builder/OneToOneInverseSideSubjectBuilder';
-import { SubjectDatabaseEntityLoader } from './SubjectDatabaseEntityLoader';
-import { SubjectExecutor } from './SubjectExecutor';
+import { CascadesSubjectBuilder } from './subject-builder/CascadesSubjectBuilder.js';
+import { ManyToManySubjectBuilder } from './subject-builder/ManyToManySubjectBuilder.js';
+import { OneToManySubjectBuilder } from './subject-builder/OneToManySubjectBuilder.js';
+import { OneToOneInverseSideSubjectBuilder } from './subject-builder/OneToOneInverseSideSubjectBuilder.js';
+import { Subject } from './Subject.js';
+import { SubjectDatabaseEntityLoader } from './SubjectDatabaseEntityLoader.js';
+import { SubjectExecutor } from './SubjectExecutor.js';
 
 /**
  * Persists a single entity or multiple entities - saves or removes them.
  */
 export class EntityPersistExecutor {
   // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
+
+  /**
+   * Driver used by this executor.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
+
+  // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(
+  public constructor(
     protected connection: DataSource,
     protected queryRunner: QueryRunner | undefined,
     protected mode: 'save' | 'remove' | 'soft-remove' | 'recover',
-    protected target: Function | string | undefined,
+    protected target: () => unknown | string | undefined,
     protected entity: ObjectLiteral | Array<ObjectLiteral>,
     protected options?: SaveOptions & RemoveOptions
   ) {}
@@ -39,7 +52,7 @@ export class EntityPersistExecutor {
   /**
    * Executes persistence operation ob given entity or entities.
    */
-  async execute(): Promise<void> {
+  public async execute(): Promise<void> {
     // check if entity we are going to save is valid and is an object
     if (!this.entity || typeof this.entity !== 'object')
       return Promise.reject(new MustBeEntityError(this.mode, this.entity));
@@ -49,13 +62,13 @@ export class EntityPersistExecutor {
 
     // if query runner is already defined in this class, it means this entity manager was already created for a single connection
     // if its not defined we create a new query runner - single connection where we'll execute all our operations
-    const queryRunner = this.queryRunner || this.connection.createQueryRunner();
+    const queryRunner = this.queryRunner ?? this.connection.createQueryRunner();
 
     // save data in the query runner - this is useful functionality to share data from outside of the world
     // with third classes - like subscribers and listener methods
     const oldQueryRunnerData = queryRunner.data;
     if (this.options && this.options.data) {
-      queryRunner.data = this.options.data;
+      queryRunner.data = this.options.data as ObjectLiteral;
     }
 
     try {
@@ -75,12 +88,14 @@ export class EntityPersistExecutor {
 
           // create subjects for all entities we received for the persistence
           entities.forEach((entity) => {
-            const entityTarget = this.target ? this.target : entity.constructor;
+            const entityTarget = this.target
+              ? this.target()
+              : entity.constructor;
             if (entityTarget === Object)
               throw new CannotDetermineEntityError(this.mode);
 
             const metadata = this.connection
-              .getMetadata(entityTarget)
+              .getMetadata(entityTarget as EntityTarget<ObjectLiteral>)
               .findInheritanceMetadata(entity);
 
             subjects.push(
@@ -158,7 +173,7 @@ export class EntityPersistExecutor {
         // open transaction if its not opened yet
         if (!queryRunner.isTransactionActive) {
           if (
-            this.connection.driver.transactionSupport !== 'none' &&
+            this.driver.transactionSupport !== 'none' &&
             (!this.options || this.options.transaction !== false)
           ) {
             // start transaction until it was not explicitly disabled
@@ -184,7 +199,9 @@ export class EntityPersistExecutor {
         if (isTransactionStartedByUs) {
           try {
             await queryRunner.rollbackTransaction();
-          } catch (rollbackError) {}
+          } catch {
+            //nothing
+          }
         }
         throw error;
       }

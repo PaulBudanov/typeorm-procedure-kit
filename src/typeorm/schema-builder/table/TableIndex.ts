@@ -1,11 +1,11 @@
-import { IndexMetadata } from '../../metadata/IndexMetadata';
-import { TableIndexOptions } from '../options/TableIndexOptions';
+import type { IndexMetadata } from '../../metadata/IndexMetadata.js';
+import type { TableIndexOptions } from '../options/TableIndexOptions.js';
 
 /**
  * Database's table index stored in this class.
  */
 export class TableIndex {
-  readonly '@instanceof' = Symbol.for('TableIndex');
+  public readonly '@instanceof' = Symbol.for('TableIndex');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -14,35 +14,35 @@ export class TableIndex {
   /**
    * Index name.
    */
-  name?: string;
+  public name?: string;
 
   /**
    * Columns included in this index.
    */
-  columnNames: Array<string> = [];
+  public columnNames: Array<string> = [];
 
   /**
    * Indicates if this index is unique.
    */
-  isUnique: boolean;
+  public isUnique: boolean;
 
   /**
    * The SPATIAL modifier indexes the entire column and does not allow indexed columns to contain NULL values.
    * Works only in MySQL.
    */
-  isSpatial: boolean;
+  public isSpatial: boolean;
 
   /**
    * Create the index using the CONCURRENTLY modifier
    * Works only in postgres.
    */
-  isConcurrent: boolean;
+  public isConcurrent: boolean;
 
   /**
    * The FULLTEXT modifier indexes the entire column and does not allow prefixing.
    * Works only in MySQL.
    */
-  isFulltext: boolean;
+  public isFulltext: boolean;
 
   /**
    * NULL_FILTERED indexes are particularly useful for indexing sparse columns, where most rows contain a NULL value.
@@ -51,24 +51,24 @@ export class TableIndex {
    *
    * Works only in Spanner.
    */
-  isNullFiltered: boolean;
+  public isNullFiltered: boolean;
 
   /**
    * Fulltext parser.
    * Works only in MySQL.
    */
-  parser?: string;
+  public parser?: string;
 
   /**
    * Index filter condition.
    */
-  where: string;
+  public where: string;
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(options: TableIndexOptions) {
+  public constructor(options: TableIndexOptions) {
     this.name = options.name;
     this.columnNames = options.columnNames;
     this.isUnique = !!options.isUnique;
@@ -87,7 +87,7 @@ export class TableIndex {
   /**
    * Creates a new copy of this index with exactly same properties.
    */
-  clone(): TableIndex {
+  public clone(): TableIndex {
     return new TableIndex({
       name: this.name,
       columnNames: [...this.columnNames],
@@ -108,7 +108,7 @@ export class TableIndex {
   /**
    * Creates index from the index metadata object.
    */
-  static create(indexMetadata: IndexMetadata): TableIndex {
+  public static create(indexMetadata: IndexMetadata): TableIndex {
     return new TableIndex({
       name: indexMetadata.name,
       columnNames: indexMetadata.columns.map((column) => column.databaseName),

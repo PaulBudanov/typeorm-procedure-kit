@@ -1,9 +1,12 @@
-import { ObjectType } from '../common/ObjectType';
-import { getMetadataArgsStorage } from '../globals';
-import { ForeignKeyMetadataArgs } from '../metadata-args/ForeignKeyMetadataArgs';
-import { ObjectUtils } from '../util/ObjectUtils';
+import type { ObjectType } from '../common/ObjectType.js';
+import { getMetadataArgsStorage } from '../globals.js';
+import type { ForeignKeyMetadataArgs } from '../metadata-args/ForeignKeyMetadataArgs.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { ForeignKeyOptions } from './options/ForeignKeyOptions';
+import type { ForeignKeyOptions } from './options/ForeignKeyOptions.js';
+
+type TypeFunction<T> = (type?: unknown) => ObjectType<T>;
+type InverseSideFunction<T> = (object: T) => unknown;
 
 /**
  * Creates a database foreign key. Can be used on entity property or on entity.
@@ -11,7 +14,7 @@ import { ForeignKeyOptions } from './options/ForeignKeyOptions';
  * Warning! Don't use this with relations; relation decorators create foreign keys automatically.
  */
 export function ForeignKey<T>(
-  typeFunctionOrTarget: string | ((type?: any) => ObjectType<T>),
+  typeOrTarget: string | TypeFunction<T>,
   options?: ForeignKeyOptions
 ): PropertyDecorator;
 
@@ -21,8 +24,8 @@ export function ForeignKey<T>(
  * Warning! Don't use this with relations; relation decorators create foreign keys automatically.
  */
 export function ForeignKey<T>(
-  typeFunctionOrTarget: string | ((type?: any) => ObjectType<T>),
-  inverseSide: string | ((object: T) => any),
+  typeOrTarget: string | TypeFunction<T>,
+  inverseSide: string | InverseSideFunction<T>,
   options?: ForeignKeyOptions
 ): PropertyDecorator;
 
@@ -36,7 +39,7 @@ export function ForeignKey<
   C extends (readonly [] | ReadonlyArray<string>) &
     (number extends C['length'] ? readonly [] : unknown),
 >(
-  typeFunctionOrTarget: string | ((type?: any) => ObjectType<T>),
+  typeOrTarget: string | TypeFunction<T>,
   columnNames: C,
   referencedColumnNames: { [K in keyof C]: string },
   options?: ForeignKeyOptions
@@ -52,10 +55,10 @@ export function ForeignKey<
   C extends (readonly [] | ReadonlyArray<string>) &
     (number extends C['length'] ? readonly [] : unknown),
 >(
-  typeFunctionOrTarget: string | ((type?: any) => ObjectType<T>),
+  typeOrTarget: string | TypeFunction<T>,
   inverseSideOrColumnNamesOrOptions?:
     | string
-    | ((object: T) => any)
+    | InverseSideFunction<T>
     | C
     | ForeignKeyOptions,
   referencedColumnNamesOrOptions?:
@@ -87,15 +90,15 @@ export function ForeignKey<
         : maybeOptions;
 
   return function (
-    clsOrObject: Function | object,
+    clsOrObject: ((...args: Array<unknown>) => unknown) | object,
     propertyName?: string | symbol
   ) {
     getMetadataArgsStorage().foreignKeys.push({
       target: propertyName
         ? clsOrObject.constructor
-        : (clsOrObject as Function),
+        : (clsOrObject as (...args: Array<unknown>) => unknown),
       propertyName: propertyName,
-      type: typeFunctionOrTarget,
+      type: typeOrTarget,
       inverseSide,
       columnNames,
       referencedColumnNames,

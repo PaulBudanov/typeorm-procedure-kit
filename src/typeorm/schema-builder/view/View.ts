@@ -1,17 +1,16 @@
-import {
-  DataSource,
-  Driver,
-  EntityMetadata,
-  SelectQueryBuilder,
-  TableIndex,
-} from '../..';
-import { ViewOptions } from '../options/ViewOptions';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { Driver } from '../../driver/Driver.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
+import type { ViewOptions } from '../options/ViewOptions.js';
+import { TableIndex } from '../table/TableIndex.js';
 
 /**
  * View in the database represented in this class.
  */
 export class View {
-  readonly '@instanceof' = Symbol.for('View');
+  public readonly '@instanceof' = Symbol.for('View');
 
   // -------------------------------------------------------------------------
   // Public Properties
@@ -20,39 +19,40 @@ export class View {
   /**
    * Database name that this view resides in if it applies.
    */
-  database?: string;
+  public database?: string;
 
   /**
    * Schema name that this view resides in if it applies.
    */
-  schema?: string;
+  public schema?: string;
 
   /**
    * View name
    */
-  name: string;
+  public name!: string;
 
   /**
    * Indicates if view is materialized.
    */
-  materialized: boolean;
+  public materialized!: boolean;
 
   /**
    * View Indices
    */
-  indices: Array<TableIndex>;
+  public indices: Array<TableIndex> = [];
 
   /**
    * View definition.
    */
-  expression: string | ((connection: DataSource) => SelectQueryBuilder<any>);
+  public expression!:
+    | string
+    | ((connection: DataSource) => SelectQueryBuilder<ObjectLiteral>);
 
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(options?: ViewOptions) {
-    this.indices = [];
+  public constructor(options?: ViewOptions) {
     if (options) {
       this.database = options.database;
       this.schema = options.schema;
@@ -69,7 +69,7 @@ export class View {
   /**
    * Clones this table to a new table with all properties cloned.
    */
-  clone(): View {
+  public clone(): View {
     return new View({
       database: this.database,
       schema: this.schema,
@@ -82,14 +82,14 @@ export class View {
   /**
    * Add index
    */
-  addIndex(index: TableIndex): void {
+  public addIndex(index: TableIndex): void {
     this.indices.push(index);
   }
 
   /**
    * Remove index
    */
-  removeIndex(viewIndex: TableIndex): void {
+  public removeIndex(viewIndex: TableIndex): void {
     const index = this.indices.find((index) => index.name === viewIndex.name);
     if (index) {
       this.indices.splice(this.indices.indexOf(index), 1);
@@ -103,7 +103,7 @@ export class View {
   /**
    * Creates view from a given entity metadata.
    */
-  static create(entityMetadata: EntityMetadata, driver: Driver): View {
+  public static create(entityMetadata: EntityMetadata, driver: Driver): View {
     const options: ViewOptions = {
       database: entityMetadata.database,
       schema: entityMetadata.schema,

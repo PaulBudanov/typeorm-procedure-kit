@@ -79,7 +79,7 @@ export async function importClassesFromDirectories(
 export function importJsonsFromDirectories(
   directories: Array<string>,
   format = '.json'
-): Array<any> {
+): Array<unknown> {
   const allFiles = directories.reduce((allDirs, dir) => {
     return allDirs.concat(glob.sync(PlatformTools.pathNormalize(dir)));
   }, [] as Array<string>);

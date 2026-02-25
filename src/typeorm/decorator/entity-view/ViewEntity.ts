@@ -1,7 +1,7 @@
-import { getMetadataArgsStorage } from '../../globals';
-import { TableMetadataArgs } from '../../metadata-args/TableMetadataArgs';
-import { ObjectUtils } from '../../util/ObjectUtils';
-import { ViewEntityOptions } from '../options/ViewEntityOptions';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { TableMetadataArgs } from '../../metadata-args/TableMetadataArgs.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import type { ViewEntityOptions } from '../options/ViewEntityOptions.js';
 
 /**
  * This decorator is used to mark classes that will be an entity view.
@@ -32,10 +32,10 @@ export function ViewEntity(
       : maybeOptions) || {};
   const name = typeof nameOrOptions === 'string' ? nameOrOptions : options.name;
 
-  return function (target: Function) {
+  return function (target): void {
     getMetadataArgsStorage().tables.push({
-      target: target,
-      name: name,
+      target,
+      name,
       expression: options.expression,
       dependsOn: options.dependsOn ? new Set(options.dependsOn) : undefined,
       type: 'view',
@@ -43,6 +43,6 @@ export function ViewEntity(
       schema: options.schema ? options.schema : undefined,
       synchronize: options.synchronize === false ? false : true,
       materialized: !!options.materialized,
-    } as TableMetadataArgs);
+    } as unknown as TableMetadataArgs);
   };
 }

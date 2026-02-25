@@ -40,27 +40,27 @@ export class InstanceChecker {
   }
   public static isInsertQueryBuilder(
     obj: unknown
-  ): obj is InsertQueryBuilder<unknown> {
+  ): obj is InsertQueryBuilder<ObjectLiteral> {
     return this.check(obj, 'InsertQueryBuilder');
   }
   public static isDeleteQueryBuilder(
     obj: unknown
-  ): obj is DeleteQueryBuilder<unknown> {
+  ): obj is DeleteQueryBuilder<ObjectLiteral> {
     return this.check(obj, 'DeleteQueryBuilder');
   }
   public static isUpdateQueryBuilder(
     obj: unknown
-  ): obj is UpdateQueryBuilder<unknown> {
+  ): obj is UpdateQueryBuilder<ObjectLiteral> {
     return this.check(obj, 'UpdateQueryBuilder');
   }
   public static isSoftDeleteQueryBuilder(
     obj: unknown
-  ): obj is SoftDeleteQueryBuilder<unknown> {
+  ): obj is SoftDeleteQueryBuilder<ObjectLiteral> {
     return this.check(obj, 'SoftDeleteQueryBuilder');
   }
   public static isRelationQueryBuilder(
     obj: unknown
-  ): obj is RelationQueryBuilder<unknown> {
+  ): obj is RelationQueryBuilder<ObjectLiteral> {
     return this.check(obj, 'RelationQueryBuilder');
   }
   public static isBrackets(obj: unknown): obj is Brackets {

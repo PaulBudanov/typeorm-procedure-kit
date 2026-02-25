@@ -32,42 +32,39 @@ class ProcedureNameParser {
     procedureList: TDBMapStructure,
     packages: Array<Lowercase<string>>
   ): IProcedureNameParser {
-    if (this.databaseNamingCache.cacheHas(this.cacheKey, executeString))
-      return this.databaseNamingCache.cacheGet(this.cacheKey, executeString)!;
+    const cached = this.databaseNamingCache.cacheGet(
+      this.cacheKey,
+      executeString
+    );
+    if (cached) return cached;
+
     const normalized = executeString.trim().toLowerCase();
     const parts = normalized.split('.') as Array<Lowercase<string>>;
-    let result: {
-      processName: Lowercase<string>;
-      packageName: Lowercase<string>;
-    } | null = null;
+    let result: IProcedureNameParser | null = null;
+
+    // Формат: packageName.procedureName
     if (parts.length === 2) {
       const [packageName, processName] = parts;
-
       if (packageName && processName && procedureList.has(packageName)) {
-        result = {
-          packageName,
-          processName,
-        };
+        result = { packageName, processName };
       }
     }
-
-    if (parts.length === 1 && packages.length === 1) {
-      const packageName = packages[0];
+    // Формат: procedureName (только если один пакет)
+    else if (parts.length === 1 && packages.length === 1) {
+      const [packageName] = packages;
       const [processName] = parts;
-
       if (packageName && processName && procedureList.has(packageName)) {
-        result = {
-          packageName,
-          processName,
-        };
+        result = { packageName, processName };
       }
     }
-    if (!result)
+
+    if (!result) {
       throw new ServerError(
         `Procedure or package with name '${executeString}' not found. ` +
-          `Write in format 'PackageName.ProcedureName' or just 'ProcedureName', ` +
-          `if there is only one package, available packages: ${packages.join(', ')}.`
+          `Use format 'PackageName.ProcedureName' or just 'ProcedureName' ` +
+          `if only one package exists. Available packages: ${packages.join(', ')}.`
       );
+    }
 
     this.databaseNamingCache.cacheSet(this.cacheKey, executeString, result);
     return result;

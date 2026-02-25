@@ -1,20 +1,20 @@
-import { RelationIdMetadata } from '../../metadata/RelationIdMetadata';
-import { QueryExpressionMap } from '../QueryExpressionMap';
+import { RelationIdMetadata } from '../../metadata/RelationIdMetadata.js';
+import { QueryExpressionMap } from '../QueryExpressionMap.js';
 
-import { RelationIdAttribute } from './RelationIdAttribute';
+import { RelationIdAttribute } from './RelationIdAttribute.js';
 
 export class RelationIdMetadataToAttributeTransformer {
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
 
-  constructor(protected expressionMap: QueryExpressionMap) {}
+  public constructor(protected expressionMap: QueryExpressionMap) {}
 
   // -------------------------------------------------------------------------
   // Public Methods
   // -------------------------------------------------------------------------
 
-  transform() {
+  public transform(): void {
     // by example:
     // post has relation id:
     // @RelationId(post => post.categories) categoryIds

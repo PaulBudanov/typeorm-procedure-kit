@@ -1,7 +1,7 @@
-import { getMetadataArgsStorage } from '../../globals';
-import { TableMetadataArgs } from '../../metadata-args/TableMetadataArgs';
-import { ObjectUtils } from '../../util/ObjectUtils';
-import { EntityOptions } from '../options/EntityOptions';
+import { getMetadataArgsStorage } from '../../globals.js';
+import type { TableMetadataArgs } from '../../metadata-args/TableMetadataArgs.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import type { EntityOptions } from '../options/EntityOptions.js';
 
 /**
  * This decorator is used to mark classes that will be an entity (table or document depend on database type).
@@ -29,18 +29,18 @@ export function Entity(
       : maybeOptions) || {};
   const name = typeof nameOrOptions === 'string' ? nameOrOptions : options.name;
 
-  return function (target) {
+  return function (target): void {
     getMetadataArgsStorage().tables.push({
-      target: target,
-      name: name,
+      target,
+      name,
       type: 'regular',
-      orderBy: options.orderBy ? options.orderBy : undefined,
-      engine: options.engine ? options.engine : undefined,
-      database: options.database ? options.database : undefined,
-      schema: options.schema ? options.schema : undefined,
+      orderBy: options.orderBy,
+      engine: options.engine,
+      database: options.database,
+      schema: options.schema,
       synchronize: options.synchronize,
       withoutRowid: options.withoutRowid,
-      comment: options.comment ? options.comment : undefined,
-    } as TableMetadataArgs);
+      comment: options.comment,
+    } as unknown as TableMetadataArgs);
   };
 }

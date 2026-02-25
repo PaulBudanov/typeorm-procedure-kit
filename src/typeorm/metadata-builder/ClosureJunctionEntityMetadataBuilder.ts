@@ -1,4 +1,5 @@
 import { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
 import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { ForeignKeyMetadata } from '../metadata/ForeignKeyMetadata.js';
@@ -14,6 +15,17 @@ export class ClosureJunctionEntityMetadataBuilder {
   // -------------------------------------------------------------------------
 
   public constructor(private connection: DataSource) {}
+
+  // -------------------------------------------------------------------------
+  // Public Properties
+  // -------------------------------------------------------------------------
+
+  /**
+   * Driver used by this builder.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
 
   // -------------------------------------------------------------------------
   // Public Methods
@@ -139,7 +151,7 @@ export class ClosureJunctionEntityMetadataBuilder {
             mode: 'virtual',
             propertyName: 'level',
             options: {
-              type: this.connection.driver.mappedDataTypes.treeLevel,
+              type: this.driver.mappedDataTypes.treeLevel,
             },
           },
         })

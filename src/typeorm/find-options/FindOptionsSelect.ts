@@ -1,4 +1,4 @@
-import { ObjectId } from '../driver/mongodb/typings';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * A single property handler for FindOptionsSelect.
@@ -14,13 +14,13 @@ export type FindOptionsSelectProperty<Property> =
           ? boolean
           : Property extends boolean
             ? boolean
-            : Property extends Function
+            : Property extends TFunction
               ? never
               : Property extends Buffer
                 ? boolean
                 : Property extends Date
                   ? boolean
-                  : Property extends ObjectId
+                  : Property extends number
                     ? boolean
                     : Property extends object
                       ? FindOptionsSelect<Property> | boolean

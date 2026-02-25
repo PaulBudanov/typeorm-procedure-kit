@@ -2,7 +2,9 @@ import type { TFunction } from '../../types/utility.types.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { PickKeysByType } from '../common/PickKeysByType.js';
 import { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import { EntityNotFoundError } from '../error/EntityNotFoundError.js';
 import { NoNeedToReleaseEntityManagerError } from '../error/NoNeedToReleaseEntityManagerError.js';
@@ -22,7 +24,8 @@ import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import { PlainObjectToDatabaseEntityTransformer } from '../query-builder/transformer/PlainObjectToDatabaseEntityTransformer.js';
 import { PlainObjectToNewEntityTransformer } from '../query-builder/transformer/PlainObjectToNewEntityTransformer.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
-import { MongoRepository } from '../repository/MongoRepository.js';
+// MongoRepository import removed - module not found
+// import { MongoRepository } from '../repository/MongoRepository.js';
 import type { RemoveOptions } from '../repository/RemoveOptions.js';
 import { Repository } from '../repository/Repository.js';
 import type { SaveOptions } from '../repository/SaveOptions.js';
@@ -55,6 +58,13 @@ export class EntityManager {
    */
   public readonly queryRunner?: QueryRunner;
 
+  /**
+   * Driver used by this entity manager.
+   */
+  public get driver(): Driver {
+    return this.connection.driver;
+  }
+
   // -------------------------------------------------------------------------
   // Protected Properties
   // -------------------------------------------------------------------------
@@ -64,14 +74,14 @@ export class EntityManager {
    * Created as a future replacement for the #repositories to provide a bit more perf optimization.
    */
   protected repositories = new Map<
-    EntityTarget<unknown>,
-    Repository<unknown>
+    EntityTarget<ObjectLiteral>,
+    Repository<ObjectLiteral>
   >();
 
   /**
    * Once created and then reused by repositories.
    */
-  protected treeRepositories: Array<TreeRepository<unknown>> = [];
+  protected treeRepositories: Array<TreeRepository<ObjectLiteral>> = [];
 
   /**
    * Plain to object transformer used in create and merge operations.
@@ -206,7 +216,7 @@ export class EntityManager {
         entityClass as EntityTarget<Entity>,
         alias,
         queryRunner ?? this.queryRunner
-      );
+      ) as SelectQueryBuilder<ObjectLiteral>;
     } else {
       return this.connection.createQueryBuilder(
         (entityClass as QueryRunner | undefined) ??
@@ -227,7 +237,7 @@ export class EntityManager {
   public hasId(target: TFunction | string, entity: unknown): boolean;
 
   /**
-   * Checks if entity has an id by its Function type or schema name.
+   * Checks if entity has an id by its TFunction type or schema name.
    */
   public hasId(
     targetOrEntity: unknown | TFunction | string,
@@ -239,7 +249,7 @@ export class EntityManager {
         : (targetOrEntity as object).constructor;
     const entity = arguments.length === 2 ? maybeEntity : targetOrEntity;
     const metadata = this.connection.getMetadata(
-      target as EntityTarget<unknown>
+      target as EntityTarget<ObjectLiteral>
     );
     return metadata.hasId(entity as ObjectLiteral);
   }
@@ -267,7 +277,7 @@ export class EntityManager {
         : (targetOrEntity as object).constructor;
     const entity = arguments.length === 2 ? maybeEntity : targetOrEntity;
     const metadata = this.connection.getMetadata(
-      target as EntityTarget<unknown>
+      target as EntityTarget<ObjectLiteral>
     );
     return metadata.getEntityIdMixedMap(entity as ObjectLiteral);
   }
@@ -294,7 +304,10 @@ export class EntityManager {
    * Creates a new entity instance or instances.
    * Can copy properties from the given object into new entities.
    */
-  public create<Entity, EntityLike extends DeepPartial<Entity>>(
+  public create<
+    Entity extends ObjectLiteral,
+    EntityLike extends DeepPartial<Entity>,
+  >(
     entityClass: EntityTarget<Entity>,
     plainObjectOrObjects?: EntityLike | Array<EntityLike>
   ): Entity | Array<Entity> {
@@ -308,14 +321,14 @@ export class EntityManager {
         (plainEntityLike) => this.create(entityClass, plainEntityLike)
       );
 
-    const mergeIntoEntity = metadata.create(this.queryRunner);
+    const mergeIntoEntity = metadata.create(this.queryRunner) as Entity;
     this.plainObjectToEntityTransformer.transform(
       mergeIntoEntity,
-      plainObjectOrObjects,
+      plainObjectOrObjects as unknown as ObjectLiteral,
       metadata,
       true
     );
-    return mergeIntoEntity as Entity;
+    return mergeIntoEntity;
   }
 
   /**
@@ -451,7 +464,7 @@ export class EntityManager {
       this.connection,
       this.queryRunner,
       'save',
-      target,
+      () => target,
       entity,
       options
     )
@@ -520,12 +533,12 @@ export class EntityManager {
     if (Array.isArray(entity) && entity.length === 0)
       return Promise.resolve(entity);
 
-    // execute save operation
+    // execute remove operation
     return new EntityPersistExecutor(
       this.connection,
       this.queryRunner,
       'remove',
-      target,
+      () => target,
       entity,
       options
     )
@@ -604,7 +617,7 @@ export class EntityManager {
       this.connection,
       this.queryRunner,
       'soft-remove',
-      target,
+      () => target,
       entity,
       options
     )
@@ -680,7 +693,7 @@ export class EntityManager {
       this.connection,
       this.queryRunner,
       'recover',
-      target,
+      () => target,
       entity,
       options
     )
@@ -761,9 +774,7 @@ export class EntityManager {
         {
           skipUpdateIfNoValuesChanged: options.skipUpdateIfNoValuesChanged,
           indexPredicate: options.indexPredicate,
-          upsertType:
-            options.upsertType ||
-            this.connection.driver.supportedUpsertTypes[0],
+          upsertType: options.upsertType || this.driver.supportedUpsertTypes[0],
         }
       )
       .execute();
@@ -807,7 +818,7 @@ export class EntityManager {
       return this.createQueryBuilder()
         .update(target)
         .set(partialEntity)
-        .where(criteria)
+        .where(criteria as ObjectLiteral)
         .execute();
     }
   }
@@ -866,7 +877,7 @@ export class EntityManager {
       return this.createQueryBuilder()
         .delete()
         .from(targetOrEntity)
-        .where(criteria)
+        .where(criteria as ObjectLiteral)
         .execute();
     }
   }
@@ -921,7 +932,7 @@ export class EntityManager {
       return this.createQueryBuilder()
         .softDelete()
         .from(targetOrEntity)
-        .where(criteria)
+        .where(criteria as ObjectLiteral)
         .execute();
     }
   }
@@ -963,7 +974,7 @@ export class EntityManager {
       return this.createQueryBuilder()
         .restore()
         .from(targetOrEntity)
-        .where(criteria)
+        .where(criteria as ObjectLiteral)
         .execute();
     }
   }
@@ -1088,14 +1099,13 @@ export class EntityManager {
       );
     }
 
-    const result = await this.createQueryBuilder(entityClass, metadata.name)
+    const result = (await this.createQueryBuilder(entityClass, metadata.name)
       .setFindOptions({ where })
-      .select(
-        `${fnName}(${this.connection.driver.escape(column.databaseName)})`,
-        fnName
-      )
-      .getRawOne();
-    return result[fnName] === null ? null : parseFloat(result[fnName]);
+      .select(`${fnName}(${this.driver.escape(column.databaseName)})`, fnName)
+      .getRawOne()) as Record<string, string> | null;
+    return result?.[fnName] === null || result?.[fnName] === undefined
+      ? null
+      : parseFloat(result[fnName] as string);
   }
 
   /**
@@ -1296,7 +1306,9 @@ export class EntityManager {
    * Note: this method uses TRUNCATE and may not work as you expect in transactions on some platforms.
    * @see https://stackoverflow.com/a/5972738/925151
    */
-  public async clear<Entity>(entityClass: EntityTarget<Entity>): Promise<void> {
+  public async clear<Entity extends ObjectLiteral>(
+    entityClass: EntityTarget<Entity>
+  ): Promise<void> {
     const metadata = this.connection.getMetadata(entityClass);
     const queryRunner = this.queryRunner || this.connection.createQueryRunner();
     try {
@@ -1311,7 +1323,7 @@ export class EntityManager {
    */
   public async increment<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    conditions: unknown,
+    conditions: string | ObjectLiteral | Array<ObjectLiteral>,
     propertyPath: string,
     value: number | string
   ): Promise<UpdateResult> {
@@ -1326,16 +1338,19 @@ export class EntityManager {
       throw new TypeORMError(`Value "${value}" is not a number.`);
 
     // convert possible embedded path "social.likes" into object { social: { like: () => value } }
-    const values: QueryDeepPartialEntity<Entity> = propertyPath
+    const values = propertyPath
       .split('.')
       .reduceRight(
-        (value, key) => ({ [key]: value }),
-        () => this.connection.driver.escape(column.databaseName) + ' + ' + value
+        (acc, key) => ({ [key]: acc }),
+        (() =>
+          this.driver.escape(column.databaseName) +
+          ' + ' +
+          value) as unknown as Record<string, unknown>
       );
 
     return this.createQueryBuilder<Entity>(entityClass, 'entity')
       .update(entityClass)
-      .set(values)
+      .set(values as QueryDeepPartialEntity<Entity>)
       .where(conditions)
       .execute();
   }
@@ -1345,7 +1360,7 @@ export class EntityManager {
    */
   public async decrement<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
-    conditions: unknown,
+    conditions: string | ObjectLiteral | Array<ObjectLiteral>,
     propertyPath: string,
     value: number | string
   ): Promise<UpdateResult> {
@@ -1360,16 +1375,19 @@ export class EntityManager {
       throw new TypeORMError(`Value "${value}" is not a number.`);
 
     // convert possible embedded path "social.likes" into object { social: { like: () => value } }
-    const values: QueryDeepPartialEntity<Entity> = propertyPath
+    const values = propertyPath
       .split('.')
       .reduceRight(
-        (value, key) => ({ [key]: value }),
-        () => this.connection.driver.escape(column.databaseName) + ' - ' + value
+        (acc, key) => ({ [key]: acc }),
+        (() =>
+          this.connection.driver.escape(column.databaseName) +
+          ' + ' +
+          value) as unknown as Record<string, unknown>
       );
 
-    return this.createQueryBuilder<Entity>(entityClass as any, 'entity')
+    return this.createQueryBuilder<Entity>(entityClass, 'entity')
       .update(entityClass)
-      .set(values)
+      .set(values as QueryDeepPartialEntity<Entity>)
       .where(conditions)
       .execute();
   }
@@ -1384,19 +1402,29 @@ export class EntityManager {
     target: EntityTarget<Entity>
   ): Repository<Entity> {
     // find already created repository instance and return it if found
-    const repoFromMap = this.repositories.get(target);
+    const repoFromMap = this.repositories.get(target) as
+      | Repository<Entity>
+      | undefined;
     if (repoFromMap) return repoFromMap;
 
     // if repository was not found then create it, store its instance and return it
-    if (this.connection.driver.options.type === 'mongodb') {
-      const newRepository = new MongoRepository(target, this, this.queryRunner);
-      this.repositories.set(target, newRepository);
-      return newRepository;
-    } else {
-      const newRepository = new Repository<any>(target, this, this.queryRunner);
-      this.repositories.set(target, newRepository);
-      return newRepository;
-    }
+    // Note: MongoDB support is not available in this build
+    // if (this.driver.options.type === 'mongodb') {
+    //   const newRepository = new MongoRepository(target, this, this.queryRunner);
+    //   this.repositories.set(target, newRepository);
+    //   return newRepository;
+    // } else {
+    const newRepository = new Repository<Entity>(
+      target,
+      this,
+      this.queryRunner
+    );
+    this.repositories.set(
+      target as EntityTarget<ObjectLiteral>,
+      newRepository as Repository<ObjectLiteral>
+    );
+    return newRepository;
+    // }
   }
 
   /**
@@ -1409,18 +1437,22 @@ export class EntityManager {
     target: EntityTarget<Entity>
   ): TreeRepository<Entity> {
     // tree tables aren't supported by some drivers (mongodb)
-    if (this.connection.driver.treeSupport === false)
+    if (this.driver.treeSupport === false)
       throw new TreeRepositoryNotSupportedError(this.connection.driver);
 
     // find already created repository instance and return it if found
     const repository = this.treeRepositories.find(
       (repository) => repository.target === target
-    );
+    ) as TreeRepository<Entity> | undefined;
     if (repository) return repository;
 
     // check if repository is real tree repository
-    const newRepository = new TreeRepository(target, this, this.queryRunner);
-    this.treeRepositories.push(newRepository);
+    const newRepository = new TreeRepository<Entity>(
+      target,
+      this,
+      this.queryRunner
+    );
+    this.treeRepositories.push(newRepository as TreeRepository<ObjectLiteral>);
     return newRepository;
   }
 
@@ -1431,17 +1463,13 @@ export class EntityManager {
    */
   public withRepository<
     Entity extends ObjectLiteral,
-    R extends Repository<any>,
+    R extends Repository<ObjectLiteral>,
   >(repository: R & Repository<Entity>): R {
     const repositoryConstructor = repository.constructor as typeof Repository;
-    const { target, manager, queryRunner, ...otherRepositoryProperties } =
-      repository;
-    return Object.assign(
-      new repositoryConstructor(repository.target, this) as R,
-      {
-        ...otherRepositoryProperties,
-      }
-    );
+    const { target, ...otherRepositoryProperties } = repository;
+    return Object.assign(new repositoryConstructor(target, this) as R, {
+      ...otherRepositoryProperties,
+    });
   }
 
   /**

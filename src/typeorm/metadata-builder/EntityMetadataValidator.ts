@@ -1,14 +1,13 @@
-import { Driver } from '../driver/Driver';
-import { DriverUtils } from '../driver/DriverUtils';
-import { ColumnType } from '../driver/types/ColumnTypes';
-import { TypeORMError } from '../error';
-import { CircularRelationsError } from '../error/CircularRelationsError';
-import { DataTypeNotSupportedError } from '../error/DataTypeNotSupportedError';
-import { InitializedRelationError } from '../error/InitializedRelationError';
-import { MissingPrimaryColumnError } from '../error/MissingPrimaryColumnError';
-import { NoConnectionOptionError } from '../error/NoConnectionOptionError';
-import { EntityMetadata } from '../metadata/EntityMetadata';
-import { DepGraph } from '../util/DepGraph';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { Driver } from '../driver/Driver.js';
+import type { ColumnType } from '../driver/types/ColumnTypes.js';
+import { CircularRelationsError } from '../error/CircularRelationsError.js';
+import { DataTypeNotSupportedError } from '../error/DataTypeNotSupportedError.js';
+import { InitializedRelationError } from '../error/InitializedRelationError.js';
+import { MissingPrimaryColumnError } from '../error/MissingPrimaryColumnError.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import { DepGraph } from '../util/DepGraph.js';
 
 /// todo: add check if there are multiple tables with the same name
 /// todo: add checks when generated column / table names are too long for the specific driver
@@ -38,7 +37,10 @@ export class EntityMetadataValidator {
   /**
    * Validates all given entity metadatas.
    */
-  validateMany(entityMetadatas: Array<EntityMetadata>, driver: Driver) {
+  public validateMany(
+    entityMetadatas: Array<EntityMetadata>,
+    driver: Driver
+  ): void {
     entityMetadatas.forEach((entityMetadata) =>
       this.validate(entityMetadata, entityMetadatas, driver)
     );
@@ -49,11 +51,11 @@ export class EntityMetadataValidator {
   /**
    * Validates given entity metadata.
    */
-  validate(
+  public validate(
     entityMetadata: EntityMetadata,
     allEntityMetadatas: Array<EntityMetadata>,
     driver: Driver
-  ) {
+  ): void {
     // check if table metadata has an id
     if (!entityMetadata.primaryColumns.length && !entityMetadata.isJunction)
       throw new MissingPrimaryColumnError(entityMetadata);
@@ -62,9 +64,9 @@ export class EntityMetadataValidator {
     // then all primary keys should have the same constraint name
     if (entityMetadata.primaryColumns.length > 1) {
       const areConstraintNamesEqual = entityMetadata.primaryColumns.every(
-        (columnMetadata, i, columnMetadatas) =>
+        (columnMetadata, _i, columnMetadatas) =>
           columnMetadata.primaryKeyConstraintName ===
-          columnMetadatas[0].primaryKeyConstraintName
+          columnMetadatas[0]?.primaryKeyConstraintName
       );
       if (!areConstraintNamesEqual) {
         throw new TypeORMError(
@@ -119,7 +121,7 @@ export class EntityMetadataValidator {
         );
     });
 
-    if (!(driver.options.type === 'mongodb')) {
+    if (String(driver.options.type) !== 'mongodb') {
       entityMetadata.columns
         .filter((column) => !column.isVirtualProperty)
         .forEach((column) => {
@@ -144,40 +146,6 @@ export class EntityMetadataValidator {
         });
     }
 
-    if (
-      DriverUtils.isMySQLFamily(driver) ||
-      driver.options.type === 'aurora-mysql'
-    ) {
-      const generatedColumns = entityMetadata.columns.filter(
-        (column) => column.isGenerated && column.generationStrategy !== 'uuid'
-      );
-      if (generatedColumns.length > 1)
-        throw new TypeORMError(
-          `Error in ${entityMetadata.name} entity. There can be only one auto-increment column in MySql table.`
-        );
-    }
-
-    // for mysql we are able to not define a default selected database, instead all entities can have their database
-    // defined in their decorators. To make everything work either all entities must have database define and we
-    // can live without database set in the connection options, either database in the connection options must be set
-    if (DriverUtils.isMySQLFamily(driver)) {
-      const metadatasWithDatabase = allEntityMetadatas.filter(
-        (metadata) => metadata.database
-      );
-      if (metadatasWithDatabase.length === 0 && !driver.database)
-        throw new NoConnectionOptionError('database');
-    }
-
-    if (driver.options.type === 'mssql') {
-      const charsetColumns = entityMetadata.columns.filter(
-        (column) => column.charset
-      );
-      if (charsetColumns.length > 1)
-        throw new TypeORMError(
-          `Character set specifying is not supported in Sql Server`
-        );
-    }
-
     // Postgres supports only STORED generated columns.
     if (driver.options.type === 'postgres') {
       const virtualColumn = entityMetadata.columns.find(
@@ -194,7 +162,7 @@ export class EntityMetadataValidator {
     // check if relations are all without initialized properties
     const entityInstance = entityMetadata.create(undefined, {
       fromDeserializer: true,
-    });
+    }) as ObjectLiteral;
     entityMetadata.relations.forEach((relation) => {
       if (relation.isManyToMany || relation.isOneToMany) {
         // we skip relations for which persistence is disabled since initialization in them cannot harm somehow
@@ -305,7 +273,7 @@ export class EntityMetadataValidator {
   /**
    * Validates dependencies of the entity metadatas.
    */
-  protected validateDependencies(entityMetadatas: Array<EntityMetadata>) {
+  protected validateDependencies(entityMetadatas: Array<EntityMetadata>): void {
     const graph = new DepGraph();
     entityMetadatas.forEach((entityMetadata) => {
       graph.addNode(entityMetadata.name);
@@ -323,8 +291,9 @@ export class EntityMetadataValidator {
     try {
       graph.overallOrder();
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       throw new CircularRelationsError(
-        err.toString().replace('Error: Dependency Cycle Found: ', '')
+        errorMessage.replace('Error: Dependency Cycle Found: ', '')
       );
     }
   }
@@ -332,7 +301,9 @@ export class EntityMetadataValidator {
   /**
    * Validates eager relations to prevent circular dependency in them.
    */
-  protected validateEagerRelations(entityMetadatas: Array<EntityMetadata>) {
+  protected validateEagerRelations(
+    entityMetadatas: Array<EntityMetadata>
+  ): void {
     entityMetadatas.forEach((entityMetadata) => {
       entityMetadata.eagerRelations.forEach((relation) => {
         if (relation.inverseRelation && relation.inverseRelation.isEager)
