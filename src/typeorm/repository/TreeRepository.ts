@@ -52,7 +52,7 @@ export class TreeRepository<
           parentPropertyName
         )} IS NULL`
       )
-      .getMany();
+      .getMany() as Promise<Array<Entity>>;
   }
 
   /**
@@ -168,7 +168,7 @@ export class TreeRepository<
           joinCondition
         )
         .where(whereCondition)
-        .setParameters(parameters);
+        .setParameters(parameters) as SelectQueryBuilder<Entity>;
     } else if (this.metadata.treeType === 'nested-set') {
       const whereCondition =
         alias +
@@ -197,7 +197,7 @@ export class TreeRepository<
 
       return this.createQueryBuilder(alias)
         .innerJoin(this.metadata.targetName, 'joined', whereCondition)
-        .where(joinCondition, parameters);
+        .where(joinCondition, parameters) as SelectQueryBuilder<Entity>;
     } else if (this.metadata.treeType === 'materialized-path') {
       return this.createQueryBuilder(alias).where((qb) => {
         const subQuery = qb
@@ -214,7 +214,7 @@ export class TreeRepository<
         return `${alias}.${
           this.metadata.materializedPathColumn!.propertyPath
         } LIKE NULLIF(CONCAT(${subQuery.getQuery()}, '%'), '%')`;
-      });
+      }) as SelectQueryBuilder<Entity>;
     }
 
     throw new TypeORMError(`Supported only in tree entities`);
@@ -327,7 +327,7 @@ export class TreeRepository<
           joinCondition
         )
         .where(whereCondition)
-        .setParameters(parameters);
+        .setParameters(parameters) as SelectQueryBuilder<Entity>;
     } else if (this.metadata.treeType === 'nested-set') {
       const joinCondition =
         'joined.' +
@@ -358,7 +358,7 @@ export class TreeRepository<
 
       return this.createQueryBuilder(alias)
         .innerJoin(this.metadata.targetName, 'joined', joinCondition)
-        .where(whereCondition, parameters);
+        .where(whereCondition, parameters) as SelectQueryBuilder<Entity>;
     } else if (this.metadata.treeType === 'materialized-path') {
       // example: SELECT * FROM category category WHERE (SELECT mpath FROM `category` WHERE id = 2) LIKE CONCAT(category.mpath, '%');
       return this.createQueryBuilder(alias).where((qb) => {
@@ -376,7 +376,7 @@ export class TreeRepository<
         return `${subQuery.getQuery()} LIKE CONCAT(${alias}.${
           this.metadata.materializedPathColumn!.propertyPath
         }, '%')`;
-      });
+      }) as SelectQueryBuilder<Entity>;
     }
 
     throw new TypeORMError(`Supported only in tree entities`);

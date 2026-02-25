@@ -17,7 +17,7 @@ import type { TreeRepository } from './TreeRepository.js';
  *
  * @deprecated use Repository.extend function to create a custom repository
  */
-export class AbstractRepository<Entity extends ObjectLiteral> {
+export class AbstractRepository<Entity = unknown> {
   // -------------------------------------------------------------------------
   // Protected Methods Set Dynamically
   // -------------------------------------------------------------------------
@@ -47,14 +47,14 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
    * Gets the original ORM tree repository for the entity that is managed by this repository.
    * If current repository does not manage any entity, then exception will be thrown.
    */
-  protected get treeRepository(): TreeRepository<Entity> {
+  protected get treeRepository(): TreeRepository<ObjectLiteral> {
     const target = this.getCustomRepositoryTarget(this as unknown);
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
 
-    return this.manager.getTreeRepository<Entity>(
-      target as EntityTarget<Entity>
-    );
+    return this.manager.getTreeRepository<ObjectLiteral>(
+      target as EntityTarget<ObjectLiteral>
+    ) as TreeRepository<ObjectLiteral>;
   }
 
   // -------------------------------------------------------------------------
@@ -65,7 +65,9 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
    * Creates a new query builder for the repository's entity that can be used to build a SQL query.
    * If current repository does not manage any entity, then exception will be thrown.
    */
-  protected createQueryBuilder(alias: string): SelectQueryBuilder<Entity> {
+  protected createQueryBuilder(
+    alias: string
+  ): SelectQueryBuilder<Entity extends ObjectLiteral ? Entity : ObjectLiteral> {
     const target = this.getCustomRepositoryTarget(this.constructor);
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
@@ -82,7 +84,9 @@ export class AbstractRepository<Entity extends ObjectLiteral> {
     entity: ObjectType<T>,
     alias: string
   ): SelectQueryBuilder<T> {
-    return this.getRepositoryFor(entity).createQueryBuilder(alias);
+    return this.getRepositoryFor(entity).createQueryBuilder(
+      alias
+    ) as SelectQueryBuilder<T>;
   }
 
   /**

@@ -1398,13 +1398,13 @@ export class EntityManager {
    * repository aggregator, where each repository is individually created for this entity manager.
    * When single database connection is not used, repository is being obtained from the connection.
    */
-  public getRepository<Entity extends ObjectLiteral>(
+  public getRepository<Entity>(
     target: EntityTarget<Entity>
   ): Repository<Entity> {
     // find already created repository instance and return it if found
-    const repoFromMap = this.repositories.get(target) as
-      | Repository<Entity>
-      | undefined;
+    const repoFromMap = this.repositories.get(
+      target as EntityTarget<ObjectLiteral>
+    ) as Repository<Entity> | undefined;
     if (repoFromMap) return repoFromMap;
 
     // if repository was not found then create it, store its instance and return it

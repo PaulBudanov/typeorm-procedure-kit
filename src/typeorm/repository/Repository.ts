@@ -22,7 +22,7 @@ import type { UpsertOptions } from './UpsertOptions.js';
 /**
  * Repository is supposed to work with your entity objects. Find entities, insert, update, delete, etc.
  */
-export class Repository<Entity extends ObjectLiteral> {
+export class Repository<Entity = unknown> {
   // -------------------------------------------------------------------------
   // Public Properties
   // -------------------------------------------------------------------------
@@ -52,7 +52,9 @@ export class Repository<Entity extends ObjectLiteral> {
    * Entity metadata of the entity current repository manages.
    */
   public get metadata(): EntityMetadata {
-    return this.manager.connection.getMetadata(this.target);
+    return this.manager.connection.getMetadata(
+      this.target as EntityTarget<ObjectLiteral>
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -79,8 +81,8 @@ export class Repository<Entity extends ObjectLiteral> {
   public createQueryBuilder(
     alias?: string,
     queryRunner?: QueryRunner
-  ): SelectQueryBuilder<Entity> {
-    return this.manager.createQueryBuilder<Entity>(
+  ): SelectQueryBuilder<Entity extends ObjectLiteral ? Entity : ObjectLiteral> {
+    return this.manager.createQueryBuilder(
       this.metadata.target,
       alias || this.metadata.targetName,
       queryRunner || this.queryRunner
@@ -143,9 +145,9 @@ export class Repository<Entity extends ObjectLiteral> {
   ): Entity {
     return this.manager.merge(
       this.metadata.target,
-      mergeIntoEntity,
-      ...entityLikes
-    );
+      mergeIntoEntity as ObjectLiteral,
+      ...(entityLikes as Array<DeepPartial<ObjectLiteral>>)
+    ) as Entity;
   }
 
   /**
@@ -158,7 +160,10 @@ export class Repository<Entity extends ObjectLiteral> {
    * Returns undefined if entity with given id was not found.
    */
   public preload(entityLike: DeepPartial<Entity>): Promise<Entity | undefined> {
-    return this.manager.preload(this.metadata.target, entityLike);
+    return this.manager.preload(
+      this.metadata.target,
+      entityLike as DeepPartial<ObjectLiteral>
+    ) as Promise<Entity | undefined>;
   }
 
   /**
@@ -477,14 +482,20 @@ export class Repository<Entity extends ObjectLiteral> {
    * .exists()
    */
   public exist(options?: FindManyOptions<Entity>): Promise<boolean> {
-    return this.manager.exists(this.metadata.target, options);
+    return this.manager.exists(
+      this.metadata.target,
+      options as FindManyOptions<ObjectLiteral>
+    );
   }
 
   /**
    * Checks whether any entity exists that matches the given options.
    */
   public exists(options?: FindManyOptions<Entity>): Promise<boolean> {
-    return this.manager.exists(this.metadata.target, options);
+    return this.manager.exists(
+      this.metadata.target,
+      options as FindManyOptions<ObjectLiteral>
+    );
   }
 
   /**
@@ -493,7 +504,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public existsBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<boolean> {
-    return this.manager.existsBy(this.metadata.target, where);
+    return this.manager.existsBy(
+      this.metadata.target,
+      where as FindOptionsWhere<ObjectLiteral>
+    );
   }
 
   /**
@@ -501,7 +515,10 @@ export class Repository<Entity extends ObjectLiteral> {
    * Useful for pagination.
    */
   public count(options?: FindManyOptions<Entity>): Promise<number> {
-    return this.manager.count(this.metadata.target, options);
+    return this.manager.count(
+      this.metadata.target,
+      options as FindManyOptions<ObjectLiteral>
+    );
   }
 
   /**
@@ -511,7 +528,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public countBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number> {
-    return this.manager.countBy(this.metadata.target, where);
+    return this.manager.countBy(
+      this.metadata.target,
+      where as FindOptionsWhere<ObjectLiteral>
+    );
   }
 
   /**
@@ -521,7 +541,11 @@ export class Repository<Entity extends ObjectLiteral> {
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
-    return this.manager.sum(this.metadata.target, columnName, where);
+    return this.manager.sum(
+      this.metadata.target,
+      columnName as never,
+      where as never
+    );
   }
 
   /**
@@ -531,7 +555,11 @@ export class Repository<Entity extends ObjectLiteral> {
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
-    return this.manager.average(this.metadata.target, columnName, where);
+    return this.manager.average(
+      this.metadata.target,
+      columnName as never,
+      where as never
+    );
   }
 
   /**
@@ -541,7 +569,11 @@ export class Repository<Entity extends ObjectLiteral> {
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
-    return this.manager.minimum(this.metadata.target, columnName, where);
+    return this.manager.minimum(
+      this.metadata.target,
+      columnName as never,
+      where as never
+    );
   }
 
   /**
@@ -551,14 +583,21 @@ export class Repository<Entity extends ObjectLiteral> {
     columnName: PickKeysByType<Entity, number>,
     where?: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number | null> {
-    return this.manager.maximum(this.metadata.target, columnName, where);
+    return this.manager.maximum(
+      this.metadata.target,
+      columnName as never,
+      where as never
+    );
   }
 
   /**
    * Finds entities that match given find options.
    */
   public async find(options?: FindManyOptions<Entity>): Promise<Array<Entity>> {
-    return this.manager.find(this.metadata.target, options);
+    return this.manager.find(
+      this.metadata.target,
+      options as FindManyOptions
+    ) as unknown as Array<Entity>;
   }
 
   /**
@@ -567,7 +606,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public async findBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Array<Entity>> {
-    return this.manager.findBy(this.metadata.target, where);
+    return this.manager.findBy(
+      this.metadata.target,
+      where as FindOptionsWhere<ObjectLiteral>
+    ) as unknown as Array<Entity>;
   }
 
   /**
@@ -578,7 +620,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public findAndCount(
     options?: FindManyOptions<Entity>
   ): Promise<[Array<Entity>, number]> {
-    return this.manager.findAndCount(this.metadata.target, options);
+    return this.manager.findAndCount(
+      this.metadata.target,
+      options as FindManyOptions<ObjectLiteral>
+    ) as Promise<[Array<Entity>, number]>;
   }
 
   /**
@@ -589,7 +634,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public findAndCountBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<[Array<Entity>, number]> {
-    return this.manager.findAndCountBy(this.metadata.target, where);
+    return this.manager.findAndCountBy(
+      this.metadata.target,
+      where as never
+    ) as Promise<[Array<Entity>, number]>;
   }
 
   /**
@@ -603,7 +651,10 @@ export class Repository<Entity extends ObjectLiteral> {
    * })
    */
   public async findByIds(ids: Array<unknown>): Promise<Array<Entity>> {
-    return this.manager.findByIds(this.metadata.target, ids);
+    return this.manager.findByIds(
+      this.metadata.target,
+      ids
+    ) as unknown as Array<Entity>;
   }
 
   /**
@@ -613,7 +664,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public async findOne(
     options: FindOneOptions<Entity>
   ): Promise<Entity | null> {
-    return this.manager.findOne(this.metadata.target, options);
+    return this.manager.findOne(
+      this.metadata.target,
+      options as FindOneOptions<ObjectLiteral>
+    ) as Entity | null;
   }
 
   /**
@@ -623,7 +677,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public async findOneBy(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Entity | null> {
-    return this.manager.findOneBy(this.metadata.target, where);
+    return this.manager.findOneBy(
+      this.metadata.target,
+      where as never
+    ) as Entity | null;
   }
 
   /**
@@ -637,7 +694,7 @@ export class Repository<Entity extends ObjectLiteral> {
    * })
    */
   public async findOneById(id: number | string | Date): Promise<Entity | null> {
-    return this.manager.findOneById(this.metadata.target, id);
+    return this.manager.findOneById(this.metadata.target, id) as Entity | null;
   }
 
   /**
@@ -645,7 +702,10 @@ export class Repository<Entity extends ObjectLiteral> {
    * If entity was not found in the database - rejects with error.
    */
   public async findOneOrFail(options: FindOneOptions<Entity>): Promise<Entity> {
-    return this.manager.findOneOrFail(this.metadata.target, options);
+    return this.manager.findOneOrFail(
+      this.metadata.target,
+      options as never
+    ) as Entity;
   }
 
   /**
@@ -655,7 +715,10 @@ export class Repository<Entity extends ObjectLiteral> {
   public async findOneByOrFail(
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<Entity> {
-    return this.manager.findOneByOrFail(this.metadata.target, where);
+    return this.manager.findOneByOrFail(
+      this.metadata.target,
+      where as never
+    ) as Entity;
   }
 
   /**

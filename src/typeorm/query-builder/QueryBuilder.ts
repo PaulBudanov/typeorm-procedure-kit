@@ -47,7 +47,7 @@ import type { WhereExpressionBuilder } from './WhereExpressionBuilder.js';
 /**
  * Allows to build complex sql queries in a fashion way and execute those queries.
  */
-export abstract class QueryBuilder<Entity extends ObjectLiteral> {
+export abstract class QueryBuilder<Entity = unknown> {
   public readonly '@instanceof' = Symbol.for('QueryBuilder');
 
   // -------------------------------------------------------------------------
@@ -215,27 +215,27 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
   /**
    * Creates INSERT query.
    */
-  public insert(): InsertQueryBuilder<Entity> {
+  public insert(): InsertQueryBuilder<ObjectLiteral> {
     this.expressionMap.queryType = 'insert';
 
     if (InstanceChecker.isInsertQueryBuilder(this)) return this;
 
     return (
       QueryBuilder.queryBuilderRegistry['InsertQueryBuilder']! as TFunction
-    )(this) as InsertQueryBuilder<Entity>;
+    )(this) as InsertQueryBuilder<ObjectLiteral>;
   }
 
   /**
    * Creates UPDATE query and applies given update values.
    */
-  public update(): UpdateQueryBuilder<Entity>;
+  public update(): UpdateQueryBuilder<ObjectLiteral>;
 
   /**
    * Creates UPDATE query and applies given update values.
    */
   public update(
     updateSet: QueryDeepPartialEntity<Entity>
-  ): UpdateQueryBuilder<Entity>;
+  ): UpdateQueryBuilder<ObjectLiteral>;
 
   /**
    * Creates UPDATE query for the given entity and applies given update values.
@@ -251,7 +251,7 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
   public update(
     tableName: string,
     updateSet?: QueryDeepPartialEntity<Entity>
-  ): UpdateQueryBuilder<Entity>;
+  ): UpdateQueryBuilder<ObjectLiteral>;
 
   /**
    * Creates UPDATE query and applies given update values.
@@ -259,7 +259,7 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
   public update(
     entityOrTableNameUpdateSet?: EntityTarget<ObjectLiteral> | ObjectLiteral,
     maybeUpdateSet?: ObjectLiteral
-  ): UpdateQueryBuilder<Entity> {
+  ): UpdateQueryBuilder<ObjectLiteral> {
     const updateSet = maybeUpdateSet
       ? maybeUpdateSet
       : (entityOrTableNameUpdateSet as ObjectLiteral | undefined);
@@ -284,20 +284,20 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
 
     return (
       QueryBuilder.queryBuilderRegistry['UpdateQueryBuilder']! as TFunction
-    )(this) as UpdateQueryBuilder<Entity>;
+    )(this) as UpdateQueryBuilder<ObjectLiteral>;
   }
 
   /**
    * Creates DELETE query.
    */
-  public delete(): DeleteQueryBuilder<Entity> {
+  public delete(): DeleteQueryBuilder<ObjectLiteral> {
     this.expressionMap.queryType = 'delete';
 
     if (InstanceChecker.isDeleteQueryBuilder(this)) return this;
 
     return (
       QueryBuilder.queryBuilderRegistry['DeleteQueryBuilder']! as TFunction
-    )(this) as DeleteQueryBuilder<Entity>;
+    )(this) as DeleteQueryBuilder<ObjectLiteral>;
   }
 
   public softDelete(): SoftDeleteQueryBuilder<ObjectLiteral> {
@@ -325,7 +325,7 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
   /**
    * Sets entity's relation with which this query builder gonna work.
    */
-  public relation(propertyPath: string): RelationQueryBuilder<Entity>;
+  public relation(propertyPath: string): RelationQueryBuilder<ObjectLiteral>;
 
   /**
    * Sets entity's relation with which this query builder gonna work.
@@ -341,7 +341,7 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
   public relation(
     entityTargetOrPropertyPath: TFunction | string,
     maybePropertyPath?: string
-  ): RelationQueryBuilder<Entity> {
+  ): RelationQueryBuilder<ObjectLiteral> {
     const entityTarget =
       arguments.length === 2 ? entityTargetOrPropertyPath : undefined;
     const propertyPath =
@@ -361,7 +361,7 @@ export abstract class QueryBuilder<Entity extends ObjectLiteral> {
 
     return (
       QueryBuilder.queryBuilderRegistry['RelationQueryBuilder']! as TFunction
-    )(this) as RelationQueryBuilder<Entity>;
+    )(this) as RelationQueryBuilder<ObjectLiteral>;
   }
 
   /**

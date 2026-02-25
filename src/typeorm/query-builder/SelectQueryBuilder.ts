@@ -52,7 +52,7 @@ import type { WhereExpressionBuilder } from './WhereExpressionBuilder.js';
 /**
  * Allows to build complex sql queries in a fashion way and execute those queries.
  */
-export class SelectQueryBuilder<Entity extends ObjectLiteral>
+export class SelectQueryBuilder<Entity = unknown>
   extends QueryBuilder<Entity>
   implements WhereExpressionBuilder
 {
@@ -141,9 +141,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
    * Replaces all previous selections if they exist.
    */
   public select(
-    selection: (
-      qb: SelectQueryBuilder<ObjectLiteral>
-    ) => SelectQueryBuilder<ObjectLiteral>,
+    selection: (qb: SelectQueryBuilder<Entity>) => SelectQueryBuilder<Entity>,
     selectionAliasName?: string
   ): this;
 
@@ -167,9 +165,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
     selection?:
       | string
       | Array<string>
-      | ((
-          qb: SelectQueryBuilder<ObjectLiteral>
-        ) => SelectQueryBuilder<ObjectLiteral>),
+      | ((qb: SelectQueryBuilder<Entity>) => SelectQueryBuilder<Entity>),
     selectionAliasName?: string
   ): SelectQueryBuilder<Entity> {
     this.expressionMap.queryType = 'select';
@@ -178,7 +174,9 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         selection: selection,
       }));
     } else if (typeof selection === 'function') {
-      const subQueryBuilder = selection(this.subQuery());
+      const subQueryBuilder = selection(
+        this.subQuery() as unknown as SelectQueryBuilder<Entity>
+      );
       this.setParameters(subQueryBuilder.getParameters());
       this.expressionMap.selects.push({
         selection: subQueryBuilder.getQuery(),
