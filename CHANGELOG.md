@@ -1,3 +1,18 @@
+# [1.6.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.5.1...v1.6.0) (2026-02-25)
+
+
+### Bug Fixes
+
+* ALL types in lib ([5b8932f](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/5b8932f474ad92f2086d91244acd9b1a6540fc60))
+* change package json dependency. ([3fdac18](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/3fdac18a076ba75921270fb2ed254a8af5249c07))
+* fix types datasource and half types entity manager. ([d5d05c6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/d5d05c6a53e323e307444a1d6ae63d1c0c7345d2))
+
+
+### Features
+
+* added typeorm fork ([37fb510](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/37fb510f1332381b5d767e11413bc4406a2283f6))
+* refactor typeorm lib types in entity , tree ,errors and relations. ([18d7711](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/18d7711d880f0d766d8b73332bfabcda49a7ace2))
+
 ## [1.5.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.5.0...v1.5.1) (2026-02-12)
 
 
