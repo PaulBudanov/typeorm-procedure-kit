@@ -49,7 +49,7 @@ export class PlatformTools {
           return Promise.resolve(require('pg-native') as unknown);
         case 'pg-query-stream':
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          return Promise.resolve(require('pg-query-stream') as unknown);
+          return import('pg-query-stream');
       }
     } catch {
       // If package is not found in switch, try to dynamically import it
