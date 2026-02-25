@@ -1,3 +1,10 @@
+## [1.6.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.5...v1.6.6) (2026-02-25)
+
+
+### Bug Fixes
+
+* change generic type for method get repository ([e3523de](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/e3523dea8cea3da779e43bc57a784852b528a367))
+
 ## [1.6.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.4...v1.6.5) (2026-02-25)
 
 
