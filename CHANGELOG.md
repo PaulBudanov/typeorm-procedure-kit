@@ -1,3 +1,10 @@
+## [1.6.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.3...v1.6.4) (2026-02-25)
+
+
+### Bug Fixes
+
+* change types to generic with default value unknown. ([1f560fc](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/1f560fce263943b5f986d1f9c623c803aeb40f2a))
+
 ## [1.6.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.2...v1.6.3) (2026-02-25)
 
 
