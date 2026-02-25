@@ -1,3 +1,10 @@
+## [1.6.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.1...v1.6.2) (2026-02-25)
+
+
+### Bug Fixes
+
+* change build script. ([9425428](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/9425428541d97aa11ab196083ec010e8cb83772a))
+
 ## [1.6.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.0...v1.6.1) (2026-02-25)
 
 
