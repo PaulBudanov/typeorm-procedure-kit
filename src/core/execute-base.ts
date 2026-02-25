@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { IBindingsObjectReturn } from '../types/utility.types.js';
@@ -21,22 +24,25 @@ export class ExecuteBase {
   ) {}
 
   /**
-   * Execute a SQL query or procedure call in a transaction
-   * @param {string} sql - SQL query string
-   * @param {IBindingsObjectReturn['bindings']} [bindings] - parameters for SQL query
-   * @param {Array<string>} [optionsCommands] - options for database commands
-   * @param {Array<string>} [cursorsNames] - names of cursors
-   * @returns {Promise<Awaited<Array<T>>>} - result of SQL query call
-   * @throws {Error} - if an error occurs during the execution of commands
+   * Executes a SQL query or procedure with the given bindings and options.
+   *
+   * @param sql - SQL query string
+   * @param bindings - bindings for the SQL query or procedure
+   * @param optionsCommands - options commands to be executed before the query (e.g. SET ROLE, SET SCHEMA)
+   * @param cursorsNames - names of the cursors to fetch results from
+   * @param queryId - ID of the query to log (optional)
+   *
+   * @returns a promise that resolves with an array of the results of the query or procedure
    */
   public async execute<T>(
     sql: string,
     bindings: IBindingsObjectReturn['bindings'] = [],
     optionsCommands: Array<string> = [],
-    cursorsNames: Array<string> = []
+    cursorsNames: Array<string> = [],
+    queryId: string = randomUUID()
   ): Promise<Awaited<Array<T>>> {
-    const queryTimer = new QueryTimer(sql, this.logger);
-    const client = await this.connectionBase.getEntityManager();
+    const queryTimer = new QueryTimer(sql, this.logger, queryId, bindings);
+    const client: EntityManager = await this.connectionBase.getEntityManager();
     try {
       const result: Awaited<Array<T> | T> =
         await this.databaseAdapter.execute<T>(
@@ -46,12 +52,16 @@ export class ExecuteBase {
           bindings,
           cursorsNames
         );
-      DatabaseErrorHandler.checkForDatabaseError(result, this.logger);
+      DatabaseErrorHandler.checkForDatabaseError(result, queryId, this.logger);
       queryTimer.success(result.length);
       return result;
     } catch (error: unknown) {
-      queryTimer.error(ServerError.ENSURE_SERVER_ERROR(error));
-      throw error;
+      const serverError = ServerError.ENSURE_SERVER_ERROR({
+        error,
+        errorId: queryId,
+      });
+      queryTimer.error(serverError);
+      throw serverError;
     } finally {
       await this.connectionBase.releaseEntityManager(client);
     }

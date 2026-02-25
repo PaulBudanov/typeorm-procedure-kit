@@ -1,7 +1,7 @@
 import { Inject, Injectable, type OnModuleInit, Scope } from '@nestjs/common';
-import type { DataSource } from 'typeorm';
 
 import { TypeOrmProcedureKit } from '../core/index.js';
+import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
 import type { TSerializerTypeCastWithoutFormat } from '../types/serializer.types.js';
@@ -30,15 +30,15 @@ export class TypeOrmProcedureKitNestService
     await this.initDatabase();
   }
 
-  public get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
+  public override get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
     return super.serializerReadOnlyMapping;
   }
 
-  public get databaseAdapter(): TAdapterUtilsClassTypes {
+  public override get databaseAdapter(): TAdapterUtilsClassTypes {
     return super.databaseAdapter;
   }
 
-  public get dataSource(): DataSource {
+  public override get dataSource(): DataSource {
     return super.dataSource;
   }
 }

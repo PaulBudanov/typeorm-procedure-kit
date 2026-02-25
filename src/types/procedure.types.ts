@@ -10,9 +10,9 @@ export interface IProcedureArgumentOracle extends IProcedureArgumentBase {
   packageName: Lowercase<string>;
 }
 
-export type IProcedureArgumentList = Record<
+export type TProcedureArgumentList = Record<
   Lowercase<string>,
   Array<Omit<IProcedureArgumentOracle, 'packageName' | 'procedureName'>>
 >;
 
-export type TDBMapStructure = Map<Lowercase<string>, IProcedureArgumentList>;
+export type TDBMapStructure = Map<Lowercase<string>, TProcedureArgumentList>;

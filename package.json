@@ -16,7 +16,11 @@
       "require": "./dist/cjs/nest/index.js",
       "default": "./dist/esm/nest/index.js"
     },
-    "./package.json": "./package.json"
+    "./*.js": "./*.js",
+    "./*": {
+      "require": "./*.js",
+      "import": "./*"
+    }
   },
   "files": [
     "dist",
@@ -38,10 +42,14 @@
     "stored-procedures",
     "database",
     "oracle",
+    "oracle-orm",
     "postgresql",
+    "postgresql-orm",
     "postgres",
+    "postgres-orm",
     "database-adapter",
     "typescript",
+    "typescript-orm",
     "cqn",
     "continuous-query-notification",
     "database-notifications",
@@ -68,16 +76,17 @@
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
-    "@types/oracledb": "^6.0.0",
+    "@types/oracledb": "^6.9.0",
     "@types/pg": "^8.0.0",
     "@web-mis/queue-manager": "^1.0.9",
     "lodash-es": "^4.0.0",
     "lru-cache": "^11.0.0",
     "luxon": "^3.0.0",
     "oracledb": "^6.0.0",
-    "pg": "^8.0.0",
-    "reflect-metadata": "^0.2.0",
-    "typeorm": "^0.3.0"
+    "pg": "^8.5.1",
+    "pg-native": "^3.5.2",
+    "pg-query-stream": "^4.12.0",
+    "reflect-metadata": "^0.2.2"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -87,6 +96,12 @@
       "optional": true
     },
     "pg": {
+      "optional": true
+    },
+    "pg-native": {
+      "optional": true
+    },
+    "pg-query-stream": {
       "optional": true
     },
     "oracledb": {
@@ -114,9 +129,10 @@
     "eslint-plugin-prettier": "^5.5.5",
     "oracledb": "^6.10.0",
     "pg": "^8.17.2",
+    "pg-native": "^3.5.2",
+    "pg-query-stream": "^4.12.0",
     "semantic-release": "^25.0.2",
     "tslib": "^2.8.1",
-    "typeorm": "^0.3.28",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0"
   },
@@ -124,5 +140,14 @@
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "dependencies": {
+    "@sqltools/formatter": "^1.2.5",
+    "ansis": "^4.2.0",
+    "app-root-path": "^3.1.0",
+    "dedent": "^1.7.1",
+    "dotenv": "^17.3.1",
+    "glob": "^13.0.3",
+    "sql-highlight": "^6.1.0"
+  }
 }

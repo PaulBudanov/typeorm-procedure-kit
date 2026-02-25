@@ -1,0 +1,59 @@
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+
+/**
+ * BeforeQueryEvent is an object that broadcaster sends to the entity subscriber before query is ran against the database.
+ */
+export interface QueryEvent {
+  /**
+   * Connection used in the event.
+   */
+  connection: DataSource;
+
+  /**
+   * QueryRunner used in the event transaction.
+   * All database operations in the subscribed event listener should be performed using this query runner instance.
+   */
+  queryRunner: QueryRunner;
+
+  /**
+   * EntityManager used in the event transaction.
+   * All database operations in the subscribed event listener should be performed using this entity manager instance.
+   */
+  manager: EntityManager;
+
+  /**
+   * Query that is being executed.
+   */
+  query: string;
+
+  /**
+   * Parameters used in the query.
+   */
+  parameters?: Array<unknown>;
+}
+
+export type BeforeQueryEvent = QueryEvent;
+
+export interface AfterQueryEvent extends QueryEvent {
+  /**
+   * Whether the query was successful.
+   */
+  success: boolean;
+
+  /**
+   * The duration of the query execution, in milliseconds.
+   */
+  executionTime?: number;
+
+  /**
+   * The raw results from the database if the query was successful.
+   */
+  rawResults?: unknown;
+
+  /**
+   * The error thrown if the query was unsuccessful.
+   */
+  error?: unknown;
+}

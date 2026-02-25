@@ -1,7 +1,7 @@
 import { Client, type ClientConfig } from 'pg';
-import type { DataSource } from 'typeorm';
-import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions.js';
 
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { PostgresConnectionOptions } from '../../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import { DatabaseConnection } from '../abstract/database-connection.js';
 

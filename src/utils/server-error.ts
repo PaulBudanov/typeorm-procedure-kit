@@ -39,25 +39,35 @@ export class ServerError extends Error {
    * @param message - An optional string to use as the error message.
    * @returns A ServerError instance.
    */
-  public static ENSURE_SERVER_ERROR(
-    error: unknown,
-    message?: string
-  ): ServerError {
-    if (ServerError.isServerError(error)) {
-      return error;
-    } else if (ServerError.isNodeError(error)) {
-      return new ServerError(message ?? error.message, error, {
-        cause: error.cause,
-        stack: error.stack,
-      });
+  public static ENSURE_SERVER_ERROR(errorObject: {
+    error: unknown;
+    message?: string;
+    errorId?: string;
+  }): ServerError {
+    if (ServerError.isServerError(errorObject.error)) {
+      return errorObject.error;
+    } else if (ServerError.isNodeError(errorObject.error)) {
+      return new ServerError(
+        errorObject.message ?? errorObject.error.message,
+        errorObject.error,
+        {
+          cause: errorObject.error.cause,
+          stack: errorObject.error.stack,
+          errorId: errorObject.errorId,
+        }
+      );
     }
     const messageString =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'object'
-          ? JSON.stringify(error)
-          : String(error);
-    return new ServerError(message ?? messageString, error);
+      errorObject.error instanceof Error
+        ? errorObject.error.message
+        : typeof errorObject.error === 'object'
+          ? JSON.stringify(errorObject.error)
+          : String(errorObject.error);
+    return new ServerError(
+      errorObject.message ?? messageString,
+      errorObject.error,
+      { errorId: errorObject.errorId }
+    );
   }
 
   /**

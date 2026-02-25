@@ -1,12 +1,12 @@
 import oracledb from 'oracledb';
 import pg from 'pg';
-import { DataSource, QueryBuilder } from 'typeorm';
-import type { OracleConnectionOptions } from 'typeorm/driver/oracle/OracleConnectionOptions.js';
-import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions.js';
 
 import { OracleAdapter } from '../adapters/oracle/oracle-adapter.js';
 import { PostgreAdapter } from '../adapters/postgres/postgre-adapter.js';
 import { CaseStrategyFactory } from '../case-strategy/case-strategy-factory.js';
+import { DataSource } from '../typeorm/data-source/DataSource.js';
+import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type {
   IRegisteredFetchHandlerOptions,
   TAdapterUtilsClassTypes,
@@ -84,7 +84,7 @@ export class DatabaseInitializerBase {
           await this.appDataSource.runMigrations();
         } else this.logger.log('Migrations skipped');
       }
-      this.initExecuteTypeormWithoutDoubleQuotes();
+      // this.initExecuteTypeormWithoutDoubleQuotes();
       this.logger.log('DataSource is initialized');
     } catch (error) {
       this.logger.error(
@@ -102,28 +102,6 @@ export class DatabaseInitializerBase {
    * double quotes from the query.
    * @private
    */
-  //TODO: Refactor in the future, make fork from typeorm lib and fix this.
-  private initExecuteTypeormWithoutDoubleQuotes(): void {
-    const queryBuilderPrototype =
-      QueryBuilder.prototype as typeof QueryBuilder.prototype & {
-        replacePropertyNamesForTheWholeQuery: (statement: string) => string;
-      };
-
-    if (
-      typeof queryBuilderPrototype.replacePropertyNamesForTheWholeQuery ===
-      'function'
-    ) {
-      const originalMethod =
-        queryBuilderPrototype.replacePropertyNamesForTheWholeQuery;
-      queryBuilderPrototype.replacePropertyNamesForTheWholeQuery = function (
-        this: typeof queryBuilderPrototype,
-        statement: string
-      ): string {
-        const result = originalMethod.call(this, statement);
-        return result.replace(/"([^"]+)"/g, '$1');
-      };
-    }
-  }
 
   private configFactory(): PostgresConnectionOptions | OracleConnectionOptions {
     switch (this.dbConfig.type) {

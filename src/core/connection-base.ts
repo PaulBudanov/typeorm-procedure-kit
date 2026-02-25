@@ -1,5 +1,6 @@
-import { DataSource, EntityManager } from 'typeorm';
-
+import { DataSource } from '../typeorm/data-source/DataSource.js';
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
+import type { QueryRunner } from '../typeorm/query-runner/QueryRunner.js';
 import type { TConnectionMode } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import { ServerError } from '../utils/server-error.js';
@@ -22,9 +23,10 @@ export class ConnectionBase {
   ): Promise<EntityManager> {
     try {
       if (this.appDataSource.isInitialized) {
-        const queryRunner = this.appDataSource.createQueryRunner(mode);
+        const queryRunner: QueryRunner =
+          this.appDataSource.createQueryRunner(mode);
         await queryRunner.connect();
-        const entityManager = queryRunner.manager;
+        const entityManager: EntityManager = queryRunner.manager;
         if (!entityManager.connection.isInitialized)
           throw new ServerError('Connection not initialized');
         return entityManager;

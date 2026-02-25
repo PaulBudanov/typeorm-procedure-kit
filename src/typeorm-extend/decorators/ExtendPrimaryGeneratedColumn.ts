@@ -1,7 +1,7 @@
 import { merge } from 'lodash-es';
-import { getMetadataArgsStorage } from 'typeorm';
-import type { PrimaryGeneratedColumnNumericOptions } from 'typeorm/decorator/options/PrimaryGeneratedColumnNumericOptions.js';
 
+import type { PrimaryGeneratedColumnNumericOptions } from '../../typeorm/decorator/options/PrimaryGeneratedColumnNumericOptions.js';
+import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
 

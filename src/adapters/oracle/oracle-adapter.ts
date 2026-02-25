@@ -1,11 +1,11 @@
 import { finished } from 'stream/promises';
 
 import oracledb from 'oracledb';
-import { DataSource } from 'typeorm';
 
+import { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import type { IProcedureArgumentList } from '../../types/procedure.types.js';
+import type { TProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
@@ -70,7 +70,7 @@ export class OracleAdapter extends DatabaseAdapter<
   >(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
-    procedures: IProcedureArgumentList | undefined,
+    procedures: TProcedureArgumentList | undefined,
     payload?: U
   ): IBindingsObjectReturn {
     if (!procedures?.[processName]) {

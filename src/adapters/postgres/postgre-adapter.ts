@@ -1,8 +1,8 @@
-import { DataSource, EntityManager } from 'typeorm';
-
+import { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import type { IProcedureArgumentList } from '../../types/procedure.types.js';
+import type { TProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
@@ -58,7 +58,7 @@ export class PostgreAdapter extends DatabaseAdapter<
     let cursorResults: Array<T> = [];
     await Promise.all(
       cursorsNames.map(async (cursorName) => {
-        const cursorResult = await manager.query<Array<T>>(
+        const cursorResult: Array<T> = await manager.query<Array<T>>(
           `FETCH ALL IN "${cursorName}"`
         );
         await manager.query(`CLOSE "${cursorName}"`);
@@ -85,7 +85,7 @@ export class PostgreAdapter extends DatabaseAdapter<
   >(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
-    procedures: IProcedureArgumentList | undefined,
+    procedures: TProcedureArgumentList | undefined,
     payload?: U
   ): IBindingsObjectReturn {
     // Проверка наличия пакета и процедуры в списках

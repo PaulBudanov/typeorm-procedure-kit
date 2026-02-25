@@ -1,5 +1,4 @@
-import type { EntityManager } from 'typeorm';
-
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 
 export abstract class DatabaseOptionsExecutor {

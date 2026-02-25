@@ -1,5 +1,4 @@
-import { DefaultNamingStrategy } from 'typeorm';
-
+import { DefaultNamingStrategy } from '../typeorm/naming-strategy/DefaultNamingStrategy.js';
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { ServerError } from '../utils/server-error.js';
 

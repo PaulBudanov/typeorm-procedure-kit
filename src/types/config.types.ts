@@ -1,5 +1,5 @@
-import type { OracleConnectionOptions } from 'typeorm/driver/oracle/OracleConnectionOptions.js';
-import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions.js';
+import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
 
 import type { TAdapterUtilsClassTypes } from './adapter.types.js';
 import type { TKeyTransformCase } from './strategy.types.js';

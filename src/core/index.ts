@@ -1,13 +1,14 @@
 import oracledb from 'oracledb';
-import type { DataSource, EntityManager } from 'typeorm';
 
+import type { DataSource } from '../typeorm/data-source/DataSource.js';
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
 import type { TConnectionMode } from '../types/config.types.js';
 import type {
   ICreateNotify,
-  INotifyPackageCallback,
   IOracleOptionsNotify,
+  TNotifyPackageCallback,
 } from '../types/notification.types.js';
 import type {
   ISetSerializer,
@@ -94,7 +95,7 @@ export class TypeOrmProcedureKit {
       const additionalOptions: IOracleOptionsNotify = {
         operations: oracledb.CQN_OPCODE_INSERT,
       };
-      await this.notifyBase.createNotification<INotifyPackageCallback>(
+      await this.notifyBase.createNotification<TNotifyPackageCallback>(
         {
           sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
             this.settings.config.packagesSettings.packages

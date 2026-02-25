@@ -1,8 +1,7 @@
-import { randomUUID } from 'crypto';
-
 import { DateTime } from 'luxon';
 
 import type { ILoggerModule } from '../types/logger.types.js';
+import type { IBindingsObjectReturn } from '../types/utility.types.js';
 
 import { ServerError } from './server-error.js';
 
@@ -20,7 +19,8 @@ export class QueryTimer {
   public constructor(
     private sql: string,
     private logger: ILoggerModule,
-    private queryId: string = this.generateQueryId()
+    private queryId: string,
+    private bindings?: IBindingsObjectReturn['bindings']
   ) {
     this.startTime = DateTime.now().toLocal().toMillis();
 
@@ -41,10 +41,12 @@ export class QueryTimer {
     const duration = DateTime.now().toMillis() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
-    const message =
-      rowCount !== undefined
-        ? `SQL request [${this.queryId}] completed successfully in ${durationStr} with ${rowCount} rows`
-        : `SQL request [${this.queryId}] completed successfully in ${durationStr}`;
+    const rowCountInfo = rowCount != null ? ` with ${rowCount} rows` : '';
+    const bindingsInfo = this.bindings?.length
+      ? `\nBindings: ${JSON.stringify(this.bindings)}`
+      : '';
+
+    const message = `SQL request [${this.queryId}] completed successfully in ${durationStr}${rowCountInfo}${bindingsInfo}`;
 
     if (duration > 5000) {
       this.logger.warn(message);
@@ -62,50 +64,22 @@ export class QueryTimer {
     const duration = DateTime.now().toMillis() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
-    this.logger.error(
-      `SQL request [${this.queryId}] failed in ${durationStr}: ${error.message}`,
-      error.stack
-    );
+    const bindingsInfo = this.bindings?.length
+      ? `\nBindings: ${JSON.stringify(this.bindings)}`
+      : '';
+
+    const errorMessage = `SQL request [${this.queryId}] failed in ${durationStr}: ${error.message}.${bindingsInfo}`;
+
+    this.logger.error(errorMessage, error.stack);
   }
 
-  /**
-   * Formats a duration in milliseconds to a string.
-   * If the duration is less than 1000ms, it returns the duration in milliseconds.
-   * If the duration is greater than or equal to 1000ms and less than 60000ms, it returns the duration in seconds.
-   * If the duration is greater than or equal to 60000ms, it returns the duration in minutes.
-   * @param {number} ms - duration in milliseconds
-   * @returns {string} - formatted duration string
-   */
   private formatDuration(ms: number): string {
-    if (ms < 1000) {
-      return `${ms}ms`;
-    } else if (ms < 60000) {
-      return `${(ms / 1000).toFixed(2)}s`;
-    } else {
-      return `${(ms / 60000).toFixed(2)}m`;
-    }
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
+    return `${(ms / 60000).toFixed(2)}m`;
   }
 
-  /**
-   * Truncates a given SQL query string to a given maximum length.
-   * If the query string is shorter than the maximum length, it is returned as is.
-   * If the query string is longer than the maximum length, it is truncated to the maximum length and '...' is appended to the end.
-   * @param {string} sql - SQL query string to truncate
-   * @param {number} maxLength - maximum length of the truncated string
-   * @returns {string} - truncated SQL query string
-   */
   private truncateSql(sql: string, maxLength: number): string {
-    if (sql.length <= maxLength) {
-      return sql;
-    }
-    return sql.substring(0, maxLength) + '...';
-  }
-
-  /**
-   * Generates a unique query ID.
-   * @returns {string} - a unique query ID as a UUID.
-   */
-  private generateQueryId(): string {
-    return randomUUID();
+    return sql.length <= maxLength ? sql : `${sql.substring(0, maxLength)}...`;
   }
 }

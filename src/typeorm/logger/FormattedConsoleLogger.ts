@@ -1,0 +1,66 @@
+import { PlatformTools } from '../platform/PlatformTools.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+
+import { AbstractLogger } from './AbstractLogger.js';
+import type { LogLevel, LogMessage } from './Logger.js';
+
+/**
+ * Performs logging of the events in TypeORM.
+ * This version of logger uses console to log events, syntax highlighting and formatting.
+ */
+export class FormattedConsoleLogger extends AbstractLogger {
+  /**
+   * Write log to specific output.
+   */
+  protected writeLog(
+    level: LogLevel,
+    logMessage: LogMessage | Array<LogMessage>,
+    queryRunner?: QueryRunner
+  ): void {
+    const messages = this.prepareLogMessages(
+      logMessage,
+      {
+        highlightSql: true,
+        formatSql: true,
+      },
+      queryRunner
+    );
+
+    for (const message of messages) {
+      switch (message.type ?? level) {
+        case 'log':
+        case 'schema-build':
+        case 'migration':
+          PlatformTools.log(String(message.message));
+          break;
+
+        case 'info':
+        case 'query':
+          if (message.prefix) {
+            PlatformTools.logInfo(message.prefix, message.message);
+          } else {
+            PlatformTools.log(String(message.message));
+          }
+          break;
+
+        case 'warn':
+        case 'query-slow':
+          if (message.prefix) {
+            PlatformTools.logWarn(message.prefix, message.message);
+          } else {
+            console.warn(PlatformTools.warn(String(message.message)));
+          }
+          break;
+
+        case 'error':
+        case 'query-error':
+          if (message.prefix) {
+            PlatformTools.logError(message.prefix, String(message.message));
+          } else {
+            console.error(PlatformTools.error(String(message.message)));
+          }
+          break;
+      }
+    }
+  }
+}
