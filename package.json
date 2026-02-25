@@ -30,9 +30,7 @@
   ],
   "scripts": {
     "semantic-release": "semantic-release",
-    "build": "npm run clean && npm run build:esm && npm run build:cjs",
-    "build:esm": "npm i && npm run lint && tsc -p tsconfig.esm.json",
-    "build:cjs": "npm i && npm run lint && tsc -p tsconfig.cjs.json",
+    "build": "npm run clean && npm i && npm run lint && tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
