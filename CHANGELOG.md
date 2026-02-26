@@ -1,3 +1,10 @@
+## [1.6.10](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.9...v1.6.10) (2026-02-26)
+
+
+### Bug Fixes
+
+* add default quoting disable ([1745806](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/17458061a3ab2f3c4de5fedf27584354e0cd1418))
+
 ## [1.6.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.8...v1.6.9) (2026-02-26)
 
 
