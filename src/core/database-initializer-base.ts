@@ -7,6 +7,7 @@ import { CaseStrategyFactory } from '../case-strategy/case-strategy-factory.js';
 import { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
+import type { DataSourceOptions } from '../typeorm/index.js';
 import type {
   IRegisteredFetchHandlerOptions,
   TAdapterUtilsClassTypes,
@@ -36,7 +37,7 @@ export class DatabaseInitializerBase {
     this.caseSettings = CaseStrategyFactory.caseStrategyFactory(
       this.dbConfig.outKeyTransformCase
     );
-    const options: OracleConnectionOptions | PostgresConnectionOptions = {
+    const options: DataSourceOptions = {
       ...this.configFactory(),
       synchronize: this.entity?.isNeedEntitySync,
       logger: 'advanced-console',
@@ -49,6 +50,7 @@ export class DatabaseInitializerBase {
         null: 'sql-null',
         undefined: 'throw',
       },
+      isQuotingDisabled: false,
       migrations:
         this.migration?.migrationPath &&
         Array.isArray(this.migration.migrationPath)
