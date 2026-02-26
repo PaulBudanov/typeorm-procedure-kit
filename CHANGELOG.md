@@ -1,3 +1,10 @@
+## [1.6.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.8...v1.6.9) (2026-02-26)
+
+
+### Bug Fixes
+
+* require dynamicly context. ([6b54870](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/6b548704cca1bbf7642d5914ca9e5cfadd22ed7c))
+
 ## [1.6.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.7...v1.6.8) (2026-02-26)
 
 
