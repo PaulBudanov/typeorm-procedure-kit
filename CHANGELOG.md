@@ -1,3 +1,10 @@
+## [1.6.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.6...v1.6.7) (2026-02-26)
+
+
+### Bug Fixes
+
+* change circular dependency ([b45891f](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/b45891ff4f9c88ceb7e97ce19967ee648f944898))
+
 ## [1.6.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.5...v1.6.6) (2026-02-25)
 
 
