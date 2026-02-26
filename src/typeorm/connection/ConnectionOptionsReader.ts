@@ -1,3 +1,4 @@
+import { createRequire } from 'module';
 import path from 'path';
 
 import appRootPath from 'app-root-path';
@@ -159,8 +160,11 @@ export class ConnectionOptionsReader {
           | Array<DataSourceOptions>;
       }
     } else if (foundFileFormat === 'json') {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-require-imports
-      connectionOptions = require(configFile);
+      const require = createRequire(import.meta.url);
+      connectionOptions = require(configFile) as
+        | DataSourceOptions
+        | Array<DataSourceOptions>
+        | undefined;
     }
 
     // normalize and return connection options

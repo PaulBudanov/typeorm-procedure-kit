@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { createRequire } from 'module';
 import path from 'path';
 import { pathToFileURL } from 'url';
 
@@ -6,24 +7,17 @@ export async function importOrRequireFile(
   filePath: string
 ): Promise<[unknown, 'esm' | 'commonjs']> {
   const tryToImport = async (): Promise<[unknown, 'esm']> => {
-    // `Function` constructor is required to make sure the `import` statement wil stay `import` after
-    // transpilation and won't be converted to `require`
-    return [
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      await Function('return filePath => import(filePath)')()(
-        filePath.startsWith('file://')
-          ? filePath
-          : pathToFileURL(filePath).toString()
-      ),
-      'esm',
-    ];
+    // Use dynamic import with proper URL formatting
+    const url = filePath.startsWith('file://')
+      ? filePath
+      : pathToFileURL(filePath).toString();
+    return [await import(url), 'esm'];
   };
 
-  const tryToRequire = (): [unknown, 'commonjs'] => [
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require(filePath),
-    'commonjs',
-  ];
+  const tryToRequire = (): [unknown, 'commonjs'] => {
+    const require = createRequire(import.meta.url);
+    return [require(filePath), 'commonjs'];
+  };
 
   const extension = filePath.substring(filePath.lastIndexOf('.') + 1);
 

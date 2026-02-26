@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync } from 'fs';
+import { createRequire } from 'module';
 import { extname, normalize, resolve } from 'path';
 
 import { format as sqlFormat } from '@sqltools/formatter';
@@ -44,14 +45,14 @@ export class PlatformTools {
          */
         case 'pg':
           return import('pg');
-        case 'pg-native':
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          return Promise.resolve(require('pg-native') as unknown);
+        case 'pg-native': {
+          const require = createRequire(import.meta.url);
+          return new Promise((resolve) => resolve(require('pg-native')));
+        }
         case 'pg-query-stream':
           return import('pg-query-stream');
       }
     } catch {
-      // If package is not found in switch, try to dynamically import it
       return import(resolve(process.cwd() + '/node_modules/' + name)).catch(
         () => {
           throw new TypeError(

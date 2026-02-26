@@ -1390,7 +1390,7 @@ export class PostgresDriver implements Driver {
       this.postgres = postgres;
       try {
         const pgNative =
-          this.options.nativeDriver || PlatformTools.load('pg-native');
+          this.options.nativeDriver ?? PlatformTools.load('pg-native');
         if (pgNative && this.postgres.native)
           this.postgres = this.postgres.native;
       } catch {
