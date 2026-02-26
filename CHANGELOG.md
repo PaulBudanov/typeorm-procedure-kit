@@ -1,3 +1,10 @@
+## [1.6.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.7...v1.6.8) (2026-02-26)
+
+
+### Bug Fixes
+
+* require imports ([45a1703](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/45a1703dd2021cb48eeec17aa6490139897418ca))
+
 ## [1.6.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.6...v1.6.7) (2026-02-26)
 
 
