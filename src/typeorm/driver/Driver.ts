@@ -1,15 +1,15 @@
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { BaseDataSourceOptions } from '../data-source/BaseDataSourceOptions.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { OnDeleteType } from '../metadata/types/OnDeleteType.js';
 import type { OnUpdateType } from '../metadata/types/OnUpdateType.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import type { SchemaBuilder } from '../schema-builder/SchemaBuilder.js';
-import { Table } from '../schema-builder/table/Table.js';
-import { TableColumn } from '../schema-builder/table/TableColumn.js';
-import { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
-import { View } from '../schema-builder/view/View.js';
+import type { Table } from '../schema-builder/table/Table.js';
+import type { TableColumn } from '../schema-builder/table/TableColumn.js';
+import type { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
+import type { View } from '../schema-builder/view/View.js';
 
 import type { ColumnType } from './types/ColumnTypes.js';
 import type { CteCapabilities } from './types/CteCapabilities.js';

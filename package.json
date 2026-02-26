@@ -128,6 +128,7 @@
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import-x": "^4.16.1",
     "eslint-plugin-prettier": "^5.5.5",
+    "madge": "^8.0.0",
     "oracledb": "^6.10.0",
     "pg": "^8.17.2",
     "pg-native": "^3.5.2",

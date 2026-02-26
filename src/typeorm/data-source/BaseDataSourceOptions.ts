@@ -1,9 +1,9 @@
 import type { TDbConfig } from '../../types/config.types.js';
 import type { TFunction } from '../../types/utility.types.js';
-import { DbQueryResultCache } from '../cache/db-query-result-cache.js';
+import type { DbQueryResultCache } from '../cache/db-query-result-cache.js';
 import type { MixedList } from '../common/MixedList.js';
-import { DataSource } from '../data-source/DataSource.js';
-import { EntitySchema } from '../entity-schema/EntitySchema.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import type { Logger } from '../logger/Logger.js';
 import type { LoggerOptions } from '../logger/LoggerOptions.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';

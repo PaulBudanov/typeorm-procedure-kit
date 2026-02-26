@@ -2,7 +2,7 @@ import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import type { RelationCountMetadataArgs } from '../metadata-args/RelationCountMetadataArgs.js';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 import { EntityMetadata } from './EntityMetadata.js';
 import { RelationMetadata } from './RelationMetadata.js';
