@@ -3,6 +3,21 @@ import { createRequire } from 'module';
 import path from 'path';
 import { pathToFileURL } from 'url';
 
+// Helper to get require function in both ESM and CJS contexts
+// Uses a dynamic approach to work in both module systems
+const getRequireForPath = (filePath: string): NodeRequire => {
+  // For relative/absolute paths, we can use createRequire with a base URL
+  // Use the directory of the file being required as the base
+  const dirPath = path.dirname(filePath);
+  try {
+    // Try to create require from the target file's directory
+    return createRequire(pathToFileURL(dirPath + path.sep));
+  } catch {
+    // Fallback to current context's require
+    return require;
+  }
+};
+
 export async function importOrRequireFile(
   filePath: string
 ): Promise<[unknown, 'esm' | 'commonjs']> {
@@ -15,7 +30,7 @@ export async function importOrRequireFile(
   };
 
   const tryToRequire = (): [unknown, 'commonjs'] => {
-    const require = createRequire(import.meta.url);
+    const require = getRequireForPath(filePath);
     return [require(filePath), 'commonjs'];
   };
 

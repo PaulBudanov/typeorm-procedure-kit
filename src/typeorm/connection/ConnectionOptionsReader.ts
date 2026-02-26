@@ -1,4 +1,3 @@
-import { createRequire } from 'module';
 import path from 'path';
 
 import appRootPath from 'app-root-path';
@@ -160,8 +159,8 @@ export class ConnectionOptionsReader {
           | Array<DataSourceOptions>;
       }
     } else if (foundFileFormat === 'json') {
-      const require = createRequire(import.meta.url);
-      connectionOptions = require(configFile) as
+      const [configModule] = await importOrRequireFile(configFile);
+      connectionOptions = configModule as
         | DataSourceOptions
         | Array<DataSourceOptions>
         | undefined;

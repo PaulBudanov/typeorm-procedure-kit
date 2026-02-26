@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync } from 'fs';
-import { createRequire } from 'module';
+import { createRequire, type Module } from 'module';
 import { extname, normalize, resolve } from 'path';
 
 import { format as sqlFormat } from '@sqltools/formatter';
@@ -25,6 +25,34 @@ export class PlatformTools {
   public static type = 'node';
 
   /**
+   * Gets a require function that works in both ESM and CJS contexts.
+   * @param filePath - Optional file path to create require from
+   */
+  private static getRequire(
+    filePath?: string
+  ): NodeRequire | ReturnType<typeof createRequire> {
+    // In CJS context, global require is available
+    if (typeof require !== 'undefined') {
+      return require;
+    }
+    // In ESM context, try to create require from module URL or fallback
+    try {
+      const mod = module as unknown as { url?: string } & Module;
+      if (mod.url) {
+        return createRequire(mod.url);
+      }
+      if (filePath) {
+        return createRequire(resolve(filePath));
+      }
+      // Fallback to current directory
+      return createRequire(process.cwd() + '/');
+    } catch {
+      // Ultimate fallback
+      return require;
+    }
+  }
+
+  /**
    * Gets global variable where global stuff can be stored.
    */
   public static getGlobalVariable(): unknown {
@@ -46,7 +74,7 @@ export class PlatformTools {
         case 'pg':
           return import('pg');
         case 'pg-native': {
-          const require = createRequire(import.meta.url);
+          const require = PlatformTools.getRequire();
           return new Promise((resolve) => resolve(require('pg-native')));
         }
         case 'pg-query-stream':
