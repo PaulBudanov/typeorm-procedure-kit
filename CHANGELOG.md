@@ -1,3 +1,10 @@
+## [1.7.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.5...v1.7.6) (2026-02-27)
+
+
+### Bug Fixes
+
+* change import util to function ([bb423c2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bb423c28d6ee24b2c62a19fd930ccbf8baa33ed0))
+
 ## [1.7.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.4...v1.7.5) (2026-02-27)
 
 
