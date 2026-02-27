@@ -1,3 +1,10 @@
+# [1.7.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.10...v1.7.0) (2026-02-27)
+
+
+### Features
+
+* added extends  and override for current target or parent target. ([80b4b3d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/80b4b3dfb165abbff156750c4e8e620dbedf4f54))
+
 ## [1.6.10](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.9...v1.6.10) (2026-02-26)
 
 
