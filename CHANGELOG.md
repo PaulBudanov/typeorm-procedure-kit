@@ -1,3 +1,10 @@
+## [1.7.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.1...v1.7.2) (2026-02-27)
+
+
+### Bug Fixes
+
+* work with metadata for extend columns and entity ([d544000](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/d544000af1202d0f04c70937ed24333f2831ef7b))
+
 ## [1.7.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.0...v1.7.1) (2026-02-27)
 
 
