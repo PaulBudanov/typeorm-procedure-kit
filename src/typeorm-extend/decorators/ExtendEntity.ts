@@ -10,15 +10,18 @@ import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
  * Extends the @Entity decorator with additional options.
  * Allows to register an entity with options that are not supported by the original @Entity decorator.
  * @param {Partial<EntityOptions>} overrideOptions - Partial EntityOptions object to override the existing entity options.
+ * @param {boolean} [isRegisterToParentTarget=false] - Whether to register the entity to the parent target or to the target itself.
  * @returns {ClassDecorator} - The extended entity decorator.
  * @example
  * class User {
- *   @Entity({ synchronize: false })
- *   @ExtendEntity({ name: 'user' })
+ *   @Entity({ type: 'uuid', default: 'uuid_generate_v4()' })
+ *   @ExtendEntity({ onUpdate: 'uuid_generate_v4()' })
+ *   id: string;
  * }
  */
 export function ExtendEntity(
-  overrideOptions: Partial<EntityOptions>
+  overrideOptions?: Partial<EntityOptions>,
+  isRegisterToParentTarget = false
 ): ClassDecorator {
   return (target: object): void => {
     const storage = getMetadataArgsStorage();
@@ -28,12 +31,21 @@ export function ExtendEntity(
       target as TFunction
     );
 
-    if (!entityMetadata) {
+    if (!entityMetadata.table || !entityMetadata.foundTarget) {
       throw new ServerError(
-        `Entity "${(target as TFunction).name}" not found. ` +
+        `Entity "${target.toString()}" not registered. Original сlass target name: "${entityMetadata.foundTarget}". ` +
           'Register entity with @Entity() decorator first.'
       );
     }
-    Object.assign(entityMetadata, merge({}, entityMetadata, overrideOptions));
+    const targetRegister = isRegisterToParentTarget
+      ? entityMetadata.foundTarget
+      : target;
+    Object.assign(
+      entityMetadata,
+      {
+        target: targetRegister,
+      },
+      merge({}, entityMetadata, overrideOptions)
+    );
   };
 }

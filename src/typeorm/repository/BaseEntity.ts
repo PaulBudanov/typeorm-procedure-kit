@@ -41,7 +41,7 @@ export class BaseEntity {
    */
   public hasId(): boolean {
     const baseEntity = this.constructor as typeof BaseEntity;
-    return baseEntity.getRepository().hasId(this as unknown as ObjectLiteral);
+    return baseEntity.getRepository().hasId(this as unknown as BaseEntity);
   }
 
   /**
@@ -63,7 +63,7 @@ export class BaseEntity {
     return baseEntity
       .getRepository()
       .remove(
-        this as unknown as Array<ObjectLiteral>,
+        this as unknown as Array<BaseEntity>,
         options
       ) as unknown as Promise<this>;
   }
@@ -128,12 +128,10 @@ export class BaseEntity {
    */
   public static getRepository<T extends BaseEntity>(
     this: (new () => T) & typeof BaseEntity
-  ): Repository<ObjectLiteral> {
+  ): Repository<T> {
     const dataSource = (this as typeof BaseEntity).dataSource;
     if (!dataSource) throw new Error(`DataSource is not set for this entity.`);
-    return dataSource.getRepository(
-      this as unknown as EntityTarget<ObjectLiteral>
-    );
+    return dataSource.getRepository(this as unknown as EntityTarget<T>);
   }
 
   /**
@@ -141,7 +139,7 @@ export class BaseEntity {
    * If this repository manages entity from schema,
    * then it returns a name of that schema instead.
    */
-  public static get target(): EntityTarget<ObjectLiteral> {
+  public static get target(): EntityTarget<BaseEntity> {
     return this.getRepository().target;
   }
 
@@ -150,7 +148,7 @@ export class BaseEntity {
    * If entity composite compose ids, it will check them all.
    */
   public static hasId(entity: BaseEntity): boolean {
-    return this.getRepository().hasId(entity as unknown as ObjectLiteral);
+    return this.getRepository().hasId(entity as unknown as BaseEntity);
   }
 
   /**
@@ -169,8 +167,10 @@ export class BaseEntity {
   public static createQueryBuilder<T extends BaseEntity & ObjectLiteral>(
     this: (new () => T) & typeof BaseEntity,
     alias?: string
-  ): SelectQueryBuilder<ObjectLiteral> {
-    return this.getRepository<T>().createQueryBuilder(alias);
+  ): SelectQueryBuilder<T> {
+    return this.getRepository<T>().createQueryBuilder(
+      alias
+    ) as unknown as SelectQueryBuilder<T>;
   }
 
   /**
@@ -197,9 +197,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     entityOrEntities?: unknown
   ): ObjectLiteral {
-    return this.getRepository<T>().create(
-      entityOrEntities as DeepPartial<ObjectLiteral>
-    );
+    return this.getRepository<T>().create(entityOrEntities as DeepPartial<T>);
   }
 
   /**
@@ -211,8 +209,8 @@ export class BaseEntity {
     ...entityLikes: Array<DeepPartial<T>>
   ): T {
     return this.getRepository<T>().merge(
-      mergeIntoEntity as unknown as ObjectLiteral,
-      ...(entityLikes as Array<DeepPartial<ObjectLiteral>>)
+      mergeIntoEntity as unknown as T,
+      ...(entityLikes as Array<DeepPartial<T>>)
     ) as T;
   }
 
@@ -230,7 +228,7 @@ export class BaseEntity {
     entityLike: DeepPartial<T>
   ): Promise<T | ObjectLiteral | undefined> {
     const thisRepository = this.getRepository<T>();
-    return thisRepository.preload(entityLike as DeepPartial<ObjectLiteral>);
+    return thisRepository.preload(entityLike as DeepPartial<T>);
   }
 
   /**
@@ -260,9 +258,9 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     entityOrEntities: DeepPartial<T> | Array<DeepPartial<T>>,
     options?: SaveOptions
-  ): Promise<Array<DeepPartial<ObjectLiteral>>> {
+  ): Promise<Array<DeepPartial<T>>> {
     return this.getRepository<T>().save(
-      entityOrEntities as Array<DeepPartial<ObjectLiteral>>,
+      entityOrEntities as Array<DeepPartial<T>>,
       options
     );
   }
@@ -292,9 +290,9 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     entityOrEntities: T | Array<T>,
     options?: RemoveOptions
-  ): Promise<Array<ObjectLiteral>> {
+  ): Promise<Array<T>> {
     return this.getRepository<T>().remove(
-      entityOrEntities as Array<ObjectLiteral>,
+      entityOrEntities as Array<T>,
       options
     );
   }
@@ -324,9 +322,9 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     entityOrEntities: T | Array<T>,
     options?: SaveOptions
-  ): Promise<Array<DeepPartial<ObjectLiteral>>> {
+  ): Promise<Array<DeepPartial<T>>> {
     return this.getRepository<T>().softRemove(
-      entityOrEntities as Array<DeepPartial<ObjectLiteral>>,
+      entityOrEntities as Array<DeepPartial<T>>,
       options
     );
   }
@@ -363,7 +361,7 @@ export class BaseEntity {
     partialEntity: QueryDeepPartialEntity<T>
   ): Promise<UpdateResult> {
     return this.getRepository<T>().update(
-      criteria as FindOptionsWhere<ObjectLiteral>,
+      criteria as FindOptionsWhere<T>,
       partialEntity
     );
   }
@@ -403,9 +401,7 @@ export class BaseEntity {
       | Array<Date>
       | FindOptionsWhere<T>
   ): Promise<DeleteResult> {
-    return this.getRepository<T>().delete(
-      criteria as FindOptionsWhere<ObjectLiteral>
-    );
+    return this.getRepository<T>().delete(criteria as FindOptionsWhere<T>);
   }
 
   /**
@@ -415,9 +411,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options?: FindManyOptions<T>
   ): Promise<boolean> {
-    return this.getRepository<T>().exists(
-      options as FindManyOptions<ObjectLiteral>
-    );
+    return this.getRepository<T>().exists(options as FindManyOptions<T>);
   }
 
   /**
@@ -427,9 +421,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<boolean> {
-    return this.getRepository<T>().existsBy(
-      where as FindOptionsWhere<ObjectLiteral>
-    );
+    return this.getRepository<T>().existsBy(where as FindOptionsWhere<T>);
   }
 
   /**
@@ -439,9 +431,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options?: FindManyOptions<T>
   ): Promise<number> {
-    return this.getRepository<T>().count(
-      options as FindManyOptions<ObjectLiteral>
-    );
+    return this.getRepository<T>().count(options as FindManyOptions<T>);
   }
 
   /**
@@ -451,9 +441,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<number> {
-    return this.getRepository<T>().countBy(
-      where as FindOptionsWhere<ObjectLiteral>
-    );
+    return this.getRepository<T>().countBy(where as FindOptionsWhere<T>);
   }
 
   /**
@@ -466,7 +454,7 @@ export class BaseEntity {
   ): Promise<number | null> {
     return this.getRepository<T>().sum(
       columnName as never,
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     );
   }
 
@@ -480,7 +468,7 @@ export class BaseEntity {
   ): Promise<number | null> {
     return this.getRepository<T>().average(
       columnName as never,
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     );
   }
 
@@ -494,7 +482,7 @@ export class BaseEntity {
   ): Promise<number | null> {
     return this.getRepository<T>().minimum(
       columnName as never,
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     );
   }
 
@@ -508,7 +496,7 @@ export class BaseEntity {
   ): Promise<number | null> {
     return this.getRepository<T>().maximum(
       columnName as never,
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     );
   }
 
@@ -520,7 +508,7 @@ export class BaseEntity {
     options?: FindManyOptions<T>
   ): Promise<Array<T>> {
     return this.getRepository<T>().find(
-      options as FindManyOptions<ObjectLiteral>
+      options as FindManyOptions<T>
     ) as Promise<Array<T>>;
   }
 
@@ -532,7 +520,7 @@ export class BaseEntity {
     where: FindOptionsWhere<T>
   ): Promise<Array<T>> {
     return this.getRepository<T>().findBy(
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     ) as Promise<Array<T>>;
   }
 
@@ -546,7 +534,7 @@ export class BaseEntity {
     options?: FindManyOptions<T>
   ): Promise<[Array<T>, number]> {
     return this.getRepository<T>().findAndCount(
-      options as FindManyOptions<ObjectLiteral>
+      options as FindManyOptions<T>
     ) as Promise<[Array<T>, number]>;
   }
 
@@ -560,7 +548,7 @@ export class BaseEntity {
     where: FindOptionsWhere<T>
   ): Promise<[Array<T>, number]> {
     return this.getRepository<T>().findAndCountBy(
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     ) as Promise<[Array<T>, number]>;
   }
 
@@ -601,7 +589,7 @@ export class BaseEntity {
     where: FindOptionsWhere<T>
   ): Promise<T | null> {
     return this.getRepository<T>().findOneBy(
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     ) as Promise<T | null>;
   }
 
@@ -629,7 +617,7 @@ export class BaseEntity {
     options: FindOneOptions<T>
   ): Promise<T> {
     return this.getRepository<T>().findOneOrFail(
-      options as FindOneOptions<ObjectLiteral>
+      options as FindOneOptions<T>
     ) as Promise<T>;
   }
 
@@ -641,7 +629,7 @@ export class BaseEntity {
     where: FindOptionsWhere<T>
   ): Promise<T> {
     return this.getRepository<T>().findOneByOrFail(
-      where as FindOptionsWhere<ObjectLiteral>
+      where as FindOptionsWhere<T>
     ) as Promise<T>;
   }
 

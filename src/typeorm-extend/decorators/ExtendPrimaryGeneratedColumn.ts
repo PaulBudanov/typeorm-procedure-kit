@@ -9,16 +9,21 @@ import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
  * Extends the @PrimaryGeneratedColumn decorator with additional options.
  * Allows to register a primary generated column with options that are not supported by the original @PrimaryGeneratedColumn decorator.
  * @param {Partial<PrimaryGeneratedColumnNumericOptions>} overrideSource - Partial PrimaryGeneratedColumnNumericOptions object to override the existing column options.
+ * @param {boolean} [isRegisterToParentTarget=false] - Whether to register the column to the parent target or to the target itself.
  * @returns {PropertyDecorator} - The extended primary generated column decorator.
  * @example
  * class User {
  *   @PrimaryGeneratedColumn({ type: 'uuid', default: 'uuid_generate_v4()' })
+ *   id: string;
+ * }
+ * class UserOracle extends User {
  *   @ExtendPrimaryGeneratedColumn({ onUpdate: 'uuid_generate_v4()' })
  *   id: string;
  * }
  */
 export function ExtendPrimaryGeneratedColumn(
-  overrideSource: Partial<PrimaryGeneratedColumnNumericOptions>
+  overrideSource?: Partial<PrimaryGeneratedColumnNumericOptions>,
+  isRegisterToParentTarget = false
 ) {
   return function (target: object, propertyKey: string | symbol): void {
     const storage = getMetadataArgsStorage();
@@ -29,13 +34,18 @@ export function ExtendPrimaryGeneratedColumn(
       propertyKey
     );
 
-    if (!columnMetadata)
+    if (!columnMetadata.foundTarget || !columnMetadata.column)
       throw new ServerError(
-        `Primary Column "${propertyKey.toString()}" not found. ` +
+        `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
           'Register column with @PrimaryGeneratedColumn() decorator first.'
       );
+    const targetRegister = isRegisterToParentTarget
+      ? columnMetadata.foundTarget
+      : target;
     Object.assign(columnMetadata, {
-      options: merge({}, columnMetadata.options, overrideSource),
+      target: targetRegister,
+      options: merge({}, columnMetadata.column.options, overrideSource),
     });
+    return;
   };
 }
