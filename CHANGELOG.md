@@ -1,3 +1,10 @@
+## [1.7.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.3...v1.7.4) (2026-02-27)
+
+
+### Bug Fixes
+
+* added push to array copys of array mutable values. ([5ab2e79](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/5ab2e79b04456cea5a216bb14cc781086e808153))
+
 ## [1.7.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.2...v1.7.3) (2026-02-27)
 
 
