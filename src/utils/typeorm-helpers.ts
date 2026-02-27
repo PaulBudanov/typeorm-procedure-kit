@@ -7,6 +7,7 @@ import type { TableMetadataArgs } from '../typeorm/metadata-args/TableMetadataAr
 import type { UniqueMetadataArgs } from '../typeorm/metadata-args/UniqueMetadataArgs.js';
 import type { TFunction } from '../types/utility.types.js';
 
+//TODO: In the future need to be refactored, because deep clone is not a good idea. After start write new ORM should be refactored.
 export abstract class TypeOrmHelpers {
   /**
    * Finds a column in a hierarchy of objects.
