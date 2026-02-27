@@ -1,3 +1,10 @@
+## [1.7.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.0...v1.7.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* change target logic in entity extend. ([f664078](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/f6640780483d19a3131709f7bfb96caa165b7e8c))
+
 # [1.7.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.6.10...v1.7.0) (2026-02-27)
 
 
