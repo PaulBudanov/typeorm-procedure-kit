@@ -41,11 +41,11 @@ export function ExtendEntity(
       ? entityMetadata.foundTarget
       : target;
     Object.assign(
-      entityMetadata,
+      entityMetadata.table,
+      merge({}, entityMetadata.table, overrideOptions),
       {
         target: targetRegister,
-      },
-      merge({}, entityMetadata, overrideOptions)
+      }
     );
   };
 }
