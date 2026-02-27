@@ -1,4 +1,4 @@
-import { merge } from 'lodash-es';
+import { cloneDeep, merge } from 'lodash-es';
 
 import type { EntityOptions } from '../../typeorm/decorator/options/EntityOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
@@ -42,6 +42,7 @@ export function ExtendEntity(
     const targetRegister = isRegisterToParentTarget
       ? entityMetadata.foundTarget
       : target;
+    const copyEntity = cloneDeep(entityMetadata.table);
     Object.assign(
       entityMetadata.table,
       merge({}, entityMetadata.table, overrideOptions),
@@ -49,5 +50,6 @@ export function ExtendEntity(
         target: targetRegister,
       }
     );
+    storage.tables.push(copyEntity);
   };
 }
