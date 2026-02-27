@@ -9,14 +9,16 @@ import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
 /**
  * Extends the @Entity decorator with additional options.
  * Allows to register an entity with options that are not supported by the original @Entity decorator.
- * @param {Partial<EntityOptions>} overrideOptions - Partial EntityOptions object to override the existing entity options.
+ * @param {Partial<EntityOptions>} [overrideOptions] - Partial EntityOptions object to override the existing entity options.
  * @param {boolean} [isRegisterToParentTarget=false] - Whether to register the entity to the parent target or to the target itself.
  * @returns {ClassDecorator} - The extended entity decorator.
  * @example
+ * @Entity({ schema: 'public' })
  * class User {
- *   @Entity({ type: 'uuid', default: 'uuid_generate_v4()' })
- *   @ExtendEntity({ onUpdate: 'uuid_generate_v4()' })
- *   id: string;
+ *   id: number;
+ * }
+ * @ExtendEntity({ schema: 'oracle' })
+ * class UserOracle extends User {
  * }
  */
 export function ExtendEntity(

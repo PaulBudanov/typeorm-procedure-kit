@@ -1,5 +1,3 @@
-import { merge } from 'lodash-es';
-
 import type { ColumnOptions } from '../../typeorm/decorator/options/ColumnOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
@@ -30,9 +28,9 @@ export function ExtendColumn(
     const storage = getMetadataArgsStorage();
     const targetConstructor = target.constructor;
     const columnMetadata = TypeOrmHelpers.findColumnInHierarchy(
-      storage.columns,
+      storage,
       targetConstructor,
-      propertyKey
+      propertyKey.toString()
     );
 
     if (!columnMetadata.column || !columnMetadata.foundTarget)
@@ -43,10 +41,28 @@ export function ExtendColumn(
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
       : target;
-    Object.assign(columnMetadata, {
-      target: targetRegister,
-      options: merge({}, columnMetadata.column.options, overrideSource),
-    });
-    return;
+    TypeOrmHelpers.updateColumnMetadata(
+      columnMetadata.column,
+      targetRegister,
+      overrideSource
+    );
+    TypeOrmHelpers.updateGenerationMetadata(
+      storage,
+      targetRegister,
+      propertyKey.toString(),
+      columnMetadata.generation,
+      !overrideSource?.generated && overrideSource?.generated !== false
+        ? (columnMetadata.column.options.generated ?? undefined)
+        : overrideSource?.generated
+    );
+    TypeOrmHelpers.updateUniqueMetadata(
+      storage,
+      targetRegister,
+      propertyKey.toString(),
+      overrideSource?.unique === false || overrideSource?.unique === true
+        ? overrideSource?.unique
+        : (columnMetadata.column.options.unique ?? false),
+      columnMetadata.unique
+    );
   };
 }

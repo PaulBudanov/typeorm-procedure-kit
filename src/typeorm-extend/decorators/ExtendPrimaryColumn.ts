@@ -1,5 +1,3 @@
-import { merge } from 'lodash-es';
-
 import type { PrimaryColumnOptions } from '../../typeorm/decorator/columns/PrimaryColumn.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
@@ -29,9 +27,9 @@ export function ExtendPrimaryColumn(
     const storage = getMetadataArgsStorage();
     const targetConstructor = target.constructor;
     const columnMetadata = TypeOrmHelpers.findColumnInHierarchy(
-      storage.columns,
+      storage,
       targetConstructor,
-      propertyKey
+      propertyKey.toString()
     );
 
     if (!columnMetadata.foundTarget || !columnMetadata.column)
@@ -42,10 +40,19 @@ export function ExtendPrimaryColumn(
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
       : target;
-    Object.assign(columnMetadata, {
-      target: targetRegister,
-      options: merge({}, columnMetadata.column.options, overrideSource),
-    });
-    return;
+    TypeOrmHelpers.updateColumnMetadata(
+      columnMetadata.column,
+      targetRegister,
+      overrideSource
+    );
+    TypeOrmHelpers.updateGenerationMetadata(
+      storage,
+      targetRegister,
+      propertyKey.toString(),
+      columnMetadata.generation,
+      !overrideSource?.generated && overrideSource?.generated !== false
+        ? (columnMetadata.column.options.generated ?? undefined)
+        : overrideSource?.generated
+    );
   };
 }

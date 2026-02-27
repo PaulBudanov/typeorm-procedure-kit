@@ -1,5 +1,3 @@
-import { merge } from 'lodash-es';
-
 import type { PrimaryGeneratedColumnNumericOptions } from '../../typeorm/decorator/options/PrimaryGeneratedColumnNumericOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
@@ -29,12 +27,16 @@ export function ExtendPrimaryGeneratedColumn(
     const storage = getMetadataArgsStorage();
     const targetConstructor = target.constructor;
     const columnMetadata = TypeOrmHelpers.findColumnInHierarchy(
-      storage.columns,
+      storage,
       targetConstructor,
-      propertyKey
+      propertyKey.toString()
     );
 
-    if (!columnMetadata.foundTarget || !columnMetadata.column)
+    if (
+      !columnMetadata.foundTarget ||
+      !columnMetadata.column ||
+      !columnMetadata.generation
+    )
       throw new ServerError(
         `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
           'Register column with @PrimaryGeneratedColumn() decorator first.'
@@ -42,10 +44,14 @@ export function ExtendPrimaryGeneratedColumn(
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
       : target;
-    Object.assign(columnMetadata, {
+    Object.assign(columnMetadata.generation, {
       target: targetRegister,
-      options: merge({}, columnMetadata.column.options, overrideSource),
     });
+    TypeOrmHelpers.updateColumnMetadata(
+      columnMetadata.column,
+      targetRegister,
+      overrideSource
+    );
     return;
   };
 }
