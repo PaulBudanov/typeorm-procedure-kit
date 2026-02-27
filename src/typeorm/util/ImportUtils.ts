@@ -22,11 +22,15 @@ export async function importOrRequireFile(
   filePath: string
 ): Promise<[unknown, 'esm' | 'commonjs']> {
   const tryToImport = async (): Promise<[unknown, 'esm']> => {
-    // Use dynamic import with proper URL formatting
-    const url = filePath.startsWith('file://')
-      ? filePath
-      : pathToFileURL(filePath).toString();
-    return [await import(url), 'esm'];
+    return [
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call
+      await Function('return filePath => import(filePath)')()(
+        filePath.startsWith('file://')
+          ? filePath
+          : pathToFileURL(filePath).toString()
+      ),
+      'esm',
+    ];
   };
 
   const tryToRequire = (): [unknown, 'commonjs'] => {
