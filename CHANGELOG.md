@@ -1,3 +1,10 @@
+## [1.7.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.2...v1.7.3) (2026-02-27)
+
+
+### Bug Fixes
+
+* change package json dependency ([db51d9f](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/db51d9fc82de03397e331b4bf3cb578e2b45a68a))
+
 ## [1.7.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.1...v1.7.2) (2026-02-27)
 
 
