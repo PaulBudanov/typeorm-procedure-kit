@@ -41,6 +41,7 @@ export function ExtendPrimaryColumn(
       ? columnMetadata.foundTarget
       : target;
     TypeOrmHelpers.updateColumnMetadata(
+      storage,
       columnMetadata.column,
       targetRegister,
       overrideSource

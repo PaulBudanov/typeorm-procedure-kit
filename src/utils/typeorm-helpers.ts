@@ -1,4 +1,4 @@
-import { merge } from 'lodash-es';
+import { cloneDeep, merge } from 'lodash-es';
 
 import type { ColumnMetadataArgs } from '../typeorm/metadata-args/ColumnMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../typeorm/metadata-args/GeneratedMetadataArgs.js';
@@ -88,14 +88,17 @@ export abstract class TypeOrmHelpers {
   }
 
   public static updateColumnMetadata(
+    storage: MetadataArgsStorage,
     column: ColumnMetadataArgs,
     targetRegister: object,
     overrideSource?: ColumnMetadataArgs['options']
   ): void {
+    const copyColumn = cloneDeep(column);
     Object.assign(column, {
       target: targetRegister,
       options: merge({}, column.options, overrideSource),
     });
+    storage.columns.push(copyColumn);
   }
 
   public static updateGenerationMetadata(
@@ -108,13 +111,15 @@ export abstract class TypeOrmHelpers {
     const hasGeneratedOption = generated !== undefined && generated !== false;
     if (hasGeneratedOption) {
       const strategy = typeof generated === 'string' ? generated : 'increment';
-      if (existingGeneration)
+      if (existingGeneration) {
+        const copyGeneration = cloneDeep(existingGeneration);
         Object.assign(existingGeneration, {
           target: targetRegister,
           propertyName: propertyKey,
           strategy,
         });
-      else
+        storage.generations.push(copyGeneration);
+      } else
         storage.generations.push({
           target: targetRegister,
           propertyName: propertyKey,
@@ -146,10 +151,12 @@ export abstract class TypeOrmHelpers {
           columns: [propertyKey],
         });
       else {
+        const copyUnique = cloneDeep(unique);
         Object.assign(unique, {
           target: targetRegister as TFunction,
           columns: [propertyKey],
         });
+        storage.uniques.push(copyUnique);
       }
     else {
       const existingIndex = storage.uniques.findIndex((unique) => {

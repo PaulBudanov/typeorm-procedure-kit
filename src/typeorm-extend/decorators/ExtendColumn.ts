@@ -32,7 +32,6 @@ export function ExtendColumn(
       targetConstructor,
       propertyKey.toString()
     );
-
     if (!columnMetadata.column || !columnMetadata.foundTarget)
       throw new ServerError(
         `Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
@@ -42,6 +41,7 @@ export function ExtendColumn(
       ? columnMetadata.foundTarget
       : target;
     TypeOrmHelpers.updateColumnMetadata(
+      storage,
       columnMetadata.column,
       targetRegister,
       overrideSource
