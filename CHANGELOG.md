@@ -1,3 +1,10 @@
+## [1.7.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.4...v1.7.5) (2026-02-27)
+
+
+### Bug Fixes
+
+* add entity copy push ([5d5a6f6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/5d5a6f6606095647ff6eded6f5bda0cfb18a2bb5))
+
 ## [1.7.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.3...v1.7.4) (2026-02-27)
 
 
