@@ -1,3 +1,10 @@
+## [1.7.12](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.11...v1.7.12) (2026-03-02)
+
+
+### Bug Fixes
+
+* set options varaible for quoting in global. Added method for enable escaping. ([6db132e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/6db132ee90791ce9112e0e5668488007b8b34c44))
+
 ## [1.7.11](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.10...v1.7.11) (2026-03-02)
 
 
