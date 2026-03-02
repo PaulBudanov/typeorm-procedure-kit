@@ -985,7 +985,7 @@ export class EntityMetadata {
 
   public build(): void {
     const namingStrategy = this.connection.namingStrategy;
-
+    const entitySkipConstructor = this.connection.options.entitySkipConstructor;
     this.engine = this.tableMetadataArgs.engine;
     this.database =
       this.tableMetadataArgs.type === 'entity-child' &&
@@ -1061,7 +1061,9 @@ export class EntityMetadata {
       typeof this.tableMetadataArgs.orderBy === 'function'
         ? this.tableMetadataArgs.orderBy(this.propertiesMap)
         : this.tableMetadataArgs.orderBy; // todo: is propertiesMap available here? Looks like its not
-
+    if (entitySkipConstructor !== undefined) {
+      this.isAlwaysUsingConstructor = !entitySkipConstructor;
+    }
     this.isJunction =
       this.tableMetadataArgs.type === 'closure-junction' ||
       this.tableMetadataArgs.type === 'junction';

@@ -228,9 +228,9 @@ export class EmbeddedMetadata {
     this.relationIdsFromTree = this.buildRelationIdsFromTree();
     this.relationCountsFromTree = this.buildRelationCountsFromTree();
 
-    // if (connection.options.entitySkipConstructor) {
-    //   this.isAlwaysUsingConstructor = !connection.options.entitySkipConstructor;
-    // }
+    if (connection.options.entitySkipConstructor) {
+      this.isAlwaysUsingConstructor = !connection.options.entitySkipConstructor;
+    }
 
     return this;
   }

@@ -22,7 +22,6 @@ export async function importOrRequireFile(
   filePath: string
 ): Promise<[unknown, 'esm' | 'commonjs']> {
   const tryToImport = async (): Promise<[unknown, 'esm']> => {
-    // Use dynamic import with proper URL formatting
     const url = filePath.startsWith('file://')
       ? filePath
       : pathToFileURL(filePath).toString();
@@ -80,10 +79,9 @@ async function getNearestPackageJson(filePath: string): Promise<object | null> {
     currentPath = path.dirname(currentPath);
 
     // Check if we have already cached the package.json for this path
-    const cachedPackageJson = packageJsonCache.get(currentPath);
-    if (cachedPackageJson !== undefined) {
-      setPackageJsonCache(paths, cachedPackageJson);
-      return cachedPackageJson;
+    if (packageJsonCache.has(currentPath)) {
+      setPackageJsonCache(paths, packageJsonCache.get(currentPath)!);
+      return packageJsonCache.get(currentPath)!;
     }
 
     // Add the current path to the list of paths to cache
@@ -95,16 +93,20 @@ async function getNearestPackageJson(filePath: string): Promise<object | null> {
       const stats = await fs.stat(potentialPackageJson);
       if (!stats.isFile()) continue;
 
-      const parsedPackage = JSON.parse(
-        await fs.readFile(potentialPackageJson, 'utf8')
-      ) as object | null;
-      // Cache the parsed package.json object and return it
-      setPackageJsonCache(paths, parsedPackage);
-      return parsedPackage;
+      try {
+        const parsedPackage = JSON.parse(
+          await fs.readFile(potentialPackageJson, 'utf8')
+        ) as object | null;
+        // Cache the parsed package.json object and return it
+        setPackageJsonCache(paths, parsedPackage);
+        return parsedPackage;
+      } catch {
+        // If file doesn't exist or parsing fails, cache null to avoid repeated attempts
+        setPackageJsonCache(paths, null);
+        return null;
+      }
     } catch {
-      // If file doesn't exist or parsing fails, cache null to avoid repeated attempts
-      setPackageJsonCache(paths, null);
-      return null;
+      continue;
     }
   }
 
