@@ -25,12 +25,12 @@ export function ExtendEntity(
   overrideOptions?: Partial<EntityOptions>,
   isRegisterToParentTarget = false
 ): ClassDecorator {
-  return (target: object): void => {
+  return (target): void => {
     const storage = getMetadataArgsStorage();
 
     const entityMetadata = TypeOrmHelpers.findEntityMetadata(
       storage.tables,
-      target as TFunction
+      target as unknown as TFunction
     );
 
     if (!entityMetadata.table || !entityMetadata.foundTarget) {
@@ -45,11 +45,16 @@ export function ExtendEntity(
     const copyEntity = cloneDeep(entityMetadata.table);
     Object.assign(
       entityMetadata.table,
-      merge({}, entityMetadata.table, overrideOptions),
+      merge(entityMetadata.table, overrideOptions),
       {
         target: targetRegister,
       }
     );
-    storage.tables.push(copyEntity);
+    if (
+      storage.tables.findIndex(
+        (table) => table.target === copyEntity.target
+      ) === -1
+    )
+      storage.tables.push(copyEntity);
   };
 }

@@ -68,21 +68,21 @@ export abstract class TypeOrmHelpers {
    * @param target - Object to find the entity metadata for.
    * @returns An object containing the found target and the entity metadata for the given target if found, otherwise undefined.
    */
-  public static findEntityMetadata<T extends TFunction>(
+  public static findEntityMetadata(
     tables: Array<TableMetadataArgs>,
-    target: T
+    target: TFunction
   ): {
-    foundTarget: T | null;
+    foundTarget: TFunction | null;
     table: TableMetadataArgs | undefined;
   } {
     let found = tables.find((table) => table.target === target);
     if (found) return { foundTarget: target, table: found };
-    let currentTarget: T | null = target;
+    let currentTarget: TFunction | null = target;
     while (currentTarget && currentTarget !== Function.prototype) {
       found = tables.find((table) => table.target === currentTarget);
 
       if (found) return { foundTarget: currentTarget, table: found };
-      currentTarget = Object.getPrototypeOf(currentTarget) as T | null;
+      currentTarget = Object.getPrototypeOf(currentTarget) as TFunction | null;
     }
 
     return { foundTarget: currentTarget, table: undefined };
@@ -99,7 +99,14 @@ export abstract class TypeOrmHelpers {
       target: targetRegister,
       options: merge({}, column.options, overrideSource),
     });
-    storage.columns.push(copyColumn);
+    if (
+      storage.columns.findIndex(
+        (col) =>
+          col.target === copyColumn.target &&
+          col.propertyName === copyColumn.propertyName
+      ) === -1
+    )
+      storage.columns.push(copyColumn);
   }
 
   public static updateGenerationMetadata(
@@ -119,7 +126,14 @@ export abstract class TypeOrmHelpers {
           propertyName: propertyKey,
           strategy,
         });
-        storage.generations.push(copyGeneration);
+        if (
+          storage.generations.findIndex(
+            (col) =>
+              col.target === copyGeneration.target &&
+              col.propertyName === copyGeneration.propertyName
+          ) === -1
+        )
+          storage.generations.push(copyGeneration);
       } else
         storage.generations.push({
           target: targetRegister,
@@ -157,7 +171,13 @@ export abstract class TypeOrmHelpers {
           target: targetRegister as TFunction,
           columns: [propertyKey],
         });
-        storage.uniques.push(copyUnique);
+        if (
+          storage.uniques.findIndex(
+            (col) =>
+              col.target === copyUnique.target && col.name === copyUnique.name
+          ) === -1
+        )
+          storage.uniques.push(copyUnique);
       }
     else {
       const existingIndex = storage.uniques.findIndex((unique) => {

@@ -87,7 +87,6 @@ export class ConnectionMetadataBuilder {
         (entityClass): entityClass is EntitySchema<unknown> =>
           InstanceChecker.isEntitySchema(entityClass)
       );
-
     const allEntityClasses = [
       ...entityClasses,
       ...(await importClassesFromDirectories(
