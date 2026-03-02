@@ -50,7 +50,7 @@ export class DatabaseInitializerBase {
         null: 'sql-null',
         undefined: 'throw',
       },
-      isQuotingDisabled: false,
+      isQuotingDisabled: true,
       migrations:
         this.migration?.migrationPath &&
         Array.isArray(this.migration.migrationPath)

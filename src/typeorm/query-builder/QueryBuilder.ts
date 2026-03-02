@@ -601,7 +601,7 @@ export abstract class QueryBuilder<Entity = unknown> {
    * Escapes table name, column name or alias name using current database's escaping character.
    */
   public escape(name: string): string {
-    if (!this.expressionMap.isQuotingDisabled) return name;
+    if (this.expressionMap.isQuotingDisabled) return name;
     return this.driver.escape(name);
   }
 
