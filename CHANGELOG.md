@@ -1,3 +1,10 @@
+## [1.7.10](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.9...v1.7.10) (2026-03-02)
+
+
+### Bug Fixes
+
+* recursive  method for find package json ([534af99](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/534af99da20ba2906cc95cc92e36ff8e03554ca8))
+
 ## [1.7.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.8...v1.7.9) (2026-03-02)
 
 
