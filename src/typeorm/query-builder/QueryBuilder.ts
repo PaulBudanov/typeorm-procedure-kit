@@ -593,6 +593,10 @@ export abstract class QueryBuilder<Entity = unknown> {
    * Disables escaping.
    */
   public disableEscaping(): this {
+    this.expressionMap.isQuotingDisabled = true;
+    return this;
+  }
+  public enableEscaping(): this {
     this.expressionMap.isQuotingDisabled = false;
     return this;
   }

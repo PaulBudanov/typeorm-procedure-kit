@@ -362,7 +362,10 @@ export class QueryExpressionMap {
     if (connection.options.relationLoadStrategy)
       this.relationLoadStrategy = connection.options.relationLoadStrategy;
 
-    if (connection.options.isQuotingDisabled)
+    if (
+      connection.options.isQuotingDisabled !== undefined &&
+      connection.options.isQuotingDisabled !== null
+    )
       this.isQuotingDisabled = connection.options.isQuotingDisabled;
   }
 
