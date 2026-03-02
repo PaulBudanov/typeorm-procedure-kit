@@ -43,7 +43,7 @@ export function ExtendPrimaryColumn(
       );
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
-      : target;
+      : targetConstructor;
     TypeOrmHelpers.updateColumnMetadata(
       storage,
       columnMetadata.column,

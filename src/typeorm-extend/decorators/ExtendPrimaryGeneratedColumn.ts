@@ -44,7 +44,7 @@ export function ExtendPrimaryGeneratedColumn(
       );
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
-      : target;
+      : targetConstructor;
     Object.assign(columnMetadata.generation, {
       target: targetRegister,
     });
