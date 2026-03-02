@@ -1,3 +1,10 @@
+## [1.7.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.8...v1.7.9) (2026-03-02)
+
+
+### Bug Fixes
+
+* change target value in decorator for target register. ([5e3f92e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/5e3f92e869532d8b149e261255ae6b62aa2dbc57))
+
 ## [1.7.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.7...v1.7.8) (2026-03-02)
 
 
