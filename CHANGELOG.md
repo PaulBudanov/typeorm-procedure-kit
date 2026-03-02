@@ -1,3 +1,10 @@
+## [1.7.11](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.10...v1.7.11) (2026-03-02)
+
+
+### Bug Fixes
+
+* added isQuotingDisabled true ([bb807ae](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bb807ae2b5c50c35c1b8ae863d116e951f6d2397))
+
 ## [1.7.10](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.9...v1.7.10) (2026-03-02)
 
 
