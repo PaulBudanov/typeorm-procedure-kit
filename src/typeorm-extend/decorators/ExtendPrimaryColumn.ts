@@ -32,7 +32,11 @@ export function ExtendPrimaryColumn(
       propertyKey.toString()
     );
 
-    if (!columnMetadata.foundTarget || !columnMetadata.column)
+    if (
+      !columnMetadata.foundTarget ||
+      typeof columnMetadata.foundTarget !== 'function' ||
+      !columnMetadata.column
+    )
       throw new ServerError(
         `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
           'Register column with @PrimaryColumn() decorator first.'

@@ -33,7 +33,11 @@ export function ExtendEntity(
       target as unknown as TFunction
     );
 
-    if (!entityMetadata.table || !entityMetadata.foundTarget) {
+    if (
+      !entityMetadata.table ||
+      !entityMetadata.foundTarget ||
+      typeof entityMetadata.foundTarget !== 'function'
+    ) {
       throw new ServerError(
         `Entity "${target.toString()}" not registered. Original сlass target name: "${entityMetadata.foundTarget}". ` +
           'Register entity with @Entity() decorator first.'

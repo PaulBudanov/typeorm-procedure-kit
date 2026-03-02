@@ -32,7 +32,11 @@ export function ExtendColumn(
       targetConstructor,
       propertyKey.toString()
     );
-    if (!columnMetadata.column || !columnMetadata.foundTarget)
+    if (
+      !columnMetadata.column ||
+      typeof columnMetadata.foundTarget !== 'function' ||
+      !columnMetadata.foundTarget
+    )
       throw new ServerError(
         `Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
           'Register column with @Column() decorator first.'

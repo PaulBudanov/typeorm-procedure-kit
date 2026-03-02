@@ -34,6 +34,7 @@ export function ExtendPrimaryGeneratedColumn(
 
     if (
       !columnMetadata.foundTarget ||
+      typeof columnMetadata.foundTarget !== 'function' ||
       !columnMetadata.column ||
       !columnMetadata.generation
     )
