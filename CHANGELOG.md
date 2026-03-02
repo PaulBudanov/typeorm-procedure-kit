@@ -1,3 +1,10 @@
+## [1.7.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.6...v1.7.7) (2026-03-02)
+
+
+### Bug Fixes
+
+* added push metadata entity clone exist checking ([2c4a12a](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/2c4a12a47fd751fda8bcb647426deac212c5994e))
+
 ## [1.7.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.5...v1.7.6) (2026-02-27)
 
 
