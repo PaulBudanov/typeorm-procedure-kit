@@ -1,3 +1,10 @@
+## [1.7.20](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.19...v1.7.20) (2026-03-03)
+
+
+### Bug Fixes
+
+* return as is ([ccb56ec](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/ccb56ec1085b7f48c2267f6be329c0b8e7769400))
+
 ## [1.7.19](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.18...v1.7.19) (2026-03-03)
 
 
