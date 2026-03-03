@@ -87,12 +87,12 @@ export class DriverUtils {
       alias.length === 1
         ? alias[0]
         : alias
-            .map((item) => {
-              if (item.startsWith('"') && item.endsWith('"')) {
-                return item.substring(1, item.length - 1);
-              }
-              return item;
-            })
+            // .map((item) => {
+            //   if (item.startsWith('"') && item.endsWith('"')) {
+            //     return item.substring(1, item.length - 1);
+            //   }
+            //   return item;
+            // })
             .join(joiner);
     if (!newAlias) throw new ServerError('Alias cannot be empty.');
 
@@ -111,16 +111,16 @@ export class DriverUtils {
       if (buildOptions && buildOptions.shorten === true) {
         const shortenedAlias = shorten(aliasWithoutEscape);
         if (shortenedAlias.length < maxAliasLength) {
-          return `"${shortenedAlias}"`;
+          return shortenedAlias;
         }
       }
 
       return `"${hash(aliasWithoutEscape, { length: maxAliasLength })}"`;
     }
-    if (newAlias.startsWith('"') && newAlias.endsWith('"')) {
-      return newAlias;
-    }
-    return `"${newAlias}"`;
+    // if (newAlias.startsWith('"') && newAlias.endsWith('"')) {
+    //   return newAlias;
+    // }
+    return newAlias;
   }
 
   // -------------------------------------------------------------------------
