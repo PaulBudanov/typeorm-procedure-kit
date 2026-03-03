@@ -1,3 +1,10 @@
+## [1.7.17](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.16...v1.7.17) (2026-03-03)
+
+
+### Bug Fixes
+
+* added mandatory quotation. ([463e83d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/463e83de92c0e6eb5c4fc87776944ecb8b8491b9))
+
 ## [1.7.16](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.15...v1.7.16) (2026-03-03)
 
 
