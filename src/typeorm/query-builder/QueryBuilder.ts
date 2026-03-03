@@ -604,8 +604,8 @@ export abstract class QueryBuilder<Entity = unknown> {
   /**
    * Escapes table name, column name or alias name using current database's escaping character.
    */
-  public escape(name: string): string {
-    if (this.expressionMap.isQuotingDisabled) return name;
+  public escape(name: string, isNeedQuote = false): string {
+    if (this.expressionMap.isQuotingDisabled && !isNeedQuote) return name;
     return this.driver.escape(name);
   }
 
@@ -812,7 +812,11 @@ export abstract class QueryBuilder<Entity = unknown> {
       }
     }
 
-    const replacementKeys = Object.keys(replacements);
+    const replacementKeys = Object.keys(replacements).map((key) =>
+      key.startsWith('"') && key.endsWith('"')
+        ? key.substring(1, key.length - 1)
+        : key
+    );
     const replaceAliasNamePrefixes = replacementKeys
       .map((key) => escapeRegExp(key))
       .join('|');
@@ -840,12 +844,15 @@ export abstract class QueryBuilder<Entity = unknown> {
             p = matches[3] as string;
 
             if (replacements[matches[2] as string]?.[p]) {
-              return `${pre}${this.escape(
-                (matches[2] as string).substring(
-                  0,
-                  (matches[2] as string).length - 1
-                )
-              )}.${this.escape(replacements[matches[2] as string]?.[p] as string)}`;
+              return `${pre}${
+                (this.escape(
+                  (matches[2] as string).substring(
+                    0,
+                    (matches[2] as string).length - 1
+                  )
+                ),
+                true)
+              }.${this.escape(replacements[matches[2] as string]?.[p] as string)}`;
             }
           } else {
             match = matches[0];
