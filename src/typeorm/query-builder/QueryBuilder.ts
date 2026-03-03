@@ -775,12 +775,18 @@ export abstract class QueryBuilder<Entity = unknown> {
         // Map normalized prefix (without quotes) to original
         const normalizedPrefix =
           replaceAliasNamePrefix.startsWith('"') &&
-          replaceAliasNamePrefix.endsWith('"')
+          replaceAliasNamePrefix.endsWith('".')
             ? replaceAliasNamePrefix.substring(
                 1,
-                replaceAliasNamePrefix.length - 1
-              )
-            : replaceAliasNamePrefix;
+                replaceAliasNamePrefix.length - 2
+              ) + '.'
+            : replaceAliasNamePrefix.startsWith('"') &&
+                replaceAliasNamePrefix.endsWith('"')
+              ? replaceAliasNamePrefix.substring(
+                  1,
+                  replaceAliasNamePrefix.length - 1
+                )
+              : replaceAliasNamePrefix;
         normalizedToOriginalPrefix[normalizedPrefix] = replaceAliasNamePrefix;
       }
 
@@ -831,9 +837,11 @@ export abstract class QueryBuilder<Entity = unknown> {
 
     // Normalize keys by removing quotes for matching
     const normalizedPrefixes = Object.keys(replacements).map((key) =>
-      key.startsWith('"') && key.endsWith('"')
-        ? key.substring(1, key.length - 1)
-        : key
+      key.startsWith('"') && key.endsWith('".')
+        ? key.substring(1, key.length - 2) + '.'
+        : key.startsWith('"') && key.endsWith('"')
+          ? key.substring(1, key.length - 1)
+          : key
     );
     const replaceAliasNamePrefixes = normalizedPrefixes
       .map((key) => escapeRegExp(key))
