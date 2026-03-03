@@ -1,3 +1,10 @@
+## [1.7.15](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.14...v1.7.15) (2026-03-03)
+
+
+### Bug Fixes
+
+* added alias escape. ([dfda11e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/dfda11ef1b8d64494242098be8733c135d7bb249))
+
 ## [1.7.14](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.13...v1.7.14) (2026-03-03)
 
 
