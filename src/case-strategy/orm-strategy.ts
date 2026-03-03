@@ -30,13 +30,13 @@ export class OrmStrategy extends DefaultNamingStrategy {
     customName: string,
     embeddedPrefixes: Array<string>
   ): string {
-    const columnName = customName ?? propertyName;
+    const columnName = propertyName ?? customName;
     if (typeof columnName !== 'string')
       throw new ServerError('Column name must be a string');
     const name = this.stringTransformUtility(columnName);
     if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, name))
       return this.databaseNamingCache.cacheGet(this.columnNameCacheKey, name)!;
-    const data = super.columnName(name, name, embeddedPrefixes);
+    const data = super.columnName(name, customName, embeddedPrefixes);
     this.databaseNamingCache.cacheSet(this.columnNameCacheKey, name, data);
     return data;
   }
