@@ -94,14 +94,14 @@ export class DriverUtils {
       if (buildOptions && buildOptions.shorten === true) {
         const shortenedAlias = shorten(newAlias);
         if (shortenedAlias.length < maxAliasLength) {
-          return shortenedAlias;
+          return `"${shortenedAlias}"`;
         }
       }
 
-      return hash(newAlias, { length: maxAliasLength });
+      return `"${hash(newAlias, { length: maxAliasLength })}"`;
     }
 
-    return newAlias;
+    return `"${newAlias}"`;
   }
 
   // -------------------------------------------------------------------------
