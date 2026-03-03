@@ -1,3 +1,10 @@
+## [1.7.13](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.12...v1.7.13) (2026-03-03)
+
+
+### Bug Fixes
+
+* change orm strategy case. ([58e40e9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/58e40e951752b610b29bf2c8a23d1ca9f2c5ec1d))
+
 ## [1.7.12](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.11...v1.7.12) (2026-03-02)
 
 
