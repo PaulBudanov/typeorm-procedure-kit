@@ -1,3 +1,11 @@
+## [1.7.21](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.20...v1.7.21) (2026-03-03)
+
+
+### Bug Fixes
+
+* delete check for double quoutes. ([daf7684](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/daf7684c1a3e1d71434ed10f497af01b137c1d23))
+* return build alias as is ([00ab7bd](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/00ab7bdb55d41a35cc47a19f2caf5c42485b3ecc))
+
 ## [1.7.20](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.19...v1.7.20) (2026-03-03)
 
 
