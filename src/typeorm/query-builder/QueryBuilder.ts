@@ -755,6 +755,8 @@ export abstract class QueryBuilder<Entity = unknown> {
    */
   protected replacePropertyNamesForTheWholeQuery(statement: string): string {
     const replacements: Record<string, Record<string, string>> = {};
+    const aliasPrefixMap: Record<string, string> = {};
+    const normalizedToOriginalPrefix: Record<string, string> = {};
 
     for (const alias of this.expressionMap.aliases) {
       if (!alias.hasMetadata) continue;
@@ -765,6 +767,21 @@ export abstract class QueryBuilder<Entity = unknown> {
 
       if (!replacements[replaceAliasNamePrefix]) {
         replacements[replaceAliasNamePrefix] = {};
+      }
+
+      // Store the original alias name for proper escaping later
+      if (replaceAliasNamePrefix) {
+        aliasPrefixMap[replaceAliasNamePrefix] = alias.name!;
+        // Map normalized prefix (without quotes) to original
+        const normalizedPrefix =
+          replaceAliasNamePrefix.startsWith('"') &&
+          replaceAliasNamePrefix.endsWith('"')
+            ? replaceAliasNamePrefix.substring(
+                1,
+                replaceAliasNamePrefix.length - 1
+              )
+            : replaceAliasNamePrefix;
+        normalizedToOriginalPrefix[normalizedPrefix] = replaceAliasNamePrefix;
       }
 
       // Insert & overwrite the replacements from least to most relevant in our replacements object.
@@ -812,16 +829,17 @@ export abstract class QueryBuilder<Entity = unknown> {
       }
     }
 
-    const replacementKeys = Object.keys(replacements).map((key) =>
+    // Normalize keys by removing quotes for matching
+    const normalizedPrefixes = Object.keys(replacements).map((key) =>
       key.startsWith('"') && key.endsWith('"')
         ? key.substring(1, key.length - 1)
         : key
     );
-    const replaceAliasNamePrefixes = replacementKeys
+    const replaceAliasNamePrefixes = normalizedPrefixes
       .map((key) => escapeRegExp(key))
       .join('|');
 
-    if (replacementKeys.length > 0) {
+    if (normalizedPrefixes.length > 0) {
       statement = statement.replace(
         new RegExp(
           // Avoid a lookbehind here since it's not well supported
@@ -841,18 +859,22 @@ export abstract class QueryBuilder<Entity = unknown> {
           if (replaceAliasNamePrefixes) {
             match = matches[0];
             pre = matches[1] as string;
+            const matchedPrefix = matches[2] as string;
             p = matches[3] as string;
 
-            if (replacements[matches[2] as string]?.[p]) {
-              return `${pre}${
-                (this.escape(
-                  (matches[2] as string).substring(
-                    0,
-                    (matches[2] as string).length - 1
-                  )
-                ),
-                true)
-              }.${this.escape(replacements[matches[2] as string]?.[p] as string)}`;
+            // Get the original prefix (with quotes if it had them)
+            const originalPrefix = normalizedToOriginalPrefix[matchedPrefix];
+
+            if (originalPrefix && replacements[originalPrefix]?.[p]) {
+              // Get the original alias name (unquoted) for proper escaping
+              const originalAlias = aliasPrefixMap[originalPrefix];
+              // Escape only the alias part with true flag, escape column name normally
+              const escapedAlias = originalAlias
+                ? this.escape(originalAlias, true)
+                : this.escape(matchedPrefix.slice(0, -1), true);
+              const columnName = replacements[originalPrefix][p]!;
+              const escapedColumn = this.escape(columnName);
+              return `${pre}${escapedAlias}.${escapedColumn}`;
             }
           } else {
             match = matches[0];
