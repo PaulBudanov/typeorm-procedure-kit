@@ -1,3 +1,10 @@
+## [1.7.16](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.15...v1.7.16) (2026-03-03)
+
+
+### Bug Fixes
+
+* alias escaping in driver utils ([bb51e58](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bb51e58ec6971f980d6733594d3aca92069cf939))
+
 ## [1.7.15](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.14...v1.7.15) (2026-03-03)
 
 
