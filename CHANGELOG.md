@@ -1,3 +1,10 @@
+## [1.7.19](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.18...v1.7.19) (2026-03-03)
+
+
+### Bug Fixes
+
+* added if for dots. ([bf024f0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bf024f09155b7d96533509a4fa21f93881159370))
+
 ## [1.7.18](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.17...v1.7.18) (2026-03-03)
 
 
