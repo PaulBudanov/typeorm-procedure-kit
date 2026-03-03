@@ -83,7 +83,17 @@ export class DriverUtils {
     const joiner =
       buildOptions && buildOptions.joiner ? buildOptions.joiner : '_';
 
-    const newAlias = alias.length === 1 ? alias[0] : alias.join(joiner);
+    const newAlias =
+      alias.length === 1
+        ? alias[0]
+        : alias
+            .map((item) => {
+              if (item.startsWith('"') && item.endsWith('"')) {
+                return item.substring(1, item.length - 1);
+              }
+              return item;
+            })
+            .join(joiner);
     if (!newAlias) throw new ServerError('Alias cannot be empty.');
 
     if (
@@ -91,16 +101,25 @@ export class DriverUtils {
       maxAliasLength > 0 &&
       newAlias.length > maxAliasLength
     ) {
+      let aliasWithoutEscape = newAlias;
+      if (
+        aliasWithoutEscape.startsWith('"') &&
+        aliasWithoutEscape.endsWith('"')
+      )
+        aliasWithoutEscape = newAlias.substring(1, newAlias.length - 1);
+
       if (buildOptions && buildOptions.shorten === true) {
-        const shortenedAlias = shorten(newAlias);
+        const shortenedAlias = shorten(aliasWithoutEscape);
         if (shortenedAlias.length < maxAliasLength) {
           return `"${shortenedAlias}"`;
         }
       }
 
-      return `"${hash(newAlias, { length: maxAliasLength })}"`;
+      return `"${hash(aliasWithoutEscape, { length: maxAliasLength })}"`;
     }
-
+    if (newAlias.startsWith('"') && newAlias.endsWith('"')) {
+      return newAlias;
+    }
     return `"${newAlias}"`;
   }
 
