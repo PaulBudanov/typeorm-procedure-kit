@@ -1,3 +1,10 @@
+## [1.7.18](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.17...v1.7.18) (2026-03-03)
+
+
+### Bug Fixes
+
+* prefix map logic. ([8de4e39](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/8de4e3974e24ea40feaca4d10f0e0cb5c0b8d100))
+
 ## [1.7.17](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.16...v1.7.17) (2026-03-03)
 
 
