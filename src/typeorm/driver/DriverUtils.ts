@@ -101,21 +101,21 @@ export class DriverUtils {
       maxAliasLength > 0 &&
       newAlias.length > maxAliasLength
     ) {
-      let aliasWithoutEscape = newAlias;
-      if (
-        aliasWithoutEscape.startsWith('"') &&
-        aliasWithoutEscape.endsWith('"')
-      )
-        aliasWithoutEscape = newAlias.substring(1, newAlias.length - 1);
+      // let aliasWithoutEscape = newAlias;
+      // if (
+      //   aliasWithoutEscape.startsWith('"') &&
+      //   aliasWithoutEscape.endsWith('"')
+      // )
+      //   aliasWithoutEscape = newAlias.substring(1, newAlias.length - 1);
 
       if (buildOptions && buildOptions.shorten === true) {
-        const shortenedAlias = shorten(aliasWithoutEscape);
+        const shortenedAlias = shorten(newAlias);
         if (shortenedAlias.length < maxAliasLength) {
           return shortenedAlias;
         }
       }
 
-      return `"${hash(aliasWithoutEscape, { length: maxAliasLength })}"`;
+      return `"${hash(newAlias, { length: maxAliasLength })}"`;
     }
     // if (newAlias.startsWith('"') && newAlias.endsWith('"')) {
     //   return newAlias;
