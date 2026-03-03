@@ -1,3 +1,10 @@
+## [1.7.14](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.13...v1.7.14) (2026-03-03)
+
+
+### Bug Fixes
+
+* add interface implements for class ([fb5beda](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/fb5beda4352f4ffce0788aeeb524a3486d36cf0d))
+
 ## [1.7.13](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.12...v1.7.13) (2026-03-03)
 
 
