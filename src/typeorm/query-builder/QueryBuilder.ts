@@ -570,14 +570,10 @@ export abstract class QueryBuilder<Entity = unknown> {
    * you can create query builder using its constructor, for example new SelectQueryBuilder(queryBuilder)
    * where queryBuilder is cloned QueryBuilder.
    */
-  public clone(): QueryBuilder<ObjectLiteral> {
+  public clone(): QueryBuilder<Entity> {
     return new (this.constructor as new (
-      connection: DataSource,
-      queryRunner?: QueryRunner
-    ) => QueryBuilder<ObjectLiteral>)(
-      this.connection,
-      this.queryRunner
-    ) as QueryBuilder<ObjectLiteral>;
+      qb: QueryBuilder<Entity>
+    ) => QueryBuilder<Entity>)(this as QueryBuilder<Entity>);
   }
   /**
    * Includes a Query comment in the query builder.  This is helpful for debugging purposes,
