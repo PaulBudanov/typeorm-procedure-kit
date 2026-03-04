@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { StringUtilities } from '../../utils/string-utilities.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
@@ -28,7 +29,6 @@ import type { SoftDeleteQueryBuilder } from './SoftDeleteQueryBuilder.js';
 import type { UpdateQueryBuilder } from './UpdateQueryBuilder.js';
 import type { WhereClause, WhereClauseCondition } from './WhereClause.js';
 import type { WhereExpressionBuilder } from './WhereExpressionBuilder.js';
-import { StringUtilities } from '../../utils/string-utilities.js';
 
 // todo: completely cover query builder with tests
 // todo: entityOrProperty can be target name. implement proper behaviour if it is.
@@ -864,6 +864,7 @@ export abstract class QueryBuilder<Entity = unknown> {
   ): string | undefined {
     if (!propertyName || !findObject) return undefined;
     const propertyCasesArray = [
+      propertyName,
       StringUtilities.toLowerCase(propertyName),
       propertyName.toUpperCase(),
       StringUtilities.toCamelCase(propertyName),
