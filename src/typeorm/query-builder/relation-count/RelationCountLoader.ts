@@ -183,7 +183,7 @@ export class RelationCountLoader {
           )
             .addSelect(
               'COUNT(' +
-                qb.escape(inverseSideTableAlias) +
+                qb.escape(inverseSideTableAlias, true) +
                 '.' +
                 qb.escape(inverseJoinColumnName) +
                 ')',

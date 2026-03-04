@@ -97,14 +97,12 @@ export class DatabaseInitializerBase {
   }
 
   /**
-   * This method is used to patch the QueryBuilder's replacePropertyNamesForTheWholeQuery
-   * method to remove double quotes from the query. This is necessary because TypeORM
-   * uses double quotes to escape column names, which are not necessary in Oracle and Postgres.
-   * The method replaces the original method with a patched version that removes the
-   * double quotes from the query.
-   * @private
+   * Returns the connection options for the database connection.
+   * Depending on the database type, it either returns PostgresConnectionOptions or OracleConnectionOptions.
+   * If the database type is not recognized, it throws an error.
+   * @returns {PostgresConnectionOptions | OracleConnectionOptions} - the connection options for the database connection
+   * @throws {ServerError} - error if the database type is not recognized
    */
-
   private configFactory(): PostgresConnectionOptions | OracleConnectionOptions {
     switch (this.dbConfig.type) {
       case 'postgres':
@@ -140,6 +138,12 @@ export class DatabaseInitializerBase {
     }
   }
 
+  /**
+   * Creates a database adapter for the given database type.
+   * The adapter is responsible for serializing and deserializing data
+   * from the database.
+   * @returns {TAdapterUtilsClassTypes} - the database adapter
+   */
   private databaseAdapterFactory(): TAdapterUtilsClassTypes {
     const fetchHandlerOptions: IRegisteredFetchHandlerOptions = {
       isNeedRegisterDefaultSerializers:

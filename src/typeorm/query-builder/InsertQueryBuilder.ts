@@ -420,7 +420,7 @@ export class InsertQueryBuilder<
     const tableName = this.getTableName(this.getMainTableName());
     const tableOrAliasName =
       this.alias !== this.getMainTableName()
-        ? this.escape(this.alias)
+        ? this.escape(this.alias, true)
         : tableName;
     const valuesExpression = this.createValuesExpression(); // its important to get values before returning expression because oracle rely on native parameters and ordering of them is important
     const returningExpression =
@@ -811,13 +811,13 @@ export class InsertQueryBuilder<
     }
     // const mainAlias = this.expressionMap.mainAlias!
     const tableName = this.getTableName(this.getMainTableName());
-    const tableAlias = this.escape(this.alias);
+    const tableAlias = this.escape(this.alias, true);
     const columns = this.getInsertedColumns();
     const columnsExpression = this.createColumnNamesExpression();
 
-    let query = `MERGE INTO ${tableName} ${this.escape(this.alias)}`;
+    let query = `MERGE INTO ${tableName} ${this.escape(this.alias, true)}`;
 
-    const mergeSourceAlias = this.escape('mergeIntoSource');
+    const mergeSourceAlias = this.escape('mergeIntoSource', true);
 
     const mergeSourceExpression =
       this.createMergeIntoSourceExpression(mergeSourceAlias);

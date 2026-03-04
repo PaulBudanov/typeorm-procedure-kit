@@ -115,7 +115,7 @@ export class DriverUtils {
         }
       }
 
-      return `"${hash(newAlias, { length: maxAliasLength })}"`;
+      return hash(newAlias, { length: maxAliasLength });
     }
     // if (newAlias.startsWith('"') && newAlias.endsWith('"')) {
     //   return newAlias;

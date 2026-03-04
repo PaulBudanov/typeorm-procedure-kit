@@ -28,8 +28,8 @@ export class NestedSetSubjectExecutor {
    * Executes operations when subject is being inserted.
    */
   public async insert(subject: Subject): Promise<void> {
-    const escape = (alias: string): string =>
-      this.queryRunner.connection.driver.escape(alias);
+    const escape = (alias: string, isNeedQuote = false): string =>
+      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
     const tableName = this.getTableName(subject.metadata.tablePath);
     const leftColumnName = escape(
       subject.metadata.nestedSetLeftColumn!.databaseName
@@ -141,8 +141,8 @@ export class NestedSetSubjectExecutor {
     }
 
     if (parent) {
-      const escape = (alias: string): string =>
-        this.queryRunner.connection.driver.escape(alias);
+      const escape = (alias: string, isNeedQuote = false): string =>
+        this.queryRunner.connection.driver.escape(alias, isNeedQuote);
       const tableName = this.getTableName(subject.metadata.tablePath);
       const leftColumnName = escape(
         subject.metadata.nestedSetLeftColumn!.databaseName
@@ -240,8 +240,8 @@ export class NestedSetSubjectExecutor {
 
     const metadata = subjects[0]!.metadata;
 
-    const escape = (alias: string): string =>
-      this.queryRunner.connection.driver.escape(alias);
+    const escape = (alias: string, isNeedQuote = false): string =>
+      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
     const tableName = this.getTableName(metadata.tablePath);
     const leftColumnName = escape(metadata.nestedSetLeftColumn!.databaseName);
     const rightColumnName = escape(metadata.nestedSetRightColumn!.databaseName);

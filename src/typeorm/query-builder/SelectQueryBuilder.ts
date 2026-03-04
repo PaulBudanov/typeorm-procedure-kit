@@ -2240,7 +2240,7 @@ export class SelectQueryBuilder<Entity = unknown>
         );
         if (hasMainAlias) {
           allSelects.push({
-            selection: this.escape(join.alias.name!) + '.*',
+            selection: this.escape(join.alias.name!, true) + '.*',
           });
           const excludedSelect = this.expressionMap.selects.find(
             (select) => select.selection === join.alias.name
@@ -2270,10 +2270,12 @@ export class SelectQueryBuilder<Entity = unknown>
       )
       .map((alias) => {
         if (alias.subQuery)
-          return alias.subQuery + ' ' + this.escape(alias.name);
+          return alias.subQuery + ' ' + this.escape(alias.name, true);
 
         return (
-          this.getTableName(alias.tablePath!) + ' ' + this.escape(alias.name)
+          this.getTableName(alias.tablePath!) +
+          ' ' +
+          this.escape(alias.name, true)
         );
       });
 
@@ -2282,7 +2284,7 @@ export class SelectQueryBuilder<Entity = unknown>
       .map(
         (select) =>
           select.selection +
-          (select.aliasName ? ' AS ' + this.escape(select.aliasName) : '')
+          (select.aliasName ? ' AS ' + this.escape(select.aliasName, true) : '')
       )
       .join(', ');
 
@@ -2350,7 +2352,7 @@ export class SelectQueryBuilder<Entity = unknown>
           ' JOIN ' +
           destinationJoin +
           ' ' +
-          this.escape(destinationTableAlias) +
+          this.escape(destinationTableAlias, true) +
           this.createTableLockExpression() +
           (joinAttr.condition
             ? ' ON ' + this.replacePropertyNames(joinAttr.condition)
@@ -2383,7 +2385,7 @@ export class SelectQueryBuilder<Entity = unknown>
           ' JOIN ' +
           this.getTableName(destinationTableName) +
           ' ' +
-          this.escape(destinationTableAlias) +
+          this.escape(destinationTableAlias, true) +
           this.createTableLockExpression() +
           ' ON ' +
           this.replacePropertyNames(condition + appendedCondition)
@@ -2432,7 +2434,7 @@ export class SelectQueryBuilder<Entity = unknown>
           ' JOIN ' +
           this.getTableName(destinationTableName) +
           ' ' +
-          this.escape(destinationTableAlias) +
+          this.escape(destinationTableAlias, true) +
           this.createTableLockExpression() +
           ' ON ' +
           this.replacePropertyNames(condition + appendedCondition)
@@ -2513,7 +2515,7 @@ export class SelectQueryBuilder<Entity = unknown>
           ' JOIN ' +
           this.getTableName(junctionTableName) +
           ' ' +
-          this.escape(junctionAlias) +
+          this.escape(junctionAlias, true) +
           this.createTableLockExpression() +
           ' ON ' +
           this.replacePropertyNames(junctionCondition) +
@@ -2522,7 +2524,7 @@ export class SelectQueryBuilder<Entity = unknown>
           ' JOIN ' +
           this.getTableName(destinationTableName) +
           ' ' +
-          this.escape(destinationTableAlias) +
+          this.escape(destinationTableAlias, true) +
           this.createTableLockExpression() +
           ' ON ' +
           this.replacePropertyNames(destinationCondition + appendedCondition)
@@ -2589,7 +2591,7 @@ export class SelectQueryBuilder<Entity = unknown>
                   databaseName
                 ) as string;
                 const orderValueNonNull = orderValue as string;
-                return this.escape(orderAlias) + ' ' + orderValueNonNull;
+                return this.escape(orderAlias, true) + ' ' + orderValueNonNull;
               }
             }
           }
@@ -2783,7 +2785,7 @@ export class SelectQueryBuilder<Entity = unknown>
     const allColumns = [...columns, ...nonSelectedPrimaryColumns];
     const finalSelects: Array<SelectQuery> = [];
 
-    const escapedAliasName = this.escape(aliasName);
+    const escapedAliasName = this.escape(aliasName, true);
     allColumns.forEach((column) => {
       let selectionPath =
         escapedAliasName + '.' + this.escape(column.databaseName);
@@ -2856,7 +2858,7 @@ export class SelectQueryBuilder<Entity = unknown>
     const metadata = this.expressionMap.mainAlias!.metadata;
 
     const primaryColumns = metadata.primaryColumns;
-    const distinctAlias = this.escape(mainAlias);
+    const distinctAlias = this.escape(mainAlias, true);
 
     // If we aren't doing anything that will create a join, we can use a simpler `COUNT` instead
     // so we prevent poor query patterns in the most likely cases
@@ -3161,7 +3163,7 @@ export class SelectQueryBuilder<Entity = unknown>
                     `"${table}" is not part of this query`
                   );
                 }
-                return this.escape(tableAlias.name);
+                return this.escape(tableAlias.name, true);
               })
             : undefined;
           this.setLock(this.findOptions.lock.mode, undefined, tableNames);
@@ -3279,7 +3281,7 @@ export class SelectQueryBuilder<Entity = unknown>
       const mainAliasName = this.expressionMap.mainAlias.name;
 
       const querySelects = metadata.primaryColumns.map((primaryColumn) => {
-        const distinctAlias = this.escape('distinctAlias');
+        const distinctAlias = this.escape('distinctAlias', true);
         const columnAlias = this.escape(
           DriverUtils.buildAlias(
             this.connection.driver,
@@ -3299,7 +3301,7 @@ export class SelectQueryBuilder<Entity = unknown>
           primaryColumn.databaseName
         );
 
-        return `${distinctAlias}.${columnAlias} AS ${this.escape(alias)}`;
+        return `${distinctAlias}.${columnAlias} AS ${this.escape(alias, true)}`;
       });
 
       const originalQuery = this.clone() as SelectQueryBuilder<Entity>;
@@ -3532,7 +3534,9 @@ export class SelectQueryBuilder<Entity = unknown>
             databaseNameNonNull
           ) as string;
           return (
-            this.escape(parentAliasNonNull) + '.' + this.escape(builtAlias)
+            this.escape(parentAliasNonNull, true) +
+            '.' +
+            this.escape(builtAlias, true)
           );
         } else {
           if (
@@ -3545,7 +3549,7 @@ export class SelectQueryBuilder<Entity = unknown>
             const parentAliasNonNull = parentAlias!;
             const orderCriteriaNonNull = orderCriteria! as string;
             return (
-              this.escape(parentAliasNonNull) +
+              this.escape(parentAliasNonNull, true) +
               '.' +
               this.escape(orderCriteriaNonNull)
             );
@@ -3573,7 +3577,9 @@ export class SelectQueryBuilder<Entity = unknown>
           databaseNameNonNull
         ) as string;
         orderByObject[
-          this.escape(parentAliasNonNull) + '.' + this.escape(builtAlias)
+          this.escape(parentAliasNonNull, true) +
+            '.' +
+            this.escape(builtAlias, true)
         ] = orderBys[orderCriteria];
       } else {
         if (
@@ -3584,7 +3590,7 @@ export class SelectQueryBuilder<Entity = unknown>
           )
         ) {
           orderByObject[
-            this.escape(parentAlias) + '.' + this.escape(orderCriteria!)
+            this.escape(parentAlias, true) + '.' + this.escape(orderCriteria!)
           ] = orderBys[orderCriteria];
         } else {
           orderByObject[orderCriteria] = orderBys[orderCriteria];
@@ -4131,7 +4137,7 @@ export class SelectQueryBuilder<Entity = unknown>
         if (column) {
           let aliasPath = `${alias}.${propertyPath}`;
           if (column.isVirtualProperty && column.query) {
-            aliasPath = `(${column.query(this.escape(alias))})`;
+            aliasPath = `(${column.query(this.escape(alias, true))})`;
           }
 
           if (parameterValue === null) {

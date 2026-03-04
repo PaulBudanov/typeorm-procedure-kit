@@ -35,7 +35,7 @@ export class TreeRepository<
    */
   public findRoots(options?: FindTreeOptions): Promise<Array<Entity>> {
     const escapeAlias = (alias: string): string =>
-      this.manager.connection.driver.escape(alias);
+      this.manager.connection.driver.escape(alias, true);
     const escapeColumn = (column: string): string =>
       this.manager.connection.driver.escape(column);
 
@@ -128,18 +128,18 @@ export class TreeRepository<
     entity: Entity
   ): SelectQueryBuilder<Entity> {
     // create shortcuts for better readability
-    const escape = (alias: string): string =>
-      this.manager.connection.driver.escape(alias);
+    const escape = (alias: string, isNeedQuote = false): string =>
+      this.manager.connection.driver.escape(alias, isNeedQuote);
 
     if (this.metadata.treeType === 'closure-table') {
       const joinCondition = this.metadata.closureJunctionTable.descendantColumns
         .map((column) => {
           return (
-            escape(closureTableAlias) +
+            escape(closureTableAlias, true) +
             '.' +
             escape(column.propertyPath) +
             ' = ' +
-            escape(alias) +
+            escape(alias, true) +
             '.' +
             escape(column.referencedColumn!.propertyPath)
           );
@@ -152,7 +152,7 @@ export class TreeRepository<
           parameters[column.referencedColumn!.propertyName] =
             column.referencedColumn!.getEntityValue(entity);
           return (
-            escape(closureTableAlias) +
+            escape(closureTableAlias, true) +
             '.' +
             escape(column.propertyPath) +
             ' = :' +

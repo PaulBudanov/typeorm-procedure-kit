@@ -162,8 +162,8 @@ export class ClosureSubjectExecutor {
       return;
     }
 
-    const escape = (alias: string): string =>
-      this.queryRunner.connection.driver.escape(alias);
+    const escape = (alias: string, isNeedQuote = false): string =>
+      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
     const closureTable = subject.metadata.closureJunctionTable;
 
     const ancestorColumnNames = closureTable.ancestorColumns.map((column) => {
@@ -191,7 +191,7 @@ export class ClosureSubjectExecutor {
       // Create where conditions e.g. (WHERE "subdescendant"."id_ancestor" = :value_id)
       for (const column of closureTable.ancestorColumns) {
         subSelect.andWhere(
-          `${escape(subAlias)}.${escape(
+          `${escape(subAlias, true)}.${escape(
             column.databaseName
           )} = :value_${column.referencedColumn!.databaseName}`
         );
@@ -242,8 +242,8 @@ export class ClosureSubjectExecutor {
       const queryParams: Array<unknown> = [];
 
       const tableName = this.getTableName(closureTable.tablePath);
-      const superAlias = escape('supertree');
-      const subAlias = escape('subtree');
+      const superAlias = escape('supertree', true);
+      const subAlias = escape('subtree', true);
 
       const select = [
         ...ancestorColumnNames.map(
@@ -310,8 +310,8 @@ export class ClosureSubjectExecutor {
   public async remove(subjects: Subject | Array<Subject>): Promise<void> {
     if (!Array.isArray(subjects)) subjects = [subjects];
 
-    const escape = (alias: string): string =>
-      this.queryRunner.connection.driver.escape(alias);
+    const escape = (alias: string, isNeedQuote = false): string =>
+      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
     const identifiers = subjects.map((subject) => subject.identifier);
     const closureTable = subjects[0]!.metadata.closureJunctionTable;
 
