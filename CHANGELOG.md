@@ -1,3 +1,10 @@
+## [1.7.26](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.25...v1.7.26) (2026-03-04)
+
+
+### Bug Fixes
+
+* query builder clone function. ([f6500f3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/f6500f3892172a083c5267c6895f96198e7f851f))
+
 ## [1.7.25](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.24...v1.7.25) (2026-03-04)
 
 
