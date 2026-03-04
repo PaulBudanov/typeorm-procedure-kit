@@ -1,3 +1,10 @@
+## [1.7.25](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.24...v1.7.25) (2026-03-04)
+
+
+### Bug Fixes
+
+* type for create query builder, make cast to generic type. ([7d4c403](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/7d4c4039a72b6e083a4c10c452f4702c011c464f))
+
 ## [1.7.24](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.23...v1.7.24) (2026-03-04)
 
 
