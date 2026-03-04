@@ -28,6 +28,7 @@ import type { SoftDeleteQueryBuilder } from './SoftDeleteQueryBuilder.js';
 import type { UpdateQueryBuilder } from './UpdateQueryBuilder.js';
 import type { WhereClause, WhereClauseCondition } from './WhereClause.js';
 import type { WhereExpressionBuilder } from './WhereExpressionBuilder.js';
+import { StringUtilities } from '../../utils/string-utilities.js';
 
 // todo: completely cover query builder with tests
 // todo: entityOrProperty can be target name. implement proper behaviour if it is.
@@ -739,14 +740,6 @@ export abstract class QueryBuilder<Entity = unknown> {
   }
 
   /**
-   * @deprecated this way of replace property names is too slow.
-   *  Instead, we'll replace property names at the end - once query is build.
-   */
-  protected replacePropertyNames(statement: string): string {
-    return statement;
-  }
-
-  /**
    * Replaces all entity's propertyName to name in the given SQL string.
    */
   protected replacePropertyNamesForTheWholeQuery(statement: string): string {
@@ -834,15 +827,19 @@ export abstract class QueryBuilder<Entity = unknown> {
             match = matches[0];
             pre = matches[1] as string;
             p = matches[3] as string;
-
-            if (replacements[matches[2] as string]?.[p]) {
+            // const strategysFind = [(item: string |)]
+            const findPropertyInAnotherCases = this.findPropertyInAnotherCases(
+              p,
+              replacements[matches[2] as string]
+            );
+            if (findPropertyInAnotherCases) {
               return `${pre}${this.escape(
                 (matches[2] as string).substring(
                   0,
                   (matches[2] as string).length - 1
                 ),
                 true
-              )}.${this.escape(replacements[matches[2] as string]?.[p] as string)}`;
+              )}.${this.escape(findPropertyInAnotherCases as string)}`;
             }
           } else {
             match = matches[0];
@@ -859,6 +856,24 @@ export abstract class QueryBuilder<Entity = unknown> {
     }
 
     return statement;
+  }
+
+  private findPropertyInAnotherCases(
+    propertyName: string | undefined,
+    findObject: Record<string, string | undefined> | undefined
+  ): string | undefined {
+    if (!propertyName || !findObject) return undefined;
+    const propertyCasesArray = [
+      StringUtilities.toLowerCase(propertyName),
+      propertyName.toUpperCase(),
+      StringUtilities.toCamelCase(propertyName),
+    ];
+    propertyCasesArray.forEach((propertyCase) => {
+      if (findObject[propertyCase]) {
+        propertyName = propertyCase;
+      }
+    });
+    return propertyName;
   }
 
   protected createComment(): string {
@@ -899,7 +914,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     );
 
     if (whereExpression.length > 0 && whereExpression !== '1=1') {
-      conditionsArray.push(this.replacePropertyNames(whereExpression));
+      conditionsArray.push(whereExpression);
     }
 
     if (this.expressionMap.mainAlias!.hasMetadata) {
@@ -916,7 +931,7 @@ export abstract class QueryBuilder<Entity = unknown> {
             metadata.deleteDateColumn.propertyName
           : metadata.deleteDateColumn.propertyName;
 
-        const condition = `${this.replacePropertyNames(column)} IS NULL`;
+        const condition = `${column} IS NULL`;
         conditionsArray.push(condition);
       }
 
@@ -927,17 +942,14 @@ export abstract class QueryBuilder<Entity = unknown> {
             metadata.discriminatorColumn.databaseName
           : metadata.discriminatorColumn.databaseName;
 
-        const condition = `${this.replacePropertyNames(
-          column
-        )} IN (:...discriminatorColumnValues)`;
+        const condition = `${column} IN (:...discriminatorColumnValues)`;
         conditionsArray.push(condition);
       }
     }
 
     if (this.expressionMap.extraAppendedAndWhereCondition) {
-      const condition = this.replacePropertyNames(
-        this.expressionMap.extraAppendedAndWhereCondition
-      );
+      const condition = this.expressionMap.extraAppendedAndWhereCondition;
+
       conditionsArray.push(condition);
     }
 
