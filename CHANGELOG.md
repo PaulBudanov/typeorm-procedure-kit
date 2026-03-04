@@ -1,3 +1,10 @@
+## [1.7.27](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.26...v1.7.27) (2026-03-04)
+
+
+### Bug Fixes
+
+* handle table aliases names, delete unuses deprecated method. ([962a419](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/962a419937d5d8013c58f727526435e3df2e7813))
+
 ## [1.7.26](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.25...v1.7.26) (2026-03-04)
 
 
