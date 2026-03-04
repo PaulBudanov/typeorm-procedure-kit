@@ -51,10 +51,10 @@ export class Repository<Entity = unknown> {
   /**
    * Entity metadata of the entity current repository manages.
    */
-  public get metadata(): EntityMetadata {
+  public get metadata(): EntityMetadata<Entity> {
     return this.manager.connection.getMetadata(
       this.target as EntityTarget<ObjectLiteral>
-    );
+    ) as EntityMetadata<Entity>;
   }
 
   // -------------------------------------------------------------------------

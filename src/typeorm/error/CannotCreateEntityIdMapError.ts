@@ -7,8 +7,8 @@ import { TypeORMError } from './TypeORMError.js';
  * Thrown when user tries to create entity id map from the mixed id value,
  * but id value is a single value when entity requires multiple values.
  */
-export class CannotCreateEntityIdMapError extends TypeORMError {
-  public constructor(metadata: EntityMetadata, id: unknown) {
+export class CannotCreateEntityIdMapError<T> extends TypeORMError {
+  public constructor(metadata: EntityMetadata<T>, id: unknown) {
     super();
 
     const objectExample = metadata.primaryColumns.reduce(

@@ -32,7 +32,7 @@ import type { UniqueMetadata } from './UniqueMetadata.js';
 /**
  * Contains all entity metadata.
  */
-export class EntityMetadata {
+export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
   public readonly '@instanceof' = Symbol.for('EntityMetadata');
 
   // -------------------------------------------------------------------------
@@ -528,7 +528,7 @@ export class EntityMetadata {
    * This method will create following object:
    * { id: "id", counterEmbed: { count: "counterEmbed.count" }, category: "category" }
    */
-  public propertiesMap!: ObjectLiteral;
+  public propertiesMap!: MetadataPropertiesMap;
 
   /**
    * Table comment. Not supported by all database types.
@@ -633,7 +633,7 @@ export class EntityMetadata {
     if (ObjectUtils.isObject(id)) return id as ObjectLiteral;
 
     if (this.hasMultiplePrimaryKeys)
-      throw new CannotCreateEntityIdMapError(this, id);
+      throw new CannotCreateEntityIdMapError<MetadataPropertiesMap>(this, id);
 
     return this.primaryColumns[0]?.createValueMap(id) as ObjectLiteral;
   }
@@ -819,7 +819,10 @@ export class EntityMetadata {
     return propertyPaths.map((propertyPath) => {
       const column = this.findColumnWithPropertyPath(propertyPath);
       if (column == null) {
-        throw new EntityPropertyNotFoundError(propertyPath, this);
+        throw new EntityPropertyNotFoundError(
+          propertyPath,
+          this as EntityMetadata<ObjectLiteral>
+        );
       }
       return column;
     });
@@ -868,7 +871,9 @@ export class EntityMetadata {
    * @returns The found metadata for the entity or the base metadata if no matching metadata
    *          was found in the whole inheritance tree.
    */
-  public findInheritanceMetadata(value: ObjectLiteral): EntityMetadata {
+  public findInheritanceMetadata(
+    value: ObjectLiteral
+  ): EntityMetadata<MetadataPropertiesMap> {
     // Check for single table inheritance and find the correct metadata in that case.
     // Goal is to use the correct discriminator as we could have a repository
     // for an (abstract) base class and thus the target would not match.
@@ -883,13 +888,11 @@ export class EntityMetadata {
         manuallySetDiscriminatorValue =
           value[this.discriminatorColumn.propertyName];
       }
-      return (
-        this.childEntityMetadatas.find(
-          (meta) =>
-            manuallySetDiscriminatorValue === meta.discriminatorValue ||
-            value.constructor === meta.target
-        ) || this
-      );
+      return (this.childEntityMetadatas.find(
+        (meta) =>
+          manuallySetDiscriminatorValue === meta.discriminatorValue ||
+          value.constructor === meta.target
+      ) || this) as EntityMetadata<MetadataPropertiesMap>;
     }
     return this;
   }
@@ -1059,7 +1062,7 @@ export class EntityMetadata {
     );
     this.orderBy =
       typeof this.tableMetadataArgs.orderBy === 'function'
-        ? this.tableMetadataArgs.orderBy(this.propertiesMap)
+        ? this.tableMetadataArgs.orderBy(this.propertiesMap as ObjectLiteral)
         : this.tableMetadataArgs.orderBy; // todo: is propertiesMap available here? Looks like its not
     if (entitySkipConstructor !== undefined) {
       this.isAlwaysUsingConstructor = !entitySkipConstructor;
@@ -1089,7 +1092,7 @@ export class EntityMetadata {
       this.columns.filter(
         (column) => column.isGenerated || column.generationStrategy === 'uuid'
       ).length > 0;
-    this.propertiesMap = this.createPropertiesMap();
+    this.propertiesMap = this.createPropertiesMap() as MetadataPropertiesMap;
     if (this.childEntityMetadatas)
       this.childEntityMetadatas.forEach((entityMetadata) =>
         entityMetadata.registerColumn(column)
