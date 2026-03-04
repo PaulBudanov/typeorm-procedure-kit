@@ -1,3 +1,10 @@
+## [1.7.22](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.21...v1.7.22) (2026-03-04)
+
+
+### Bug Fixes
+
+* make all aliases escaped if quoting disabled. ([9513723](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/9513723a51d456679ce31b1e66c48f25acb60ec5))
+
 ## [1.7.21](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.20...v1.7.21) (2026-03-03)
 
 
