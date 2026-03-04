@@ -81,12 +81,12 @@ export class Repository<Entity = unknown> {
   public createQueryBuilder(
     alias?: string,
     queryRunner?: QueryRunner
-  ): SelectQueryBuilder<Entity extends ObjectLiteral ? Entity : ObjectLiteral> {
+  ): SelectQueryBuilder<Entity> {
     return this.manager.createQueryBuilder(
       this.metadata.target,
       alias || this.metadata.targetName,
       queryRunner || this.queryRunner
-    );
+    ) as SelectQueryBuilder<Entity>;
   }
 
   /**
