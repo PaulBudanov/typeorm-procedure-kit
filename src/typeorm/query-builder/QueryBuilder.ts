@@ -840,15 +840,13 @@ export abstract class QueryBuilder<Entity = unknown> {
             p = matches[3] as string;
 
             if (replacements[matches[2] as string]?.[p]) {
-              return `${pre}${
-                (this.escape(
-                  (matches[2] as string).substring(
-                    0,
-                    (matches[2] as string).length - 1
-                  )
+              return `${pre}${this.escape(
+                (matches[2] as string).substring(
+                  0,
+                  (matches[2] as string).length - 1
                 ),
-                true)
-              }.${this.escape(replacements[matches[2] as string]?.[p] as string)}`;
+                true
+              )}.${this.escape(replacements[matches[2] as string]?.[p] as string)}`;
             }
           } else {
             match = matches[0];
