@@ -1,3 +1,10 @@
+## [1.7.23](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.22...v1.7.23) (2026-03-04)
+
+
+### Bug Fixes
+
+* TRUE FLAG FOR METHOD, NOT INTERPOLATE(replacePropertyNamesForTheWholeQuery) ([a1b13ff](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a1b13ff3c390a75cd9db4927d9004b7d600c62a3))
+
 ## [1.7.22](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.21...v1.7.22) (2026-03-04)
 
 
