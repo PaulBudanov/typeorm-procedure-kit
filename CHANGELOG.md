@@ -1,3 +1,10 @@
+## [1.7.29](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.28...v1.7.29) (2026-03-12)
+
+
+### Bug Fixes
+
+* forRootAsync types. ([af9721a](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/af9721a7c9c8a8f955a128865ec407ea735fe044))
+
 ## [1.7.28](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.27...v1.7.28) (2026-03-04)
 
 
