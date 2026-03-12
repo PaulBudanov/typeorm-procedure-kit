@@ -54,7 +54,7 @@ export class TypeOrmProcedureKitNestModule {
    */
   public static forRootAsync(options: {
     useFactory: (
-      ...args: Array<unknown>
+      ...args: Array<never>
     ) => Promise<IModuleConfig> | IModuleConfig;
     inject?: Array<InjectionToken | OptionalFactoryDependency>;
   }): DynamicModule {
