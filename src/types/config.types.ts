@@ -60,7 +60,7 @@ interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
   IPostgresDbConfigWithPackagesEvent,
   'packagesSettings'
 > {
-  packagesSettings: IPackagesSettingsDefault & {
+  packagesSettings?: IPackagesSettingsDefault & {
     listenEventName?: string;
     isNeedDynamiclyUpdatePackagesInfo: false;
   };
