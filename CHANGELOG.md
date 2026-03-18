@@ -1,3 +1,10 @@
+# [1.9.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.8.0...v1.9.0) (2026-03-18)
+
+
+### Features
+
+* added destroy components logic ([08cf75a](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/08cf75a37da6d3dc484ce1aca30def8193c775b8))
+
 # [1.8.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.30...v1.8.0) (2026-03-18)
 
 
