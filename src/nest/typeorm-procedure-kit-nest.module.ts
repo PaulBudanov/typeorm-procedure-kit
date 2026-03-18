@@ -1,9 +1,11 @@
 import {
   Module,
   type DynamicModule,
+  type ForwardReference,
   type InjectionToken,
   type OptionalFactoryDependency,
   type Provider,
+  type Type,
 } from '@nestjs/common';
 
 import type { IModuleConfig } from '../types/base.types.js';
@@ -56,6 +58,13 @@ export class TypeOrmProcedureKitNestModule {
       ...args: Array<never>
     ) => Promise<IModuleConfig> | IModuleConfig;
     inject?: Array<InjectionToken | OptionalFactoryDependency>;
+    imports?: Array<
+      | Type<never>
+      | Type<unknown>
+      | DynamicModule
+      | Promise<DynamicModule>
+      | ForwardReference
+    >;
   }): DynamicModule {
     const configProvider: Provider = {
       provide: DATABASE_CONFIG_TOKEN,
@@ -65,6 +74,7 @@ export class TypeOrmProcedureKitNestModule {
     return {
       module: TypeOrmProcedureKitNestModule,
       global: true,
+      imports: options.imports ?? [],
       providers: [
         configProvider,
         TypeOrmProcedureKitNestService,
