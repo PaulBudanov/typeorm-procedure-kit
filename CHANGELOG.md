@@ -1,3 +1,10 @@
+## [1.7.30](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.29...v1.7.30) (2026-03-18)
+
+
+### Bug Fixes
+
+* get pg native lib from pg lib. ([d99daa3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/d99daa34caf99ebce018b731233195bea885c05f))
+
 ## [1.7.29](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.28...v1.7.29) (2026-03-12)
 
 
