@@ -13,10 +13,9 @@ export class NativeStrategy implements INativeStrategyMethods {
   public constructor(
     private columnNameCacheKey: symbol,
     private stringTransformUtility: (columnName: string) => string,
-    private cacheClassInstance?: DatabaseNamingCache<string>
+    private cacheClassInstance: DatabaseNamingCache<string>
   ) {
-    this.databaseNamingCache =
-      this.cacheClassInstance ?? new DatabaseNamingCache();
+    this.databaseNamingCache = this.cacheClassInstance;
     if (!this.databaseNamingCache.cacheExists(this.columnNameCacheKey))
       this.columnNameCacheKey = this.databaseNamingCache.createCache(
         this.columnNameCacheKey

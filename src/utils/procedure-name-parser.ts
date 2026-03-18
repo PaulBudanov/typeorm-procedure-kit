@@ -15,6 +15,10 @@ class ProcedureNameParser {
   public constructor() {
     this.databaseNamingCache.createCache(this.cacheKey);
   }
+
+  public destroy(): void {
+    this.databaseNamingCache.destroyCache();
+  }
   /**
    * Parse the given executeString into a procedure name and package name.
    * The executeString can be in the format of either 'packageName.procedureName' or just 'procedureName'.

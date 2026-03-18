@@ -7,31 +7,54 @@ import type {
 
 export abstract class DatabaseNotify<T extends TConnectionTypes> {
   protected notificationPool = new Map<string, T>();
-  protected constructor(protected readonly logger: ILoggerModule) {
-    process.on('beforeExit', () => void this.handleApplicationExit());
-  }
+  protected isDestroyed = false;
+  protected constructor(protected readonly logger: ILoggerModule) {}
+
   /**
-   * Handle application exit by unsubscribing from all registered channels
-   * and then closing the corresponding client connections
-   * @returns {Promise<void>} - resolves when all channels are unsubscribed
-   * and the client connections are closed
+   * Returns the notification pool for external management
+   * @returns {Map<string, T>} - the notification pool map
    */
-  private async handleApplicationExit(): Promise<void> {
-    if (this.notificationPool.size === 0) return;
-    for (const [channel] of this.notificationPool.entries())
-      try {
-        await this.unlistenNotify(channel);
-        this.logger.log(
-          `Unsubscribed and closed connection for channel: ${channel}`
-        );
-      } catch (err) {
-        this.logger.error(
-          `Error unsubscribing/closing channel ${channel}: ${
-            (err as Error).message
-          }`
-        );
-      }
+  public getNotificationPool(): Map<string, T> {
+    return this.notificationPool;
   }
+
+  /**
+   * Gracefully shuts down all notification subscriptions
+   * Unsubscribes from all channels and closes all connections
+   * @returns {Promise<void>} - resolves when all cleanup is completed
+   */
+  public async destroy(): Promise<void> {
+    if (this.isDestroyed) {
+      this.logger.warn('DatabaseNotify already destroyed');
+      return;
+    }
+    this.isDestroyed = true;
+
+    if (this.notificationPool.size === 0) {
+      this.logger.log('No active notifications to cleanup');
+      return;
+    }
+
+    const unsubscribePromises = Array.from(this.notificationPool.entries()).map(
+      async ([channel]) => {
+        try {
+          await this.unlistenNotify(channel);
+          this.logger.log(`Unsubscribed from channel: ${channel}`);
+        } catch (error) {
+          this.logger.error(
+            `Error unsubscribing from channel ${channel}: ${
+              (error as Error).message
+            }`
+          );
+        }
+      }
+    );
+
+    await Promise.allSettled(unsubscribePromises);
+    this.notificationPool.clear();
+    this.logger.log('DatabaseNotify shutdown completed');
+  }
+
   public abstract unlistenNotify(channel: string): Promise<void>;
 
   public abstract listenNotify<T>(

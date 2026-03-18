@@ -30,6 +30,7 @@ export class TypeOrmProcedureKit {
   private notifyBase!: NotifyBase;
   private procedureListBase!: ProcedureListBase;
   private serialzierBase!: SerializerBase;
+  private isDestroyed = false;
   /**
    * Creates a new instance of the TypeOrmProcedureKit class.
    *
@@ -74,6 +75,7 @@ export class TypeOrmProcedureKit {
     this.notifyBase = new NotifyBase(
       this.databaseInitializerBase.databaseAdapter,
       this.procedureListBase,
+      this.settings.logger,
       this.settings.config.packagesSettings
     );
     this.serialzierBase = new SerializerBase(
@@ -271,5 +273,103 @@ export class TypeOrmProcedureKit {
    */
   public get dataSource(): DataSource {
     return this.databaseInitializerBase.appDataSource;
+  }
+
+  /**
+   * Gracefully shuts down all resources:
+   * - Unsubscribes from all notification channels
+   * - Destroys the DataSource connection pool
+   * - Cleans up all database connections
+   * @returns {Promise<void>} - resolves when all cleanup is completed
+   */
+  public async destroy(): Promise<void> {
+    if (this.isDestroyed) {
+      this.settings.logger.warn('TypeOrmProcedureKit already destroyed');
+      return;
+    }
+
+    this.isDestroyed = true;
+    const errors: Array<Error> = [];
+    // destroy notify
+    try {
+      await this.notifyBase.destroy();
+      this.settings.logger.log('Notifications cleanup completed');
+    } catch (error) {
+      errors.push(error as Error);
+      this.settings.logger.error(
+        `Notification cleanup error: ${(error as Error).message}`
+      );
+    }
+    // destroy datasource
+    try {
+      if (this.dataSource?.isInitialized) {
+        await this.dataSource.destroy();
+        this.settings.logger.log('DataSource destroyed');
+      }
+    } catch (error) {
+      errors.push(error as Error);
+      this.settings.logger.error(
+        `DataSource destroy error: ${(error as Error).message}`
+      );
+    }
+    // destroy cache
+    procedureNameParser.destroy();
+
+    if (errors.length > 0) {
+      throw new AggregateError(
+        errors,
+        'Some resources failed to cleanup during shutdown'
+      );
+    }
+
+    this.settings.logger.log('TypeOrmProcedureKit shutdown completed');
+  }
+
+  /**
+   * Registers OS signal handlers for graceful shutdown.
+   * Call this once after creating the instance to enable automatic shutdown
+   * on SIGTERM, SIGINT, and SIGQUIT signals.
+   * @returns {void}
+   */
+  public registerShutdownHandlers(): void {
+    const shutdownHandler = async (signal: string): Promise<void> => {
+      this.settings.logger.log(`Received ${signal}, initiating shutdown...`);
+      try {
+        await this.destroy();
+        process.exit(0);
+      } catch (error) {
+        this.settings.logger.error(
+          `Shutdown error: ${(error as Error).message}`
+        );
+        process.exit(1);
+      }
+    };
+
+    const shutdownSignals: Array<NodeJS.Signals> = [
+      'SIGTERM',
+      'SIGINT',
+      'SIGQUIT',
+    ];
+
+    shutdownSignals.forEach((signal) => {
+      process.once(signal, () => void shutdownHandler(signal));
+    });
+
+    process.once('uncaughtException', async (error) => {
+      this.settings.logger.error(
+        `Uncaught exception: ${error.message}`,
+        error.stack
+      );
+      await this.destroy();
+      process.exit(1);
+    });
+
+    process.once('unhandledRejection', async (reason, _promise) => {
+      this.settings.logger.error(
+        `Unhandled rejection: ${reason instanceof Error ? reason.message : reason}`
+      );
+      await this.destroy();
+      process.exit(1);
+    });
   }
 }

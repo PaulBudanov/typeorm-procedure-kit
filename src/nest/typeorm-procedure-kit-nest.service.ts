@@ -39,13 +39,17 @@ export class TypeOrmProcedureKitNestService
     await this.initDatabase();
   }
 
-  public async onApplicationShutdown(): Promise<void> {
-    try {
-      if (this.dataSource && this.dataSource.isInitialized)
-        await this.dataSource.destroy();
-    } catch (error: unknown) {
-      this.settingsLoger.error((error as Error)?.message);
-    }
+  /**
+   * Handles application shutdown signal from NestJS.
+   * Performs graceful shutdown of all resources.
+   * @param {string} [signal] - The shutdown signal received (e.g., 'SIGTERM', 'SIGINT')
+   * @returns {Promise<void>} - resolves when all cleanup is completed
+   */
+  public async onApplicationShutdown(signal?: string): Promise<void> {
+    this.settingsLoger.log(
+      `Application shutdown signal received: ${signal ?? 'unknown'}`
+    );
+    await this.destroy();
   }
 
   public override get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {

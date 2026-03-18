@@ -2,6 +2,7 @@ import { QueueManager } from '@web-mis/queue-manager';
 
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
+import type { ILoggerModule } from '../types/logger.types.js';
 import type {
   ICreateNotify,
   IOracleOptionsNotify,
@@ -12,6 +13,8 @@ import type { ProcedureListBase } from './procedure-list-base.js';
 
 export class NotifyBase {
   private queueManager = new QueueManager<string>('packageUpdateSet', 'set');
+  private isDestroyed = false;
+  private queueCallback: ((data: { item: string }) => void) | null = null;
 
   /**
    * Constructor for NotifyBase class.
@@ -25,17 +28,47 @@ export class NotifyBase {
   public constructor(
     private readonly databaseAdapter: TAdapterUtilsClassTypes,
     private readonly procedureListBase: ProcedureListBase,
+    private readonly logger: ILoggerModule,
     private readonly packagesSettings?: TDbConfig['packagesSettings']
   ) {
     // Subscribe to queue and get packages from it
-    this.queueManager.subscribeToEnqueue((data) => {
+    this.queueCallback = (data: { item: string }): void => {
       if (typeof data.item === 'string') {
         void this.procedureListBase.fetchProcedureListWithArguments(
           data.item.toLowerCase() as Lowercase<string>
         );
         this.queueManager.dequeue(data.item);
       }
-    });
+    };
+    this.queueManager.subscribeToEnqueue(this.queueCallback);
+  }
+
+  /**
+   * Gracefully shuts down all notification subscriptions and queue manager
+   * @returns {Promise<void>} - resolves when all cleanup is completed
+   */
+  public async destroy(): Promise<void> {
+    if (this.isDestroyed) {
+      return;
+    }
+    this.isDestroyed = true;
+
+    // Destroy notification subscriptions through database adapter
+    await this.databaseAdapter.destroyNotifications();
+
+    // Clear queue manager
+    this.queueManager.clear();
+    this.logger.log('QueueManager cleared');
+
+    this.logger.log('NotifyBase shutdown completed');
+  }
+
+  /**
+   * Returns the notification pool for external management
+   * @returns {Map<string, unknown>} - the notification pool map
+   */
+  public getNotificationPool(): Map<string, unknown> {
+    return this.databaseAdapter.getNotificationPool();
   }
 
   /**

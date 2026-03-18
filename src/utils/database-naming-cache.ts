@@ -10,10 +10,17 @@ export class DatabaseNamingCache<
     | number
     | boolean,
 > {
+  private isDestroyed = false;
   private cacheMap = new Map<symbol | string, LRUCache<string, U>>();
 
   public constructor() {
-    process.on('beforeExit', () => void this.handleApplicationExit());
+    process.on('beforeExit', () => void this.destroyCache());
+  }
+
+  public destroyCache(): void {
+    if (this.isDestroyed) return;
+    this.isDestroyed = true;
+    this.cacheMap.clear();
   }
 
   public createCache(key: symbol): symbol {
@@ -72,8 +79,5 @@ export class DatabaseNamingCache<
     }
 
     return;
-  }
-  private handleApplicationExit(): void {
-    this.cacheMap.clear();
   }
 }

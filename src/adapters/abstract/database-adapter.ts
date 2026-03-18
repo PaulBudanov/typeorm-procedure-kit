@@ -186,6 +186,22 @@ export abstract class DatabaseAdapter<
     return this.notifier.unlistenNotify(channelName, false);
   }
 
+  /**
+   * Gracefully shuts down all notification subscriptions
+   * @returns {Promise<void>} - resolves when all cleanup is completed
+   */
+  public async destroyNotifications(): Promise<void> {
+    await this.notifier.destroy();
+  }
+
+  /**
+   * Returns the notification pool for external management
+   * @returns {Map<string, T>} - the notification pool map
+   */
+  public getNotificationPool(): Map<string, unknown> {
+    return this.notifier.getNotificationPool();
+  }
+
   public getPackagesNotifySql(packages?: Array<string>): string {
     return this.notifier.getPackagesNotifySql(packages ?? []);
   }
