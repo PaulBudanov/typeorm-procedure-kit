@@ -1,3 +1,10 @@
+## [1.9.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.1...v1.9.2) (2026-03-18)
+
+
+### Bug Fixes
+
+* types for postgres, make packagesSettingsOptional ([a7d0bee](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a7d0beec5aba61eba84fd22b58134efa9bbe826b))
+
 ## [1.9.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.0...v1.9.1) (2026-03-18)
 
 
