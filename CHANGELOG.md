@@ -1,3 +1,10 @@
+## [1.9.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.2...v1.9.3) (2026-03-18)
+
+
+### Bug Fixes
+
+* added imports for forRootAsync ([f4ddb9c](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/f4ddb9cd8a187134bd6940010168e5823c831b6b))
+
 ## [1.9.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.1...v1.9.2) (2026-03-18)
 
 
