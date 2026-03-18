@@ -1,3 +1,10 @@
+## [1.9.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.0...v1.9.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* add global true ([bc6b036](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bc6b03692885ec1331f92120194fa72ce4426f3b))
+
 # [1.9.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.8.0...v1.9.0) (2026-03-18)
 
 
