@@ -1,3 +1,10 @@
+# [1.8.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.30...v1.8.0) (2026-03-18)
+
+
+### Features
+
+* added setting variable listenEventName variable for custom pg notify name ([bc8837e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/bc8837e4721499404724e9fdce59c2dbbd2849e9))
+
 ## [1.7.30](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.7.29...v1.7.30) (2026-03-18)
 
 
