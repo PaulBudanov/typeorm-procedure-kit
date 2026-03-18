@@ -25,6 +25,7 @@ export class TypeOrmProcedureKitNestModule {
   public static forRoot(options: IModuleConfig): DynamicModule {
     return {
       module: TypeOrmProcedureKitNestModule,
+      global: true,
       providers: [
         {
           provide: DATABASE_CONFIG_TOKEN,
@@ -63,6 +64,7 @@ export class TypeOrmProcedureKitNestModule {
     };
     return {
       module: TypeOrmProcedureKitNestModule,
+      global: true,
       providers: [
         configProvider,
         TypeOrmProcedureKitNestService,
