@@ -11,6 +11,11 @@ export interface IDatabaseCredentials {
   password: string;
   database: string;
 }
+interface IPackagesSettingsDefault {
+  packages: Array<Lowercase<string>>;
+  procedureObjectList: Record<string, string>;
+  isNeedDynamiclyUpdatePackagesInfo: boolean;
+}
 
 export interface IBaseConfig {
   master: IDatabaseCredentials;
@@ -19,11 +24,6 @@ export interface IBaseConfig {
   appName?: string;
   callTimeout?: number;
   isNeedRegisterDefaultSerializers?: boolean;
-  packagesSettings?: {
-    packages: Array<Lowercase<string>>;
-    procedureObjectList: Record<string, string>;
-    isNeedDynamiclyUpdatePackagesInfo: boolean;
-  };
   outKeyTransformCase?: TKeyTransformCase;
 }
 
@@ -31,9 +31,13 @@ interface IOracleConfigWithoutLibrary extends IBaseConfig {
   type: 'oracle';
   libraryPath?: undefined;
   cqnPort?: number;
+  packagesSettings?: IPackagesSettingsDefault;
 }
 
-interface IOracleConfigWithLibrary extends IBaseConfig {
+interface IOracleConfigWithLibrary extends Omit<
+  IOracleConfigWithoutLibrary,
+  'libraryPath' | 'cqnPort'
+> {
   type: 'oracle';
   libraryPath: string;
   cqnPort: number;
@@ -43,12 +47,29 @@ export type TOracleDbConfig =
   | IOracleConfigWithoutLibrary
   | IOracleConfigWithLibrary;
 
-export interface IPostgresDbConfig extends IBaseConfig {
+interface IPostgresDbConfigWithPackagesEvent extends IBaseConfig {
   type: 'postgres';
   parseInt8AsBigInt: boolean;
+  packagesSettings?: IPackagesSettingsDefault & {
+    listenEventName: string;
+    isNeedDynamiclyUpdatePackagesInfo: true;
+  };
 }
 
-export type TDbConfig = TOracleDbConfig | IPostgresDbConfig;
+interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
+  IPostgresDbConfigWithPackagesEvent,
+  'packagesSettings'
+> {
+  packagesSettings: IPackagesSettingsDefault & {
+    listenEventName?: string;
+    isNeedDynamiclyUpdatePackagesInfo: false;
+  };
+}
+
+export type TPostgresDbConfig =
+  | IPostgresDbConfigWithPackagesEvent
+  | IPostgresDbConfigWithoutPackagesEvent;
+export type TDbConfig = TOracleDbConfig | TPostgresDbConfig;
 
 export interface IEntityOptions {
   isNeedEntitySync: boolean;

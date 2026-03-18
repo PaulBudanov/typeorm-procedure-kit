@@ -25,11 +25,16 @@ export class PostgreAdapter extends DatabaseAdapter<
   public constructor(
     protected readonly appDataSource: DataSource,
     protected readonly logger: ILoggerModule,
-    protected readonly handlerOptions: IRegisteredFetchHandlerOptions
+    protected readonly handlerOptions: IRegisteredFetchHandlerOptions,
+    protected readonly listenEventName?: string
   ) {
     const postgreConnection = new PostgreConnection(appDataSource, logger);
     const postgreSerializer = new PostgreSerializer(logger, handlerOptions);
-    const postgreNotify = new PostgreNotify(postgreConnection, logger);
+    const postgreNotify = new PostgreNotify(
+      postgreConnection,
+      logger,
+      listenEventName
+    );
     super(logger, postgreSerializer, postgreNotify, postgreConnection);
   }
 

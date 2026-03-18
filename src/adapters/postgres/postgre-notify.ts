@@ -12,7 +12,8 @@ import { PostgreSqlCommand } from './postgre-sql.js';
 export class PostgreNotify extends DatabaseNotify<Client> {
   public constructor(
     private readonly postgreConnection: PostgreConnection,
-    protected readonly logger: ILoggerModule
+    protected readonly logger: ILoggerModule,
+    private readonly listenEventName?: string
   ) {
     super(logger);
   }
@@ -22,6 +23,10 @@ export class PostgreNotify extends DatabaseNotify<Client> {
    * @returns The SQL command to fetch the packages that were updated in the database
    */
   public getPackagesNotifySql(): string {
+    if (this.listenEventName)
+      return PostgreSqlCommand.generateNotifyUpdatePackage(
+        this.listenEventName
+      );
     return PostgreSqlCommand.SQL_GET_NOTIFY_UPDATE_PACKAGE;
   }
 

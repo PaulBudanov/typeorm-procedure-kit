@@ -4,4 +4,8 @@ export abstract class PostgreSqlCommand {
      on proc.specific_name = args.specific_name   where args.specific_schema =`;
 
   public static SQL_GET_NOTIFY_UPDATE_PACKAGE = 'LISTEN db_object_event';
+
+  public static generateNotifyUpdatePackage(listenEventName: string): string {
+    return `LISTEN ${listenEventName.trim()}`;
+  }
 }

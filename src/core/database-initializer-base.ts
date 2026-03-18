@@ -16,9 +16,9 @@ import type {
   IDatabaseCredentials,
   IEntityOptions,
   IMigrationOptions,
-  IPostgresDbConfig,
   TDbConfig,
   TOracleDbConfig,
+  TPostgresDbConfig,
 } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ICaseStratefyFactory } from '../types/strategy.types.js';
@@ -116,7 +116,7 @@ export class DatabaseInitializerBase {
             slaves:
               this.dbConfig.slaves?.map((slave) =>
                 this.getPostgresOptions(
-                  this.dbConfig as IPostgresDbConfig,
+                  this.dbConfig as TPostgresDbConfig,
                   slave
                 )
               ) ?? [],
@@ -155,7 +155,10 @@ export class DatabaseInitializerBase {
         return new PostgreAdapter(
           this.appDataSource,
           this.logger,
-          fetchHandlerOptions
+          fetchHandlerOptions,
+          this.dbConfig.packagesSettings?.isNeedDynamiclyUpdatePackagesInfo
+            ? this.dbConfig.packagesSettings.listenEventName
+            : undefined
         );
       case 'oracle':
         return new OracleAdapter(
@@ -173,7 +176,7 @@ export class DatabaseInitializerBase {
    * @private
    */
   private getPostgresOptions(
-    config: IPostgresDbConfig,
+    config: TPostgresDbConfig,
     credentials?: IDatabaseCredentials
   ): PostgresConnectionOptions {
     const defaultObject: PostgresConnectionOptions = {

@@ -1,10 +1,9 @@
 import {
   Module,
-  Global,
   type DynamicModule,
-  type Provider,
   type InjectionToken,
   type OptionalFactoryDependency,
+  type Provider,
 } from '@nestjs/common';
 
 import type { IModuleConfig } from '../types/base.types.js';
@@ -12,7 +11,6 @@ import type { IModuleConfig } from '../types/base.types.js';
 import { DATABASE_CONFIG_TOKEN, DATABASE_SERVICE_TOKEN } from './consts.js';
 import { TypeOrmProcedureKitNestService } from './typeorm-procedure-kit-nest.service.js';
 
-@Global()
 @Module({})
 export class TypeOrmProcedureKitNestModule {
   /**
