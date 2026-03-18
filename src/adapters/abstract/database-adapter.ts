@@ -205,4 +205,8 @@ export abstract class DatabaseAdapter<
   public getPackagesNotifySql(packages?: Array<string>): string {
     return this.notifier.getPackagesNotifySql(packages ?? []);
   }
+
+  public registerFetchHandlerHook(): void {
+    this.serializer.registerFetchHandlerHook();
+  }
 }

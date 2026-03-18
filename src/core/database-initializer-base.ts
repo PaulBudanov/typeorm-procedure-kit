@@ -63,6 +63,7 @@ export class DatabaseInitializerBase {
     } as const;
     this.appDataSource = new DataSource(options);
     this.databaseAdapter = this.databaseAdapterFactory();
+    this.databaseAdapter.registerFetchHandlerHook();
   }
 
   /**

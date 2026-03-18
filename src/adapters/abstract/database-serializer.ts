@@ -13,7 +13,7 @@ export abstract class DatabaseSerializer {
     protected readonly logger: ILoggerModule,
     protected readonly options: IRegisteredFetchHandlerOptions
   ) {
-    this.registerFetchHandlerHook(options);
+    // this.registerFetchHandlerHook(options);
   }
 
   /**
