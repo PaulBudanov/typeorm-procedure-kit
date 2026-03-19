@@ -350,27 +350,13 @@ export class TypeOrmProcedureKit {
       'SIGTERM',
       'SIGINT',
       'SIGQUIT',
+      'SIGABRT',
+      'SIGHUP',
+      'SIGTSTP',
     ];
 
     shutdownSignals.forEach((signal) => {
       process.once(signal, () => void shutdownHandler(signal));
-    });
-
-    process.once('uncaughtException', async (error) => {
-      this.settings.logger.error(
-        `Uncaught exception: ${error.message}`,
-        error.stack
-      );
-      await this.destroy();
-      process.exit(1);
-    });
-
-    process.once('unhandledRejection', async (reason, _promise) => {
-      this.settings.logger.error(
-        `Unhandled rejection: ${reason instanceof Error ? reason.message : reason}`
-      );
-      await this.destroy();
-      process.exit(1);
     });
   }
 }
