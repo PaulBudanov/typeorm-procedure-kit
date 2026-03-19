@@ -1,6 +1,6 @@
 {
   "name": "@web-mis/typeorm-procedure-kit",
-  "version": "1.9.7",
+  "version": "1.9.8",
   "description": "Universal adapter for executing stored procedures and managing database notifications across Oracle and PostgreSQL with TypeORM integration",
   "type": "module",
   "exports": {
