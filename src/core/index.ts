@@ -38,6 +38,7 @@ export class TypeOrmProcedureKit {
    */
   public constructor(private readonly settings: IModuleConfig) {
     this.initMainClasses();
+    this.registerShutdownHandlers();
   }
 
   /**
