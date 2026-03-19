@@ -36,7 +36,8 @@
     "build:cjs": "npm i && npm run lint && tsc -p tsconfig.cjs.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --no-error-on-unmatched-pattern"
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --no-error-on-unmatched-pattern",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "typeorm",
