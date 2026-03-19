@@ -92,12 +92,11 @@
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
-    "@types/oracledb": "^6.9.0",
-    "@types/pg": "^8.0.0",
-    "oracledb": "^6.0.0",
     "pg": "^8.5.1",
-    "pg-native": "^3.5.2",
-    "pg-query-stream": "^4.12.0"
+    "@types/pg": "^8.0.0",
+    "pg-query-stream": "^4.12.0",
+    "oracledb": "^6.0.0",
+    "@types/oracledb": "^6.9.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -110,9 +109,6 @@
       "optional": true
     },
     "@types/pg": {
-      "optional": true
-    },
-    "pg-native": {
       "optional": true
     },
     "pg-query-stream": {
