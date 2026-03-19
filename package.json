@@ -76,17 +76,17 @@
   },
   "dependencies": {
     "@sqltools/formatter": "^1.2.5",
+    "@web-mis/queue-manager": "^1.0.9",
     "ansis": "^4.2.0",
     "app-root-path": "^3.1.0",
     "dedent": "^1.7.1",
     "dotenv": "^17.3.1",
     "glob": "^13.0.3",
-    "sql-highlight": "^6.1.0",
+    "lodash-es": "^4.17.23",
+    "lru-cache": "^11.2.7",
+    "luxon": "^3.7.2",
     "reflect-metadata": "^0.2.2",
-    "@web-mis/queue-manager": "^1.0.9",
-    "lodash-es": "^4.0.0",
-    "lru-cache": "^11.0.0",
-    "luxon": "^3.0.0"
+    "sql-highlight": "^6.1.0"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
