@@ -1,3 +1,11 @@
+## [1.9.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.4...v1.9.5) (2026-03-19)
+
+
+### Bug Fixes
+
+* delete pg-native from devDepend ([fef842e](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/fef842efac9023d521b60a4c12647a8a92ca7958))
+* delete pg-native, make require for it. ([9eb6409](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/9eb6409939c7fff92fd2ca2491a324b709c9cfef))
+
 ## [1.9.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.3...v1.9.4) (2026-03-18)
 
 
