@@ -1,3 +1,10 @@
+## [1.9.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.3...v1.9.4) (2026-03-18)
+
+
+### Bug Fixes
+
+* delete execute registerFetchHandlerHook from abstract class constructor ([eced79f](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/eced79f5da4fec2bbc90041f8355523fb774ee10))
+
 ## [1.9.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.2...v1.9.3) (2026-03-18)
 
 
