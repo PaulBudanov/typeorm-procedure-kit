@@ -45,7 +45,8 @@ export class PlatformTools {
         case 'pg':
           return import('pg');
         case 'pg-native': {
-          return (await import('pg')).native;
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          return require('pg-native');
         }
         case 'pg-query-stream':
           return import('pg-query-stream');
