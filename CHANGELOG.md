@@ -1,3 +1,10 @@
+## [1.9.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.7...v1.9.8) (2026-03-19)
+
+
+### Bug Fixes
+
+* add register shutdown handlers ([23a3632](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/23a36321260158b9e8fc687e26bfa93913fca956))
+
 ## [1.9.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.6...v1.9.7) (2026-03-19)
 
 
