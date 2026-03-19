@@ -1,3 +1,10 @@
+## [1.9.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.8...v1.9.9) (2026-03-19)
+
+
+### Bug Fixes
+
+* signal logic ([c4cc961](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/c4cc96137cc039f783121676bfc47a32f67e97cc))
+
 ## [1.9.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.7...v1.9.8) (2026-03-19)
 
 
