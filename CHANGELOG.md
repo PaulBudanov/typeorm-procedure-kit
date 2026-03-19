@@ -1,3 +1,10 @@
+## [1.9.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.5...v1.9.6) (2026-03-19)
+
+
+### Bug Fixes
+
+* add typecheck ([a082dc3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a082dc3ab789e9b5ef1ff1594f501f746385b3b2))
+
 ## [1.9.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.4...v1.9.5) (2026-03-19)
 
 
