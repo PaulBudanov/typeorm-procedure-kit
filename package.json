@@ -95,6 +95,7 @@
     "@types/pg": "^8.0.0",
     "oracledb": "^6.0.0",
     "pg": "^8.5.1",
+    "pg-native": "^3.5.2",
     "pg-query-stream": "^4.12.0"
   },
   "peerDependenciesMeta": {
@@ -108,6 +109,9 @@
       "optional": true
     },
     "@types/pg": {
+      "optional": true
+    },
+    "pg-native": {
       "optional": true
     },
     "pg-query-stream": {
