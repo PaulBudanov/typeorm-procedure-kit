@@ -1,3 +1,10 @@
+## [1.9.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.6...v1.9.7) (2026-03-19)
+
+
+### Bug Fixes
+
+* delete all pg-native ([df150aa](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/df150aaf2023620102ddb326bf2854daa35398f0))
+
 ## [1.9.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.5...v1.9.6) (2026-03-19)
 
 
