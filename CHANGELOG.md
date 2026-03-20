@@ -1,3 +1,10 @@
+## [1.11.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.1...v1.11.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* delete log duplicate ([c853741](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/c853741276971e8368273a1845d3754b130be390))
+
 ## [1.11.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.0...v1.11.1) (2026-03-20)
 
 
