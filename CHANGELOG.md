@@ -1,3 +1,10 @@
+# [1.10.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.9...v1.10.0) (2026-03-20)
+
+
+### Features
+
+* add flag for enable default shutdown handlers. ([2afee52](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/2afee525e6743a0b1289add0246acce86043eafd))
+
 ## [1.9.9](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.8...v1.9.9) (2026-03-19)
 
 
