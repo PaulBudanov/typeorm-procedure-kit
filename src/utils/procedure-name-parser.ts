@@ -16,6 +16,10 @@ class ProcedureNameParser {
     this.databaseNamingCache.createCache(this.cacheKey);
   }
 
+  /**
+   * Destroys the cache used by the ProcedureNameParser.
+   *This method should be called when the ProcedureNameParser is no longer needed.
+   */
   public destroy(): void {
     this.databaseNamingCache.destroyCache();
   }

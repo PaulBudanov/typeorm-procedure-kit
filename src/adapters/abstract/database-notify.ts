@@ -24,7 +24,7 @@ export abstract class DatabaseNotify<T extends TConnectionTypes> {
    */
   public async destroy(): Promise<void> {
     if (this.notificationPool.size === 0) {
-      // this.logger.log('No active notifications to cleanup');
+      this.logger.log('No active notifications to cleanup');
       return;
     }
 
@@ -32,7 +32,6 @@ export abstract class DatabaseNotify<T extends TConnectionTypes> {
       async ([channel]) => {
         try {
           await this.unlistenNotify(channel);
-          this.logger.log(`Unsubscribed from channel: ${channel}`);
         } catch (error) {
           this.logger.error(
             `Error unsubscribing from channel ${channel}: ${
