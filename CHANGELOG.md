@@ -1,3 +1,10 @@
+## [1.11.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.0...v1.11.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* delete Excessive flags for destroy data. added clean cache after promise map. ([4fb7052](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/4fb70527ff1562a984fb528eac887ad1a6be875a))
+
 # [1.11.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.10.0...v1.11.0) (2026-03-20)
 
 
