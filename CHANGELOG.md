@@ -1,3 +1,10 @@
+# [1.11.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.10.0...v1.11.0) (2026-03-20)
+
+
+### Features
+
+* added const folder ([7de3544](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/7de3544229380eaf99ba100af20acf1e5cf38617))
+
 # [1.10.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.9.9...v1.10.0) (2026-03-20)
 
 
