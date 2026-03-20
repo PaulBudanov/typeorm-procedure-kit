@@ -6,14 +6,13 @@ import {
   Scope,
 } from '@nestjs/common';
 
+import { DATABASE_CONFIG_TOKEN } from '../consts/nest.consts.js';
 import { TypeOrmProcedureKit } from '../core/index.js';
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { TSerializerTypeCastWithoutFormat } from '../types/serializer.types.js';
-
-import { DATABASE_CONFIG_TOKEN } from './consts.js';
 
 @Injectable({ scope: Scope.DEFAULT })
 export class TypeOrmProcedureKitNestService

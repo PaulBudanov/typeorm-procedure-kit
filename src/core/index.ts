@@ -1,5 +1,6 @@
 import oracledb from 'oracledb';
 
+import { shutdownSignals } from '../consts/shuwtdown.consts.js';
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
@@ -346,16 +347,6 @@ export class TypeOrmProcedureKit {
         );
       }
     };
-
-    const shutdownSignals: Array<NodeJS.Signals> = [
-      'SIGTERM',
-      'SIGINT',
-      'SIGQUIT',
-      'SIGABRT',
-      'SIGHUP',
-      'SIGTSTP',
-      'SIGKILL',
-    ];
 
     shutdownSignals.forEach((signal) => {
       process.once(signal, () => void shutdownHandler(signal));

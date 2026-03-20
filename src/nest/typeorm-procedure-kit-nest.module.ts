@@ -8,9 +8,12 @@ import {
   type Type,
 } from '@nestjs/common';
 
+import {
+  DATABASE_CONFIG_TOKEN,
+  DATABASE_SERVICE_TOKEN,
+} from '../consts/nest.consts.js';
 import type { IModuleConfig } from '../types/base.types.js';
 
-import { DATABASE_CONFIG_TOKEN, DATABASE_SERVICE_TOKEN } from './consts.js';
 import { TypeOrmProcedureKitNestService } from './typeorm-procedure-kit-nest.service.js';
 
 @Module({})
