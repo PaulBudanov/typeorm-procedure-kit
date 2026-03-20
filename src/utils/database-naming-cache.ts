@@ -13,10 +13,6 @@ export class DatabaseNamingCache<
   private isDestroyed = false;
   private cacheMap = new Map<symbol | string, LRUCache<string, U>>();
 
-  public constructor() {
-    process.on('beforeExit', () => void this.destroyCache());
-  }
-
   public destroyCache(): void {
     if (this.isDestroyed) return;
     this.isDestroyed = true;

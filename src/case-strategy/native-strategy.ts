@@ -38,4 +38,8 @@ export class NativeStrategy implements INativeStrategyMethods {
     );
     return cacheData;
   }
+
+  public destroy(): void {
+    this.cacheClassInstance.destroyCache();
+  }
 }

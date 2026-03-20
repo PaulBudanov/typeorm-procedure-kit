@@ -27,7 +27,7 @@ import { ServerError } from '../utils/server-error.js';
 export class DatabaseInitializerBase {
   public readonly appDataSource: DataSource;
   public readonly databaseAdapter: TAdapterUtilsClassTypes;
-  private readonly caseSettings: ICaseStratefyFactory;
+  public readonly caseSettings: ICaseStratefyFactory;
   public constructor(
     public readonly dbConfig: TDbConfig,
     private readonly logger: ILoggerModule,

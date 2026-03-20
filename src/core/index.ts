@@ -38,7 +38,8 @@ export class TypeOrmProcedureKit {
    */
   public constructor(private readonly settings: IModuleConfig) {
     this.initMainClasses();
-    this.registerShutdownHandlers();
+    if (this.settings.isRegisterShutdownHandlers)
+      this.registerShutdownHandlers();
   }
 
   /**
@@ -315,6 +316,8 @@ export class TypeOrmProcedureKit {
     }
     // destroy cache
     procedureNameParser.destroy();
+    this.databaseInitializerBase.caseSettings.nativeStrategy.destroy();
+    this.databaseInitializerBase.caseSettings.strategy.destroy();
 
     if (errors.length > 0) {
       throw new AggregateError(
@@ -337,12 +340,10 @@ export class TypeOrmProcedureKit {
       this.settings.logger.log(`Received ${signal}, initiating shutdown...`);
       try {
         await this.destroy();
-        process.exit(0);
       } catch (error) {
         this.settings.logger.error(
           `Shutdown error: ${(error as Error).message}`
         );
-        process.exit(1);
       }
     };
 
@@ -353,6 +354,7 @@ export class TypeOrmProcedureKit {
       'SIGABRT',
       'SIGHUP',
       'SIGTSTP',
+      'SIGKILL',
     ];
 
     shutdownSignals.forEach((signal) => {

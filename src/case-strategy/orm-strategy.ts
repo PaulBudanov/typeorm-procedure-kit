@@ -43,4 +43,8 @@ export class OrmStrategy
     this.databaseNamingCache.cacheSet(this.columnNameCacheKey, name, data);
     return data;
   }
+
+  public destroy(): void {
+    this.cacheClassInstance.destroyCache();
+  }
 }
