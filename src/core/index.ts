@@ -290,7 +290,6 @@ export class TypeOrmProcedureKit {
       this.settings.logger.warn('TypeOrmProcedureKit already destroyed');
       return;
     }
-
     this.isDestroyed = true;
     const errors: Array<Error> = [];
     // destroy notify

@@ -7,7 +7,6 @@ import type {
 
 export abstract class DatabaseNotify<T extends TConnectionTypes> {
   protected notificationPool = new Map<string, T>();
-  protected isDestroyed = false;
   protected constructor(protected readonly logger: ILoggerModule) {}
 
   /**
@@ -24,14 +23,8 @@ export abstract class DatabaseNotify<T extends TConnectionTypes> {
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
   public async destroy(): Promise<void> {
-    if (this.isDestroyed) {
-      this.logger.warn('DatabaseNotify already destroyed');
-      return;
-    }
-    this.isDestroyed = true;
-
     if (this.notificationPool.size === 0) {
-      this.logger.log('No active notifications to cleanup');
+      // this.logger.log('No active notifications to cleanup');
       return;
     }
 
@@ -49,9 +42,8 @@ export abstract class DatabaseNotify<T extends TConnectionTypes> {
         }
       }
     );
-
-    await Promise.allSettled(unsubscribePromises);
     this.notificationPool.clear();
+    await Promise.allSettled(unsubscribePromises);
     this.logger.log('DatabaseNotify shutdown completed');
   }
 

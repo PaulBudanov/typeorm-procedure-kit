@@ -13,7 +13,6 @@ import type { ProcedureListBase } from './procedure-list-base.js';
 
 export class NotifyBase {
   private queueManager = new QueueManager<string>('packageUpdateSet', 'set');
-  private isDestroyed = false;
   private queueCallback: ((data: { item: string }) => void) | null = null;
 
   /**
@@ -48,11 +47,6 @@ export class NotifyBase {
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
   public async destroy(): Promise<void> {
-    if (this.isDestroyed) {
-      return;
-    }
-    this.isDestroyed = true;
-
     // Destroy notification subscriptions through database adapter
     await this.databaseAdapter.destroyNotifications();
 
