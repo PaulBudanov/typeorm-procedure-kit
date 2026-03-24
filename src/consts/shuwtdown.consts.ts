@@ -1,4 +1,4 @@
-export const shutdownSignals: Array<NodeJS.Signals> = [
+export const SHUTDOWN_SIGNALS: Array<NodeJS.Signals> = [
   'SIGTERM',
   'SIGINT',
   'SIGQUIT',
