@@ -31,7 +31,9 @@ interface IOracleConfigWithoutLibrary extends IBaseConfig {
   type: 'oracle';
   libraryPath?: undefined;
   cqnPort?: number;
-  packagesSettings?: IPackagesSettingsDefault;
+  packagesSettings?: IPackagesSettingsDefault & {
+    clientInitiated?: boolean;
+  };
 }
 
 interface IOracleConfigWithLibrary extends Omit<
@@ -69,7 +71,9 @@ interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
 export type TPostgresDbConfig =
   | IPostgresDbConfigWithPackagesEvent
   | IPostgresDbConfigWithoutPackagesEvent;
-export type TDbConfig = TOracleDbConfig | TPostgresDbConfig;
+export type TDbConfig<
+  Type = TOracleDbConfig['type'] | TPostgresDbConfig['type'],
+> = Type extends TOracleDbConfig['type'] ? TOracleDbConfig : TPostgresDbConfig;
 
 export interface IEntityOptions {
   isNeedEntitySync: boolean;
