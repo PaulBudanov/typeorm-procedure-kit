@@ -1,3 +1,10 @@
+## [1.11.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.2...v1.11.3) (2026-03-24)
+
+
+### Bug Fixes
+
+* change const name from to upper snake case ([c018174](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/c01817465ae52c1c411f63ffcc0c217f86cf4157))
+
 ## [1.11.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.1...v1.11.2) (2026-03-20)
 
 
