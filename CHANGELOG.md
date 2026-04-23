@@ -1,3 +1,10 @@
+## [1.12.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.0...v1.12.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* change public API types ([a9d4571](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a9d457158a980a96464611d052d3056813ee8b07))
+
 # [1.12.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.3...v1.12.0) (2026-04-06)
 
 
