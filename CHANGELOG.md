@@ -1,3 +1,10 @@
+## [1.12.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.5...v1.12.6) (2026-04-23)
+
+
+### Bug Fixes
+
+* add types for overriding source after extemd ([76d1cff](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/76d1cff953b40a87cde10c4f16c7b3ff7415da75))
+
 ## [1.12.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.4...v1.12.5) (2026-04-23)
 
 
