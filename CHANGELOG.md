@@ -1,3 +1,10 @@
+## [1.12.2](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.1...v1.12.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* add awaiting promise in async method. ([231c15d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/231c15df46e70ea382b28fc0747510571a7bc1a1))
+
 ## [1.12.1](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.0...v1.12.1) (2026-04-23)
 
 
