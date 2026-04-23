@@ -1,3 +1,10 @@
+# [1.12.0](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.3...v1.12.0) (2026-04-06)
+
+
+### Features
+
+* add client initiated property to config ([5a1b98d](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/5a1b98dba2fecca9af5282d0618b509ee70000b4))
+
 ## [1.11.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.11.2...v1.11.3) (2026-03-24)
 
 
