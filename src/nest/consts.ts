@@ -3,7 +3,6 @@ export const DATABASE_CONFIG_TOKEN = Symbol('DATABASE_CONFIG_TOKEN');
 export const DATABASE_SERVICE_TOKEN = Symbol('DATABASE_SERVICE_TOKEN');
 
 //TODO: Make decorators for core methods.
-
 export const CALL_PROCEDURE = Symbol('CALL_PROCEDURE');
 
 export const CALL_SQL = Symbol('CALL_SQL');
