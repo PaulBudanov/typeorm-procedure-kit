@@ -1,3 +1,10 @@
+## [1.12.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.3...v1.12.4) (2026-04-23)
+
+
+### Bug Fixes
+
+* change message for bindings ([307a221](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/307a221ce556ef60e82fdcf1777334109f4d1da4))
+
 ## [1.12.3](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.2...v1.12.3) (2026-04-23)
 
 
