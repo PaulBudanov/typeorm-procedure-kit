@@ -1,12 +1,24 @@
-import type { PrimaryGeneratedColumnNumericOptions } from '../../typeorm/decorator/options/PrimaryGeneratedColumnNumericOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
+import type {
+  TExtendPrimaryGeneratedColumnOptions,
+  TPrimaryGeneratedColumnOverrideDescriptor,
+} from '../../types/extend-decorator.types.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
+
+function isPrimaryGeneratedColumnOverrideDescriptor(
+  overrideSource?: TExtendPrimaryGeneratedColumnOptions
+): overrideSource is TPrimaryGeneratedColumnOverrideDescriptor {
+  return (
+    overrideSource !== undefined &&
+    ('strategy' in overrideSource || 'options' in overrideSource)
+  );
+}
 
 /**
  * Extends the @PrimaryGeneratedColumn decorator with additional options.
  * Allows to register a primary generated column with options that are not supported by the original @PrimaryGeneratedColumn decorator.
- * @param {Partial<PrimaryGeneratedColumnNumericOptions>} overrideSource - Partial PrimaryGeneratedColumnNumericOptions object to override the existing column options.
+ * @param {TExtendPrimaryGeneratedColumnOptions} overrideSource - Partial PrimaryGeneratedColumnNumericOptions object to override the existing column options.
  * @param {boolean} [isRegisterToParentTarget=false] - Whether to register the column to the parent target or to the target itself.
  * @returns {PropertyDecorator} - The extended primary generated column decorator.
  * @example
@@ -20,9 +32,7 @@ import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
  * }
  */
 export function ExtendPrimaryGeneratedColumn(
-  overrideSource?: Partial<PrimaryGeneratedColumnNumericOptions> & {
-    strategy?: 'increment' | 'uuid';
-  },
+  overrideSource?: TExtendPrimaryGeneratedColumnOptions,
   isRegisterToParentTarget = false
 ) {
   return function (target: object, propertyKey: string | symbol): void {
@@ -47,20 +57,28 @@ export function ExtendPrimaryGeneratedColumn(
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
       : targetConstructor;
+    const typedOverrideSource = isPrimaryGeneratedColumnOverrideDescriptor(
+      overrideSource
+    )
+      ? overrideSource.options
+      : overrideSource;
+    const overrideStrategy = isPrimaryGeneratedColumnOverrideDescriptor(
+      overrideSource
+    )
+      ? overrideSource.strategy
+      : undefined;
     TypeOrmHelpers.updateColumnMetadata(
       storage,
       columnMetadata.column,
       targetRegister,
-      overrideSource
+      typedOverrideSource
     );
     TypeOrmHelpers.updateGenerationMetadata(
       storage,
       targetRegister,
       propertyKey.toString(),
       columnMetadata.generation,
-      overrideSource?.strategy
-        ? overrideSource.strategy
-        : (columnMetadata.generation.strategy ?? undefined)
+      overrideStrategy ?? columnMetadata.generation.strategy ?? undefined
     );
     return;
   };
