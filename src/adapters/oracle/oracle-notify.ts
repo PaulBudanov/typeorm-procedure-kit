@@ -12,6 +12,7 @@ import type {
 import { AsyncUtils } from '../../utils/async-utils.js';
 import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import { OracleConnection } from './oracle-connection.js';
@@ -42,7 +43,13 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
    */
   public getPackagesNotifySql(packages: Array<string>): string {
     const packageConditions = packages
-      .map((pkg) => `NAME = '${pkg.toUpperCase()}'`)
+      .map(
+        (pkg) =>
+          `NAME = '${SqlIdentifier.validateIdentifier(
+            pkg,
+            'oracle package notification'
+          ).toUpperCase()}'`
+      )
       .join(' OR ');
     return OracleSqlCommand.SQL_GET_NOTIFY_UPDATE_PACKAGE.replace(
       ':REPLACER_PACKAGES',
@@ -246,9 +253,15 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
       const affectedTables = new Map<string, Array<string>>();
       tables.forEach((table) => {
         const { name, rows } = table;
-        const tableEntry = affectedTables.get(name) ?? new Array<string>();
-        rows?.forEach(({ rowid }) => tableEntry.push(`'${rowid}'`));
-        affectedTables.set(name, tableEntry);
+        const tableName = SqlIdentifier.validateQualifiedIdentifier(
+          name,
+          'oracle notification table'
+        );
+        const tableEntry = affectedTables.get(tableName) ?? new Array<string>();
+        rows?.forEach(({ rowid }) =>
+          tableEntry.push(`'${SqlIdentifier.validateRowId(rowid)}'`)
+        );
+        affectedTables.set(tableName, tableEntry);
       });
       for (const messageTable of affectedTables) {
         const [tableName, rowsArray] = messageTable;

@@ -4,6 +4,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "outDir": "./dist/cjs",
+    "tsBuildInfoFile": "./dist/tsconfig.cjs.tsbuildinfo",
     "verbatimModuleSyntax": false,
     "esModuleInterop": true
   }

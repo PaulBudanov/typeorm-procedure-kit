@@ -8,6 +8,7 @@ import type {
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { TypeGuards } from '../../utils/type-guards.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
 
@@ -44,7 +45,11 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @returns SQL query string to fetch package info
    */
   public override generatePackageInfoSql(packageName: string): string {
-    return PostgreSqlCommand.SQL_GET_PACKAGE_INFO + ` '${packageName}';`;
+    const safePackageName = SqlIdentifier.validateIdentifier(
+      packageName,
+      'postgres package'
+    );
+    return PostgreSqlCommand.SQL_GET_PACKAGE_INFO + ` '${safePackageName}';`;
   }
 
   /**
@@ -64,9 +69,11 @@ export class PostgreAdapter extends DatabaseAdapter<
     await Promise.all(
       cursorsNames.map(async (cursorName) => {
         const cursorResult: Array<T> = await manager.query<Array<T>>(
-          `FETCH ALL IN "${cursorName}"`
+          `FETCH ALL IN ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`
         );
-        await manager.query(`CLOSE "${cursorName}"`);
+        await manager.query(
+          `CLOSE ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`
+        );
         cursorResults = cursorResults.concat(cursorResult);
       })
     );
@@ -117,13 +124,15 @@ export class PostgreAdapter extends DatabaseAdapter<
             'Payload for call procedure must be an object or array or undefined or null'
           );
         let value: unknown;
-        if (payload && payload !== null && typeof payload === 'object') {
+        if (Array.isArray(payload)) {
+          value = payload[index] ?? null;
+        } else if (payload && typeof payload === 'object' && payload !== null) {
           value =
             (payload as Record<string, unknown>)[normalizedName] ??
             (payload as Record<string, unknown>)[item.argumentName] ??
             null;
         } else {
-          value = Array.isArray(payload) ? (payload[index] ?? null) : null;
+          value = null;
         }
 
         if (Array.isArray(value)) {
@@ -133,7 +142,9 @@ export class PostgreAdapter extends DatabaseAdapter<
         bindings.push(value);
       });
       const paramInputString = bindings.map((_, i) => `$${i + 1}`).join(',');
-      const paramExecuteString = `CALL ${packageName}.${processName}(${paramInputString})`;
+      const paramExecuteString = `CALL ${SqlIdentifier.quotePostgresQualifiedIdentifier(
+        [packageName, processName]
+      )}(${paramInputString})`;
       return { paramExecuteString, bindings, cursorsNames };
     };
     if (TypeGuards.isNullOrUndefined(payload)) payload = {} as U;

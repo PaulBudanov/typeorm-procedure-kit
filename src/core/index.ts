@@ -1,14 +1,9 @@
-import oracledb from 'oracledb';
-
 import { SHUTDOWN_SIGNALS } from '../consts/shuwtdown.consts.js';
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
-import type {
-  TConnectionMode,
-  TOracleDbConfig,
-} from '../types/config.types.js';
+import type { TConnectionMode } from '../types/config.types.js';
 import type {
   ICreateNotify,
   IOracleOptionsNotify,
@@ -19,6 +14,7 @@ import type {
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
 import { procedureNameParser } from '../utils/procedure-name-parser.js';
+import { ServerError } from '../utils/server-error.js';
 
 import { ConnectionBase } from './connection-base.js';
 import { DatabaseInitializerBase } from './database-initializer-base.js';
@@ -28,12 +24,12 @@ import { ProcedureListBase } from './procedure-list-base.js';
 import { SerializerBase } from './serializer-base.js';
 
 export class TypeOrmProcedureKit {
-  private connectionBase!: ConnectionBase;
-  private databaseInitializerBase!: DatabaseInitializerBase;
-  private executeBase!: ExecuteBase;
-  private notifyBase!: NotifyBase;
-  private procedureListBase!: ProcedureListBase;
-  private serialzierBase!: SerializerBase;
+  private readonly databaseInitializerBase: DatabaseInitializerBase;
+  private connectionBase: ConnectionBase | null = null;
+  private executeBase: ExecuteBase | null = null;
+  private notifyBase: NotifyBase | null = null;
+  private procedureListBase: ProcedureListBase | null = null;
+  private serialzierBase: SerializerBase | null = null;
   private isDestroyed = false;
   /**
    * Creates a new instance of the TypeOrmProcedureKit class.
@@ -41,7 +37,12 @@ export class TypeOrmProcedureKit {
    * @param settings - The settings object containing all the necessary configuration.
    */
   public constructor(private readonly settings: IModuleConfig) {
-    this.initMainClasses();
+    this.databaseInitializerBase = new DatabaseInitializerBase(
+      this.settings.config,
+      this.settings.logger,
+      this.settings.entity,
+      this.settings.migration
+    );
     if (this.settings.isRegisterShutdownHandlers)
       this.registerShutdownHandlers();
   }
@@ -57,12 +58,6 @@ export class TypeOrmProcedureKit {
    * - SerializerBase: provides a way to set and get serializer mappings
    */
   private initMainClasses(): void {
-    this.databaseInitializerBase = new DatabaseInitializerBase(
-      this.settings.config,
-      this.settings.logger,
-      this.settings.entity,
-      this.settings.migration
-    );
     this.connectionBase = new ConnectionBase(
       this.databaseInitializerBase.appDataSource,
       this.settings.logger
@@ -88,6 +83,36 @@ export class TypeOrmProcedureKit {
       this.databaseInitializerBase.databaseAdapter
     );
   }
+
+  private requireConnectionBase(): ConnectionBase {
+    if (!this.connectionBase)
+      throw new ServerError('TypeOrmProcedureKit is not initialized');
+    return this.connectionBase;
+  }
+
+  private requireExecuteBase(): ExecuteBase {
+    if (!this.executeBase)
+      throw new ServerError('TypeOrmProcedureKit is not initialized');
+    return this.executeBase;
+  }
+
+  private requireNotifyBase(): NotifyBase {
+    if (!this.notifyBase)
+      throw new ServerError('TypeOrmProcedureKit is not initialized');
+    return this.notifyBase;
+  }
+
+  private requireProcedureListBase(): ProcedureListBase {
+    if (!this.procedureListBase)
+      throw new ServerError('TypeOrmProcedureKit is not initialized');
+    return this.procedureListBase;
+  }
+
+  private requireSerializerBase(): SerializerBase {
+    if (!this.serialzierBase)
+      throw new ServerError('TypeOrmProcedureKit is not initialized');
+    return this.serialzierBase;
+  }
   /**
    * Initializes the database connection, runs migrations if needed and fetches the procedure list for all packages.
    * If packages are set in the settings, it also creates a notification channel for the packages and subscribes to it.
@@ -95,23 +120,22 @@ export class TypeOrmProcedureKit {
    */
   public async initDatabase(): Promise<void> {
     await this.databaseInitializerBase.initDatabaseModule();
-    await this.procedureListBase.initPackagesMap();
-    if (
-      this.settings.config.packagesSettings &&
-      this.settings.config.packagesSettings.packages.length > 0
-    ) {
-      const additionalOptions: IOracleOptionsNotify = {
-        operations: oracledb.CQN_OPCODE_INSERT,
-        clientInitiated:
-          (this.settings.config as TOracleDbConfig).packagesSettings
-            ?.clientInitiated ?? false,
-      };
-      await this.notifyBase.createNotification<TNotifyPackageCallback>(
+    this.initMainClasses();
+    const procedureListBase = this.requireProcedureListBase();
+    await procedureListBase.initPackagesMap();
+    const packagesSettings = this.settings.config.packagesSettings;
+    if (packagesSettings && packagesSettings.packages.length > 0) {
+      const notifyBase = this.requireNotifyBase();
+      const additionalOptions =
+        this.databaseInitializerBase.databaseAdapter.getDefaultPackageNotifyOptions?.(
+          this.settings.config
+        );
+      await notifyBase.createNotification<TNotifyPackageCallback>(
         {
           sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
-            this.settings.config.packagesSettings.packages
+            packagesSettings.packages
           ),
-          notifyCallback: this.notifyBase.packageNotifyCallback,
+          notifyCallback: notifyBase.packageNotifyCallback.bind(notifyBase),
         },
         additionalOptions
       );
@@ -135,10 +159,17 @@ export class TypeOrmProcedureKit {
     params?: Record<string, unknown> | Array<unknown>,
     options?: Array<string>
   ): Promise<Array<T>> {
+    const packages = this.settings.config.packagesSettings?.packages;
+    if (!packages || packages.length < 1) {
+      throw new ServerError(
+        'Procedure packages are not configured. Set config.packagesSettings before calling procedures.'
+      );
+    }
+    const procedureListBase = this.requireProcedureListBase();
     const { processName, packageName } = procedureNameParser.parse(
       executeString,
-      this.procedureListBase.packagesWithProceduresList,
-      this.settings.config.packagesSettings!.packages
+      procedureListBase.packagesWithProceduresList,
+      packages
     );
     const { paramExecuteString, bindings, cursorsNames } =
       this.databaseInitializerBase.databaseAdapter.makeBindings<
@@ -146,10 +177,10 @@ export class TypeOrmProcedureKit {
       >(
         packageName,
         processName,
-        this.procedureListBase.packagesWithProceduresList.get(packageName),
+        procedureListBase.packagesWithProceduresList.get(packageName),
         params
       );
-    return this.executeBase.execute<T>(
+    return this.requireExecuteBase().execute<T>(
       paramExecuteString,
       bindings,
       options,
@@ -171,7 +202,7 @@ export class TypeOrmProcedureKit {
   ): Promise<Array<T>> {
     const { sqlString, bindings } =
       this.databaseInitializerBase.databaseAdapter.makeSqlBindings(sql, params);
-    return this.executeBase.execute(sqlString, bindings, options);
+    return this.requireExecuteBase().execute(sqlString, bindings, options);
   }
   /**
    * Create a notification channel and subscribe to it.
@@ -190,7 +221,10 @@ export class TypeOrmProcedureKit {
     options: ICreateNotify,
     additionalOptions?: IOracleOptionsNotify
   ): Promise<string> {
-    return this.notifyBase.createNotification<T>(options, additionalOptions);
+    return this.requireNotifyBase().createNotification<T>(
+      options,
+      additionalOptions
+    );
   }
   /**
    * Unsubscribes from a notification channel.
@@ -199,7 +233,7 @@ export class TypeOrmProcedureKit {
    * @throws {Error} - if there is an error unsubscribing from the channel
    */
   public unlistenNotify(channel: string): Promise<void> {
-    return this.notifyBase.unlistenNotification(channel);
+    return this.requireNotifyBase().unlistenNotification(channel);
   }
 
   /**
@@ -211,7 +245,7 @@ export class TypeOrmProcedureKit {
    * @throws {Error} - If the serializer type is unknown.
    */
   public setSerializer(serializer: ISetSerializer): void {
-    this.serialzierBase.setSerializer(serializer);
+    this.requireSerializerBase().setSerializer(serializer);
   }
 
   /**
@@ -221,7 +255,7 @@ export class TypeOrmProcedureKit {
   public deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
-    this.serialzierBase.deleteSerializer(serializerType);
+    this.requireSerializerBase().deleteSerializer(serializerType);
   }
 
   /**
@@ -230,7 +264,7 @@ export class TypeOrmProcedureKit {
    * but don't want to keep the old ones.
    */
   public deleteAllSerializers(): void {
-    this.serialzierBase.deleteAllSerializers();
+    this.requireSerializerBase().deleteAllSerializers();
   }
   /**
    * Retrieves an EntityManager from the pool.
@@ -243,7 +277,7 @@ export class TypeOrmProcedureKit {
   public getEntityManager(
     mode: TConnectionMode = 'master'
   ): Promise<EntityManager> {
-    return this.connectionBase.getEntityManager(mode);
+    return this.requireConnectionBase().getEntityManager(mode);
   }
   /**
    * Releases a connection to the database back to the pool.
@@ -254,7 +288,7 @@ export class TypeOrmProcedureKit {
    * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
    */
   public releaseEntityManager(connection: EntityManager): Promise<void> {
-    return this.connectionBase.releaseEntityManager(connection);
+    return this.requireConnectionBase().releaseEntityManager(connection);
   }
   /**
    * A read-only map of serializers, where the key is the name of the serializer
@@ -264,7 +298,7 @@ export class TypeOrmProcedureKit {
    * @throws {Error} If you try to modify the map.
    */
   public get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
-    return this.serialzierBase.serializerReadOnlyMapping;
+    return this.requireSerializerBase().serializerReadOnlyMapping;
   }
 
   /**
@@ -300,8 +334,10 @@ export class TypeOrmProcedureKit {
     const errors: Array<Error> = [];
     // destroy notify
     try {
-      await this.notifyBase.destroy();
-      this.settings.logger.log('Notifications cleanup completed');
+      if (this.notifyBase) {
+        await this.notifyBase.destroy();
+        this.settings.logger.log('Notifications cleanup completed');
+      }
     } catch (error) {
       errors.push(error as Error);
       this.settings.logger.error(
@@ -310,8 +346,8 @@ export class TypeOrmProcedureKit {
     }
     // destroy datasource
     try {
-      if (this.dataSource?.isInitialized) {
-        await this.dataSource.destroy();
+      if (this.databaseInitializerBase.isDataSourceInitialized) {
+        await this.databaseInitializerBase.appDataSource.destroy();
         this.settings.logger.log('DataSource destroyed');
       }
     } catch (error) {

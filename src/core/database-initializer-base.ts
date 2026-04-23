@@ -1,8 +1,3 @@
-import oracledb from 'oracledb';
-import pg from 'pg';
-
-import { OracleAdapter } from '../adapters/oracle/oracle-adapter.js';
-import { PostgreAdapter } from '../adapters/postgres/postgre-adapter.js';
 import { CaseStrategyFactory } from '../case-strategy/case-strategy-factory.js';
 import { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
@@ -25,9 +20,9 @@ import type { ICaseStratefyFactory } from '../types/strategy.types.js';
 import { ServerError } from '../utils/server-error.js';
 
 export class DatabaseInitializerBase {
-  public readonly appDataSource: DataSource;
-  public readonly databaseAdapter: TAdapterUtilsClassTypes;
   public readonly caseSettings: ICaseStratefyFactory;
+  private appDataSourceInstance: DataSource | null = null;
+  private databaseAdapterInstance: TAdapterUtilsClassTypes | null = null;
   public constructor(
     public readonly dbConfig: TDbConfig,
     private readonly logger: ILoggerModule,
@@ -37,33 +32,22 @@ export class DatabaseInitializerBase {
     this.caseSettings = CaseStrategyFactory.caseStrategyFactory(
       this.dbConfig.outKeyTransformCase
     );
-    const options: DataSourceOptions = {
-      ...this.configFactory(),
-      synchronize: this.entity?.isNeedEntitySync,
-      logger: 'advanced-console',
-      logging: true,
-      poolSize: dbConfig.poolSize,
-      maxQueryExecutionTime: dbConfig.callTimeout,
-      namingStrategy: this.caseSettings.strategy,
-      isolateWhereStatements: true,
-      invalidWhereValuesBehavior: {
-        null: 'sql-null',
-        undefined: 'throw',
-      },
-      isQuotingDisabled: true,
-      migrations:
-        this.migration?.migrationPath &&
-        Array.isArray(this.migration.migrationPath)
-          ? this.migration.migrationPath
-          : [],
-      entities:
-        this.entity?.entityPath && Array.isArray(this.entity.entityPath)
-          ? this.entity.entityPath
-          : [],
-    } as const;
-    this.appDataSource = new DataSource(options);
-    this.databaseAdapter = this.databaseAdapterFactory();
-    this.databaseAdapter.registerFetchHandlerHook();
+  }
+
+  public get appDataSource(): DataSource {
+    if (!this.appDataSourceInstance)
+      throw new ServerError('DataSource is not initialized');
+    return this.appDataSourceInstance;
+  }
+
+  public get databaseAdapter(): TAdapterUtilsClassTypes {
+    if (!this.databaseAdapterInstance)
+      throw new ServerError('Database adapter is not initialized');
+    return this.databaseAdapterInstance;
+  }
+
+  public get isDataSourceInitialized(): boolean {
+    return this.appDataSourceInstance?.isInitialized ?? false;
   }
 
   /**
@@ -74,7 +58,9 @@ export class DatabaseInitializerBase {
    */
   public async initDatabaseModule(): Promise<void> {
     try {
-      await this.appDataSource.initialize();
+      await this.initDataSource();
+      if (!this.appDataSource.isInitialized)
+        await this.appDataSource.initialize();
       if (
         this.migration &&
         Array.isArray(this.migration.migrationPath) &&
@@ -104,36 +90,85 @@ export class DatabaseInitializerBase {
    * @returns {PostgresConnectionOptions | OracleConnectionOptions} - the connection options for the database connection
    * @throws {ServerError} - error if the database type is not recognized
    */
-  private configFactory(): PostgresConnectionOptions | OracleConnectionOptions {
+  private async initDataSource(): Promise<void> {
+    if (this.appDataSourceInstance && this.databaseAdapterInstance) return;
+
+    const options: DataSourceOptions = {
+      ...(await this.configFactory()),
+      synchronize: this.entity?.isNeedEntitySync,
+      logger: 'advanced-console',
+      logging: true,
+      poolSize: this.dbConfig.poolSize,
+      maxQueryExecutionTime: this.dbConfig.callTimeout,
+      namingStrategy: this.caseSettings.strategy,
+      isolateWhereStatements: true,
+      invalidWhereValuesBehavior: {
+        null: 'sql-null',
+        undefined: 'throw',
+      },
+      isQuotingDisabled: true,
+      migrations:
+        this.migration?.migrationPath &&
+        Array.isArray(this.migration.migrationPath)
+          ? this.migration.migrationPath
+          : [],
+      entities:
+        this.entity?.entityPath && Array.isArray(this.entity.entityPath)
+          ? this.entity.entityPath
+          : [],
+    } as const;
+
+    this.appDataSourceInstance = new DataSource(options);
+    this.databaseAdapterInstance = await this.databaseAdapterFactory();
+    this.databaseAdapterInstance.registerFetchHandlerHook();
+  }
+
+  private async configFactory(): Promise<
+    PostgresConnectionOptions | OracleConnectionOptions
+  > {
     switch (this.dbConfig.type) {
-      case 'postgres':
+      case 'postgres': {
+        const pg = (await import('pg')).default;
         return {
-          ...this.getPostgresOptions(this.dbConfig),
+          ...this.getPostgresOptions(this.dbConfig, undefined, pg),
           replication: {
             master: this.getPostgresOptions(
               this.dbConfig,
-              this.dbConfig.master
+              this.dbConfig.master,
+              pg
             ),
             slaves:
               this.dbConfig.slaves?.map((slave) =>
                 this.getPostgresOptions(
                   this.dbConfig as TPostgresDbConfig,
-                  slave
+                  slave,
+                  pg
                 )
               ) ?? [],
           },
         };
-      case 'oracle':
+      }
+      case 'oracle': {
+        const oracledb = (await import('oracledb')).default;
         return {
-          ...this.getOracleOptions(this.dbConfig),
+          ...this.getOracleOptions(this.dbConfig, undefined, oracledb),
           replication: {
-            master: this.getOracleOptions(this.dbConfig, this.dbConfig.master),
+            master: this.getOracleOptions(
+              this.dbConfig,
+              this.dbConfig.master,
+              oracledb
+            ),
             slaves:
               this.dbConfig.slaves?.map((slave) =>
-                this.getOracleOptions(this.dbConfig as TOracleDbConfig, slave)
+                this.getOracleOptions(
+                  this.dbConfig as TOracleDbConfig,
+                  slave,
+                  oracledb
+                )
               ) ?? [],
           },
         };
+      }
       default:
         throw new ServerError('Unknown database type!');
     }
@@ -145,14 +180,16 @@ export class DatabaseInitializerBase {
    * from the database.
    * @returns {TAdapterUtilsClassTypes} - the database adapter
    */
-  private databaseAdapterFactory(): TAdapterUtilsClassTypes {
+  private async databaseAdapterFactory(): Promise<TAdapterUtilsClassTypes> {
     const fetchHandlerOptions: IRegisteredFetchHandlerOptions = {
       isNeedRegisterDefaultSerializers:
         this.dbConfig.isNeedRegisterDefaultSerializers ?? false,
       caseNativeStrategy: this.caseSettings.nativeStrategy,
     };
     switch (this.dbConfig.type) {
-      case 'postgres':
+      case 'postgres': {
+        const { PostgreAdapter } =
+          await import('../adapters/postgres/postgre-adapter.js');
         return new PostgreAdapter(
           this.appDataSource,
           this.logger,
@@ -161,13 +198,17 @@ export class DatabaseInitializerBase {
             ? this.dbConfig.packagesSettings.listenEventName
             : undefined
         );
-      case 'oracle':
+      }
+      case 'oracle': {
+        const { OracleAdapter } =
+          await import('../adapters/oracle/oracle-adapter.js');
         return new OracleAdapter(
           this.appDataSource,
           this.logger,
           fetchHandlerOptions,
           this.dbConfig.cqnPort
         );
+      }
     }
   }
   /**
@@ -178,11 +219,12 @@ export class DatabaseInitializerBase {
    */
   private getPostgresOptions(
     config: TPostgresDbConfig,
-    credentials?: IDatabaseCredentials
+    credentials: IDatabaseCredentials | undefined,
+    driver: PostgresConnectionOptions['driver']
   ): PostgresConnectionOptions {
     const defaultObject: PostgresConnectionOptions = {
       type: 'postgres',
-      driver: pg,
+      driver,
       parseInt8: config.parseInt8AsBigInt,
       installExtensions: true,
       uuidExtension: 'uuid-ossp',
@@ -207,14 +249,15 @@ export class DatabaseInitializerBase {
    */
   private getOracleOptions(
     config: TOracleDbConfig,
-    credentials?: IDatabaseCredentials
+    credentials: IDatabaseCredentials | undefined,
+    driver: OracleConnectionOptions['driver']
   ): OracleConnectionOptions {
     const thickMode: OracleConnectionOptions['thickMode'] = config.libraryPath
       ? { libDir: config.libraryPath }
       : undefined;
     const defaultObject: OracleConnectionOptions = {
       type: 'oracle',
-      driver: oracledb,
+      driver,
       serviceName: config.master.database,
       thickMode,
     };

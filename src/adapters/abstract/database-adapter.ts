@@ -1,11 +1,13 @@
-import oracledb from 'oracledb';
+import type oracledb from 'oracledb';
 
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type {
+  IDatabaseAdapterContract,
   TConnectionClassTypes,
   TNotifyClassTypes,
   TSerializerClassTypes,
 } from '../../types/adapter.types.js';
+import type { TDbConfig } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   IOracleOptionsNotify,
@@ -29,7 +31,7 @@ export abstract class DatabaseAdapter<
   T extends TSerializerClassTypes,
   U extends TNotifyClassTypes,
   V extends TConnectionClassTypes,
-> {
+> implements IDatabaseAdapterContract {
   /**
    * Constructor for DatabaseAdapter
    * @param logger - logger module to use for logging
@@ -204,6 +206,12 @@ export abstract class DatabaseAdapter<
 
   public getPackagesNotifySql(packages?: Array<string>): string {
     return this.notifier.getPackagesNotifySql(packages ?? []);
+  }
+
+  public getDefaultPackageNotifyOptions(
+    _config: TDbConfig
+  ): IOracleOptionsNotify | undefined {
+    return undefined;
   }
 
   public registerFetchHandlerHook(): void {

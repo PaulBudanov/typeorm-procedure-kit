@@ -41,6 +41,7 @@ export type {
 
 // Adapter
 export type {
+  IDatabaseAdapterContract,
   IRegisteredFetchHandlerOptions,
   TAdapterUtilsClassTypes,
   TConnectionClassTypes,

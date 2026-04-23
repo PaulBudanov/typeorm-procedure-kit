@@ -25,5 +25,8 @@ export { DatabaseOptionsExecutor } from './database-options-executor.js';
 // String Utils
 export { StringUtilities } from './string-utilities.js';
 
+// SQL identifiers
+export { SqlIdentifier } from './sql-identifier.js';
+
 // TypeOrm Helpers
 export { TypeOrmHelpers } from './typeorm-helpers.js';

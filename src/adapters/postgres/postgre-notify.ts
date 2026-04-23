@@ -5,6 +5,7 @@ import type { TNotifyCallbackGeneric } from '../../types/notification.types.js';
 import { AsyncUtils } from '../../utils/async-utils.js';
 import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseNotify } from '../abstract/database-notify.js';
 
 import type { PostgreConnection } from './postgre-connection.js';
@@ -43,11 +44,17 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>
   ): Promise<string> {
     try {
-      const channelName = sqlCommand.replace('LISTEN ', '');
-      if (!sqlCommand.includes('LISTEN'))
+      const match = sqlCommand
+        .trim()
+        .match(/^LISTEN\s+"?([A-Za-z_][A-Za-z0-9_$#]*)"?\s*;?$/i);
+      const channelName = match?.[1];
+      if (!channelName)
         throw new ServerError(
           'SQL command must contain LISTEN for notification, example: LISTEN'
         );
+      const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
+        channelName
+      )}`;
       if (this.notificationPool.has(channelName)) {
         this.logger.warn(
           `Listener for channel "${channelName}" already registered`
@@ -57,7 +64,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         );
       }
       const client = await this.postgreConnection.createSingleConnection();
-      await client.query(sqlCommand);
+      await client.query(listenSql);
       this.postgreConnection.registerConnectionErrorHandler(
         client,
         () =>
@@ -112,7 +119,9 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         this.logger.warn(`No listener found for channel: ${channel}`);
         return;
       }
-      await client.query(`UNLISTEN ${channel}`);
+      await client.query(
+        `UNLISTEN ${SqlIdentifier.quotePostgresIdentifier(channel)}`
+      );
       this.logger.log(
         `Successfully unregistered listener for channel: ${channel}`
       );

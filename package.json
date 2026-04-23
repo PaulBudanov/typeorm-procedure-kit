@@ -16,6 +16,18 @@
       "require": "./dist/cjs/nest/index.js",
       "default": "./dist/esm/nest/index.js"
     },
+    "./typeorm": {
+      "types": "./dist/types/typeorm/index.d.ts",
+      "import": "./dist/esm/typeorm/index.js",
+      "require": "./dist/cjs/typeorm/index.js",
+      "default": "./dist/esm/typeorm/index.js"
+    },
+    "./typeorm-extend": {
+      "types": "./dist/types/typeorm-extend/index.d.ts",
+      "import": "./dist/esm/typeorm-extend/index.js",
+      "require": "./dist/cjs/typeorm-extend/index.js",
+      "default": "./dist/esm/typeorm-extend/index.js"
+    },
     "./*": {
       "types": "./dist/types/*.d.ts",
       "import": "./dist/esm/*.js",
@@ -32,11 +44,12 @@
   "scripts": {
     "semantic-release": "semantic-release",
     "build": "npm run clean && npm run build:esm && npm run build:cjs",
-    "build:esm": "npm i && npm run lint && tsc -p tsconfig.esm.json",
-    "build:cjs": "npm i && npm run lint && tsc -p tsconfig.cjs.json",
+    "build:esm": "npm run lint && tsc -p tsconfig.esm.json",
+    "build:cjs": "npm run lint && tsc -p tsconfig.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --no-error-on-unmatched-pattern",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --no-error-on-unmatched-pattern",
+    "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --no-error-on-unmatched-pattern",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

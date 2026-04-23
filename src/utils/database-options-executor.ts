@@ -16,15 +16,12 @@ export abstract class DatabaseOptionsExecutor {
     logger: ILoggerModule
   ): Promise<void> {
     try {
-      await Promise.all(
-        commands.map(async (command, index) => {
-          logger.log(
-            `Execute command ${index + 1}/${commands.length}: ${this.truncateCommand(command)}`
-          );
-          await connection.query(command);
-          return;
-        })
-      );
+      for (const [index, command] of commands.entries()) {
+        logger.log(
+          `Execute command ${index + 1}/${commands.length}: ${this.truncateCommand(command)}`
+        );
+        await connection.query(command);
+      }
       logger.log('All commands executed successfully');
       return;
     } catch (error) {

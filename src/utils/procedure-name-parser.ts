@@ -21,7 +21,7 @@ class ProcedureNameParser {
    *This method should be called when the ProcedureNameParser is no longer needed.
    */
   public destroy(): void {
-    this.databaseNamingCache.destroyCache();
+    this.databaseNamingCache.cacheClear(this.cacheKey);
   }
   /**
    * Parse the given executeString into a procedure name and package name.

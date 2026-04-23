@@ -4,13 +4,16 @@ import oracledb from 'oracledb';
 
 import { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
+import type { TDbConfig, TOracleDbConfig } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
+import type { IOracleOptionsNotify } from '../../types/notification.types.js';
 import type { TProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { TypeGuards } from '../../utils/type-guards.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
 
@@ -53,6 +56,17 @@ export class OracleAdapter extends DatabaseAdapter<
     CLOB: oracledb.CLOB,
     BLOB: oracledb.BLOB,
   } as const;
+
+  public override getDefaultPackageNotifyOptions(
+    config: TDbConfig
+  ): IOracleOptionsNotify | undefined {
+    if (config.type !== 'oracle') return undefined;
+    return {
+      operations: oracledb.CQN_OPCODE_INSERT,
+      clientInitiated:
+        (config as TOracleDbConfig).packagesSettings?.clientInitiated ?? false,
+    };
+  }
   /**
    * Creates bindings for a given SQL query or procedure call.
    *
@@ -85,6 +99,7 @@ export class OracleAdapter extends DatabaseAdapter<
       const paramInputArray: Array<string> = [];
 
       functionParams.forEach((item, index) => {
+        SqlIdentifier.validateIdentifier(item.argumentName, 'oracle bind');
         paramInputArray.push(`:${item.argumentName}`);
         if (item.argumentType === this.CURSOR_TYPE) {
           cursorsNames.push(item.argumentName);
@@ -103,13 +118,15 @@ export class OracleAdapter extends DatabaseAdapter<
           );
         const normalizedName = item.argumentName.replace(/^p_/, '');
         let value: unknown;
-        if (payload && payload !== null && typeof payload === 'object') {
+        if (Array.isArray(payload)) {
+          value = payload[index] ?? null;
+        } else if (payload && typeof payload === 'object') {
           value =
             (payload as Record<string, unknown>)[normalizedName] ??
             (payload as Record<string, unknown>)[item.argumentName] ??
             null;
         } else {
-          value = Array.isArray(payload) ? (payload[index] ?? null) : null;
+          value = null;
         }
 
         if (Array.isArray(value)) {
@@ -132,9 +149,9 @@ export class OracleAdapter extends DatabaseAdapter<
           val: value,
         });
       });
-      const paramExecuteString = `BEGIN ${packageName}.${processName} (${paramInputArray.join(
-        ','
-      )}); END;`;
+      const paramExecuteString = `BEGIN ${SqlIdentifier.formatOracleQualifiedIdentifier(
+        [packageName, processName]
+      )} (${paramInputArray.join(',')}); END;`;
       return {
         bindings,
         cursorsNames,
@@ -187,8 +204,13 @@ export class OracleAdapter extends DatabaseAdapter<
    * @returns SQL query string to fetch package info
    */
   public override generatePackageInfoSql(packageName: string): string {
+    const safePackageName = SqlIdentifier.validateIdentifier(
+      packageName,
+      'oracle package'
+    );
     return (
-      OracleSqlCommand.SQL_GET_PACKAGE_INFO + `('${packageName.toUpperCase()}')`
+      OracleSqlCommand.SQL_GET_PACKAGE_INFO +
+      `('${safePackageName.toUpperCase()}')`
     );
   }
 

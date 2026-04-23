@@ -48,10 +48,9 @@ export class ProcedureListBase {
       );
 
       if (isRetry) {
-        this.logger.error(
-          'Failed to fetch procedure list with arguments. Program will exit.'
+        throw new ServerError(
+          `Failed to fetch procedure list with arguments for package ${packageName}: ${errorMessage}`
         );
-        process.exit(1);
       }
 
       this.logger.warn(
@@ -88,15 +87,14 @@ export class ProcedureListBase {
     }
 
     if (!this.packagesSettings) return;
+    const { packages, procedureObjectList } = this.packagesSettings;
 
-    const notFoundProcedures = Object.entries(
-      this.packagesSettings.procedureObjectList
-    )
+    const notFoundProcedures = Object.entries(procedureObjectList)
       .map(([_, sqlString]) => {
         const { processName, packageName } = procedureNameParser.parse(
           sqlString,
           this.packagesWithProceduresList,
-          this.packagesSettings!.packages
+          packages
         );
 
         if (packageName !== searchPackageName) return null;
@@ -127,6 +125,10 @@ export class ProcedureListBase {
   private async callbackFetchProcedureList(
     packageName: Lowercase<string>
   ): Promise<void> {
+    if (!this.packagesSettings) {
+      throw new ServerError('Package settings are not configured');
+    }
+
     const rawArguments = (
       await this.executeBase.execute<
         IProcedureArgumentOracle | IProcedureArgumentBase
@@ -154,11 +156,11 @@ export class ProcedureListBase {
         rawArguments as
           | Array<IProcedureArgumentOracle>
           | Array<IProcedureArgumentBase>,
-        Object.values(this.packagesSettings!.procedureObjectList).map((item) =>
+        Object.values(this.packagesSettings.procedureObjectList).map((item) =>
           item.toLowerCase()
         ) as Array<Lowercase<string>>,
         packageName,
-        this.packagesSettings!.packages.length
+        this.packagesSettings.packages.length
       )
     );
   }

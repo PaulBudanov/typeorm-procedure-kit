@@ -42,9 +42,7 @@ export class QueryTimer {
     const durationStr = this.formatDuration(duration);
 
     const rowCountInfo = rowCount != null ? ` with ${rowCount} rows` : '';
-    const bindingsInfo = this.bindings?.length
-      ? `\nBindings: ${JSON.stringify(this.bindings)}`
-      : '';
+    const bindingsInfo = this.formatBindingsInfo();
 
     const message = `SQL request [${this.queryId}] completed successfully in ${durationStr}${rowCountInfo}${bindingsInfo}`;
 
@@ -64,9 +62,7 @@ export class QueryTimer {
     const duration = DateTime.now().toMillis() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
-    const bindingsInfo = this.bindings?.length
-      ? `\nBindings: ${JSON.stringify(this.bindings)}`
-      : '';
+    const bindingsInfo = this.formatBindingsInfo();
 
     const errorMessage = `SQL request [${this.queryId}] failed in ${durationStr}: ${error.message}.${bindingsInfo}`;
 
@@ -81,5 +77,10 @@ export class QueryTimer {
 
   private truncateSql(sql: string, maxLength: number): string {
     return sql.length <= maxLength ? sql : `${sql.substring(0, maxLength)}...`;
+  }
+
+  private formatBindingsInfo(): string {
+    if (!this.bindings?.length) return '';
+    return `\nBindings: ${this.bindings.length} value(s), redacted`;
   }
 }
