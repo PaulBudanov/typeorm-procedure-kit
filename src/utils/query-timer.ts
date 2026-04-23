@@ -81,6 +81,6 @@ export class QueryTimer {
 
   private formatBindingsInfo(): string {
     if (!this.bindings?.length) return '';
-    return `\nBindings: ${this.bindings.length} value(s), redacted`;
+    return `\nBindings: ${JSON.stringify(this.bindings)} value(s)`;
   }
 }
