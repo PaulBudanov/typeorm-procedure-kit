@@ -1,3 +1,10 @@
+## [1.12.5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.4...v1.12.5) (2026-04-23)
+
+
+### Bug Fixes
+
+* add  correct update generation metadata  in decorator ExtendPrimaryGeneratedColumn ([3e3d797](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/3e3d7970ef6a926fd1daf7cd59e2ab5dec78e371))
+
 ## [1.12.4](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.3...v1.12.4) (2026-04-23)
 
 
