@@ -20,7 +20,9 @@ import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
  * }
  */
 export function ExtendPrimaryGeneratedColumn(
-  overrideSource?: Partial<PrimaryGeneratedColumnNumericOptions>,
+  overrideSource?: Partial<PrimaryGeneratedColumnNumericOptions> & {
+    strategy?: 'increment' | 'uuid';
+  },
   isRegisterToParentTarget = false
 ) {
   return function (target: object, propertyKey: string | symbol): void {
@@ -45,14 +47,20 @@ export function ExtendPrimaryGeneratedColumn(
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
       : targetConstructor;
-    Object.assign(columnMetadata.generation, {
-      target: targetRegister,
-    });
     TypeOrmHelpers.updateColumnMetadata(
       storage,
       columnMetadata.column,
       targetRegister,
       overrideSource
+    );
+    TypeOrmHelpers.updateGenerationMetadata(
+      storage,
+      targetRegister,
+      propertyKey.toString(),
+      columnMetadata.generation,
+      overrideSource?.strategy
+        ? overrideSource.strategy
+        : (columnMetadata.generation.strategy ?? undefined)
     );
     return;
   };
