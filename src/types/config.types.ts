@@ -14,7 +14,11 @@ export interface IDatabaseCredentials {
 interface IPackagesSettingsDefault {
   packages: Array<Lowercase<string>>;
   procedureObjectList: Record<string, string>;
-  isNeedDynamiclyUpdatePackagesInfo: boolean;
+  isNeedDynamicallyUpdatePackagesInfo?: boolean;
+  /**
+   * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
+   */
+  isNeedDynamiclyUpdatePackagesInfo?: boolean;
 }
 
 export interface IBaseConfig {
@@ -52,10 +56,23 @@ export type TOracleDbConfig =
 interface IPostgresDbConfigWithPackagesEvent extends IBaseConfig {
   type: 'postgres';
   parseInt8AsBigInt: boolean;
-  packagesSettings?: IPackagesSettingsDefault & {
-    listenEventName: string;
-    isNeedDynamiclyUpdatePackagesInfo: true;
-  };
+  packagesSettings?:
+    | (IPackagesSettingsDefault & {
+        listenEventName: string;
+        isNeedDynamicallyUpdatePackagesInfo: true;
+        /**
+         * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
+         */
+        isNeedDynamiclyUpdatePackagesInfo?: true;
+      })
+    | (IPackagesSettingsDefault & {
+        listenEventName: string;
+        isNeedDynamicallyUpdatePackagesInfo?: true;
+        /**
+         * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
+         */
+        isNeedDynamiclyUpdatePackagesInfo: true;
+      });
 }
 
 interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
@@ -64,7 +81,11 @@ interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
 > {
   packagesSettings?: IPackagesSettingsDefault & {
     listenEventName?: string;
-    isNeedDynamiclyUpdatePackagesInfo: false;
+    isNeedDynamicallyUpdatePackagesInfo?: false;
+    /**
+     * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
+     */
+    isNeedDynamiclyUpdatePackagesInfo?: false;
   };
 }
 

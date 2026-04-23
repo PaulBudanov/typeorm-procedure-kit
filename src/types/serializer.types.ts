@@ -11,16 +11,21 @@ type TSerializerTypeWithoutFormatBase =
   | 'BINARY'
   | 'XML';
 
-export interface ISerialzerValues {
+export interface ISerializerValues {
   strategy: (param: string | Buffer) => unknown;
 }
 
+/**
+ * @deprecated Use `ISerializerValues` instead.
+ */
+export type ISerialzerValues = ISerializerValues;
+
 export type TSerializerTypeCastWithoutFormat = Map<
   TSerializerTypeWithoutFormatBase,
-  ISerialzerValues
+  ISerializerValues
 >;
 
-export interface ISetSerializer extends ISerialzerValues {
+export interface ISetSerializer extends ISerializerValues {
   serializerType: TSerializerTypeWithoutFormatBase;
 }
 export type TOracleObjectDbTypeHandlerCast = Map<

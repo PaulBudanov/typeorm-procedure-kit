@@ -1,5 +1,5 @@
 import type {
-  ICaseStratefyFactory,
+  ICaseStrategyFactory,
   TKeyTransformCase,
 } from '../types/strategy.types.js';
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
@@ -19,15 +19,15 @@ export abstract class CaseStrategyFactory {
   };
 
   /**
-   * Returns an instance of ICaseStratefyFactory with the specified transformation function.
+   * Returns an instance of ICaseStrategyFactory with the specified transformation function.
    * The transformation function is used to transform column names from the database to the desired format.
    * The default transformation function is StringUtilities.toCamelCase.
    * @param {TKeyTransformCase} [outKeyTransformCase='camelCase'] - The key to the transformation function.
-   * @returns {ICaseStratefyFactory} - An instance of ICaseStratefyFactory with the specified transformation function.
+   * @returns {ICaseStrategyFactory} - An instance of ICaseStrategyFactory with the specified transformation function.
    */
   public static caseStrategyFactory(
     outKeyTransformCase: TKeyTransformCase = 'camelCase'
-  ): ICaseStratefyFactory {
+  ): ICaseStrategyFactory {
     const transformFn =
       CaseStrategyFactory.TRANSFORM_STRATEGIES[outKeyTransformCase] ??
       StringUtilities.toCamelCase;

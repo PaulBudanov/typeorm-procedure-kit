@@ -16,11 +16,11 @@ import type {
   TPostgresDbConfig,
 } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
-import type { ICaseStratefyFactory } from '../types/strategy.types.js';
+import type { ICaseStrategyFactory } from '../types/strategy.types.js';
 import { ServerError } from '../utils/server-error.js';
 
 export class DatabaseInitializerBase {
-  public readonly caseSettings: ICaseStratefyFactory;
+  public readonly caseSettings: ICaseStrategyFactory;
   private appDataSourceInstance: DataSource | null = null;
   private databaseAdapterInstance: TAdapterUtilsClassTypes | null = null;
   public constructor(
@@ -190,12 +190,16 @@ export class DatabaseInitializerBase {
       case 'postgres': {
         const { PostgreAdapter } =
           await import('../adapters/postgres/postgre-adapter.js');
+        const { packagesSettings } = this.dbConfig;
+        const isNeedDynamicallyUpdatePackagesInfo =
+          packagesSettings?.isNeedDynamicallyUpdatePackagesInfo ??
+          packagesSettings?.isNeedDynamiclyUpdatePackagesInfo;
         return new PostgreAdapter(
           this.appDataSource,
           this.logger,
           fetchHandlerOptions,
-          this.dbConfig.packagesSettings?.isNeedDynamiclyUpdatePackagesInfo
-            ? this.dbConfig.packagesSettings.listenEventName
+          isNeedDynamicallyUpdatePackagesInfo && packagesSettings
+            ? packagesSettings.listenEventName
             : undefined
         );
       }

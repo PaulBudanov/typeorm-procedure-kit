@@ -5,9 +5,14 @@ export interface INativeStrategyMethods {
   transformColumnName: (columnName: string) => string;
 }
 
-export interface ICaseStratefyFactory {
+export interface ICaseStrategyFactory {
   strategy: OrmStrategy;
   nativeStrategy: NativeStrategy;
 }
+
+/**
+ * @deprecated Use `ICaseStrategyFactory` instead.
+ */
+export type ICaseStratefyFactory = ICaseStrategyFactory;
 
 export type TKeyTransformCase = 'camelCase' | 'lowerCase' | 'snakeCase';

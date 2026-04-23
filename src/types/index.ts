@@ -30,7 +30,11 @@ export type {
 } from './notification.types.js';
 
 // Serializer
-export type { ISerialzerValues, ISetSerializer } from './serializer.types.js';
+export type {
+  ISerializerValues,
+  ISerialzerValues,
+  ISetSerializer,
+} from './serializer.types.js';
 
 // Utility
 export type {
@@ -51,6 +55,7 @@ export type {
 
 // Strategy
 export type {
+  ICaseStrategyFactory,
   ICaseStratefyFactory,
   INativeStrategyMethods,
   TKeyTransformCase,
