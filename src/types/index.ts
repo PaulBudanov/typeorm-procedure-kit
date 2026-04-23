@@ -55,8 +55,8 @@ export type {
 
 // Strategy
 export type {
-  ICaseStrategyFactory,
   ICaseStratefyFactory,
+  ICaseStrategyFactory,
   INativeStrategyMethods,
   TKeyTransformCase,
 } from './strategy.types.js';
@@ -66,3 +66,9 @@ export type { ILoggerModule } from './logger.types.js';
 
 // Base
 export type { IModuleConfig } from './base.types.js';
+
+// Extend Decorator
+export type {
+  TExtendPrimaryGeneratedColumnOptions,
+  TPrimaryGeneratedColumnOverrideDescriptor,
+} from './extend-decorator.types.js';
