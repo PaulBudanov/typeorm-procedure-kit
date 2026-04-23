@@ -745,19 +745,7 @@ export class OracleDriver implements Driver {
     if (!this.master) {
       throw new TypeORMError('Driver not Connected');
     }
-
-    return new Promise<oracledb.Connection>((resolve, reject) => {
-      const masterPool = this.master;
-      masterPool?.getConnection(
-        (err: Error | undefined, connection: oracledb.Connection) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(connection);
-          }
-        }
-      );
-    });
+    return await this.master.getConnection();
   }
 
   /**
@@ -774,19 +762,7 @@ export class OracleDriver implements Driver {
     if (!slavePool) {
       throw new TypeORMError('Slave connection not available');
     }
-
-    return new Promise<oracledb.Connection>((resolve, reject) => {
-      const slavePoolObj = slavePool;
-      slavePoolObj?.getConnection(
-        (err: Error | undefined, connection: oracledb.Connection) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(connection);
-          }
-        }
-      );
-    });
+    return await slavePool.getConnection();
   }
 
   /**
