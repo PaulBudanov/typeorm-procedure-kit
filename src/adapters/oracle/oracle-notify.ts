@@ -157,16 +157,18 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     channelName: string,
     connection: oracledb.Connection
   ): oracledb.SubscribeOptions {
+    const clientInitiated =
+      settings.clientInitiated ??
+      this.notifySettings.isNeedClientNotificationInit ??
+      false;
     const subscribeOptions = {
       sql,
-      clientInitiated:
-        settings.clientInitiated ??
-        this.notifySettings.isNeedClientNotificationInit ??
-        false,
+      clientInitiated,
       timeout: settings.timeout ?? 60 * 60 * 12,
       operations: settings.operations ?? oracledb.CQN_OPCODE_ALL_OPS,
       qos: settings.qos ?? oracledb.SUBSCR_QOS_ROWIDS,
-      port: this.notifySettings.notifyPort, // Listener port for CQN
+      port:
+        clientInitiated === true ? undefined : this.notifySettings.notifyPort, // Listener port for CQN
       callback: (msg: oracledb.SubscriptionMessage): Promise<void> =>
         this.makeSubscriptionHandler(
           notifyCallback,
