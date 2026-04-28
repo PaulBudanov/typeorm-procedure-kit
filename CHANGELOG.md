@@ -1,3 +1,10 @@
+## [1.12.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.6...v1.12.7) (2026-04-23)
+
+
+### Bug Fixes
+
+* add extend decorator type export to main types index ([a5ac326](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/a5ac326b3a838e5e29b3ae0592a32b096e9e34f9))
+
 ## [1.12.6](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.5...v1.12.6) (2026-04-23)
 
 
