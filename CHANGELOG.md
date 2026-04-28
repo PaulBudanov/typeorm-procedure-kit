@@ -1,3 +1,10 @@
+## [1.12.8](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.7...v1.12.8) (2026-04-28)
+
+
+### Bug Fixes
+
+* make  register global default flag isNeedClientNotificationInit. Can be overriding by makeNotify method settings. ([fcfc0f5](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/commit/fcfc0f5c9829683b2f45dd0b4b5698c776bfb3d9))
+
 ## [1.12.7](http://reshenie-soft.ru:7027/web-mis/packages/typeorm-procedure-kit/compare/v1.12.6...v1.12.7) (2026-04-23)
 
 
