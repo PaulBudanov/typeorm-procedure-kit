@@ -7,7 +7,6 @@ import type {
   TNotifyClassTypes,
   TSerializerClassTypes,
 } from '../../types/adapter.types.js';
-import type { TDbConfig } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   IOracleOptionsNotify,
@@ -206,12 +205,6 @@ export abstract class DatabaseAdapter<
 
   public getPackagesNotifySql(packages?: Array<string>): string {
     return this.notifier.getPackagesNotifySql(packages ?? []);
-  }
-
-  public getDefaultPackageNotifyOptions(
-    _config: TDbConfig
-  ): IOracleOptionsNotify | undefined {
-    return undefined;
   }
 
   public registerFetchHandlerHook(): void {

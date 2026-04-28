@@ -4,9 +4,8 @@ import oracledb from 'oracledb';
 
 import { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
-import type { TDbConfig, TOracleDbConfig } from '../../types/config.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import type { IOracleOptionsNotify } from '../../types/notification.types.js';
+import type { INotifyOracleDefaultSettings } from '../../types/notification.types.js';
 import type { TProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
@@ -31,10 +30,14 @@ export class OracleAdapter extends DatabaseAdapter<
     protected readonly appDataSource: DataSource,
     protected readonly logger: ILoggerModule,
     protected readonly handlerOptions: IRegisteredFetchHandlerOptions,
-    protected readonly notifyPort?: number
+    protected readonly notifySettings: INotifyOracleDefaultSettings
   ) {
     const oracleConnection = new OracleConnection(appDataSource, logger);
-    const oracleNotify = new OracleNotify(oracleConnection, logger, notifyPort);
+    const oracleNotify = new OracleNotify(
+      oracleConnection,
+      logger,
+      notifySettings
+    );
     const oracleSerializer = new OracleSerializer(logger, handlerOptions);
     super(logger, oracleSerializer, oracleNotify, oracleConnection);
     oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
@@ -57,16 +60,6 @@ export class OracleAdapter extends DatabaseAdapter<
     BLOB: oracledb.BLOB,
   } as const;
 
-  public override getDefaultPackageNotifyOptions(
-    config: TDbConfig
-  ): IOracleOptionsNotify | undefined {
-    if (config.type !== 'oracle') return undefined;
-    return {
-      operations: oracledb.CQN_OPCODE_INSERT,
-      clientInitiated:
-        (config as TOracleDbConfig).packagesSettings?.clientInitiated ?? false,
-    };
-  }
   /**
    * Creates bindings for a given SQL query or procedure call.
    *

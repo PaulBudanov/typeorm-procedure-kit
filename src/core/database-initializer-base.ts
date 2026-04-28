@@ -210,7 +210,11 @@ export class DatabaseInitializerBase {
           this.appDataSource,
           this.logger,
           fetchHandlerOptions,
-          this.dbConfig.cqnPort
+          {
+            notifyPort: this.dbConfig.cqnPort,
+            isNeedClientNotificationInit:
+              this.dbConfig.isNeedClientNotificationInit,
+          }
         );
       }
     }

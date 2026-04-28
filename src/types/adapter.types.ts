@@ -13,7 +13,6 @@ import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/Postg
 import type { PostgresDriver } from '../typeorm/driver/postgres/PostgresDriver.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 
-import type { TDbConfig } from './config.types.js';
 import type {
   IOracleOptionsNotify,
   TNotifyCallbackGeneric,
@@ -83,9 +82,6 @@ export interface IDatabaseAdapterContract {
   destroyNotifications(): Promise<void>;
   getNotificationPool(): Map<string, unknown>;
   getPackagesNotifySql(packages?: Array<string>): string;
-  getDefaultPackageNotifyOptions?(
-    config: TDbConfig
-  ): IOracleOptionsNotify | undefined;
   registerFetchHandlerHook(): void;
 }
 

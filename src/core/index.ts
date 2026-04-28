@@ -126,19 +126,12 @@ export class TypeOrmProcedureKit {
     const packagesSettings = this.settings.config.packagesSettings;
     if (packagesSettings && packagesSettings.packages.length > 0) {
       const notifyBase = this.requireNotifyBase();
-      const additionalOptions =
-        this.databaseInitializerBase.databaseAdapter.getDefaultPackageNotifyOptions?.(
-          this.settings.config
-        );
-      await notifyBase.createNotification<TNotifyPackageCallback>(
-        {
-          sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
-            packagesSettings.packages
-          ),
-          notifyCallback: notifyBase.packageNotifyCallback.bind(notifyBase),
-        },
-        additionalOptions
-      );
+      await notifyBase.createNotification<TNotifyPackageCallback>({
+        sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
+          packagesSettings.packages
+        ),
+        notifyCallback: notifyBase.packageNotifyCallback.bind(notifyBase),
+      });
     }
   }
 

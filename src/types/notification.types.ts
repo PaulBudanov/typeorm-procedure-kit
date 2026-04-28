@@ -49,3 +49,8 @@ export interface INotifyPackageCallbackPostgre {
   event?: string;
   object: string;
 }
+
+export interface INotifyOracleDefaultSettings {
+  notifyPort?: number;
+  isNeedClientNotificationInit?: boolean;
+}

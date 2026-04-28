@@ -4,6 +4,7 @@ import oracledb from 'oracledb';
 
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
+  INotifyOracleDefaultSettings,
   IOracleNotifyMsg,
   IOracleOptionsNotify,
   TNotifyCallbackGeneric,
@@ -25,12 +26,12 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
    * and logger.
    * @param {OracleConnection} oracleConnection - configuration for the Oracle connection
    * @param {ILoggerModule} logger - logger module to log messages
-   * @param {number} [notifyPort] - port number used for notify operations
+   * @param {INotifyOracleDefaultSettings} [notifySettings] - default settings for notifications
    */
   public constructor(
     private readonly oracleConnection: OracleConnection,
     protected readonly logger: ILoggerModule,
-    private readonly notifyPort?: number
+    private readonly notifySettings: INotifyOracleDefaultSettings
   ) {
     super(logger);
   }
@@ -99,7 +100,7 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
    * Registers a notification listener for a given channel
    * @param {string} sqlCommand - SQL command to listen to
    * @param {(args: T) => Promise<void> | void} notifyCallback - callback function to call when a notification is received
-   * @param {IOracleOptionsNotify} options - options for the subscription
+   * @param {IOracleOptionsNotify} options - options for the subscription, overridden default options
    * @returns {Promise<string>} - promise that resolves with the name of the channel that was subscribed to
    * @throws {Error} - if the SQL command does not contain LISTEN or if the listener for the channel is already registered
    */
@@ -149,7 +150,6 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
       );
     }
   }
-
   private generateOptions<T>(
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     settings: TOracleNormilizeOptionsNotify,
@@ -159,11 +159,14 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   ): oracledb.SubscribeOptions {
     const subscribeOptions = {
       sql,
-      clientInitiated: settings.clientInitiated ?? false,
+      clientInitiated:
+        settings.clientInitiated ??
+        this.notifySettings.isNeedClientNotificationInit ??
+        false,
       timeout: settings.timeout ?? 60 * 60 * 12,
       operations: settings.operations ?? oracledb.CQN_OPCODE_ALL_OPS,
       qos: settings.qos ?? oracledb.SUBSCR_QOS_ROWIDS,
-      port: this.notifyPort, // Listener port for CQN
+      port: this.notifySettings.notifyPort, // Listener port for CQN
       callback: (msg: oracledb.SubscriptionMessage): Promise<void> =>
         this.makeSubscriptionHandler(
           notifyCallback,

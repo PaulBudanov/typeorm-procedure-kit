@@ -35,18 +35,15 @@ interface IOracleConfigWithoutLibrary extends IBaseConfig {
   type: 'oracle';
   libraryPath?: undefined;
   cqnPort?: number;
-  packagesSettings?: IPackagesSettingsDefault & {
-    clientInitiated?: boolean;
-  };
+  isNeedClientNotificationInit?: boolean;
+  packagesSettings?: IPackagesSettingsDefault;
 }
 
 interface IOracleConfigWithLibrary extends Omit<
   IOracleConfigWithoutLibrary,
-  'libraryPath' | 'cqnPort'
+  'libraryPath'
 > {
-  type: 'oracle';
   libraryPath: string;
-  cqnPort: number;
 }
 
 export type TOracleDbConfig =
