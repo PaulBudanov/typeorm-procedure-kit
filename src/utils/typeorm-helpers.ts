@@ -11,7 +11,7 @@ import type { TFunction } from '../types/utility.types.js';
 export abstract class TypeOrmHelpers {
   /**
    * Finds a column in a hierarchy of objects.
-   * @param columns The columns to search in.
+   * @param metadataArgs Metadata storage containing TypeORM column, generation, and unique metadata.
    * @param target The object to start searching from.
    * @param propertyKey The key to search for.
    * @returns An object with the found target and the column if found, otherwise undefined.
@@ -88,6 +88,17 @@ export abstract class TypeOrmHelpers {
     return { foundTarget: currentTarget, table: undefined };
   }
 
+  /**
+   * Re-registers column metadata on a target and preserves the original metadata copy.
+   *
+   * Extend decorators use this to derive database-specific entity variants
+   * without losing metadata from the base class.
+   *
+   * @param storage - TypeORM metadata storage to update.
+   * @param column - Existing column metadata found in the inheritance chain.
+   * @param targetRegister - Target class where the updated metadata should be registered.
+   * @param overrideSource - Column options merged over the existing options.
+   */
   public static updateColumnMetadata(
     storage: MetadataArgsStorage,
     column: ColumnMetadataArgs,
@@ -109,6 +120,19 @@ export abstract class TypeOrmHelpers {
       storage.columns.push(copyColumn);
   }
 
+  /**
+   * Updates generated-column metadata for an extended primary column.
+   *
+   * Passing `false` or `undefined` removes generated metadata from the target;
+   * passing `true` uses the `increment` strategy, and passing a string uses it
+   * as the generation strategy.
+   *
+   * @param storage - TypeORM metadata storage to update.
+   * @param targetRegister - Target class where generation metadata should be registered.
+   * @param propertyKey - Column property name.
+   * @param existingGeneration - Generation metadata inherited from the source column.
+   * @param generated - Override generation setting.
+   */
   public static updateGenerationMetadata(
     storage: MetadataArgsStorage,
     targetRegister: object,
@@ -152,6 +176,14 @@ export abstract class TypeOrmHelpers {
     }
   }
 
+  /**
+   * Adds, updates, or removes single-column unique metadata for an extended column.
+   * @param storage - TypeORM metadata storage to update.
+   * @param targetRegister - Target class where unique metadata should be registered.
+   * @param propertyKey - Column property name.
+   * @param isUnique - Whether the column should be unique.
+   * @param unique - Existing unique metadata inherited from the source column.
+   */
   public static updateUniqueMetadata(
     storage: MetadataArgsStorage,
     targetRegister: object,

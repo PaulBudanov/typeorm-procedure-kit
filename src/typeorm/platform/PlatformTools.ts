@@ -48,8 +48,10 @@ export class PlatformTools {
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           return require('pg-native');
         }
-        case 'pg-query-stream':
-          return import('pg-query-stream');
+        case 'pg-query-stream': {
+          const { default: QueryStream } = await import('pg-query-stream');
+          return QueryStream;
+        }
       }
     } catch {
       return import(resolve(process.cwd() + '/node_modules/' + name)).catch(

@@ -4,11 +4,20 @@ export type TNotifyCallbackGeneric<T> = T extends string | object
   ? T
   : Array<T>;
 
+/**
+ * Database notification subscription input.
+ *
+ * PostgreSQL uses `sql` as a `LISTEN channel` command. Oracle uses it as the
+ * Continuous Query Notification subscription query.
+ */
 export interface ICreateNotify<T = unknown> {
   sql: string;
   notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>;
 }
 
+/**
+ * Oracle Continuous Query Notification options.
+ */
 export interface IOracleOptionsNotify {
   operations?: Array<number> | number; // CQN OPCODES, for all: oracledb.CQN_OPCODE_ALL_OPS
   qos?: number;

@@ -11,6 +11,9 @@ type TSerializerTypeWithoutFormatBase =
   | 'BINARY'
   | 'XML';
 
+/**
+ * Serializer strategy for a raw database value.
+ */
 export interface ISerializerValues {
   strategy: (param: string | Buffer) => unknown;
 }
@@ -25,6 +28,12 @@ export type TSerializerTypeCastWithoutFormat = Map<
   ISerializerValues
 >;
 
+/**
+ * Registers or overrides a serializer for one supported database type key.
+ *
+ * Supported keys are `DATE`, `TIMESTAMP`, `TIMESTAMP_TZ`, `BOOLEAN`, `CHAR`,
+ * `VARCHAR`, `JSON`, `BINARY`, and `XML`.
+ */
 export interface ISetSerializer extends ISerializerValues {
   serializerType: TSerializerTypeWithoutFormatBase;
 }

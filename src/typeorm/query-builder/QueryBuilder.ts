@@ -587,19 +587,23 @@ export abstract class QueryBuilder<Entity = unknown> {
   }
 
   /**
-   * Disables escaping.
+   * Disables automatic driver quoting for table, alias, and column identifiers.
    */
   public disableEscaping(): this {
     this.expressionMap.isQuotingDisabled = true;
     return this;
   }
+  /**
+   * Enables automatic driver quoting for table, alias, and column identifiers.
+   */
   public enableEscaping(): this {
     this.expressionMap.isQuotingDisabled = false;
     return this;
   }
 
   /**
-   * Escapes table name, column name or alias name using current database's escaping character.
+   * Quotes a table name, column name, or alias with the current database driver's quote character.
+   * When quoting is disabled, pass `isNeedQuote = true` to force quoting for one identifier.
    */
   public escape(name: string, isNeedQuote = false): string {
     if (this.expressionMap.isQuotingDisabled && !isNeedQuote) return name;

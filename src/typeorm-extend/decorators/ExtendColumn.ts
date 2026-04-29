@@ -18,7 +18,6 @@ import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
  *   @ExtendColumn({ onUpdate: 'uuid_generate_v4()' })
  *   id: string;
  * }
- }
  */
 export function ExtendColumn(
   overrideSource?: Partial<ColumnOptions>,

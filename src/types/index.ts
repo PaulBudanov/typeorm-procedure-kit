@@ -41,6 +41,10 @@ export type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
   ISqlError,
+  IEventBusService,
+  ICollectionStrategy,
+  TMapKey,
+  TQueueType,
 } from './utility.types.js';
 
 // Adapter

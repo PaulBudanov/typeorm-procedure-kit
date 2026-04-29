@@ -90,7 +90,7 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @returns an object with the following properties:
    * - paramExecuteString: a string representing the SQL query with bindings
    * - bindings: an array of values to be passed to the procedure
-   * - cursorsNames: an array of names of cursors (for Oracle only)
+   * - cursorsNames: an array of PostgreSQL refcursor argument names to fetch after the call
    */
   public override makeBindings<
     U extends Record<string, unknown> | Array<unknown>,

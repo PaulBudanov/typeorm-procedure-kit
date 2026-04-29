@@ -1,12 +1,12 @@
 import type { PoolClient } from 'pg';
-import QueryStream from 'pg-query-stream';
+import type QueryStreamType from 'pg-query-stream';
 
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { QueryFailedError } from '../../error/QueryFailedError.js';
 import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
 import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import { ReadStream } from '../../platform/PlatformTools.js';
+import { PlatformTools, ReadStream } from '../../platform/PlatformTools.js';
 import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
 import { QueryResult } from '../../query-runner/QueryResult.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
@@ -447,6 +447,9 @@ export class PostgresQueryRunner
       parameters,
       this as unknown as QueryRunner
     );
+    const QueryStream = (await PlatformTools.load(
+      'pg-query-stream'
+    )) as typeof QueryStreamType;
     const stream = databaseConnection!.query(
       new QueryStream(query, parameters)
     );

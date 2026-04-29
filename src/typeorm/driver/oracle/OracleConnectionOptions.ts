@@ -23,7 +23,7 @@ export interface OracleConnectionOptions
   readonly type: 'oracle';
 
   /**
-   * Schema name. By default is "public".
+   * Oracle schema name used as the default owner for database objects.
    */
   readonly schema?: string;
 

@@ -68,6 +68,17 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     channelName: string,
     isTimedOut = false
   ): Promise<void> {
+    if (channelName.includes(',')) {
+      await Promise.all(
+        channelName
+          .split(',')
+          .map((channel) => channel.trim())
+          .filter((channel) => channel.length > 0)
+          .map((channel) => this.unlistenNotify(channel, isTimedOut))
+      );
+      return;
+    }
+
     const connection = this.notificationPool.get(channelName);
     this.notificationPool.delete(channelName);
     if (!connection) {
@@ -97,27 +108,34 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   }
   //TODO: Make return object more informative
   /**
-   * Registers a notification listener for a given channel
-   * @param {string} sqlCommand - SQL command to listen to
-   * @param {(args: T) => Promise<void> | void} notifyCallback - callback function to call when a notification is received
-   * @param {IOracleOptionsNotify} options - options for the subscription, overridden default options
-   * @returns {Promise<string>} - promise that resolves with the name of the channel that was subscribed to
-   * @throws {Error} - if the SQL command does not contain LISTEN or if the listener for the channel is already registered
+   * Registers an Oracle Continuous Query Notification subscription.
+   *
+   * Oracle uses the provided SQL query as the CQN subscription query and
+   * generates an internal UUID subscription name. When Oracle reports changed
+   * ROWIDs, the notifier fetches the changed rows and passes them to the
+   * callback.
+   *
+   * @param {string} sqlCommand - SQL query to subscribe to.
+   * @param {(args: TNotifyCallbackGeneric<T>) => Promise<void> | void} notifyCallback - Callback called with changed rows.
+   * @param {IOracleOptionsNotify} options - CQN options that override default notification settings.
+   * @returns {Promise<string>} - Name of the created subscription.
+   * @throws {Error} - If subscription registration fails.
    */
   public override async listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: IOracleOptionsNotify
   ): Promise<string> {
-    const channelName = randomUUID();
-    const connection = await this.oracleConnection.createSingleConnection();
     if (Array.isArray(options.operations)) {
       if (options.operations.length >= 4)
         throw new ServerError(
           'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,'
         );
       const subscriptions = await Promise.all(
-        options.operations.map((operation) => {
+        options.operations.map(async (operation) => {
+          const channelName = randomUUID();
+          const connection =
+            await this.oracleConnection.createSingleConnection();
           const modifyOptions: TOracleNormilizeOptionsNotify = {
             ...options,
             operations: operation,
@@ -137,6 +155,8 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
       );
       return subscriptions.join(', ');
     } else {
+      const channelName = randomUUID();
+      const connection = await this.oracleConnection.createSingleConnection();
       return this.subscribe(
         connection,
         channelName,

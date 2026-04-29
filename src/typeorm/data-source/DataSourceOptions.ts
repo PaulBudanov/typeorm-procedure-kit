@@ -8,5 +8,12 @@ export type DataSourceOptions = (
   | PostgresConnectionOptions
   | OracleConnectionOptions
 ) & {
+  /**
+   * Disables automatic identifier quoting in query builders when true.
+   *
+   * The kit sets this to true by default during module initialization so
+   * generated SQL keeps database identifiers unquoted unless quoting is forced
+   * through query-builder escape APIs.
+   */
   isQuotingDisabled?: boolean;
 };

@@ -22,6 +22,11 @@ export class NativeStrategy implements INativeStrategyMethods {
       );
   }
 
+  /**
+   * Transforms and caches a raw database column name with the configured case strategy.
+   * @param columnName - Raw column name returned by the database driver.
+   * @returns Column name transformed to the configured output case.
+   */
   public transformColumnName(columnName: string): string {
     if (typeof columnName !== 'string')
       throw new ServerError('columnName must be a string');

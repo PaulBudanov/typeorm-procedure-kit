@@ -28,6 +28,18 @@ export class OrmStrategy
         this.columnNameCacheKey
       );
   }
+  /**
+   * Applies the configured case strategy to entity property names before
+   * delegating to the default TypeORM column naming behavior.
+   *
+   * Explicit custom names are still passed to DefaultNamingStrategy so standard
+   * TypeORM override behavior is preserved.
+   *
+   * @param propertyName - Entity property name.
+   * @param customName - Optional custom column name from decorator metadata.
+   * @param embeddedPrefixes - Embedded prefixes supplied by TypeORM.
+   * @returns Database column name for ORM-generated SQL.
+   */
   public columnName(
     propertyName: string,
     customName: string,

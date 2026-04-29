@@ -84,11 +84,14 @@ export class DatabaseInitializerBase {
   }
 
   /**
-   * Returns the connection options for the database connection.
-   * Depending on the database type, it either returns PostgresConnectionOptions or OracleConnectionOptions.
-   * If the database type is not recognized, it throws an error.
-   * @returns {PostgresConnectionOptions | OracleConnectionOptions} - the connection options for the database connection
-   * @throws {ServerError} - error if the database type is not recognized
+   * Creates the TypeORM DataSource and the matching database adapter.
+   *
+   * The method is idempotent: if both objects already exist, it returns without
+   * rebuilding them. Adapter fetch hooks are registered immediately after the
+   * adapter is created so native query results use the configured serializers
+   * and output-key casing.
+   *
+   * @throws {ServerError} - If the configured database type is not supported.
    */
   private async initDataSource(): Promise<void> {
     if (this.appDataSourceInstance && this.databaseAdapterInstance) return;

@@ -181,12 +181,17 @@ export class TypeOrmProcedureKit {
     );
   }
   /**
-   * Executes a SQL query or transaction in a single database call.
-   * @param sql - SQL query string
-   * @param [params] - object or array with data to be passed to the SQL query, or undefined/null
-   * @param [options] - array of strings representing the options for the SQL query call
-   * @returns Promise<Array<T>> - promise that resolves with an array of result objects
-   * @throws ServerError - if an error occurs during the execution of commands
+   * Executes a raw SQL statement inside the same transaction flow as a procedure call.
+   *
+   * Parameters are read from uppercase `:PARAM_NAME` placeholders. PostgreSQL
+   * rewrites them to positional `$1`, `$2` bindings, while Oracle keeps the
+   * original placeholders and passes the binding array to the driver.
+   *
+   * @param sql - SQL query string with optional uppercase named parameters.
+   * @param [params] - Object with values for the named SQL parameters.
+   * @param [options] - SQL commands to execute in the transaction before the main query.
+   * @returns Promise that resolves with an array of result objects.
+   * @throws ServerError - If an error occurs during command execution.
    */
   public callSqlTransaction<T>(
     sql: string,
@@ -211,7 +216,7 @@ export class TypeOrmProcedureKit {
    * );
    */
   public makeNotify<T>(
-    options: ICreateNotify,
+    options: ICreateNotify<T>,
     additionalOptions?: IOracleOptionsNotify
   ): Promise<string> {
     return this.requireNotifyBase().createNotification<T>(

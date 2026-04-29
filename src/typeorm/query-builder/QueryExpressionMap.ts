@@ -231,9 +231,10 @@ export class QueryExpressionMap {
   public parameters: ObjectLiteral = {};
 
   /**
-   * Indicates if alias, table names and column names will be escaped by driver, or not.
+   * Disables driver quoting for aliases, table names, and column names when true.
    *
-   *
+   * Defaults to true for this kit, so generated SQL keeps identifiers unquoted
+   * unless query-builder code explicitly enables quoting or forces it per call.
    */
   public isQuotingDisabled = true;
 

@@ -75,19 +75,11 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       );
       client.on('notification', (msg) => {
         if (msg.channel?.toLowerCase() === channelName.toLowerCase()) {
-          let payload: TNotifyCallbackGeneric<T>;
-          try {
-            payload = (
-              msg.payload ? (JSON.parse(msg.payload) as T) : {}
-            ) as TNotifyCallbackGeneric<T>;
-          } catch {
-            this.logger.error(
-              `Error parsing JSON payload in notification from channel ${channelName} : ${msg.payload} , returning as is.`
-            );
-            payload = msg.payload as TNotifyCallbackGeneric<T>;
-          }
-          DatabaseErrorHandler.checkForDatabaseError(payload);
-          void notifyCallback(payload);
+          void this.handleNotificationPayload<T>(
+            channelName,
+            msg.payload,
+            notifyCallback
+          );
         }
         return;
       });
@@ -102,6 +94,36 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         (error as Error).stack
       );
       throw error;
+    }
+  }
+
+  private async handleNotificationPayload<T>(
+    channelName: string,
+    rawPayload: string | undefined,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>
+  ): Promise<void> {
+    let payload: TNotifyCallbackGeneric<T>;
+    try {
+      payload = (
+        rawPayload ? (JSON.parse(rawPayload) as T) : {}
+      ) as TNotifyCallbackGeneric<T>;
+    } catch {
+      this.logger.error(
+        `Error parsing JSON payload in notification from channel ${channelName} : ${rawPayload} , returning as is.`
+      );
+      payload = rawPayload as TNotifyCallbackGeneric<T>;
+    }
+
+    try {
+      DatabaseErrorHandler.checkForDatabaseError(payload);
+      await notifyCallback(payload);
+    } catch (error) {
+      this.logger.error(
+        `Unhandled notification callback error for channel "${channelName}": ${
+          (error as Error).message
+        }`,
+        (error as Error).stack
+      );
     }
   }
 

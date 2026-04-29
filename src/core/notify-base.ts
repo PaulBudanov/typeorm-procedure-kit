@@ -1,5 +1,3 @@
-import { QueueManager } from '@web-mis/queue-manager';
-
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
@@ -8,6 +6,7 @@ import type {
   IOracleOptionsNotify,
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
+import { QueueManager } from '../utils/queue-manager.js';
 
 import type { ProcedureListBase } from './procedure-list-base.js';
 
@@ -16,13 +15,16 @@ export class NotifyBase {
   private queueCallback: ((data: { item: string }) => void) | null = null;
 
   /**
-   * Constructor for NotifyBase class.
-   * It is protected, so it can only be used in derived classes.
-   * @param dbConfig - database configuration
-   * @param procedureObjectList - list of procedures
-   * @param logger - logger
-   * @param entity - entity configuration (optional)
-   * @param migrationPath - migration configuration (optional)
+   * Creates the package notification coordinator.
+   *
+   * The coordinator receives database package-change events, deduplicates them
+   * through an internal queue, and asks ProcedureListBase to refresh procedure
+   * metadata for configured packages.
+   *
+   * @param databaseAdapter - Adapter used to create and manage database notifications.
+   * @param procedureListBase - Procedure metadata registry to refresh after package changes.
+   * @param logger - Logger used for queue and notification lifecycle messages.
+   * @param packagesSettings - Optional package settings that limit refreshes to known packages.
    */
   public constructor(
     private readonly databaseAdapter: TAdapterUtilsClassTypes,
@@ -109,7 +111,12 @@ export class NotifyBase {
   }
 
   /**
-   * Create a notification channel and subscribe to it.
+   * Creates a database notification subscription.
+   *
+   * PostgreSQL expects a `LISTEN channel_name` command. Oracle expects a CQN
+   * subscription SQL query and optional CQN settings such as operations, QoS,
+   * timeout, or client-initiated mode.
+   *
    * @param {ICreateNotify<T>} options - options for creating the notification channel
    * @param {IOracleOptionsNotify} [additionalOptions] - additional options for Oracle database, if applicable
    * @returns {Promise<string>} - promise that resolves with the name of the notification channel

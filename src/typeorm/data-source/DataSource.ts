@@ -121,6 +121,10 @@ export class DataSource {
    */
   public queryResultCache?: QueryResultCache;
 
+  /**
+   * When true, query builders return raw identifier names instead of asking the
+   * driver to quote aliases, tables, and columns by default.
+   */
   public isQuotingDisabled?: boolean;
 
   /**

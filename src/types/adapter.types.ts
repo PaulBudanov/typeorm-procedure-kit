@@ -32,7 +32,13 @@ import type {
 } from './utility.types.js';
 
 export interface IRegisteredFetchHandlerOptions {
+  /**
+   * Strategy used by driver fetch hooks to transform raw column names.
+   */
   caseNativeStrategy: INativeStrategyMethods;
+  /**
+   * Whether adapter initialization should register built-in date/time serializers.
+   */
   isNeedRegisterDefaultSerializers: boolean;
 }
 

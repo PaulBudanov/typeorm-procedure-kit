@@ -12,8 +12,23 @@ export interface IDatabaseCredentials {
   database: string;
 }
 interface IPackagesSettingsDefault {
+  /**
+   * Database package/schema names to inspect for callable procedures.
+   * Keep values lowercase because procedure resolution normalizes names.
+   */
   packages: Array<Lowercase<string>>;
+  /**
+   * Procedures that should be loaded from database metadata.
+   * Keys are application labels for this configuration object only; `call()`
+   * resolves procedure names from the values, using `package.procedure` or
+   * `procedure` when only one package is configured.
+   */
   procedureObjectList: Record<string, string>;
+  /**
+   * Enables dynamic package update mode. In PostgreSQL configs this also
+   * requires `listenEventName` so package-change notifications can use a
+   * custom channel.
+   */
   isNeedDynamicallyUpdatePackagesInfo?: boolean;
   /**
    * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
@@ -22,12 +37,34 @@ interface IPackagesSettingsDefault {
 }
 
 export interface IBaseConfig {
+  /**
+   * Primary database credentials used for writes and default connections.
+   */
   master: IDatabaseCredentials;
+  /**
+   * Maximum connection pool size passed to the underlying DataSource.
+   */
   poolSize: number;
+  /**
+   * Optional read replicas used by TypeORM replication.
+   */
   slaves?: Array<IDatabaseCredentials>;
+  /**
+   * Application name sent to the database driver when supported.
+   */
   appName?: string;
+  /**
+   * Slow-query threshold passed as maxQueryExecutionTime.
+   */
   callTimeout?: number;
+  /**
+   * Registers built-in DATE, TIMESTAMP, and TIMESTAMP_TZ serializers during initialization.
+   */
   isNeedRegisterDefaultSerializers?: boolean;
+  /**
+   * Output key casing for ORM column names and native query result keys.
+   * Defaults to `camelCase`.
+   */
   outKeyTransformCase?: TKeyTransformCase;
 }
 
@@ -52,6 +89,11 @@ export type TOracleDbConfig =
 
 interface IPostgresDbConfigWithPackagesEvent extends IBaseConfig {
   type: 'postgres';
+  /**
+   * Passed to the bundled Postgres driver as `parseInt8`.
+   * When true, node-postgres parses int8 values as JavaScript numbers instead
+   * of strings. Values above Number.MAX_SAFE_INTEGER can lose precision.
+   */
   parseInt8AsBigInt: boolean;
   packagesSettings?:
     | (IPackagesSettingsDefault & {

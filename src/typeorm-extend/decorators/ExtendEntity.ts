@@ -39,7 +39,7 @@ export function ExtendEntity(
       typeof entityMetadata.foundTarget !== 'function'
     ) {
       throw new ServerError(
-        `Entity "${target.toString()}" not registered. Original сlass target name: "${entityMetadata.foundTarget}". ` +
+        `Entity "${target.toString()}" not registered. Original class target name: "${entityMetadata.foundTarget}". ` +
           'Register entity with @Entity() decorator first.'
       );
     }

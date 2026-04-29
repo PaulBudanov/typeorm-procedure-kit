@@ -18,7 +18,7 @@ function isPrimaryGeneratedColumnOverrideDescriptor(
 /**
  * Extends the @PrimaryGeneratedColumn decorator with additional options.
  * Allows to register a primary generated column with options that are not supported by the original @PrimaryGeneratedColumn decorator.
- * @param {TExtendPrimaryGeneratedColumnOptions} overrideSource - Partial PrimaryGeneratedColumnNumericOptions object to override the existing column options.
+ * @param {TExtendPrimaryGeneratedColumnOptions} overrideSource - Column options or a descriptor with generation strategy and options to override existing metadata.
  * @param {boolean} [isRegisterToParentTarget=false] - Whether to register the column to the parent target or to the target itself.
  * @returns {PropertyDecorator} - The extended primary generated column decorator.
  * @example
