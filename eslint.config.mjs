@@ -149,13 +149,30 @@ export default defineConfig(
 
   // Optionally: disable some rules for tests
   {
-    files: ['**/*.test.ts', '**/*.spec.ts'],
+    files: ['test/**/*.ts', '**/*.test.ts', '**/*.spec.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: './tsconfig.test.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     rules: {
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
       'no-console': 'off',
+    },
+  },
+  {
+    files: ['vitest.config.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: './tsconfig.test.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
   }
 );
