@@ -1,9 +1,13 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Tests
     branches:
       - master
+    types:
+      - completed
   workflow_dispatch:
 
 concurrency:
@@ -12,37 +16,135 @@ concurrency:
 
 permissions:
   contents: read
+  checks: read
+  statuses: read
 
 jobs:
   release:
     name: Build and publish
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
+      checks: read
       contents: write
       issues: write
       pull-requests: write
+      statuses: read
       id-token: write
     steps:
+      - name: Resolve checked commit
+        id: checked-commit
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: master
+
+      - name: Ensure master still points to the checked commit
+        id: release-target
+        shell: bash
+        run: |
+          current_sha="$(git rev-parse HEAD)"
+          checked_sha="${{ steps.checked-commit.outputs.sha }}"
+
+          if [ "$current_sha" != "$checked_sha" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping release because master moved to $current_sha after checks completed for $checked_sha."
+            exit 0
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for repository checks
+        if: steps.release-target.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CHECKED_SHA: ${{ steps.checked-commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_checks=(
+            "Typecheck, lint, and test"
+            "CodeQL analysis"
+            "Dependency audit"
+          )
+
+          deadline=$((SECONDS + 1800))
+          while true; do
+            check_runs="$(gh api "/repos/$REPOSITORY/commits/$CHECKED_SHA/check-runs?per_page=100")"
+            blocking_checks=""
+
+            for required_check in "${required_checks[@]}"; do
+              check_state="$(
+                jq -r --arg name "$required_check" '
+                  [
+                    .check_runs[]
+                    | select(.name == $name)
+                  ]
+                  | sort_by(.started_at // "")
+                  | last
+                  | if . == null then
+                      "missing"
+                    else
+                      "\(.status)/\(.conclusion // "pending")"
+                    end
+                ' <<< "$check_runs"
+              )"
+
+              case "$check_state" in
+                completed/success|completed/skipped|completed/neutral)
+                  ;;
+                *)
+                  blocking_checks="${blocking_checks}${required_check}: ${check_state}"$'\n'
+                  ;;
+              esac
+            done
+
+            if [ -z "$blocking_checks" ]; then
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for repository checks:"
+              echo "$blocking_checks"
+              exit 1
+            fi
+
+            echo "Waiting for repository checks:"
+            echo "$blocking_checks"
+            sleep 30
+          done
 
       - name: Setup Node.js
+        if: steps.release-target.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
-        run: npm install
+        if: steps.release-target.outputs.ready == 'true'
+        run: npm ci
 
       - name: Build
+        if: steps.release-target.outputs.ready == 'true'
         run: npm run build
 
       - name: Publish release
+        if: steps.release-target.outputs.ready == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN || github.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_IGNORE_SCRIPTS: true
