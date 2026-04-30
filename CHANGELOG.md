@@ -1,3 +1,17 @@
+# [1.1.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.0.0...v1.1.0) (2026-04-30)
+
+
+### Bug Fixes
+
+* delete unuses code checker for github ([9ade782](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/9ade782002b48da0cf355962a836a2d07f099c74))
+* github actions workflow, added security action and dependabot ([e7b8a99](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/e7b8a990181caeea4b195b7feb1d6f03dbcc608a))
+* logic with lock file ([1bb302b](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/1bb302b85243ec300d8b8d115d4536956236ef79))
+
+
+### Features
+
+* added unit tests, migrate README. ([717f8b0](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/717f8b0da465f982e5ce2373ad27a31717791c16))
+
 # 1.0.0 (2026-04-29)
 
 ### Bug Fixes
