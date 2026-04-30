@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.1.0...v1.2.0) (2026-04-30)
+
+
+### Features
+
+* **nest:** add injectable decorators for core methods ([357bd2c](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/357bd2c18bba7a330be368c3c18261d5bd7a6b18))
+
 # [1.1.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.0.0...v1.1.0) (2026-04-30)
 
 
