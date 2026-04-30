@@ -35,14 +35,15 @@
 
 ## At a glance
 
-| Area | What you get |
-| --- | --- |
-| Procedures | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas. |
-| SQL | Raw SQL execution through the same transaction flow as procedure calls. |
-| Notifications | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support. |
-| Serialization | Built-in and custom serializers for database result values. |
-| NestJS | Global dynamic module plus focused injection decorators for public methods. |
-| TypeORM API | Bundled TypeORM-compatible exports for projects managed by this kit. |
+| Area          | What you get                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| Procedures    | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas.                      |
+| SQL           | Raw SQL execution through the same transaction flow as procedure calls.                                |
+| Notifications | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support.                           |
+| Serialization | Built-in and custom serializers for database result values.                                            |
+| NestJS        | Global dynamic module plus focused injection decorators for the public runtime methods.                 |
+| TypeORM API   | Bundled TypeORM-compatible exports with stricter project-local types for repositories and query APIs.   |
+| Identifiers   | TypeORM-compatible query builders keep identifiers unquoted by default to avoid unwanted double quotes. |
 
 Maintained by Paul Budanov.
 
@@ -56,10 +57,14 @@ Maintained by Paul Budanov.
 - Runtime package metadata refresh through database notifications.
 - Configurable output key casing: `camelCase`, `lowerCase`, or `snakeCase`.
 - Built-in and custom serializers for database result values.
-- NestJS integration through a global dynamic module.
+- NestJS integration through a global dynamic module and decorators for
+  injecting individual public methods.
 - A bundled TypeORM-compatible export for Oracle/PostgreSQL projects; TypeORM
-  is included in this package.
+  is included in this package with type fixes for stricter TypeScript projects.
 - `typeorm-extend` decorators for deriving database-specific entity metadata.
+- Identifier quoting is disabled by default for the bundled TypeORM-compatible
+  DataSource, so generated SQL avoids accidental double-quoted table and column
+  names unless you explicitly enable escaping.
 
 ## Requirements
 
@@ -109,7 +114,10 @@ import { TypeOrmProcedureKitNestModule } from 'typeorm-procedure-kit/nestjs';
 
 import { Entity, Column, PrimaryColumn } from 'typeorm-procedure-kit/typeorm';
 
-import { ExtendColumn, ExtendEntity } from 'typeorm-procedure-kit/typeorm-extend';
+import {
+  ExtendColumn,
+  ExtendEntity,
+} from 'typeorm-procedure-kit/typeorm-extend';
 ```
 
 The root import exports the kit, public types, constants, and utilities. TypeORM
@@ -127,11 +135,15 @@ Every setup uses an `IModuleConfig` object:
 import type { IModuleConfig, ILoggerModule } from 'typeorm-procedure-kit';
 
 const logger: ILoggerModule = {
-  error: (message, ...optionalParams) => console.error(message, ...optionalParams),
+  error: (message, ...optionalParams) =>
+    console.error(message, ...optionalParams),
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
-  warn: (message, ...optionalParams) => console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) => console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) => console.debug(message, ...optionalParams),
+  warn: (message, ...optionalParams) =>
+    console.warn(message, ...optionalParams),
+  debug: (message, ...optionalParams) =>
+    console.debug(message, ...optionalParams),
+  verbose: (message, ...optionalParams) =>
+    console.debug(message, ...optionalParams),
 };
 
 const config: IModuleConfig = {
@@ -180,6 +192,10 @@ Common database options:
 - `poolSize`: connection pool size.
 - `appName`: application name passed to supported drivers.
 - `callTimeout`: slow-query logging threshold passed to TypeORM.
+- `parseInt8AsBigInt`: PostgreSQL-only option passed to the bundled driver as
+  `parseInt8`. When `true`, `node-postgres` parses `int8` values as JavaScript
+  numbers instead of strings; values above `Number.MAX_SAFE_INTEGER` can lose
+  precision despite the option name.
 - `outKeyTransformCase`: output key case, defaulting to `camelCase`.
 - `isNeedRegisterDefaultSerializers`: registers default date/time serializers.
 - `isNeedClientNotificationInit`: Oracle CQN default mode. Use `true` for
@@ -251,11 +267,15 @@ import { TypeOrmProcedureKit } from 'typeorm-procedure-kit';
 import type { ILoggerModule, IModuleConfig } from 'typeorm-procedure-kit';
 
 const logger: ILoggerModule = {
-  error: (message, ...optionalParams) => console.error(message, ...optionalParams),
+  error: (message, ...optionalParams) =>
+    console.error(message, ...optionalParams),
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
-  warn: (message, ...optionalParams) => console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) => console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) => console.debug(message, ...optionalParams),
+  warn: (message, ...optionalParams) =>
+    console.warn(message, ...optionalParams),
+  debug: (message, ...optionalParams) =>
+    console.debug(message, ...optionalParams),
+  verbose: (message, ...optionalParams) =>
+    console.debug(message, ...optionalParams),
 };
 
 const settings: IModuleConfig = {
@@ -285,9 +305,12 @@ const db = new TypeOrmProcedureKit(settings);
 
 await db.initDatabase();
 
-const users = await db.call<{ id: number; fullName: string }>('api.search_users', {
-  query: 'Paul',
-});
+const users = await db.call<{ id: number; fullName: string }>(
+  'api.search_users',
+  {
+    query: 'Paul',
+  }
+);
 
 await db.destroy();
 ```
@@ -308,11 +331,15 @@ import { TypeOrmProcedureKit } from 'typeorm-procedure-kit';
 import type { ILoggerModule, IModuleConfig } from 'typeorm-procedure-kit';
 
 const logger: ILoggerModule = {
-  error: (message, ...optionalParams) => console.error(message, ...optionalParams),
+  error: (message, ...optionalParams) =>
+    console.error(message, ...optionalParams),
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
-  warn: (message, ...optionalParams) => console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) => console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) => console.debug(message, ...optionalParams),
+  warn: (message, ...optionalParams) =>
+    console.warn(message, ...optionalParams),
+  debug: (message, ...optionalParams) =>
+    console.debug(message, ...optionalParams),
+  verbose: (message, ...optionalParams) =>
+    console.debug(message, ...optionalParams),
 };
 
 const settings: IModuleConfig = {
@@ -457,6 +484,9 @@ await db.unlistenNotify(channel);
 
 Oracle generates an internal UUID subscription name. When row IDs are reported,
 the adapter fetches changed rows and passes them to the callback.
+Passing an `operations` array creates one CQN subscription per operation; the
+returned channel string contains the generated subscription names and can be
+passed back to `unlistenNotify()` unchanged.
 
 ## Dynamic package metadata refresh
 
@@ -575,6 +605,52 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 The Nest service extends `TypeOrmProcedureKit`, initializes the database in
 `onModuleInit()`, and calls `destroy()` from `onApplicationShutdown()`.
 
+The NestJS entry point also exports focused decorators for injecting individual
+public methods instead of the full service:
+
+| Decorator | Injected function type | Delegates to |
+| --- | --- | --- |
+| `@InjectCallProcedure()` | `TCallProcedure` | `TypeOrmProcedureKit.call()` |
+| `@InjectCallSql()` | `TCallSql` | `TypeOrmProcedureKit.callSqlTransaction()` |
+| `@InjectMakeNotify()` | `TMakeNotify` | `TypeOrmProcedureKit.makeNotify()` |
+| `@InjectUnlistenNotify()` | `TUnlistenNotify` | `TypeOrmProcedureKit.unlistenNotify()` |
+| `@InjectSetSerializer()` | `TSetSerializer` | `TypeOrmProcedureKit.setSerializer()` |
+| `@InjectDeleteSerializer()` | `TDeleteSerializer` | `TypeOrmProcedureKit.deleteSerializer()` |
+| `@InjectDeleteAllSerializers()` | `TDeleteAllSerializers` | `TypeOrmProcedureKit.deleteAllSerializers()` |
+
+```ts
+import { Injectable } from '@nestjs/common';
+import {
+  InjectCallProcedure,
+  InjectCallSql,
+  type TCallProcedure,
+  type TCallSql,
+} from 'typeorm-procedure-kit/nestjs';
+
+@Injectable()
+export class BillingRepository {
+  public constructor(
+    @InjectCallProcedure()
+    private readonly callProcedure: TCallProcedure,
+    @InjectCallSql()
+    private readonly callSql: TCallSql
+  ) {}
+
+  public findInvoices(customerId: number): Promise<Array<{ id: number }>> {
+    return this.callProcedure<{ id: number }>('billing.find_invoices', {
+      customerId,
+    });
+  }
+
+  public countInvoices(customerId: number): Promise<Array<{ total: number }>> {
+    return this.callSql<{ total: number }>(
+      'SELECT COUNT(*) AS total FROM invoices WHERE customer_id = :CUSTOMER_ID',
+      { CUSTOMER_ID: customerId }
+    );
+  }
+}
+```
+
 ## EntityManager and DataSource access
 
 Use the underlying TypeORM-compatible objects when you need lower-level access:
@@ -606,14 +682,27 @@ The TypeORM typing layer was reworked for stricter TypeScript projects:
   better entity type information;
 - repository, query builder, and entity manager methods have stricter generic
   return types;
+- common repository inputs such as `FindOptionsWhere`, `FindManyOptions`,
+  `FindOneOptions`, `DeepPartial`, and `QueryPartialEntity` are kept aligned
+  with the entity shape exported by this package;
 - decorator and metadata argument types are adjusted for database-specific
   entity variants;
+- `Column`, `PrimaryColumn`, `PrimaryGeneratedColumn`, relation decorators, and
+  entity schema options expose the database-specific surfaces used by the kit;
 - Oracle/PostgreSQL column types and query-runner surfaces are narrowed for the
   supported drivers.
 
 The kit sets `isQuotingDisabled: true` during DataSource initialization. Query
-builders keep identifiers unquoted by default, but you can call
-`enableEscaping()` or force a single identifier through `escape(name, true)`.
+builders keep identifiers unquoted by default, which avoids SQL like
+`"USERS"` or `"CREATED_AT"` being generated accidentally when the database
+schema expects plain uppercase identifiers. You can still opt into quoting when
+you need it by calling `enableEscaping()` or by forcing a single identifier
+through `escape(name, true)`.
+
+This TypeORM quoting mode applies to generated entity, repository, and query
+builder SQL. Procedure calls and notification channels use their own adapter
+paths: identifiers are validated by `SqlIdentifier` and quoted or formatted
+where the target database requires it.
 
 ## TypeORM extension decorators
 
@@ -807,6 +896,9 @@ call `destroy()` automatically.
   database user.
 - `call()` cannot be used without `packagesSettings`.
 - Raw SQL parameter placeholders must be uppercase, for example `:USER_ID`.
+- PostgreSQL `parseInt8AsBigInt` follows the bundled TypeORM/Postgres
+  `parseInt8` behavior: `true` returns JavaScript numbers for `int8`, not
+  native `bigint` values.
 
 ## Common errors
 
@@ -818,6 +910,9 @@ call `destroy()` automatically.
   `procedureObjectList`, and database metadata visibility.
 - `Payload for call procedure must be an object or array or undefined or null`:
   do not pass a scalar payload to `call()`.
+- `Unsafe SQL identifier for ...`: procedure, cursor, or notification channel
+  names must match the supported identifier pattern before the adapter formats
+  them into SQL.
 - Database result objects with nonzero `error_code` or `err_code` are converted
   to `ServerError`.
 

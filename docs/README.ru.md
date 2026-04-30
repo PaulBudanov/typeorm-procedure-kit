@@ -41,8 +41,9 @@
 | SQL | Выполнение SQL через тот же транзакционный поток, что и вызовы процедур. |
 | Уведомления | Поддержка PostgreSQL `LISTEN/NOTIFY` и Oracle Continuous Query Notification. |
 | Сериализация | Встроенные и пользовательские сериализаторы значений из базы. |
-| NestJS | Global dynamic module и точечные injection decorators для публичных методов. |
-| TypeORM API | Встроенные TypeORM-совместимые экспорты для проектов, которыми управляет kit. |
+| NestJS | Global dynamic module и точечные injection decorators для публичных runtime methods. |
+| TypeORM API | Встроенные TypeORM-совместимые экспорты со строгими локальными типами repository и query API. |
+| Идентификаторы | TypeORM-compatible query builders по умолчанию не оборачивают identifiers в двойные кавычки. |
 
 Автор и сопровождающий: Paul Budanov.
 
@@ -57,11 +58,16 @@
 - Настраиваемый регистр ключей результата: `camelCase`, `lowerCase`,
   `snakeCase`.
 - Встроенные и пользовательские сериализаторы значений из базы.
-- Интеграция с NestJS через global dynamic module.
+- Интеграция с NestJS через global dynamic module и decorators для инжекта
+  отдельных публичных методов.
 - Встроенный TypeORM-совместимый экспорт для Oracle/PostgreSQL проектов;
-  TypeORM уже включен в пакет.
+  TypeORM уже включен в пакет с type fixes для строгих TypeScript-проектов.
 - `typeorm-extend` декораторы для наследования и переопределения метаданных
   entities.
+- Экранирование identifiers отключено по умолчанию для встроенного
+  TypeORM-compatible DataSource, поэтому generated SQL избегает случайных
+  двойных кавычек вокруг table и column names, пока вы явно не включите
+  escaping.
 
 ## Требования
 
@@ -180,6 +186,11 @@ const config: IModuleConfig = {
 - `poolSize`: размер пула соединений.
 - `appName`: имя приложения для драйвера, если он это поддерживает.
 - `callTimeout`: порог логирования медленных запросов для TypeORM.
+- `parseInt8AsBigInt`: PostgreSQL-only параметр, который передается во
+  встроенный драйвер как `parseInt8`. Когда значение равно `true`,
+  `node-postgres` разбирает `int8` как JavaScript numbers вместо strings;
+  значения выше `Number.MAX_SAFE_INTEGER` могут потерять точность, несмотря на
+  название параметра.
 - `outKeyTransformCase`: регистр ключей результата, по умолчанию `camelCase`.
 - `isNeedRegisterDefaultSerializers`: включает стандартные date/time serializers.
 - `isNeedClientNotificationInit`: режим Oracle CQN по умолчанию. `true`
@@ -458,6 +469,9 @@ await db.unlistenNotify(channel);
 
 Oracle создает внутреннее UUID-имя subscription. Когда Oracle возвращает ROWID,
 adapter читает измененные строки и передает их в callback.
+Если передать `operations` как array, создается отдельная CQN subscription на
+каждую operation; возвращенная строка channel содержит сгенерированные имена
+subscriptions, и ее можно без изменений передать в `unlistenNotify()`.
 
 ## Обновление метаданных packages
 
@@ -576,6 +590,52 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 Nest service наследует `TypeOrmProcedureKit`, вызывает `initDatabase()` в
 `onModuleInit()` и `destroy()` в `onApplicationShutdown()`.
 
+NestJS entry point также экспортирует точечные decorators для инжекта
+отдельных публичных методов вместо всего service:
+
+| Decorator | Тип injected function | Делегирует в |
+| --- | --- | --- |
+| `@InjectCallProcedure()` | `TCallProcedure` | `TypeOrmProcedureKit.call()` |
+| `@InjectCallSql()` | `TCallSql` | `TypeOrmProcedureKit.callSqlTransaction()` |
+| `@InjectMakeNotify()` | `TMakeNotify` | `TypeOrmProcedureKit.makeNotify()` |
+| `@InjectUnlistenNotify()` | `TUnlistenNotify` | `TypeOrmProcedureKit.unlistenNotify()` |
+| `@InjectSetSerializer()` | `TSetSerializer` | `TypeOrmProcedureKit.setSerializer()` |
+| `@InjectDeleteSerializer()` | `TDeleteSerializer` | `TypeOrmProcedureKit.deleteSerializer()` |
+| `@InjectDeleteAllSerializers()` | `TDeleteAllSerializers` | `TypeOrmProcedureKit.deleteAllSerializers()` |
+
+```ts
+import { Injectable } from '@nestjs/common';
+import {
+  InjectCallProcedure,
+  InjectCallSql,
+  type TCallProcedure,
+  type TCallSql,
+} from 'typeorm-procedure-kit/nestjs';
+
+@Injectable()
+export class BillingRepository {
+  public constructor(
+    @InjectCallProcedure()
+    private readonly callProcedure: TCallProcedure,
+    @InjectCallSql()
+    private readonly callSql: TCallSql
+  ) {}
+
+  public findInvoices(customerId: number): Promise<Array<{ id: number }>> {
+    return this.callProcedure<{ id: number }>('billing.find_invoices', {
+      customerId,
+    });
+  }
+
+  public countInvoices(customerId: number): Promise<Array<{ total: number }>> {
+    return this.callSql<{ total: number }>(
+      'SELECT COUNT(*) AS total FROM invoices WHERE customer_id = :CUSTOMER_ID',
+      { CUSTOMER_ID: customerId }
+    );
+  }
+}
+```
+
 ## EntityManager и DataSource
 
 Для низкоуровневой работы можно получить TypeORM-compatible объекты:
@@ -606,15 +666,28 @@ const dataSource = db.dataSource;
 - entity metadata лучше сохраняет generic-типы сущностей;
 - repository, query builder и entity manager методы имеют более строгие
   generic return types;
+- common repository inputs вроде `FindOptionsWhere`, `FindManyOptions`,
+  `FindOneOptions`, `DeepPartial` и `QueryPartialEntity` согласованы с формой
+  entity, которую экспортирует этот пакет;
 - decorator и metadata argument types адаптированы для database-specific
   вариантов entity;
+- `Column`, `PrimaryColumn`, `PrimaryGeneratedColumn`, relation decorators и
+  entity schema options раскрывают database-specific surfaces, которые
+  использует kit;
 - Oracle/PostgreSQL column types и query-runner API сужены под поддерживаемые
   драйверы.
 
 Kit устанавливает `isQuotingDisabled: true` при инициализации DataSource.
-Query builder по умолчанию не экранирует идентификаторы, но можно вызвать
+Query builder по умолчанию не экранирует identifiers, поэтому generated SQL не
+получает случайные `"USERS"` или `"CREATED_AT"`, когда схема базы ожидает
+обычные uppercase identifiers. При необходимости quoting можно включить через
 `enableEscaping()` или принудительно экранировать отдельный identifier через
 `escape(name, true)`.
+
+Этот режим quoting относится к SQL, который генерируют entity, repository и
+query builder. Вызовы процедур и notification channels проходят через отдельные
+adapter paths: identifiers валидируются через `SqlIdentifier` и экранируются
+или форматируются там, где этого требует целевая база.
 
 ## Расширяющие декораторы TypeORM
 
@@ -806,6 +879,9 @@ await db.destroy();
 - `call()` нельзя использовать без `packagesSettings`.
 - Плейсхолдеры для SQL-запросов напрямую должны быть в верхнем регистре,
   например `:USER_ID`.
+- PostgreSQL `parseInt8AsBigInt` следует поведению bundled TypeORM/Postgres
+  `parseInt8`: `true` возвращает JavaScript numbers для `int8`, а не native
+  `bigint`.
 
 ## Частые ошибки
 
@@ -817,6 +893,9 @@ await db.destroy();
   доступность метаданных в базе.
 - `Payload for call procedure must be an object or array or undefined or null`:
   не передавайте скалярный payload в `call()`.
+- `Unsafe SQL identifier for ...`: имена процедур, cursors или notification
+  channels должны соответствовать поддерживаемому identifier pattern до того,
+  как adapter встроит их в SQL.
 - Результаты базы с nonzero `error_code` или `err_code` превращаются в
   `ServerError`.
 
