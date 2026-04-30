@@ -10,7 +10,12 @@ import {
 
 import type { IModuleConfig } from '../types/base.types.js';
 
-import { DATABASE_CONFIG_TOKEN, DATABASE_SERVICE_TOKEN } from './consts.js';
+import {
+  DATABASE_CONFIG_TOKEN,
+  DATABASE_SERVICE_TOKEN,
+  TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
+} from './consts.js';
+import { TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS } from './providers/index.js';
 import { TypeOrmProcedureKitNestService } from './typeorm-procedure-kit-nest.service.js';
 
 @Module({})
@@ -38,8 +43,13 @@ export class TypeOrmProcedureKitNestModule {
           provide: DATABASE_SERVICE_TOKEN,
           useExisting: TypeOrmProcedureKitNestService,
         },
+        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
       ],
-      exports: [TypeOrmProcedureKitNestService, DATABASE_SERVICE_TOKEN],
+      exports: [
+        TypeOrmProcedureKitNestService,
+        DATABASE_SERVICE_TOKEN,
+        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
+      ],
     };
   }
   /**
@@ -82,8 +92,13 @@ export class TypeOrmProcedureKitNestModule {
           provide: DATABASE_SERVICE_TOKEN,
           useExisting: TypeOrmProcedureKitNestService,
         },
+        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
       ],
-      exports: [TypeOrmProcedureKitNestService, DATABASE_SERVICE_TOKEN],
+      exports: [
+        TypeOrmProcedureKitNestService,
+        DATABASE_SERVICE_TOKEN,
+        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
+      ],
     };
   }
 }

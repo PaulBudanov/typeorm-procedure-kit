@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DATABASE_CONFIG_TOKEN,
   DATABASE_SERVICE_TOKEN,
+  TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
 } from '../../src/nest/consts.js';
+import { TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS } from '../../src/nest/providers/index.js';
 import { TypeOrmProcedureKitNestModule } from '../../src/nest/typeorm-procedure-kit-nest.module.js';
 import { TypeOrmProcedureKitNestService } from '../../src/nest/typeorm-procedure-kit-nest.service.js';
 import { createLogger } from '../support/helpers.js';
@@ -33,6 +35,7 @@ describe('TypeOrmProcedureKitNestModule', (): void => {
     expect(module.exports).toEqual([
       TypeOrmProcedureKitNestService,
       DATABASE_SERVICE_TOKEN,
+      ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
     ]);
     expect(module.providers).toEqual(
       expect.arrayContaining([
@@ -41,6 +44,7 @@ describe('TypeOrmProcedureKitNestModule', (): void => {
           provide: DATABASE_SERVICE_TOKEN,
           useExisting: TypeOrmProcedureKitNestService,
         },
+        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
       ])
     );
   });
@@ -62,7 +66,13 @@ describe('TypeOrmProcedureKitNestModule', (): void => {
           useFactory,
           inject: ['TOKEN'],
         },
+        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
       ])
     );
+    expect(module.exports).toEqual([
+      TypeOrmProcedureKitNestService,
+      DATABASE_SERVICE_TOKEN,
+      ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
+    ]);
   });
 });

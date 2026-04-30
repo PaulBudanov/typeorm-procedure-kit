@@ -71,6 +71,17 @@ export type { ILoggerModule } from './logger.types.js';
 // Base
 export type { IModuleConfig } from './base.types.js';
 
+// Nest Decorators
+export type {
+  TCallProcedure,
+  TCallSql,
+  TDeleteAllSerializers,
+  TDeleteSerializer,
+  TMakeNotify,
+  TSetSerializer,
+  TUnlistenNotify,
+} from './nest-decorator.types.js';
+
 // Extend Decorator
 export type {
   TExtendPrimaryGeneratedColumnOptions,
