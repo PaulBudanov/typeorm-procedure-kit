@@ -1,3 +1,11 @@
+## [1.2.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.2.0...v1.2.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* delete npm tokens ([5d6d03e](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/5d6d03e46eab01ee0ad7925832c59c4ade8754ff))
+* delete unuses file from repo. ([b117b10](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/b117b103062e78436011124d3dd25f4ae60427c3))
+
 # [1.2.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.1.0...v1.2.0) (2026-04-30)
 
 

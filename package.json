@@ -1,6 +1,6 @@
 {
   "name": "typeorm-procedure-kit",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "TypeScript toolkit for TypeORM-based Oracle and PostgreSQL apps: stored procedure calls, raw SQL transactions, database notifications, serializers, and a bundled typed TypeORM 0.3.28 fork",
   "type": "module",
   "main": "./dist/cjs/index.js",
