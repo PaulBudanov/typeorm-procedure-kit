@@ -1,8 +1,48 @@
-# typeorm-procedure-kit
+<h1 align="center">typeorm-procedure-kit</h1>
 
-Универсальный набор TypeScript-инструментов для вызова хранимых процедур,
-выполнения SQL-запросов напрямую, работы с уведомлениями баз данных и
-использования встроенного TypeORM-совместимого API для Oracle и PostgreSQL.
+<p align="center">
+  Типобезопасный вызов процедур, SQL-транзакции, уведомления баз данных и
+  встроенный TypeORM-совместимый API для Oracle и PostgreSQL.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="npm version" src="https://img.shields.io/npm/v/typeorm-procedure-kit?color=cb3837&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="npm downloads" src="https://img.shields.io/npm/dm/typeorm-procedure-kit?color=2f9e44&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="types included" src="https://img.shields.io/npm/types/typeorm-procedure-kit?color=3178c6&logo=typescript"></a>
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="node version" src="https://img.shields.io/node/v/typeorm-procedure-kit?color=339933&logo=node.js"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/LICENSE.md"><img alt="license" src="https://img.shields.io/npm/l/typeorm-procedure-kit?color=0ea5e9"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml"><img alt="security" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml"><img alt="release" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml/badge.svg"></a>
+  <a href="https://github.com/semantic-release/semantic-release"><img alt="semantic-release" src="https://img.shields.io/badge/semantic--release-enabled-e10079?logo=semantic-release"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit"><img alt="last commit" src="https://img.shields.io/github/last-commit/PaulBudanov/typeorm-procedure-kit?color=64748b&logo=github"></a>
+</p>
+
+<p align="center">
+  <a href="#установка">Установка</a>
+  · <a href="#точки-импорта">Точки импорта</a>
+  · <a href="#вызов-процедур">Процедуры</a>
+  · <a href="#транзакции-с-sql-запросами-напрямую">SQL</a>
+  · <a href="#уведомления">Уведомления</a>
+  · <a href="#nestjs">NestJS</a>
+  · <a href="./README.md">English</a>
+</p>
+
+---
+
+## Кратко
+
+| Область | Что входит |
+| --- | --- |
+| Процедуры | Вызов хранимых процедур с учетом метаданных для Oracle и PostgreSQL packages/schemas. |
+| SQL | Выполнение SQL через тот же транзакционный поток, что и вызовы процедур. |
+| Уведомления | Поддержка PostgreSQL `LISTEN/NOTIFY` и Oracle Continuous Query Notification. |
+| Сериализация | Встроенные и пользовательские сериализаторы значений из базы. |
+| NestJS | Global dynamic module и точечные injection decorators для публичных методов. |
+| TypeORM API | Встроенные TypeORM-совместимые экспорты для проектов, которыми управляет kit. |
 
 Автор и сопровождающий: Paul Budanov.
 

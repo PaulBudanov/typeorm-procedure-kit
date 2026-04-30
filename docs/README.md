@@ -1,8 +1,48 @@
-# typeorm-procedure-kit
+<h1 align="center">typeorm-procedure-kit</h1>
 
-Universal TypeScript toolkit for executing stored procedures, running raw SQL,
-handling database notifications, and using a bundled TypeORM-compatible API
-with Oracle and PostgreSQL.
+<p align="center">
+  Type-safe procedure execution, SQL transactions, database notifications, and
+  a bundled TypeORM-compatible API for Oracle and PostgreSQL.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="npm version" src="https://img.shields.io/npm/v/typeorm-procedure-kit?color=cb3837&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="npm downloads" src="https://img.shields.io/npm/dm/typeorm-procedure-kit?color=2f9e44&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="types included" src="https://img.shields.io/npm/types/typeorm-procedure-kit?color=3178c6&logo=typescript"></a>
+  <a href="https://www.npmjs.com/package/typeorm-procedure-kit"><img alt="node version" src="https://img.shields.io/node/v/typeorm-procedure-kit?color=339933&logo=node.js"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/LICENSE.md"><img alt="license" src="https://img.shields.io/npm/l/typeorm-procedure-kit?color=0ea5e9"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml"><img alt="security" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml"><img alt="release" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml/badge.svg"></a>
+  <a href="https://github.com/semantic-release/semantic-release"><img alt="semantic-release" src="https://img.shields.io/badge/semantic--release-enabled-e10079?logo=semantic-release"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit"><img alt="last commit" src="https://img.shields.io/github/last-commit/PaulBudanov/typeorm-procedure-kit?color=64748b&logo=github"></a>
+</p>
+
+<p align="center">
+  <a href="#installation">Installation</a>
+  · <a href="#import-entry-points">Entry points</a>
+  · <a href="#procedure-calls">Procedures</a>
+  · <a href="#raw-sql-transactions">Raw SQL</a>
+  · <a href="#notifications">Notifications</a>
+  · <a href="#nestjs-integration">NestJS</a>
+  · <a href="./README.ru.md">Русский</a>
+</p>
+
+---
+
+## At a glance
+
+| Area | What you get |
+| --- | --- |
+| Procedures | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas. |
+| SQL | Raw SQL execution through the same transaction flow as procedure calls. |
+| Notifications | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support. |
+| Serialization | Built-in and custom serializers for database result values. |
+| NestJS | Global dynamic module plus focused injection decorators for public methods. |
+| TypeORM API | Bundled TypeORM-compatible exports for projects managed by this kit. |
 
 Maintained by Paul Budanov.
 
