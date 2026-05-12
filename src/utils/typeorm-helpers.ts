@@ -1,4 +1,5 @@
-import { cloneDeep, merge } from 'lodash-es';
+import cloneDeep from 'lodash/cloneDeep.js';
+import merge from 'lodash/merge.js';
 
 import type { ColumnMetadataArgs } from '../typeorm/metadata-args/ColumnMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../typeorm/metadata-args/GeneratedMetadataArgs.js';

@@ -6,7 +6,7 @@ import type { LogLevel, LogMessage } from './Logger.js';
 
 /**
  * Performs logging of the events in TypeORM.
- * This version of logger uses console to log events and use syntax highlighting.
+ * This version of logger uses console to log events.
  */
 export class AdvancedConsoleLogger extends AbstractLogger {
   /**

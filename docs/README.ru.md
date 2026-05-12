@@ -22,16 +22,87 @@
 </p>
 
 <p align="center">
+  <a href="#краткая-сводка">Сводка</a>
+  · <a href="#сценарии-использования">Сценарии</a>
+  · <a href="#карта-api">Карта API</a>
+  · <a href="#быстрый-старт">Быстрый старт</a>
+  · <a href="#установка">Установка</a>
+  · <a href="#точки-импорта">Точки импорта</a>
+  · <a href="#конфигурация">Конфигурация</a>
+  · <a href="#встроенная-case-strategy">Case strategy</a>
+</p>
+
+<p align="center">
   <a href="#установка">Установка</a>
   · <a href="#точки-импорта">Точки импорта</a>
+  · <a href="#конфигурация">Конфигурация</a>
+  · <a href="#встроенная-case-strategy">Case strategy</a>
+  · <a href="#postgresql">PostgreSQL</a>
+  · <a href="#oracle">Oracle</a>
   · <a href="#вызов-процедур">Процедуры</a>
   · <a href="#транзакции-с-sql-запросами-напрямую">SQL</a>
   · <a href="#уведомления">Уведомления</a>
+  · <a href="#обновление-метаданных-packages">Metadata refresh</a>
+  · <a href="#сериализаторы">Сериализаторы</a>
   · <a href="#nestjs">NestJS</a>
+  · <a href="#встроенный-typeorm-compatible-api">TypeORM API</a>
+  · <a href="#расширяющие-декораторы-typeorm">Extensions</a>
+  · <a href="#завершение-работы">Завершение</a>
+  · <a href="#частые-ошибки">Ошибки</a>
   · <a href="./README.md">English</a>
 </p>
 
 ---
+
+## Краткая сводка
+
+`typeorm-procedure-kit` — TypeScript toolkit для Node.js сервисов, которые
+работают с Oracle или PostgreSQL stored procedures, raw SQL transactions,
+database notifications и TypeORM-style entity API.
+
+| Поле | Значение |
+| --- | --- |
+| npm package | `typeorm-procedure-kit` |
+| Runtime | Node.js `>=20` |
+| Module formats | ESM и CommonJS |
+| Поддерживаемые базы | PostgreSQL через `pg`; Oracle через `oracledb` |
+| Main API | `TypeOrmProcedureKit` |
+| NestJS API | `typeorm-procedure-kit/nestjs` |
+| TypeORM-compatible API | `typeorm-procedure-kit/typeorm` |
+| Entity extension API | `typeorm-procedure-kit/typeorm-extend` |
+| Основные темы | stored procedures, raw SQL transactions, LISTEN/NOTIFY, Oracle CQN, serializers, TypeORM-compatible repositories |
+
+## Сценарии использования
+
+Используйте пакет, если сервису нужны одна или несколько возможностей:
+
+- Вызов Oracle packages или PostgreSQL schema procedures с учетом database
+  metadata.
+- Выполнение raw SQL через тот же transaction и error-handling flow.
+- Подписка на PostgreSQL `LISTEN/NOTIFY` или Oracle Continuous Query
+  Notification с восстановлением subscriptions после обрыва соединения.
+- Обновление procedure metadata во время работы через database change
+  notifications.
+- Нормализация регистра result keys для raw rows и TypeORM-compatible entity
+  column names.
+- Встроенный TypeORM-compatible API без установки upstream `typeorm`.
+- Переиспользование базовой entity metadata между Oracle и PostgreSQL entity
+  variants.
+
+## Карта API
+
+| Задача | API | Import path |
+| --- | --- | --- |
+| Инициализация доступа к базе | `new TypeOrmProcedureKit(config)`, `initDatabase()` | `typeorm-procedure-kit` |
+| Вызов stored procedure | `db.call<T>(name, params, options?)` | `typeorm-procedure-kit` |
+| Выполнение raw SQL transaction | `db.callSqlTransaction<T>(sql, params?, options?)` | `typeorm-procedure-kit` |
+| Подписка на database notifications | `db.makeNotify<T>(options, oracleOptions?)` | `typeorm-procedure-kit` |
+| Отписка от notifications | `db.unlistenNotify(channel)` | `typeorm-procedure-kit` |
+| Регистрация serializers | `db.setSerializer()`, `db.deleteSerializer()` | `typeorm-procedure-kit` |
+| Доступ к DataSource или EntityManager | `db.dataSource`, `db.getEntityManager()` | `typeorm-procedure-kit` |
+| NestJS integration | `TypeOrmProcedureKitNestModule` и injection decorators | `typeorm-procedure-kit/nestjs` |
+| TypeORM-compatible APIs | `Entity`, `Column`, `DataSource`, `Repository` | `typeorm-procedure-kit/typeorm` |
+| Расширение entity metadata | `ExtendEntity`, `ExtendColumn` | `typeorm-procedure-kit/typeorm-extend` |
 
 ## Кратко
 
@@ -40,6 +111,7 @@
 | Процедуры | Вызов хранимых процедур с учетом метаданных для Oracle и PostgreSQL packages/schemas. |
 | SQL | Выполнение SQL через тот же транзакционный поток, что и вызовы процедур. |
 | Уведомления | Поддержка PostgreSQL `LISTEN/NOTIFY` и Oracle Continuous Query Notification. |
+| Case strategy | Общие правила регистра для native result keys и встроенных TypeORM-compatible column names. |
 | Сериализация | Встроенные и пользовательские сериализаторы значений из базы. |
 | NestJS | Global dynamic module и точечные injection decorators для публичных runtime methods. |
 | TypeORM API | Встроенные TypeORM-совместимые экспорты со строгими локальными типами repository и query API. |
@@ -55,8 +127,8 @@
 - Общий контракт адаптеров для Oracle и PostgreSQL.
 - Автоматическая загрузка метаданных процедур из database packages/schemas.
 - Обновление метаданных процедур во время работы через уведомления базы.
-- Настраиваемый регистр ключей результата: `camelCase`, `lowerCase`,
-  `snakeCase`.
+- Встроенная case-strategy для native result keys и TypeORM-compatible column
+  names: `camelCase`, `lowerCase`, `snakeCase`.
 - Встроенные и пользовательские сериализаторы значений из базы.
 - Интеграция с NestJS через global dynamic module и decorators для инжекта
   отдельных публичных методов.
@@ -72,7 +144,10 @@
 ## Требования
 
 - Node.js `>=20`
-- npm `>=10`
+- Любой package manager, работающий с npm registry:
+  - npm
+  - Yarn
+  - pnpm
 - TypeScript с включенными decorators, если используются entities
 - Драйвер для целевой базы:
   - PostgreSQL: `pg`
@@ -84,26 +159,92 @@
 
 ## Установка
 
-```bash
-npm install typeorm-procedure-kit
-```
+Используйте удобный package manager:
 
-Для PostgreSQL:
+| Package manager | Команда |
+| --- | --- |
+| npm | `npm install typeorm-procedure-kit` |
+| Yarn | `yarn add typeorm-procedure-kit` |
+| pnpm | `pnpm add typeorm-procedure-kit` |
 
-```bash
-npm install pg
-```
+Установите драйвер для нужной базы.
 
-Для Oracle:
+PostgreSQL:
 
-```bash
-npm install oracledb
-```
+| Package manager | Команда |
+| --- | --- |
+| npm | `npm install pg` |
+| Yarn | `yarn add pg` |
+| pnpm | `pnpm add pg` |
+
+Oracle:
+
+| Package manager | Команда |
+| --- | --- |
+| npm | `npm install oracledb` |
+| Yarn | `yarn add oracledb` |
+| pnpm | `pnpm add oracledb` |
 
 Установите `pg-query-stream` только если используете PostgreSQL streaming:
 
-```bash
-npm install pg-query-stream
+| Package manager | Команда |
+| --- | --- |
+| npm | `npm install pg-query-stream` |
+| Yarn | `yarn add pg-query-stream` |
+| pnpm | `pnpm add pg-query-stream` |
+
+## Быстрый старт
+
+Минимальный PostgreSQL пример инициализирует kit, вызывает одну настроенную
+процедуру и освобождает ресурсы:
+
+```ts
+import { TypeOrmProcedureKit } from 'typeorm-procedure-kit';
+import type { IModuleConfig, ILoggerModule } from 'typeorm-procedure-kit';
+
+const logger: ILoggerModule = {
+  error: console.error,
+  log: console.log,
+  warn: console.warn,
+  debug: console.debug,
+  verbose: console.debug,
+};
+
+const settings: IModuleConfig = {
+  logger,
+  config: {
+    type: 'postgres',
+    parseInt8AsBigInt: true,
+    master: {
+      host: 'localhost',
+      port: 5432,
+      username: 'app',
+      password: 'secret',
+      database: 'app_db',
+    },
+    poolSize: 10,
+    packagesSettings: {
+      packages: ['billing'],
+      procedureObjectList: {
+        findInvoices: 'billing.find_invoices',
+      },
+    },
+  },
+};
+
+const db = new TypeOrmProcedureKit(settings);
+
+await db.initDatabase();
+
+try {
+  const invoices = await db.call<{ invoiceId: number }>(
+    'billing.find_invoices',
+    { customerId: 42 }
+  );
+  console.log(invoices);
+} finally {
+  await db.destroy();
+}
 ```
 
 ## Точки импорта
@@ -124,6 +265,13 @@ Root import экспортирует kit, публичные типы, constants
 query builders и связанные классы экспортируются из `./typeorm`. Для entities,
 которыми управляет kit, импортируйте TypeORM API из
 `typeorm-procedure-kit/typeorm`, а не из отдельного upstream-пакета `typeorm`.
+
+| Import path | Для чего использовать |
+| --- | --- |
+| `typeorm-procedure-kit` | `TypeOrmProcedureKit`, публичные типы, utilities, constants |
+| `typeorm-procedure-kit/nestjs` | NestJS module, service, method injection decorators |
+| `typeorm-procedure-kit/typeorm` | Встроенные TypeORM-compatible decorators, DataSource, repositories, query builders |
+| `typeorm-procedure-kit/typeorm-extend` | `ExtendEntity`, `ExtendColumn` и связанные metadata extension decorators |
 
 ## Конфигурация
 
@@ -204,13 +352,89 @@ const config: IModuleConfig = {
 В примерах для PostgreSQL слово "package" означает настроенное namespace schema,
 которое использует kit. В примерах для Oracle это Oracle package.
 
-Ключи `procedureObjectList` являются метками внутри конфигурации. Вызовы
-разрешаются по значениям, поэтому используйте `db.call('billing.find_invoices')`
-или `db.call('find_invoices')`, если настроен только один package.
+`procedureObjectList` является allowlist для загрузки metadata процедур. Ключи
+служат только метками внутри конфигурации; значения должны быть реальными
+именами процедур в формате `package.procedure` или `schema.procedure`. Runtime
+вызовы разрешаются по загруженным database names, поэтому используйте
+`db.call('billing.find_invoices')` или `db.call('find_invoices')`, если настроен
+только один package. Не используйте ключи `procedureObjectList` как aliases для
+`call()`.
 
-Если задан `packagesSettings.packages`, `initDatabase()` также создает подписку
-на уведомления об изменении packages. Перед использованием этих примеров без
-изменений настройте источник уведомлений в базе.
+Если задан `packagesSettings.packages` и packages array не пустой,
+`initDatabase()` также создает подписку на уведомления об изменении packages.
+Перед использованием этих примеров без изменений настройте источник
+уведомлений в базе.
+
+## Встроенная case-strategy
+
+`typeorm-procedure-kit` включает встроенную case-strategy для двух мест, где
+имена из базы встречаются с application code: native result objects и
+встроенная TypeORM-compatible naming strategy. Настройка задается через
+`config.outKeyTransformCase` внутри database config.
+
+Поддерживаемые значения:
+
+| Значение | Ключ из базы | Ключ на выходе |
+| --- | --- | --- |
+| `camelCase` | `USER_ID`, `user_id`, `user id` | `userId` |
+| `snakeCase` | `USER_ID`, `userId`, `User Id` | `user_id` |
+| `lowerCase` | `USER_ID`, `User_Id` | `user_id` |
+
+Если `outKeyTransformCase` не задан, используется `camelCase`. Неизвестные
+значения во время выполнения также откатываются к `camelCase`.
+
+Пакет создает два strategy objects из одной настройки:
+
+- `NativeStrategy` преобразует имена колонок, которые приходят из metadata
+  `pg` или `oracledb`, перед возвратом native rows из вызовов процедур и raw
+  SQL. SQL aliases тоже преобразуются, потому что drivers отдают aliases как
+  result metadata.
+- `OrmStrategy` устанавливается как DataSource naming strategy при
+  инициализации. Она преобразует имена свойств entity перед передачей во
+  встроенную default naming strategy, поэтому generated column names следуют
+  выбранному формату, если decorator не задает explicit name.
+
+Пример:
+
+```ts
+const config: IModuleConfig = {
+  logger,
+  config: {
+    type: 'postgres',
+    master,
+    poolSize: 10,
+    parseInt8AsBigInt: true,
+    outKeyTransformCase: 'snakeCase',
+  },
+  entity: {
+    isNeedEntitySync: false,
+    entityPath: ['dist/entities/*.js'],
+  },
+  migration: {
+    isNeedMigrationStart: false,
+    migrationPath: ['dist/migrations/*.js'],
+  },
+};
+```
+
+При такой настройке колонка raw result `USER_ID` или `userId` вернется как
+`user_id`. При `camelCase` тот же ключ будет возвращен как `userId`.
+
+Важные детали:
+
+- Стратегия меняет output object keys и generated ORM column names. Она не
+  переписывает package names, procedure names, SQL text, bind placeholders,
+  table names, relation names или notification channel names.
+- `packagesSettings.packages` по-прежнему нужно указывать в lowercase, потому
+  что procedure resolution нормализует configured package/schema names внутри.
+- Raw SQL bind placeholders по-прежнему используют документированный uppercase
+  стиль, например `:USER_ID`.
+- Явно заданные custom column names в decorators учитываются встроенной default
+  naming strategy, поэтому стандартное TypeORM override behavior сохраняется.
+- `lowerCase` только приводит входную строку к нижнему регистру. Используйте
+  `snakeCase`, если нужно разбиение слов, например `User Id` -> `user_id`.
+- Преобразованные имена кэшируются на время жизни kit instance, а cache
+  очищается при `destroy()`.
 
 Oracle CQN можно настроить в двух режимах. Server callback mode открывает
 локальный порт для уведомлений от базы:
@@ -442,7 +666,9 @@ await db.unlistenNotify(channel);
 
 PostgreSQL adapter проверяет имя channel, открывает отдельный `pg.Client`,
 пытается разобрать JSON payload и восстанавливает listener после ошибок
-соединения.
+соединения. Также выполняется периодический health-check соединения, поэтому
+listener может быть восстановлен после тихого сетевого обрыва, когда
+PostgreSQL не прислал явное событие.
 
 ### Oracle Continuous Query Notification
 
@@ -473,13 +699,28 @@ adapter читает измененные строки и передает их 
 каждую operation; возвращенная строка channel содержит сгенерированные имена
 subscriptions, и ее можно без изменений передать в `unlistenNotify()`.
 
+Дефолты Oracle notifications:
+
+- `operations`: `oracledb.CQN_OPCODE_ALL_OPS`
+- `qos`: `oracledb.SUBSCR_QOS_ROWIDS`
+- `timeout`: 12 часов
+- `clientInitiated`: option конкретной subscription, затем общий config, затем
+  `false`
+
+Если `operations` передан как array, в нем должно быть меньше четырех operation
+codes. Для подписки на все операции используйте
+`oracledb.CQN_OPCODE_ALL_OPS`, а не ручной список всех операций. Oracle
+subscriptions также проверяются периодическим health-check и восстанавливаются
+после CQN deregistration, shutdown events, ошибок соединения или тихого обрыва
+соединения.
+
 ## Обновление метаданных packages
 
 Если настроен `packagesSettings.packages`, `initDatabase()` загружает
-метаданные процедур из базы и создает подписку на уведомления об изменении
-packages. У пользователя базы должен быть доступ к источнику уведомлений:
-PostgreSQL по умолчанию слушает `db_object_event`, а Oracle читает
-`SOLUTION_ROOT.DB_OBJECT_LOG`.
+метаданные процедур из базы. Также создается подписка на уведомления об
+изменении packages всякий раз, когда packages array не пустой. У пользователя
+базы должен быть доступ к источнику уведомлений: PostgreSQL по умолчанию слушает
+`db_object_event`, а Oracle читает `SOLUTION_ROOT.DB_OBJECT_LOG`.
 
 Для PostgreSQL можно переопределить notification channel, когда
 `isNeedDynamicallyUpdatePackagesInfo` равен `true`:
@@ -567,19 +808,17 @@ Async setup:
 
 ```ts
 TypeOrmProcedureKitNestModule.forRootAsync({
-  imports: [ConfigModule],
-  inject: [ConfigService],
-  useFactory: async (configService: ConfigService) => ({
+  useFactory: async () => ({
     logger: new Logger('TypeOrmProcedureKit'),
     config: {
       type: 'postgres',
       parseInt8AsBigInt: true,
       master: {
-        host: configService.getOrThrow('DB_HOST'),
-        port: Number(configService.getOrThrow('DB_PORT')),
-        username: configService.getOrThrow('DB_USER'),
-        password: configService.getOrThrow('DB_PASSWORD'),
-        database: configService.getOrThrow('DB_NAME'),
+        host: process.env.DB_HOST ?? 'localhost',
+        port: Number(process.env.DB_PORT ?? 5432),
+        username: process.env.DB_USER ?? 'app',
+        password: process.env.DB_PASSWORD ?? 'secret',
+        database: process.env.DB_NAME ?? 'app_db',
       },
       poolSize: 10,
     },
