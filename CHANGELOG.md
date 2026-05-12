@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.2.1...v1.3.0) (2026-05-12)
+
+
+### Features
+
+* improve db notification resilience and cjs compatibility ([#8](https://github.com/PaulBudanov/typeorm-procedure-kit/issues/8)) ([e7f59dc](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/e7f59dc7bf0ca3dbe31dca1bb71d460cd7386972))
+
 ## [1.2.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.2.0...v1.2.1) (2026-04-30)
 
 
