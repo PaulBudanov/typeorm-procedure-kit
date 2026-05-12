@@ -11,6 +11,11 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 import type { PostgreConnection } from './postgre-connection.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
 export class PostgreNotify extends DatabaseNotify<Client> {
+  private static readonly CONNECTION_HEALTH_CHECK_INTERVAL_MS = 30000;
+  private readonly healthCheckTimers = new Map<string, NodeJS.Timeout>();
+  private readonly healthChecksInProgress = new Set<string>();
+  private readonly restoringChannels = new Set<string>();
+
   public constructor(
     private readonly postgreConnection: PostgreConnection,
     protected readonly logger: ILoggerModule,
@@ -84,6 +89,9 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         return;
       });
       this.notificationPool.set(channelName, client);
+      this.startConnectionHealthCheck(channelName, client, () =>
+        this.restoreClientConnectionCallback<T>(channelName, notifyCallback)
+      );
       this.logger.log(
         `Successfully registered listener for channel: ${channelName}`
       );
@@ -136,6 +144,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   public override async unlistenNotify(channel: string): Promise<void> {
     const client = this.notificationPool.get(channel);
     this.notificationPool.delete(channel);
+    this.stopConnectionHealthCheck(channel);
     try {
       if (!client) {
         this.logger.warn(`No listener found for channel: ${channel}`);
@@ -180,6 +189,28 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     retryDelayMs = 30000,
     currentRetry = 1
   ): Promise<void> {
+    if (this.restoringChannels.has(channelName)) return;
+    this.restoringChannels.add(channelName);
+    try {
+      await this.restoreClientConnection(
+        channelName,
+        notifyCallback,
+        maxRetries,
+        retryDelayMs,
+        currentRetry
+      );
+    } finally {
+      this.restoringChannels.delete(channelName);
+    }
+  }
+
+  private async restoreClientConnection<T>(
+    channelName: string,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    maxRetries = 5,
+    retryDelayMs = 30000,
+    currentRetry = 1
+  ): Promise<void> {
     try {
       await this.unlistenNotify(channelName);
       if (!channelName.includes('LISTEN ')) {
@@ -206,7 +237,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         );
         this.logger.warn('Restarting client connection after 30 min');
         await AsyncUtils.delay(1000 * 60 * 30);
-        await this.restoreClientConnectionCallback(channelName, notifyCallback);
+        await this.restoreClientConnection(channelName, notifyCallback);
         return;
       }
       this.logger.warn(
@@ -215,13 +246,55 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         } seconds... (Attempt ${currentRetry}/${maxRetries})`
       );
       await AsyncUtils.delay(retryDelayMs);
-      await this.restoreClientConnectionCallback(
+      await this.restoreClientConnection(
         channelName,
         notifyCallback,
         maxRetries,
         retryDelayMs,
         currentRetry + 1
       );
+    }
+  }
+
+  private startConnectionHealthCheck(
+    channelName: string,
+    client: Client,
+    restore: () => Promise<void>
+  ): void {
+    this.stopConnectionHealthCheck(channelName);
+    const timer = setInterval(() => {
+      void this.checkClientConnection(channelName, client, restore);
+    }, PostgreNotify.CONNECTION_HEALTH_CHECK_INTERVAL_MS);
+    timer.unref();
+    this.healthCheckTimers.set(channelName, timer);
+  }
+
+  private stopConnectionHealthCheck(channelName: string): void {
+    const timer = this.healthCheckTimers.get(channelName);
+    if (!timer) return;
+    clearInterval(timer);
+    this.healthCheckTimers.delete(channelName);
+  }
+
+  private async checkClientConnection(
+    channelName: string,
+    client: Client,
+    restore: () => Promise<void>
+  ): Promise<void> {
+    if (
+      this.notificationPool.get(channelName) !== client ||
+      this.healthChecksInProgress.has(channelName)
+    )
+      return;
+    this.healthChecksInProgress.add(channelName);
+    try {
+      const isHealthy =
+        await this.postgreConnection.isSingleConnectionHealthy(client);
+      if (isHealthy) return;
+      if (this.notificationPool.get(channelName) !== client) return;
+      await restore();
+    } finally {
+      this.healthChecksInProgress.delete(channelName);
     }
   }
 }

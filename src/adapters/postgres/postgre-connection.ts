@@ -37,10 +37,17 @@ export class PostgreConnection extends DatabaseConnection<
       password: this.options.password,
       database: this.options.database,
       keepAlive: true,
+      keepAliveInitialDelayMillis: 30000,
     };
     const client = new Client(options);
     await client.connect();
     return client;
+  }
+
+  public override async pingSingleConnection(
+    connection: Client
+  ): Promise<void> {
+    await connection.query('SELECT 1');
   }
 
   /**
@@ -80,33 +87,42 @@ export class PostgreConnection extends DatabaseConnection<
    * @param {(() => void) | Promise<void>} callback - the callback function
    * to be called when the client connection is closed or an error occurs
    */
-  public registerConnectionErrorHandler(
+  public override registerConnectionErrorHandler(
     client: Client,
     callback: () => void | Promise<void>
   ): void {
-    client.on('error', (err) => {
-      this.logger.error(`Postgres client error: ${err.message}`, err.stack);
-      client.removeAllListeners('error');
+    let isHandled = false;
+
+    const handleConnectionLoss = (reason: string, error?: Error): void => {
+      if (isHandled) return;
+      isHandled = true;
+      client.removeListener('error', onError);
+      client.removeListener('end', onEnd);
+      if (error)
+        this.logger.error(
+          `Postgres client ${reason}: ${error.message}`,
+          error.stack
+        );
+      else this.logger.error(`Postgres client ${reason}`);
       try {
         void callback();
-      } catch (error: unknown) {
+      } catch (callbackError: unknown) {
         this.logger.error(
-          `Callback error: ${(error as Error).message}`,
-          (error as Error).stack
+          `Callback error: ${(callbackError as Error).message}`,
+          (callbackError as Error).stack
         );
       }
-    });
-    client.on('end', () => {
-      this.logger.error('Postgres client connection closed');
-      client.removeAllListeners('end');
-      try {
-        void callback();
-      } catch (error: unknown) {
-        this.logger.error(
-          `Callback error: ${(error as Error).message}`,
-          (error as Error).stack
-        );
-      }
-    });
+    };
+
+    const onError = (err: Error): void => {
+      handleConnectionLoss('error', err);
+    };
+
+    const onEnd = (): void => {
+      handleConnectionLoss('connection closed');
+    };
+
+    client.on('error', onError);
+    client.on('end', onEnd);
   }
 }

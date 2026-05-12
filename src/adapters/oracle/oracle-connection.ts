@@ -38,6 +38,14 @@ export class OracleConnection extends DatabaseConnection<
     return oracledb.getConnection(options);
   }
 
+  public override async pingSingleConnection(
+    connection: oracledb.Connection
+  ): Promise<void> {
+    if (!connection.isHealthy())
+      throw new Error('Oracle connection is unhealthy');
+    await connection.ping();
+  }
+
   /**
    * Closes a single Oracle connection object.
    * Logs an error if the connection close process fails.

@@ -1,4 +1,5 @@
-import { cloneDeep, merge } from 'lodash-es';
+import cloneDeep from 'lodash/cloneDeep.js';
+import merge from 'lodash/merge.js';
 
 import type { EntityOptions } from '../../typeorm/decorator/options/EntityOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
