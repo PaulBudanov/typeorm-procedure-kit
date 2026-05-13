@@ -16,9 +16,47 @@ export interface ICreateNotify<T = unknown> {
 }
 
 /**
+ * Common retry settings for notification restore.
+ */
+export interface INotifyRetryOptions {
+  maxRetries?: number;
+  retryDelayMs?: number;
+  retryAfterMaxDelayMs?: number;
+}
+
+export interface INotifyHealthCheckOptions<T> {
+  channelName: string;
+  connection: T;
+  intervalMs: number;
+  isHealthy: (connection: T) => Promise<boolean>;
+  restore: () => Promise<void>;
+}
+
+export interface INotifyRestoreOptions<TSettings> {
+  channelName: string;
+  settings: TSettings;
+  restore: (settings: TSettings) => Promise<void>;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  currentRetry?: number;
+  retryAfterMaxDelayMs?: number;
+}
+
+export interface IOracleNotifyRestoreSettings<T> {
+  sqlCommand: string;
+  notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>;
+  options: TOracleNormilizeOptionsNotify;
+}
+
+export interface IPostgreNotifyRestoreSettings<T> {
+  notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>;
+  options: INotifyRetryOptions;
+}
+
+/**
  * Oracle Continuous Query Notification options.
  */
-export interface IOracleOptionsNotify {
+export interface IOracleOptionsNotify extends INotifyRetryOptions {
   operations?: Array<number> | number; // CQN OPCODES, for all: oracledb.CQN_OPCODE_ALL_OPS
   qos?: number;
   timeout?: number;

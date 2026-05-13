@@ -9,7 +9,7 @@ import type {
 } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
-  IOracleOptionsNotify,
+  INotifyRetryOptions,
   TNotifyCallbackGeneric,
 } from '../../types/notification.types.js';
 import type {
@@ -30,7 +30,8 @@ export abstract class DatabaseAdapter<
   T extends TSerializerClassTypes,
   U extends TNotifyClassTypes,
   V extends TConnectionClassTypes,
-> implements IDatabaseAdapterContract {
+  TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
+> implements IDatabaseAdapterContract<TNotifyOptions> {
   /**
    * Constructor for DatabaseAdapter
    * @param logger - logger module to use for logging
@@ -174,17 +175,17 @@ export abstract class DatabaseAdapter<
   public listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void,
-    options?: IOracleOptionsNotify
+    options?: TNotifyOptions
   ): Promise<string> {
     return this.notifier.listenNotify<T>(
       sqlCommand,
       notifyCallback,
-      options ?? {}
+      options ?? ({} as TNotifyOptions)
     );
   }
 
   public unlistenNotify(channelName: string): Promise<void> {
-    return this.notifier.unlistenNotify(channelName, false);
+    return this.notifier.unlistenNotify(channelName);
   }
 
   /**

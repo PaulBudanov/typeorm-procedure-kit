@@ -6,11 +6,11 @@ import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   INotifyOracleDefaultSettings,
   IOracleNotifyMsg,
+  IOracleNotifyRestoreSettings,
   IOracleOptionsNotify,
   TNotifyCallbackGeneric,
   TOracleNormilizeOptionsNotify,
 } from '../../types/notification.types.js';
-import { AsyncUtils } from '../../utils/async-utils.js';
 import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
@@ -19,12 +19,10 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 import { OracleConnection } from './oracle-connection.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
-export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
-  private static readonly CONNECTION_HEALTH_CHECK_INTERVAL_MS = 30000;
-  private readonly healthCheckTimers = new Map<string, NodeJS.Timeout>();
-  private readonly healthChecksInProgress = new Set<string>();
-  private readonly restoringSubscriptions = new Set<string>();
-
+export class OracleNotify extends DatabaseNotify<
+  oracledb.Connection,
+  IOracleOptionsNotify
+> {
   /**
    * Constructor for OracleNotify class.
    * Initializes the OracleNotify object with the provided configuration
@@ -64,42 +62,23 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   }
   /**
    * Unsubscribes from a channel and then closes the client connection.
-   * If `isTimedOut` is true, it will log a warning and then close the connection without unsubscribing first.
    * @param {string} channelName - name of the channel to unsubscribe from
-   * @param {boolean} [isTimedOut=false] - whether to log a warning and then close the connection without unsubscribing first
    * @returns {Promise<void>} - resolves when the subscription is unsubscribed and the connection is closed
    */
-  public override async unlistenNotify(
-    channelName: string,
-    isTimedOut = false
-  ): Promise<void> {
-    if (channelName.includes(',')) {
-      await Promise.all(
-        channelName
-          .split(',')
-          .map((channel) => channel.trim())
-          .filter((channel) => channel.length > 0)
-          .map((channel) => this.unlistenNotify(channel, isTimedOut))
-      );
-      return;
-    }
-
+  public override async unlistenNotify(channelName: string): Promise<void> {
+    this.cancelNotificationRestore(channelName);
     const connection = this.notificationPool.get(channelName);
     this.notificationPool.delete(channelName);
     this.stopConnectionHealthCheck(channelName);
+    this.clearNotificationRestoreState(channelName);
     if (!connection) {
       this.logger.warn(`No active subscription for channel: ${channelName}`);
       return;
     }
-
-    if (isTimedOut) {
-      this.logger.warn(`Timed out subscription for channel: ${channelName}`);
-      await this.oracleConnection.closeSingleConnection(connection);
-      return;
-    }
-
     try {
-      await connection.unsubscribe(channelName);
+      const isConnectionAlive =
+        await this.oracleConnection.isSingleConnectionHealthy(connection, 500);
+      if (isConnectionAlive) await connection.unsubscribe(channelName);
       this.logger.log(`Unsubscribed from channel: ${channelName}`);
     } catch (error) {
       this.logger.error(
@@ -130,15 +109,16 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
   public override async listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
-    options: IOracleOptionsNotify
+    options: IOracleOptionsNotify = {}
   ): Promise<string> {
     if (Array.isArray(options.operations)) {
       if (options.operations.length >= 4)
         throw new ServerError(
           'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,'
         );
-      const subscriptions = await Promise.all(
-        options.operations.map(async (operation) => {
+      const subscriptions: Array<string> = [];
+      try {
+        for (const operation of options.operations) {
           const channelName = randomUUID();
           const connection =
             await this.oracleConnection.createSingleConnection();
@@ -146,7 +126,7 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
             ...options,
             operations: operation,
           };
-          return this.subscribe(
+          const subscription = await this.subscribe(
             connection,
             channelName,
             this.generateOptions(
@@ -160,8 +140,14 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
             notifyCallback,
             modifyOptions
           );
-        })
-      );
+          subscriptions.push(subscription);
+        }
+      } catch (error) {
+        await Promise.allSettled(
+          subscriptions.map((subscription) => this.unlistenNotify(subscription))
+        );
+        throw error;
+      }
       return subscriptions.join(', ');
     } else {
       const channelName = randomUUID();
@@ -190,6 +176,15 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     channelName: string,
     connection: oracledb.Connection
   ): oracledb.SubscribeOptions {
+    const restoreOptions: TOracleNormilizeOptionsNotify = {
+      operations: settings.operations,
+      qos: settings.qos,
+      timeout: settings.timeout,
+      clientInitiated: settings.clientInitiated,
+      maxRetries: settings.maxRetries,
+      retryDelayMs: settings.retryDelayMs,
+      retryAfterMaxDelayMs: settings.retryAfterMaxDelayMs,
+    };
     const clientInitiated =
       settings.clientInitiated ??
       this.notifySettings.isNeedClientNotificationInit ??
@@ -208,6 +203,7 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
           connection,
           channelName,
           subscribeOptions,
+          restoreOptions,
           msg
         ),
     };
@@ -232,14 +228,21 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     try {
       await connection.subscribe(channelName, subscribeOptions);
       this.notificationPool.set(channelName, connection);
-      this.startConnectionHealthCheck(channelName, connection, () =>
-        this.restoreSubscriptionCallback<T>(
-          sqlCommand,
-          channelName,
-          notifyCallback,
-          options
-        )
-      );
+      this.markNotificationActive(channelName);
+      this.startConnectionHealthCheck({
+        channelName,
+        connection,
+        intervalMs: this.CONNECTION_HEALTH_CHECK_INTERVAL_MS,
+        isHealthy: (connection) =>
+          this.oracleConnection.isSingleConnectionHealthy(connection),
+        restore: () =>
+          this.restoreSubscriptionCallback<T>(
+            sqlCommand,
+            channelName,
+            notifyCallback,
+            options
+          ),
+      });
       this.logger.log(
         `Successfully registered subscription for channel: ${channelName}`
       );
@@ -270,14 +273,9 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     client: oracledb.Connection,
     channelName: string,
     subscribeUnionOptions: Omit<oracledb.SubscribeOptions, 'callback'>,
+    restoreOptions: TOracleNormilizeOptionsNotify,
     msg: IOracleNotifyMsg
   ): Promise<void> {
-    const options: TOracleNormilizeOptionsNotify = {
-      operations: subscribeUnionOptions.operations,
-      qos: subscribeUnionOptions.qos,
-      timeout: subscribeUnionOptions.timeout,
-      clientInitiated: subscribeUnionOptions.clientInitiated,
-    };
     try {
       if (
         (msg.type === oracledb.SUBSCR_EVENT_TYPE_DEREG ||
@@ -285,11 +283,12 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
           msg.type === oracledb.SUBSCR_EVENT_TYPE_SHUTDOWN) &&
         !msg.registered
       ) {
+        if (this.notificationPool.get(channelName) !== client) return;
         return void this.restoreSubscriptionCallback<T>(
           subscribeUnionOptions.sql,
           channelName,
           notifyCallback,
-          options
+          restoreOptions
         );
       }
       const tables: Array<oracledb.SubscriptionTable> | undefined = msg
@@ -348,89 +347,45 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     }
   }
 
-  /**
-   * Attempts to restore a subscription for a given channel by unregistering
-   * the channel and then registering it again. If the attempt fails, it
-   * will retry after a certain delay up to a maximum number of retries.
-   * If the maximum number of retries is reached, it will wait for 30 minutes
-   * and then attempt to restore the subscription again.
-   * @param {string} sqlCommand - SQL command to listen to
-   * @param {string} channelName - name of the channel to restore
-   * @param {(args: TNotifyCallbackGeneric<T>) => void | Promise<void>} notifyCallback - callback
-   * to be registered for the channel
-   * @param {number} [maxRetries=5] - maximum number of retries
-   * @param {number} [retryDelayMs=1000 * 60 * 5] - delay in milliseconds between retries
-   * @param {number} [currentRetry=1] - current retry attempt
-   * @returns {Promise<void>} - resolves when the subscription is restored
-   */
   private async restoreSubscription<T>(
-    sqlCommand: string,
-    channelName: string,
-    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
-    options: TOracleNormilizeOptionsNotify,
-    maxRetries = 5,
-    retryDelayMs = 1000 * 60 * 5,
-    currentRetry = 1
+    settings: IOracleNotifyRestoreSettings<T>,
+    channelName: string
   ): Promise<void> {
+    const connection = await this.oracleConnection.createSingleConnection();
     try {
-      await this.unlistenNotify(channelName, true);
-      const connection = await this.oracleConnection.createSingleConnection();
+      try {
+        await this.unlistenNotify(channelName);
+      } catch {
+        const newChannelName = randomUUID();
+        this.logger.warn(
+          `Channel name for subscription ${channelName} change to ${newChannelName}`
+        );
+        channelName = newChannelName;
+      }
       await this.subscribe(
         connection,
         channelName,
         this.generateOptions<T>(
-          notifyCallback,
-          options,
-          sqlCommand,
+          settings.notifyCallback,
+          settings.options,
+          settings.sqlCommand,
           channelName,
           connection
         ),
-        sqlCommand,
-        notifyCallback,
-        options
+        settings.sqlCommand,
+        settings.notifyCallback,
+        settings.options
       );
-      this.logger.log(
-        `Successfully restored subscription for sqlCommand: ${sqlCommand}`
-      );
-      return;
-    } catch (error) {
-      this.logger.error(
-        `Attempt ${currentRetry}/${maxRetries} failed to restore subscription for channel "${channelName}": ${
-          (error as Error).message
-        }`,
-        (error as Error).stack
-      );
-      if (currentRetry < maxRetries) {
-        this.logger.warn(
-          `Retrying in ${retryDelayMs / 1000} seconds... (Attempt ${
-            currentRetry + 1
-          }/${maxRetries})`
-        );
-        await AsyncUtils.delay(retryDelayMs);
-        return void this.restoreSubscription(
-          sqlCommand,
-          channelName,
-          notifyCallback,
-          options,
-          maxRetries,
-          retryDelayMs,
-          currentRetry + 1
-        );
-      }
-      this.logger.error(
-        `Max retry attempts (${maxRetries}) exceeded for channel: ${channelName}. Scheduling recovery in 30 minutes.`
-      );
-      await AsyncUtils.delay(1000 * 60 * 30);
-      return void this.restoreSubscription(
-        sqlCommand,
-        channelName,
-        notifyCallback,
-        options,
-        maxRetries,
-        retryDelayMs,
-        1
-      );
+    } catch (error: unknown) {
+      this.stopConnectionHealthCheck(channelName);
+      await this.oracleConnection.closeSingleConnection(connection);
+      this.clearNotificationRestoreState(channelName);
+      throw error;
     }
+    this.logger.log(
+      `Successfully restored subscription for sqlCommand: ${settings.sqlCommand}`
+    );
+    return;
   }
 
   private async restoreSubscriptionCallback<T>(
@@ -438,66 +393,23 @@ export class OracleNotify extends DatabaseNotify<oracledb.Connection> {
     channelName: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: TOracleNormilizeOptionsNotify,
-    maxRetries = 5,
-    retryDelayMs = 1000 * 60 * 5,
-    currentRetry = 1
+    maxRetries = options.maxRetries ?? this.RESTORE_MAX_RETRIES,
+    retryDelayMs = options.retryDelayMs ?? this.RESTORE_RETRY_DELAY_MS,
+    currentRetry = this.RESTORE_CURRENT_RETRY
   ): Promise<void> {
-    if (this.restoringSubscriptions.has(channelName)) return;
-    this.restoringSubscriptions.add(channelName);
-    try {
-      await this.restoreSubscription(
+    await this.restoreNotification<IOracleNotifyRestoreSettings<T>>({
+      channelName,
+      settings: {
         sqlCommand,
-        channelName,
         notifyCallback,
         options,
-        maxRetries,
-        retryDelayMs,
-        currentRetry
-      );
-    } finally {
-      this.restoringSubscriptions.delete(channelName);
-    }
-  }
-
-  private startConnectionHealthCheck(
-    channelName: string,
-    connection: oracledb.Connection,
-    restore: () => Promise<void>
-  ): void {
-    this.stopConnectionHealthCheck(channelName);
-    const timer = setInterval(() => {
-      void this.checkConnection(channelName, connection, restore);
-    }, OracleNotify.CONNECTION_HEALTH_CHECK_INTERVAL_MS);
-    timer.unref();
-    this.healthCheckTimers.set(channelName, timer);
-  }
-
-  private stopConnectionHealthCheck(channelName: string): void {
-    const timer = this.healthCheckTimers.get(channelName);
-    if (!timer) return;
-    clearInterval(timer);
-    this.healthCheckTimers.delete(channelName);
-  }
-
-  private async checkConnection(
-    channelName: string,
-    connection: oracledb.Connection,
-    restore: () => Promise<void>
-  ): Promise<void> {
-    if (
-      this.notificationPool.get(channelName) !== connection ||
-      this.healthChecksInProgress.has(channelName)
-    )
-      return;
-    this.healthChecksInProgress.add(channelName);
-    try {
-      const isHealthy =
-        await this.oracleConnection.isSingleConnectionHealthy(connection);
-      if (isHealthy) return;
-      if (this.notificationPool.get(channelName) !== connection) return;
-      await restore();
-    } finally {
-      this.healthChecksInProgress.delete(channelName);
-    }
+      },
+      maxRetries,
+      retryDelayMs,
+      currentRetry,
+      retryAfterMaxDelayMs:
+        options.retryAfterMaxDelayMs ?? this.RESTORE_RETRY_AFTER_MAX_DELAY_MS,
+      restore: (settings) => this.restoreSubscription(settings, channelName),
+    });
   }
 }

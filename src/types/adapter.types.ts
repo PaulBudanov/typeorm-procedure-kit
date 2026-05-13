@@ -8,13 +8,11 @@ import type { PostgreConnection } from '../adapters/postgres/postgre-connection.
 import type { PostgreNotify } from '../adapters/postgres/postgre-notify.js';
 import type { PostgreSerializer } from '../adapters/postgres/postgre-serializer.js';
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
-import type { OracleDriver } from '../typeorm/driver/oracle/OracleDriver.js';
 import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
-import type { PostgresDriver } from '../typeorm/driver/postgres/PostgresDriver.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 
 import type {
-  IOracleOptionsNotify,
+  INotifyRetryOptions,
   TNotifyCallbackGeneric,
 } from './notification.types.js';
 import type {
@@ -48,7 +46,9 @@ export type TNotifyClassTypes = OracleNotify | PostgreNotify;
 
 export type TConnectionClassTypes = OracleConnection | PostgreConnection;
 
-export interface IDatabaseAdapterContract {
+export interface IDatabaseAdapterContract<
+  TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
+> {
   sortArgumentsAlgorithm(
     rawArguments: Array<IProcedureArgumentBase>,
     procedureListBase: Array<Lowercase<string>>,
@@ -82,7 +82,7 @@ export interface IDatabaseAdapterContract {
   listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
-    options?: IOracleOptionsNotify
+    options?: TNotifyOptions
   ): Promise<string>;
   unlistenNotify(channelName: string): Promise<void>;
   destroyNotifications(): Promise<void>;
@@ -96,8 +96,6 @@ export type TAdapterUtilsClassTypes = IDatabaseAdapterContract;
 export type TPoolTypes = oracledb.Pool | PoolClient;
 
 export type TConnectionTypes = oracledb.Connection | Client;
-
-export type TTypeOrmDriver = OracleDriver | PostgresDriver;
 
 export type TConnectionOptions =
   | OracleConnectionOptions

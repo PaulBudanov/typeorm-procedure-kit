@@ -9,6 +9,9 @@ export class PostgreConnection extends DatabaseConnection<
   PostgresConnectionOptions,
   Client
 > {
+  private readonly connectionTimeoutMs = 1000 * 15;
+  private readonly keepAliveInitialDelayMillis = 1000 * 10;
+
   /**
    * Constructor for PostgreConnection class.
    * Initializes the PostgreConnection object with the provided configuration
@@ -37,7 +40,8 @@ export class PostgreConnection extends DatabaseConnection<
       password: this.options.password,
       database: this.options.database,
       keepAlive: true,
-      keepAliveInitialDelayMillis: 30000,
+      keepAliveInitialDelayMillis: this.keepAliveInitialDelayMillis,
+      connectionTimeoutMillis: this.connectionTimeoutMs,
     };
     const client = new Client(options);
     await client.connect();

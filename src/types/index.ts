@@ -8,6 +8,7 @@ export type {
   TDbConfig,
   TOracleDbConfig,
   TPostgresDbConfig,
+  IDatabaseCredentials,
 } from './config.types.js';
 
 // Procedures
@@ -27,6 +28,11 @@ export type {
   IOracleOptionsNotify,
   TNotifyCallbackGeneric,
   TNotifyPackageCallback,
+  INotifyHealthCheckOptions,
+  INotifyRetryOptions,
+  INotifyRestoreOptions,
+  IOracleNotifyRestoreSettings,
+  IPostgreNotifyRestoreSettings,
 } from './notification.types.js';
 
 // Serializer

@@ -3,6 +3,7 @@ import oracledb from 'oracledb';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { OracleConnectionOptions } from '../../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import { DatabaseConnection } from '../abstract/database-connection.js';
 
 export class OracleConnection extends DatabaseConnection<
@@ -42,7 +43,7 @@ export class OracleConnection extends DatabaseConnection<
     connection: oracledb.Connection
   ): Promise<void> {
     if (!connection.isHealthy())
-      throw new Error('Oracle connection is unhealthy');
+      throw new ServerError('Oracle connection is unhealthy');
     await connection.ping();
   }
 

@@ -88,4 +88,157 @@ describe('PostgreNotify', (): void => {
       notify.listenNotify('LISTEN channel_name', vi.fn())
     ).rejects.toThrow('already registered');
   });
+
+  it('closes a created client when LISTEN registration fails', async (): Promise<void> => {
+    const client = new FakePgClient();
+    client.query.mockRejectedValue(new Error('listen failed'));
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValue(client),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await expect(
+      notify.listenNotify('LISTEN channel_name', vi.fn())
+    ).rejects.toThrow('listen failed');
+
+    expect(connection.closeSingleConnection).toHaveBeenCalledWith(client);
+    expect(connection.registerConnectionErrorHandler).not.toHaveBeenCalled();
+    expect(notify.getNotificationPool().has('channel_name')).toBe(false);
+  });
+
+  it('rejects concurrent registration for the same pending channel', async (): Promise<void> => {
+    const client = new FakePgClient();
+    client.query.mockResolvedValue(undefined);
+    let resolveConnection!: (client: FakePgClient) => void;
+    const connectionPromise = new Promise<FakePgClient>((resolve) => {
+      resolveConnection = resolve;
+    });
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockReturnValue(connectionPromise),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    const firstRegistration = notify.listenNotify(
+      'LISTEN channel_name',
+      vi.fn()
+    );
+    await Promise.resolve();
+
+    await expect(
+      notify.listenNotify('LISTEN channel_name', vi.fn())
+    ).rejects.toThrow('already registered');
+
+    resolveConnection(client);
+    await expect(firstRegistration).resolves.toBe('channel_name');
+    expect(connection.createSingleConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a successfully restored listener under the same channel', async (): Promise<void> => {
+    const firstClient = new FakePgClient();
+    firstClient.query.mockResolvedValue(undefined);
+    const secondClient = new FakePgClient();
+    secondClient.query.mockResolvedValue(undefined);
+    let connectionLossCallback!: () => void | Promise<void>;
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValueOnce(firstClient)
+        .mockResolvedValueOnce(secondClient),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(
+        (_client: FakePgClient, callback: () => void | Promise<void>) => {
+          connectionLossCallback = callback;
+        }
+      ),
+      isSingleConnectionHealthy: vi.fn(),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await notify.listenNotify('LISTEN channel_name', vi.fn());
+    connectionLossCallback();
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+
+    expect(notify.getNotificationPool().get('channel_name')).toBe(secondClient);
+    expect(connection.closeSingleConnection).toHaveBeenCalledWith(firstClient);
+    expect(connection.closeSingleConnection).not.toHaveBeenCalledWith(
+      secondClient
+    );
+  });
+
+  it('ignores stale connection-loss callbacks after manual unlisten', async (): Promise<void> => {
+    const client = new FakePgClient();
+    client.query.mockResolvedValue(undefined);
+    let connectionLossCallback!: () => void | Promise<void>;
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValue(client),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(
+        (_client: FakePgClient, callback: () => void | Promise<void>) => {
+          connectionLossCallback = callback;
+        }
+      ),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await notify.listenNotify('LISTEN channel_name', vi.fn());
+    await notify.unlistenNotify('channel_name');
+    connectionLossCallback();
+    await Promise.resolve();
+
+    expect(connection.createSingleConnection).toHaveBeenCalledTimes(1);
+    expect(notify.getNotificationPool().has('channel_name')).toBe(false);
+  });
+
+  it('ignores a stale connection-loss callback after manual re-listen', async (): Promise<void> => {
+    const firstClient = new FakePgClient();
+    firstClient.query.mockResolvedValue(undefined);
+    const replacementClient = new FakePgClient();
+    replacementClient.query.mockResolvedValue(undefined);
+    let firstConnectionLossCallback!: () => void | Promise<void>;
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValueOnce(firstClient)
+        .mockResolvedValueOnce(replacementClient),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(
+        (_client: FakePgClient, callback: () => void | Promise<void>) => {
+          firstConnectionLossCallback ??= callback;
+        }
+      ),
+      isSingleConnectionHealthy: vi.fn(),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await notify.listenNotify('LISTEN channel_name', vi.fn());
+    await notify.unlistenNotify('channel_name');
+    await notify.listenNotify('LISTEN channel_name', vi.fn());
+    firstConnectionLossCallback();
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+
+    expect(notify.getNotificationPool().get('channel_name')).toBe(
+      replacementClient
+    );
+    expect(connection.createSingleConnection).toHaveBeenCalledTimes(2);
+  });
 });

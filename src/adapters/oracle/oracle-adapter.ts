@@ -5,7 +5,10 @@ import oracledb from 'oracledb';
 import { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import type { INotifyOracleDefaultSettings } from '../../types/notification.types.js';
+import type {
+  INotifyOracleDefaultSettings,
+  IOracleOptionsNotify,
+} from '../../types/notification.types.js';
 import type { TProcedureArgumentList } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
@@ -24,7 +27,8 @@ import { OracleSqlCommand } from './oracle-sql.js';
 export class OracleAdapter extends DatabaseAdapter<
   OracleSerializer,
   OracleNotify,
-  OracleConnection
+  OracleConnection,
+  IOracleOptionsNotify
 > {
   public constructor(
     protected readonly appDataSource: DataSource,

@@ -9,7 +9,7 @@ export abstract class DatabaseConnection<
   U extends TConnectionOptions,
   V extends TConnectionTypes,
 > {
-  private static readonly CONNECTION_HEALTH_CHECK_TIMEOUT_MS = 10000;
+  private readonly CONNECTION_HEALTH_CHECK_TIMEOUT_MS = 10000;
 
   protected options: U;
   public constructor(
@@ -27,7 +27,7 @@ export abstract class DatabaseConnection<
 
   public async isSingleConnectionHealthy(
     connection: V,
-    timeoutMs = DatabaseConnection.CONNECTION_HEALTH_CHECK_TIMEOUT_MS
+    timeoutMs = this.CONNECTION_HEALTH_CHECK_TIMEOUT_MS
   ): Promise<boolean> {
     let timeout: NodeJS.Timeout | undefined;
     try {
@@ -46,9 +46,10 @@ export abstract class DatabaseConnection<
       ]);
       return true;
     } catch (error: unknown) {
-      this.logger.warn(
-        `Database connection health check failed: ${(error as Error).message}`
-      );
+      if (timeoutMs === this.CONNECTION_HEALTH_CHECK_TIMEOUT_MS)
+        this.logger.warn(
+          `Database connection health check failed: ${(error as Error).message}`
+        );
       return false;
     } finally {
       if (timeout) clearTimeout(timeout);
