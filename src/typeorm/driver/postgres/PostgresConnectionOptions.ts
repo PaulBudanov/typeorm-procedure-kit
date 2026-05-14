@@ -27,8 +27,10 @@ export interface PostgresConnectionOptions
   readonly driver?: typeof pg;
 
   /**
-   * The driver object
-   * This defaults to `require("pg-native")`.
+   * Optional native driver marker.
+   * When provided and the configured pg driver exposes `.native`, the native
+   * pg implementation is used. The optional `pg-native` package is not loaded
+   * implicitly.
    */
   readonly nativeDriver?: unknown;
 

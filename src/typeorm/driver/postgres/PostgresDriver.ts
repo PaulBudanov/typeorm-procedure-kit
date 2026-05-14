@@ -1388,14 +1388,8 @@ export class PostgresDriver implements Driver {
       const postgres = (this.options.driver ??
         PlatformTools.load('pg')) as typeof pg;
       this.postgres = postgres;
-      try {
-        const pgNative =
-          this.options.nativeDriver ?? PlatformTools.load('pg-native');
-        if (pgNative && this.postgres.native)
-          this.postgres = this.postgres.native;
-      } catch {
-        //nothing
-      }
+      if (this.options.nativeDriver && this.postgres.native)
+        this.postgres = this.postgres.native;
     } catch {
       // todo: better error for browser env
       throw new DriverPackageNotInstalledError('Postgres', 'pg');
