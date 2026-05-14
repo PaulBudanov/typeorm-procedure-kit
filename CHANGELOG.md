@@ -1,3 +1,12 @@
+## [1.3.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.3.0...v1.3.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* avoid optional pg-native load rejection ([db9e953](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/db9e9539630fb9de5a5c0261452a9dd4c89c537b))
+* release postgres query runners correctly ([12ebc61](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/12ebc61b8d59e6e6eea11727dd808d6b03b13d53))
+* restore database notification connections reliably ([84c196c](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/84c196cd845b7792019905e047d9ba77c3d9b03a))
+
 # [1.3.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.2.1...v1.3.0) (2026-05-12)
 
 
