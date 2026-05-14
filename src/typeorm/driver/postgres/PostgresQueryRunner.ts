@@ -206,27 +206,13 @@ export class PostgresQueryRunner
    * You cannot use query runner methods once its released.
    */
   public async release(): Promise<void> {
-    this.isReleased = true;
-
     if (!this.databaseConnection) {
+      this.isReleased = true;
       return;
     }
 
-    const connection = this.databaseConnection;
+    this.releasePostgresConnection();
     this.databaseConnection = undefined;
-
-    try {
-      await (connection as PoolClient).release();
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        this.driver.connection.logger.logQueryError(
-          error,
-          '',
-          undefined,
-          this as unknown as QueryRunner
-        );
-      }
-    }
   }
 
   /**
