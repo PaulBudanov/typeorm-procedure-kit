@@ -23,6 +23,9 @@ describe('OracleNotify', (): void => {
         .mockResolvedValue(undefined),
     };
     const oracleConnection = {
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -43,7 +46,7 @@ describe('OracleNotify', (): void => {
     );
   });
 
-  it('unsubscribes comma-separated channels and closes connections', async (): Promise<void> => {
+  it('unsubscribes each operation subscription and closes connections', async (): Promise<void> => {
     const connectionA = {
       unsubscribe: vi
         .fn<(_channel: string) => Promise<void>>()
@@ -55,6 +58,9 @@ describe('OracleNotify', (): void => {
         .mockResolvedValue(undefined),
     };
     const oracleConnection = {
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -68,7 +74,8 @@ describe('OracleNotify', (): void => {
     notify.getNotificationPool().set('a', connectionA as never);
     notify.getNotificationPool().set('b', connectionB as never);
 
-    await notify.unlistenNotify('a, b');
+    await notify.unlistenNotify('a');
+    await notify.unlistenNotify('b');
 
     expect(connectionA.unsubscribe).toHaveBeenCalledWith('a');
     expect(connectionB.unsubscribe).toHaveBeenCalledWith('b');
@@ -83,6 +90,9 @@ describe('OracleNotify', (): void => {
         .mockRejectedValue(error),
     };
     const oracleConnection = {
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -121,6 +131,9 @@ describe('OracleNotify', (): void => {
         .fn<() => Promise<object>>()
         .mockResolvedValueOnce(firstConnection)
         .mockResolvedValueOnce(secondConnection),
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -147,7 +160,7 @@ describe('OracleNotify', (): void => {
     expect(notify.getNotificationPool().size).toBe(0);
   });
 
-  it('closes a restored subscription if it is cancelled during resubscribe', async (): Promise<void> => {
+  it('keeps the restored subscription active when manual unlisten races with resubscribe', async (): Promise<void> => {
     let capturedCallback:
       | ((message: oracledb.SubscriptionMessage) => void | Promise<void>)
       | undefined;
@@ -187,12 +200,18 @@ describe('OracleNotify', (): void => {
           secondSubscribeStarted();
           return secondSubscribePromise;
         }),
+      unsubscribe: vi
+        .fn<(_channel: string) => Promise<void>>()
+        .mockResolvedValue(undefined),
     };
     const oracleConnection = {
       createSingleConnection: vi
         .fn<() => Promise<object>>()
         .mockResolvedValueOnce(firstConnection)
         .mockResolvedValueOnce(secondConnection),
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -218,10 +237,16 @@ describe('OracleNotify', (): void => {
     resolveSecondSubscribe();
     for (let index = 0; index < 5; index += 1) await Promise.resolve();
 
+    expect(firstConnection.unsubscribe).toHaveBeenCalledWith(channelName);
     expect(oracleConnection.closeSingleConnection).toHaveBeenCalledWith(
+      firstConnection
+    );
+    expect(notify.getNotificationPool().get(channelName)).toBe(
       secondConnection
     );
-    expect(notify.getNotificationPool().has(channelName)).toBe(false);
+    expect(oracleConnection.closeSingleConnection).not.toHaveBeenCalledWith(
+      secondConnection
+    );
   });
 
   it('keeps a successfully restored subscription under the same channel', async (): Promise<void> => {
@@ -259,6 +284,9 @@ describe('OracleNotify', (): void => {
         .fn<() => Promise<object>>()
         .mockResolvedValueOnce(firstConnection)
         .mockResolvedValueOnce(secondConnection),
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -315,6 +343,9 @@ describe('OracleNotify', (): void => {
       createSingleConnection: vi
         .fn<() => Promise<object>>()
         .mockResolvedValue(connection),
+      isSingleConnectionHealthy: vi
+        .fn<(_connection: object, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
       closeSingleConnection: vi
         .fn<(_connection: object) => Promise<void>>()
         .mockResolvedValue(undefined),

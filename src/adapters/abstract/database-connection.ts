@@ -16,15 +16,35 @@ export abstract class DatabaseConnection<
     protected readonly appDataSource: DataSource,
     protected readonly logger: ILoggerModule
   ) {
-    //? Maybe need get config options for create single connection from  class constructor. This doesn't look very good.
     this.options = (this.appDataSource.options as U).replication?.master as U;
   }
+
+  /**
+   * Creates one standalone database connection outside the TypeORM pool.
+   * Notification adapters use this connection for LISTEN/CQN subscriptions.
+   */
   public abstract createSingleConnection(): Promise<V>;
 
+  /**
+   * Closes a standalone database connection.
+   * Implementations must absorb and log close errors so cleanup paths can
+   * continue closing the remaining resources.
+   * @param connection - standalone connection to close.
+   */
   public abstract closeSingleConnection(connection: V): Promise<void>;
 
+  /**
+   * Performs a vendor-specific liveness check for a standalone connection.
+   * @param connection - standalone connection to ping.
+   */
   public abstract pingSingleConnection(connection: V): Promise<void>;
 
+  /**
+   * Checks whether a standalone connection responds before the timeout.
+   * @param connection - standalone connection to check.
+   * @param timeoutMs - maximum ping duration in milliseconds.
+   * @returns true when the ping succeeds before timeout, otherwise false.
+   */
   public async isSingleConnectionHealthy(
     connection: V,
     timeoutMs = this.CONNECTION_HEALTH_CHECK_TIMEOUT_MS
@@ -56,6 +76,12 @@ export abstract class DatabaseConnection<
     }
   }
 
+  /**
+   * Registers a connection-loss callback for drivers that expose error/end
+   * events. Adapters without such events can keep the default no-op.
+   * @param _connection - standalone connection to observe.
+   * @param _callback - callback invoked after connection loss.
+   */
   public registerConnectionErrorHandler(
     _connection: V,
     _callback: () => void | Promise<void>

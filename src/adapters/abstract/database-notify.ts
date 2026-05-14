@@ -26,17 +26,17 @@ export abstract class DatabaseNotify<
   protected constructor(protected readonly logger: ILoggerModule) {}
 
   /**
-   * Returns the notification pool for external management
-   * @returns {Map<string, T>} - the notification pool map
+   * Returns the active notification pool for diagnostics and external cleanup.
+   * Keys are adapter-specific channel or subscription names.
    */
   public getNotificationPool(): Map<string, T> {
     return this.notificationPool;
   }
 
   /**
-   * Gracefully shuts down all notification subscriptions
-   * Unsubscribes from all channels and closes all connections
-   * @returns {Promise<void>} - resolves when all cleanup is completed
+   * Gracefully shuts down all notification subscriptions.
+   * Active restore attempts are cancelled first, then all pooled connections
+   * are unsubscribed and closed by the concrete adapter.
    */
   public async destroy(): Promise<void> {
     const channels = new Set([
@@ -70,14 +70,33 @@ export abstract class DatabaseNotify<
     this.logger.log('DatabaseNotify shutdown completed');
   }
 
+  /**
+   * Unregisters one notification subscription and closes its single
+   * notification connection.
+   * @param channel - channel or subscription name returned by listenNotify.
+   */
   public abstract unlistenNotify(channel: string): Promise<void>;
 
+  /**
+   * Registers one notification subscription.
+   * @param sqlCommand - vendor-specific notification SQL.
+   * @param notifyCallback - callback invoked with parsed notification payload.
+   * @param options - vendor-specific notification and restore retry options.
+   * @returns registered channel or subscription name.
+   */
   public abstract listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options?: TOptions
   ): Promise<string>;
 
+  /**
+   * Starts a periodic health check for a notification connection.
+   * Existing timers for the same channel are replaced. When the connection is
+   * unhealthy and still belongs to the channel, the provided restore callback
+   * is executed.
+   * @param options - connection, health check, and restore settings.
+   */
   protected startConnectionHealthCheck(
     options: INotifyHealthCheckOptions<T>
   ): void {
@@ -89,6 +108,10 @@ export abstract class DatabaseNotify<
     this.healthCheckTimers.set(options.channelName, timer);
   }
 
+  /**
+   * Stops the periodic health check for a channel.
+   * @param channelName - channel or subscription name.
+   */
   protected stopConnectionHealthCheck(channelName: string): void {
     const timer = this.healthCheckTimers.get(channelName);
     if (!timer) return;
@@ -96,21 +119,41 @@ export abstract class DatabaseNotify<
     this.healthCheckTimers.delete(channelName);
   }
 
+  /**
+   * Marks a notification as active after a successful registration.
+   * A registration that happens during restore keeps the restore state intact
+   * until the restore wrapper finishes.
+   * @param channelName - channel or subscription name.
+   */
   protected markNotificationActive(channelName: string): void {
     if (this.restoringNotifications.has(channelName)) return;
     this.cancelledRestores.delete(channelName);
   }
 
+  /**
+   * Prevents queued restore work from recreating a notification after manual
+   * unlisten or destroy.
+   * @param channelName - channel or subscription name.
+   */
   protected cancelNotificationRestore(channelName: string): void {
     this.cancelledRestores.add(channelName);
   }
 
+  /**
+   * Clears restore and health-check bookkeeping for a channel.
+   * @param channelName - channel or subscription name.
+   */
   protected clearNotificationRestoreState(channelName: string): void {
     this.cancelledRestores.delete(channelName);
     this.restoringNotifications.delete(channelName);
     this.healthChecksInProgress.delete(channelName);
   }
 
+  /**
+   * Runs one restore workflow with duplicate-restore and cancellation guards.
+   * Concrete adapters provide the restore callback and adapter-specific state.
+   * @param options - restore callback, settings, and retry options.
+   */
   protected async restoreNotification<TSettings>(
     options: INotifyRestoreOptions<TSettings>
   ): Promise<void> {
@@ -144,6 +187,11 @@ export abstract class DatabaseNotify<
     }
   }
 
+  /**
+   * Executes restore attempts in a loop. After maxRetries are exhausted, waits
+   * for retryAfterMaxDelayMs and starts the attempt counter again.
+   * @param options - restore callback, settings, and retry timing.
+   */
   private async restoreNotificationWithRetry<TSettings>(
     options: INotifyRestoreOptions<TSettings>
   ): Promise<void> {

@@ -23,8 +23,8 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   }
 
   /**
-   * Gets the SQL command to fetch the packages that were updated in the database
-   * @returns The SQL command to fetch the packages that were updated in the database
+   * Gets the LISTEN command used to receive package metadata update events.
+   * @returns configured package update LISTEN command.
    */
   public getPackagesNotifySql(): string {
     if (this.listenEventName)
@@ -34,13 +34,17 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     return PostgreSqlCommand.SQL_GET_NOTIFY_UPDATE_PACKAGE;
   }
 
-  //TODO: Make return object more informative
   /**
-   * Registers a notification listener for a given channel
-   * @param {string} sqlCommand - SQL command to listen to
-   * @param {function} notifyCallback - callback function to call when a notification is received
-   * @returns {Promise<string>} - promise that resolves with the name of the channel
-   * @throws {Error} - if the SQL command does not contain LISTEN or if the listener for the channel is already registered
+   * Registers a PostgreSQL LISTEN subscription on a dedicated client.
+   * The channel is parsed from `LISTEN channel`, normalized with identifier
+   * quoting, and stored under the raw channel name returned by this method.
+   * Connection-loss handlers and periodic health checks restore the listener
+   * with the same callback and retry options.
+   * @param sqlCommand - LISTEN command, for example `LISTEN channel_name`.
+   * @param notifyCallback - callback invoked with parsed JSON payload, raw payload, or an empty object.
+   * @param options - restore retry options.
+   * @returns registered channel name.
+   * @throws ServerError when the SQL command is not a LISTEN command or the channel is already active.
    */
   public override async listenNotify<T>(
     sqlCommand: string,
@@ -145,10 +149,10 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   }
 
   /**
-   * Unregisters a notification listener for a given channel
-   * @param {string} channel - name of the channel to unregister
-   * @returns {Promise<void>} - resolves when the listener is unregistered
-   * @throws {Error} - if there is an error unregistering the listener
+   * Unregisters a PostgreSQL notification listener.
+   * Restore attempts and health checks are stopped first. If the client is
+   * still healthy, UNLISTEN is sent before closing the dedicated connection.
+   * @param channel - registered channel name.
    */
   public override async unlistenNotify(channel: string): Promise<void> {
     this.cancelNotificationRestore(channel);
@@ -187,18 +191,15 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   }
 
   /**
-   * Attempts to restore a client connection for a given channel by unregistering
-   * the channel and then registering it again. If the attempt fails, it
-   * will retry after a certain delay up to a maximum number of retries.
-   * If the maximum number of retries is reached, it will wait for 30 minutes
-   * and then attempt to restore the connection again.
-   * @param {string} channelName - name of the channel to restore
-   * @param {(args: TNotifyCallbackGeneric<T>) => void} callback - callback
-   * to be registered for the channel
-   * @param {number} [maxRetries=5] - maximum number of retries
-   * @param {number} [retryDelayMs=30000] - delay in milliseconds between retries
-   * @param {number} [currentRetry=1] - current retry attempt
-   * @returns {Promise<void>} - resolves when the connection is restored
+   * Schedules a guarded restore for a PostgreSQL listener.
+   * Duplicate restore attempts for the same channel are ignored. Retry timing
+   * comes from options when provided, otherwise from DatabaseNotify defaults.
+   * @param channelName - channel to restore.
+   * @param notifyCallback - callback to reattach to the restored listener.
+   * @param options - restore retry options.
+   * @param maxRetries - maximum attempts before the long retry delay.
+   * @param retryDelayMs - delay between regular retry attempts.
+   * @param currentRetry - initial retry counter.
    */
   private async restoreClientConnectionCallback<T>(
     channelName: string,

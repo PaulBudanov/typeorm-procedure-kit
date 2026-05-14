@@ -33,11 +33,12 @@ export abstract class DatabaseAdapter<
   TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
 > implements IDatabaseAdapterContract<TNotifyOptions> {
   /**
-   * Constructor for DatabaseAdapter
-   * @param logger - logger module to use for logging
-   * @param serializer - serializer object to use for serializing and deserializing data
-   * @param notifier - notifier object to use for sending and receiving notifications
-   * @param connection - database connection object to use for executing queries and procedures
+   * Creates a database adapter facade around serializer, notification, and
+   * single-connection helpers for one database vendor.
+   * @param logger - logger used by adapter operations.
+   * @param serializer - serializer registry used by driver fetch hooks.
+   * @param notifier - notification adapter used for LISTEN/CQN subscriptions.
+   * @param connection - single-connection helper used by notifications.
    */
   public constructor(
     protected readonly logger: ILoggerModule,
@@ -47,15 +48,15 @@ export abstract class DatabaseAdapter<
   ) {}
   /**
    * Sorts the arguments for a given procedure in a package.
-   * Removes any procedures that are not present in the procedureListBase array.
-   * If the package does not exist in the procedureListBase array and there are multiple packages,
-   * the procedure is skipped.
+   * Removes procedures that are not present in the configured procedure list.
+   * When several packages are configured, arguments for procedures outside the
+   * current package are skipped.
    * Sorts the arguments by their position.
-   * @param rawArguments - array of raw arguments for the procedure
-   * @param procedureListBase - array of procedures in the package
-   * @param packageName - name of the package
-   * @param packagesLength - length of the packages array
-   * @returns sorted arguments for the procedure
+   * @param rawArguments - raw procedure argument rows loaded from database metadata.
+   * @param procedureListBase - configured procedure names in lowercase.
+   * @param packageName - package or schema currently being processed.
+   * @param packagesLength - number of configured packages.
+   * @returns procedure argument map grouped by normalized procedure name.
    */
   public sortArgumentsAlgorithm(
     rawArguments: Array<IProcedureArgumentBase>,
@@ -93,13 +94,16 @@ export abstract class DatabaseAdapter<
   }
 
   /**
-   * Execute a SQL query or procedure call in a transaction
-   * @param {string} sql - SQL query string
-   * @param {EntityManager} client - database connection
-   * @param { Array<string>} optionsCommands - options for database commands
-   * @param {IBindingsObjectReturn['bindings']} [bindings] - parameters for SQL query
-   * @param {Array<string>} [cursorsNames] - names of cursors
-   * @returns {Promise<Awaited<Array<T>>>} - result of SQL query call
+   * Executes a SQL query or procedure call inside a transaction.
+   * Option commands are executed in the same transaction before the main SQL.
+   * If cursor names are provided, the vendor adapter reads cursor contents and
+   * returns the fetched rows instead of the raw execute result.
+   * @param sql - SQL query or procedure call string.
+   * @param client - entity manager that owns the transaction.
+   * @param optionsCommands - SQL commands to execute before the main statement.
+   * @param bindings - positional or driver-specific bind values.
+   * @param cursorsNames - output cursor names to fetch after the call.
+   * @returns result rows from the query or fetched cursors.
    */
   public async execute<T>(
     sql: string,
@@ -133,13 +137,35 @@ export abstract class DatabaseAdapter<
     });
   }
 
+  /**
+   * Builds the vendor-specific SQL query used to load procedure metadata for a
+   * package or schema.
+   * @param packageName - package or schema name to inspect.
+   * @returns SQL query string for procedure metadata loading.
+   */
   public abstract generatePackageInfoSql(packageName: string): string;
 
+  /**
+   * Converts named `:PARAM` placeholders and parameter values to the binding
+   * format expected by the current database driver.
+   * @param sqlQuery - SQL query containing uppercase named placeholders.
+   * @param params - object with values for placeholders.
+   * @returns rewritten SQL and ordered binding values.
+   */
   public abstract makeSqlBindings<U extends Record<string, unknown>>(
     sqlQuery: string,
     params?: U
   ): ISqlBindingsObjectReturn;
 
+  /**
+   * Builds a vendor-specific procedure call and bindings from loaded procedure
+   * metadata and an object or array payload.
+   * @param packageName - normalized package or schema name.
+   * @param processName - normalized procedure name.
+   * @param procedures - procedure argument metadata map.
+   * @param payload - procedure input values as object, array, null, or undefined.
+   * @returns procedure call SQL, binding values, and output cursor names.
+   */
   public abstract makeBindings<
     U extends Record<string, unknown> | Array<unknown>,
   >(
@@ -149,29 +175,59 @@ export abstract class DatabaseAdapter<
     payload?: U
   ): IBindingsObjectReturn;
 
+  /**
+   * Reads all output cursors returned by a procedure call.
+   * @param cursorNames - output cursor names from procedure metadata.
+   * @param result - raw driver result containing cursor handles when required.
+   * @param manager - entity manager used by adapters that fetch cursors by SQL.
+   * @returns rows read from all cursors.
+   */
   protected abstract fetchAllCursors<T>(
     cursorNames: Array<string>,
     result?: Array<oracledb.ResultSet<T> | T>,
     manager?: EntityManager
   ): Promise<Array<T>>;
 
+  /**
+   * Registers or replaces a serializer for driver result values.
+   * @param options - serializer type and conversion strategy.
+   */
   public setSerializer(options: ISetSerializer): void {
     this.serializer.setSerializer(options);
   }
 
+  /**
+   * Removes one serializer from the adapter registry.
+   * @param serializerType - serializer type to remove.
+   */
   public deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
     this.serializer.deleteSerializer(serializerType);
   }
 
+  /**
+   * Removes all serializers from the adapter registry.
+   */
   public deleteAllSerializers(): void {
     this.serializer.deleteAllSerializers();
   }
+
+  /**
+   * Current mutable serializer registry.
+   */
   public get serializerMapping(): TSerializerTypeCastWithoutFormat {
     return this.serializer.serializerMapping;
   }
 
+  /**
+   * Registers a database notification subscription through the vendor notifier.
+   * PostgreSQL expects a `LISTEN channel` command. Oracle expects a CQN query.
+   * @param sqlCommand - notification registration SQL.
+   * @param notifyCallback - callback invoked with parsed notification payload.
+   * @param options - vendor-specific notification and restore retry options.
+   * @returns registered channel or subscription name.
+   */
   public listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void,
@@ -184,30 +240,40 @@ export abstract class DatabaseAdapter<
     );
   }
 
+  /**
+   * Unregisters a notification subscription by channel or subscription name.
+   * @param channelName - channel or subscription name returned by listenNotify.
+   */
   public unlistenNotify(channelName: string): Promise<void> {
     return this.notifier.unlistenNotify(channelName);
   }
 
   /**
-   * Gracefully shuts down all notification subscriptions
-   * @returns {Promise<void>} - resolves when all cleanup is completed
+   * Gracefully shuts down all notification subscriptions.
    */
   public async destroyNotifications(): Promise<void> {
     await this.notifier.destroy();
   }
 
   /**
-   * Returns the notification pool for external management
-   * @returns {Map<string, T>} - the notification pool map
+   * Returns the active notification pool for diagnostics and external cleanup.
    */
   public getNotificationPool(): Map<string, unknown> {
     return this.notifier.getNotificationPool();
   }
 
+  /**
+   * Builds the SQL used to listen for package metadata change notifications.
+   * @param packages - package names for adapters that require package filtering.
+   * @returns vendor-specific notification SQL.
+   */
   public getPackagesNotifySql(packages?: Array<string>): string {
     return this.notifier.getPackagesNotifySql(packages ?? []);
   }
 
+  /**
+   * Installs driver fetch hooks required by adapter serializers.
+   */
   public registerFetchHandlerHook(): void {
     this.serializer.registerFetchHandlerHook();
   }

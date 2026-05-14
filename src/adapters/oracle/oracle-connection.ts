@@ -11,11 +11,9 @@ export class OracleConnection extends DatabaseConnection<
   oracledb.Connection
 > {
   /**
-   * Constructor for OracleConnection class.
-   * Initializes the OracleConnection object with the provided configuration
-   * and logger.
-   * @param {DataSource} appDataSource - configuration for the Oracle connection
-   * @param {ILoggerModule} logger - logger module to log messages
+   * Creates the Oracle single-connection helper.
+   * @param appDataSource - initialized data source with Oracle options.
+   * @param logger - logger used by connection operations.
    */
   public constructor(
     protected readonly appDataSource: DataSource,
@@ -25,8 +23,10 @@ export class OracleConnection extends DatabaseConnection<
   }
 
   /**
-   * Creates a single Oracle connection object using the provided configuration.
-   * @returns {Promise<oracledb.Connection>} - A promise that resolves with the Oracle client object
+   * Creates one standalone Oracle connection using the master connection options.
+   * CQN events are enabled because notification subscriptions use these
+   * connections.
+   * @returns connected Oracle connection.
    */
   public override createSingleConnection(): Promise<oracledb.Connection> {
     const options: oracledb.ConnectionAttributes = {
@@ -39,6 +39,12 @@ export class OracleConnection extends DatabaseConnection<
     return oracledb.getConnection(options);
   }
 
+  /**
+   * Pings a standalone Oracle connection.
+   * Oracle's synchronous isHealthy check is evaluated before ping to catch
+   * already closed connections quickly.
+   * @param connection - connection to ping.
+   */
   public override async pingSingleConnection(
     connection: oracledb.Connection
   ): Promise<void> {
@@ -48,10 +54,9 @@ export class OracleConnection extends DatabaseConnection<
   }
 
   /**
-   * Closes a single Oracle connection object.
+   * Closes a standalone Oracle connection.
    * Logs an error if the connection close process fails.
-   * @param {oracledb.Connection} connection - The connection to close.
-   * @returns {Promise<void>} - A promise that resolves when the connection is closed.
+   * @param connection - connection to close.
    */
   public override async closeSingleConnection(
     connection: oracledb.Connection

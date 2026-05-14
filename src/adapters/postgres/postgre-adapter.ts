@@ -40,9 +40,9 @@ export class PostgreAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Generates a SQL query string to fetch the package info for a given package name.
-   * @param packageName - name of the package to fetch info for
-   * @returns SQL query string to fetch package info
+   * Generates a SQL query that loads PostgreSQL procedure metadata from a schema.
+   * @param packageName - schema name to inspect.
+   * @returns SQL query string for procedure metadata loading.
    */
   public override generatePackageInfoSql(packageName: string): string {
     const safePackageName = SqlIdentifier.validateIdentifier(
@@ -53,12 +53,11 @@ export class PostgreAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Fetches all rows from the given cursors.
-   * After fetching the rows, the cursors are closed.
-   * @param cursorsNames - names of the cursors to fetch from
-   * @param [_result] - internal parameter to define the type of the result
-   * @param manager - entity manager to use for the queries
-   * @returns A promise that resolves with an array of the fetched rows
+   * Fetches all rows from PostgreSQL refcursors and closes those cursors.
+   * @param cursorsNames - refcursor names to fetch.
+   * @param _result - unused raw procedure result.
+   * @param manager - entity manager that owns the active transaction.
+   * @returns concatenated rows from all cursors.
    */
   protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,
@@ -81,13 +80,17 @@ export class PostgreAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Creates bindings for a given SQL query or procedure call.
+   * Creates PostgreSQL CALL bindings from procedure metadata.
    *
-   * @param packageName - name of the package (schema) in lowercase
-   * @param processName - name of the procedure or SQL query in lowercase
-   * @param procedures - list of procedure arguments
-   * @param [payload] - object or array with data to be passed to the procedure, or undefined/null
-   * @returns an object with the following properties:
+   * Object payload keys may use either the raw argument name or the same name
+   * without a leading `p_`. Arrays are bound by argument order. PostgreSQL
+   * refcursor arguments are passed as cursor names and returned in cursorsNames.
+   *
+   * @param packageName - schema name in lowercase.
+   * @param processName - procedure name in lowercase.
+   * @param procedures - procedure argument metadata map.
+   * @param payload - object or array with input values, or undefined/null.
+   * @returns object with:
    * - paramExecuteString: a string representing the SQL query with bindings
    * - bindings: an array of values to be passed to the procedure
    * - cursorsNames: an array of PostgreSQL refcursor argument names to fetch after the call
@@ -151,10 +154,11 @@ export class PostgreAdapter extends DatabaseAdapter<
     return processBindings(payload);
   }
   /**
-   * Makes SQL bindings for the given SQL query and parameters
-   * @param {string} sqlQuery - SQL query string
-   * @param {U} [params] - parameters for SQL query
-   * @returns {ISqlBindingsObjectReturn} - object with bindings and modified SQL query string
+   * Rewrites uppercase named placeholders to PostgreSQL positional bindings.
+   * Example: `:ID` becomes `$1`.
+   * @param sqlQuery - SQL query with uppercase named placeholders.
+   * @param params - values keyed by placeholder name, case-insensitive.
+   * @returns rewritten SQL and ordered binding values.
    */
   public override makeSqlBindings<U extends Record<string, unknown>>(
     sqlQuery: string,

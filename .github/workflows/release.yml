@@ -76,6 +76,7 @@ jobs:
 
           required_checks=(
             "Typecheck, lint, and test"
+            "Integration tests"
             "CodeQL analysis"
             "Dependency audit"
           )

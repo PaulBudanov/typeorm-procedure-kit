@@ -39,3 +39,74 @@ jobs:
           name: vitest-junit-report
           path: reports/vitest/junit.xml
           if-no-files-found: ignore
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: typeorm_procedure_kit
+          POSTGRES_USER: typeorm
+          POSTGRES_PASSWORD: typeorm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U typeorm -d typeorm_procedure_kit"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      oracle:
+        image: gvenzl/oracle-free:23.26.0-slim-faststart
+        env:
+          ORACLE_RANDOM_PASSWORD: "true"
+          APP_USER: typeorm
+          APP_USER_PASSWORD: typeorm
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 60
+
+    env:
+      RUN_INTEGRATION_TESTS: "1"
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: typeorm_procedure_kit
+      POSTGRES_USERNAME: typeorm
+      POSTGRES_PASSWORD: typeorm
+      ORACLE_HOST: 127.0.0.1
+      ORACLE_PORT: 1521
+      ORACLE_DATABASE: FREEPDB1
+      ORACLE_USERNAME: typeorm
+      ORACLE_PASSWORD: typeorm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --package-lock=false
+
+      - name: Run integration tests
+        run: npx vitest run test/integration --reporter=default --reporter=junit --outputFile.junit=reports/vitest/integration-junit.xml
+
+      - name: Upload integration test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vitest-integration-junit-report
+          path: reports/vitest/integration-junit.xml
+          if-no-files-found: ignore

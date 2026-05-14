@@ -13,11 +13,9 @@ export class PostgreConnection extends DatabaseConnection<
   private readonly keepAliveInitialDelayMillis = 1000 * 10;
 
   /**
-   * Constructor for PostgreConnection class.
-   * Initializes the PostgreConnection object with the provided configuration
-   * and logger.
-   * @param {DataSource} appDataSource - configuration for the Postgres connection
-   * @param {ILoggerModule} logger - logger module to log messages
+   * Creates the Postgres single-connection helper.
+   * @param appDataSource - initialized data source with Postgres options.
+   * @param logger - logger used by connection operations.
    */
   public constructor(
     protected readonly appDataSource: DataSource,
@@ -27,9 +25,9 @@ export class PostgreConnection extends DatabaseConnection<
   }
 
   /**
-   * Creates a single Postgres connection object using the provided configuration.
+   * Creates one standalone Postgres client using the master connection options.
    *
-   * @returns {Promise<Client>} - A promise that resolves with the Postgres client object
+   * @returns connected Postgres client.
    */
   public override async createSingleConnection(): Promise<Client> {
     const options: ClientConfig = {
@@ -48,6 +46,10 @@ export class PostgreConnection extends DatabaseConnection<
     return client;
   }
 
+  /**
+   * Pings a standalone Postgres client.
+   * @param connection - client to ping.
+   */
   public override async pingSingleConnection(
     connection: Client
   ): Promise<void> {
@@ -55,11 +57,10 @@ export class PostgreConnection extends DatabaseConnection<
   }
 
   /**
-   * Closes a single Postgres connection object.
+   * Closes a standalone Postgres client.
    * Removes all listeners from the connection and then ends the connection.
    * Logs an error if the connection close process fails.
-   * @param {Client} connection - The connection to close.
-   * @returns {Promise<void>} - A promise that resolves when the connection is closed.
+   * @param connection - client to close.
    */
   public override async closeSingleConnection(
     connection: Client
@@ -78,18 +79,12 @@ export class PostgreConnection extends DatabaseConnection<
   }
 
   /**
-   * Registers a callback function to be called when the client connection is
-   * closed or an error occurs. The callback function can be either a
-   * synchronous function or an asynchronous function returning a promise.
+   * Registers one connection-loss callback for a Postgres client.
+   * The callback is invoked once on the first `error` or `end` event, then the
+   * event listeners are removed to avoid duplicate restore attempts.
    *
-   * The callback function will be called with no arguments.
-   *
-   * If the callback function throws an error, it will be caught and logged
-   * to the logger.
-   *
-   * @param {Client} client - the Postgres Client object
-   * @param {(() => void) | Promise<void>} callback - the callback function
-   * to be called when the client connection is closed or an error occurs
+   * @param client - Postgres client to observe.
+   * @param callback - callback called when the client connection closes or errors.
    */
   public override registerConnectionErrorHandler(
     client: Client,

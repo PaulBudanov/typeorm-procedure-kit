@@ -65,13 +65,18 @@ export class OracleAdapter extends DatabaseAdapter<
   } as const;
 
   /**
-   * Creates bindings for a given SQL query or procedure call.
+   * Creates Oracle PL/SQL procedure bindings from procedure metadata.
    *
-   * @param packageName - name of the package (schema) in lowercase
-   * @param processName - name of the procedure or SQL query in lowercase
-   * @param procedures - list of procedure arguments
-   * @param [payload] - object or array with data to be passed to the procedure, or undefined/null
-   * @returns an object with the following properties:
+   * Object payload keys may use either the raw argument name or the same name
+   * without a leading `p_`. Arrays are bound by argument order. Oracle REF
+   * CURSOR arguments are configured as output cursor bindings and returned in
+   * cursorsNames.
+   *
+   * @param packageName - package name in lowercase.
+   * @param processName - procedure name in lowercase.
+   * @param procedures - procedure argument metadata map.
+   * @param payload - object or array with input values, or undefined/null.
+   * @returns object with:
    * - paramExecuteString: a string representing the SQL query with bindings
    * - bindings: an array of values to be passed to the procedure
    * - cursorsNames: an array of names of cursors (for Oracle only)
@@ -159,10 +164,12 @@ export class OracleAdapter extends DatabaseAdapter<
     return processBindings(payload);
   }
   /**
-   * Makes SQL bindings for the given SQL query and parameters
-   * @param {string} sqlQuery - SQL query string
-   * @param {U} [params] - parameters for SQL query
-   * @returns {ISqlBindingsObjectReturn} - object with bindings and modified SQL query string
+   * Builds Oracle bindings for uppercase named placeholders.
+   * Oracle keeps the original `:PARAM` placeholders in the SQL string and
+   * receives the binding values in placeholder occurrence order.
+   * @param sqlQuery - SQL query with uppercase named placeholders.
+   * @param params - values keyed by placeholder name, case-insensitive.
+   * @returns original SQL and ordered binding values.
    */
   public override makeSqlBindings<U extends Record<string, unknown>>(
     sqlQuery: string,
@@ -196,9 +203,9 @@ export class OracleAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Generates a SQL query string to fetch the package info for a given package name.
-   * @param packageName - name of the package to fetch info for
-   * @returns SQL query string to fetch package info
+   * Generates a SQL query that loads Oracle package procedure metadata.
+   * @param packageName - package name to inspect.
+   * @returns SQL query string for procedure metadata loading.
    */
   public override generatePackageInfoSql(packageName: string): string {
     const safePackageName = SqlIdentifier.validateIdentifier(
@@ -239,13 +246,13 @@ export class OracleAdapter extends DatabaseAdapter<
   /**
    * Fetches all the cursors from the given result set.
    *
-   * This function takes an array of cursors names and an array of result sets.
-   * It then fetches all the cursors from the result sets and returns them as an array.
+   * Oracle returns REF CURSOR values as ResultSet instances. This method reads
+   * each result set as a query stream and concatenates the rows.
    *
-   * @param cursorsNames - names of the cursors to fetch
-   * @param result - result set containing the cursors to fetch
-   * @param _manager - database manager to use for the fetch, or undefined to use the default manager
-   * @returns Promise that resolves with the fetched cursors as an array
+   * @param cursorsNames - output cursor names from procedure metadata.
+   * @param result - result sets containing cursor rows.
+   * @param _manager - unused for Oracle cursor fetching.
+   * @returns rows fetched from all cursors.
    */
   protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,

@@ -24,12 +24,10 @@ export class OracleNotify extends DatabaseNotify<
   IOracleOptionsNotify
 > {
   /**
-   * Constructor for OracleNotify class.
-   * Initializes the OracleNotify object with the provided configuration
-   * and logger.
-   * @param {OracleConnection} oracleConnection - configuration for the Oracle connection
-   * @param {ILoggerModule} logger - logger module to log messages
-   * @param {INotifyOracleDefaultSettings} [notifySettings] - default settings for notifications
+   * Creates an Oracle notification adapter for Continuous Query Notification.
+   * @param oracleConnection - single-connection helper used by CQN subscriptions.
+   * @param logger - logger used by notification operations.
+   * @param notifySettings - default CQN settings from database config.
    */
   public constructor(
     private readonly oracleConnection: OracleConnection,
@@ -39,9 +37,9 @@ export class OracleNotify extends DatabaseNotify<
     super(logger);
   }
   /**
-   * Gets the SQL command to fetch the packages that were updated in the database
-   * @param {Array<string>} packages - names of the packages to fetch
-   * @returns {string} - SQL command to fetch the packages that were updated in the database
+   * Builds the CQN query used to watch package metadata changes.
+   * @param packages - package names to include in the notification query.
+   * @returns SQL query for package metadata update notifications.
    * @example
    * const notifySql = dataBase.getPackagesNotifySql(['PACKAGE_NAME_1', 'PACKAGE_NAME_2']);
    */
@@ -61,9 +59,11 @@ export class OracleNotify extends DatabaseNotify<
     );
   }
   /**
-   * Unsubscribes from a channel and then closes the client connection.
-   * @param {string} channelName - name of the channel to unsubscribe from
-   * @returns {Promise<void>} - resolves when the subscription is unsubscribed and the connection is closed
+   * Unsubscribes one CQN subscription and closes its dedicated connection.
+   * Restore attempts and health checks are stopped first. If the connection is
+   * already unhealthy, Oracle unsubscribe is skipped and the connection is
+   * closed directly.
+   * @param channelName - subscription name returned by listenNotify.
    */
   public override async unlistenNotify(channelName: string): Promise<void> {
     this.cancelNotificationRestore(channelName);
@@ -91,20 +91,22 @@ export class OracleNotify extends DatabaseNotify<
       await this.oracleConnection.closeSingleConnection(connection);
     }
   }
-  //TODO: Make return object more informative
   /**
    * Registers an Oracle Continuous Query Notification subscription.
    *
    * Oracle uses the provided SQL query as the CQN subscription query and
    * generates an internal UUID subscription name. When Oracle reports changed
    * ROWIDs, the notifier fetches the changed rows and passes them to the
-   * callback.
+   * callback. When `operations` is an array, a separate subscription is
+   * created for each operation and the returned value is a comma-separated
+   * list of subscription names.
    *
-   * @param {string} sqlCommand - SQL query to subscribe to.
-   * @param {(args: TNotifyCallbackGeneric<T>) => Promise<void> | void} notifyCallback - Callback called with changed rows.
-   * @param {IOracleOptionsNotify} options - CQN options that override default notification settings.
-   * @returns {Promise<string>} - Name of the created subscription.
-   * @throws {Error} - If subscription registration fails.
+   * @param sqlCommand - SQL query to subscribe to.
+   * @param notifyCallback - callback invoked with changed rows.
+   * @param options - CQN and restore retry options.
+   * @returns created subscription name or comma-separated subscription names.
+   * @throws ServerError when too many per-operation subscriptions are requested.
+   * @throws Error when Oracle subscription registration fails.
    */
   public override async listenNotify<T>(
     sqlCommand: string,
@@ -210,12 +212,17 @@ export class OracleNotify extends DatabaseNotify<
     return subscribeOptions;
   }
   /**
-   * Subscribe to a channel
-   * @param {oracledb.Connection} connection - connection to Oracle database
-   * @param {string} channelName - name of the channel to subscribe to
-   * @param {oracledb.SubscribeOptions} subscribeOptions - options for the subscription
-   * @returns {Promise<string>} - name of the channel that was subscribed to
-   * @throws {Error} - if the subscription fails
+   * Registers one Oracle CQN subscription on an existing connection.
+   * The connection is stored in the notification pool only after Oracle
+   * confirms the subscription.
+   * @param connection - dedicated Oracle connection.
+   * @param channelName - generated subscription name.
+   * @param subscribeOptions - Oracle subscription options.
+   * @param sqlCommand - original subscription SQL used for restore.
+   * @param notifyCallback - callback to reattach during restore.
+   * @param options - normalized CQN and restore retry options.
+   * @returns registered subscription name.
+   * @throws Error when Oracle subscription registration fails.
    */
   private async subscribe<T>(
     connection: oracledb.Connection,
@@ -259,14 +266,15 @@ export class OracleNotify extends DatabaseNotify<
 
   /**
    * Handles Oracle subscription message.
-   * If the subscription message is of type shutdown, register, or deregister, it will restore the subscription.
-   * If the subscription message is of type change, it will execute a query to get the updated rows and call the notifyCallback with the result.
-   * @param notifyCallback - callback to call when the subscription message is of type change
-   * @param client - Oracle connectioncreateSingleConnection
-   * @param channelName - name of the channel
-   * @param subscribeUnionOptions - options for Oracle subscription
-   * @param msg - Oracle subscription message
-   * @returns Promise<void> - resolves when the subscription message is handled
+   * Deregistration or shutdown events trigger restore when the message belongs
+   * to the current pooled connection. Change events are expanded by ROWID into
+   * SELECT queries, and fetched rows are passed to the callback.
+   * @param notifyCallback - callback invoked for changed rows.
+   * @param client - Oracle connection that received the message.
+   * @param channelName - subscription name.
+   * @param subscribeUnionOptions - subscription options without the callback.
+   * @param restoreOptions - normalized options reused by restore.
+   * @param msg - Oracle subscription message.
    */
   private async makeSubscriptionHandler<T>(
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
@@ -388,6 +396,19 @@ export class OracleNotify extends DatabaseNotify<
     return;
   }
 
+  /**
+   * Schedules a guarded restore for an Oracle CQN subscription.
+   * Duplicate restore attempts for the same subscription are ignored. Retry
+   * timing comes from options when provided, otherwise from DatabaseNotify
+   * defaults.
+   * @param sqlCommand - original CQN query to subscribe again.
+   * @param channelName - subscription name to restore.
+   * @param notifyCallback - callback to reattach to the subscription.
+   * @param options - normalized CQN and restore retry options.
+   * @param maxRetries - maximum attempts before the long retry delay.
+   * @param retryDelayMs - delay between regular retry attempts.
+   * @param currentRetry - initial retry counter.
+   */
   private async restoreSubscriptionCallback<T>(
     sqlCommand: string,
     channelName: string,

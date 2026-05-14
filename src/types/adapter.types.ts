@@ -49,12 +49,18 @@ export type TConnectionClassTypes = OracleConnection | PostgreConnection;
 export interface IDatabaseAdapterContract<
   TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
 > {
+  /**
+   * Normalizes and sorts raw database procedure arguments.
+   */
   sortArgumentsAlgorithm(
     rawArguments: Array<IProcedureArgumentBase>,
     procedureListBase: Array<Lowercase<string>>,
     packageName: Lowercase<string>,
     packagesLength: number
   ): TProcedureArgumentList;
+  /**
+   * Executes SQL or a procedure call inside a transaction.
+   */
   execute<T>(
     sql: string,
     client: EntityManager,
@@ -62,32 +68,71 @@ export interface IDatabaseAdapterContract<
     bindings?: IBindingsObjectReturn['bindings'],
     cursorsNames?: Array<string>
   ): Promise<Awaited<Array<T>>>;
+  /**
+   * Builds vendor-specific SQL for loading procedure metadata.
+   */
   generatePackageInfoSql(packageName: string): string;
+  /**
+   * Converts named SQL placeholders to vendor-specific binding format.
+   */
   makeSqlBindings<U extends Record<string, unknown>>(
     sqlQuery: string,
     params?: U
   ): ISqlBindingsObjectReturn;
+  /**
+   * Builds vendor-specific procedure call SQL and bindings.
+   */
   makeBindings<U extends Record<string, unknown> | Array<unknown>>(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: TProcedureArgumentList | undefined,
     payload?: U
   ): IBindingsObjectReturn;
+  /**
+   * Registers or replaces a result serializer.
+   */
   setSerializer(options: ISetSerializer): void;
+  /**
+   * Removes one result serializer.
+   */
   deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void;
+  /**
+   * Removes all result serializers.
+   */
   deleteAllSerializers(): void;
+  /**
+   * Current mutable serializer registry.
+   */
   readonly serializerMapping: TSerializerTypeCastWithoutFormat;
+  /**
+   * Registers a database notification subscription.
+   */
   listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options?: TNotifyOptions
   ): Promise<string>;
+  /**
+   * Unregisters a database notification subscription.
+   */
   unlistenNotify(channelName: string): Promise<void>;
+  /**
+   * Closes all active notification subscriptions.
+   */
   destroyNotifications(): Promise<void>;
+  /**
+   * Returns the active notification pool for diagnostics.
+   */
   getNotificationPool(): Map<string, unknown>;
+  /**
+   * Builds SQL used for package metadata change notifications.
+   */
   getPackagesNotifySql(packages?: Array<string>): string;
+  /**
+   * Registers driver fetch hooks used by serializers.
+   */
   registerFetchHandlerHook(): void;
 }
 

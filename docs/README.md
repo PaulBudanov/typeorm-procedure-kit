@@ -46,6 +46,7 @@
   · <a href="#serializers">Serializers</a>
   · <a href="#nestjs-integration">NestJS</a>
   · <a href="#bundled-typeorm-compatible-api">TypeORM API</a>
+  · <a href="#future-orm-direction">Future ORM</a>
   · <a href="#typeorm-extension-decorators">Extensions</a>
   · <a href="#shutdown">Shutdown</a>
   · <a href="#common-errors">Errors</a>
@@ -356,12 +357,15 @@ resolved case-insensitively and normalized internally.
 In PostgreSQL examples, "package" means the configured schema namespace used by
 the kit. In Oracle examples, it means an Oracle package.
 
-`procedureObjectList` is an allowlist for procedure metadata loading. Keys are
-labels for the configuration object only; values must be real database
-procedure names in `package.procedure` or `schema.procedure` form. Runtime
-calls resolve against the loaded database names, so use
-`db.call('billing.find_invoices')` or `db.call('find_invoices')` when only one
-package is configured. Do not use `procedureObjectList` keys as call aliases.
+`procedureObjectList` is used to resolve configured procedure names and, when
+several packages/schemas are configured, to skip procedures outside the current
+package. Keys are labels for the configuration object only; values must be real
+database procedure names. Use `package.procedure` or `schema.procedure` when
+several packages are configured. A bare `procedure` name is accepted when there
+is exactly one package. Runtime calls resolve against the loaded database names,
+so use `db.call('billing.find_invoices')` or `db.call('find_invoices')` when
+only one package is configured. Do not use `procedureObjectList` keys as call
+aliases.
 
 If `packagesSettings.packages` is present and the packages array is non-empty,
 `initDatabase()` also creates the package-change notification subscription.
@@ -479,8 +483,8 @@ const oracleClientInitiatedConfig: IModuleConfig['config'] = {
 };
 ```
 
-The per-subscription `makeNotify()`/`createNotification()` Oracle option
-`clientInitiated` can override this default for a single subscription.
+The per-subscription `makeNotify()` Oracle option `clientInitiated` can
+override this default for a single subscription.
 
 ## PostgreSQL setup
 
@@ -629,7 +633,7 @@ Payload rules:
 - Pass an object to bind by argument name. The adapters also try the same name
   without a leading `p_`, so `p_customer_id` can be supplied as `customer_id`.
 - Pass an array to bind by procedure argument position.
-- Pass `undefined` or `null` to bind all non-cursor values as `null`.
+- Omit the payload or pass `undefined` to bind all non-cursor values as `null`.
 - Do not pass a scalar string or number as the procedure payload.
 
 ```ts
@@ -682,6 +686,16 @@ parses JSON payloads when possible, and attempts to restore the listener after
 connection errors. It also runs a periodic connection health check, so a
 listener can be restored after silent network drops where PostgreSQL does not
 emit an explicit notification event.
+
+Notification restore retry options can be passed as the second argument of
+`makeNotify()` for Oracle, and as the adapter notification options for direct
+adapter usage:
+
+- `maxRetries`: number of restore attempts before the long retry delay,
+  default `5`.
+- `retryDelayMs`: delay between regular restore attempts, default `30000`.
+- `retryAfterMaxDelayMs`: delay after `maxRetries` are exhausted before the
+  counter starts again, default `1800000`.
 
 ### Oracle Continuous Query Notification
 
@@ -902,9 +916,15 @@ try {
 }
 
 const dataSource = db.dataSource;
+const adapter = db.databaseAdapter;
 ```
 
 `getEntityManager()` accepts `master` or `slave`.
+`databaseAdapter` exposes the low-level adapter contract for diagnostics and
+advanced integration code.
+
+`isRegisterShutdownHandlers` registers shutdown handlers during construction.
+If you need to attach them later, call `db.registerShutdownHandlers()`.
 
 ## Bundled TypeORM-compatible API
 
@@ -939,6 +959,20 @@ This TypeORM quoting mode applies to generated entity, repository, and query
 builder SQL. Procedure calls and notification channels use their own adapter
 paths: identifiers are validated by `SqlIdentifier` and quoted or formatted
 where the target database requires it.
+
+## Future ORM direction
+
+The current `typeorm-procedure-kit/typeorm` entry point is TypeORM-compatible
+and remains the supported entity API for the package today. Future development
+is planned to move the library toward its own ORM layer instead of depending on
+the bundled TypeORM fork as the long-term foundation.
+
+The goal of this direction is to keep the database workflow focused on the
+features this package already owns: stored procedure metadata, Oracle and
+PostgreSQL adapters, explicit identifier handling, repository/query APIs, and
+strict TypeScript types. Any transition is expected to be incremental and
+documented through the public entry points, without promising a specific
+release date.
 
 ## TypeORM extension decorators
 
