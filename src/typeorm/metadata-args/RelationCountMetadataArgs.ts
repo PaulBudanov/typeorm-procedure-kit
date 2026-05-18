@@ -1,6 +1,11 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { EntityPropertiesMap } from '../metadata/types/EntityPropertiesMap.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+
+export type RelationCountPropertyFactory = (
+  object: EntityPropertiesMap | ObjectLiteral
+) => unknown;
 
 /**
  * Arguments for RelationCountMetadata class.
@@ -19,7 +24,7 @@ export interface RelationCountMetadataArgs {
   /**
    * Target's relation which it should count.
    */
-  readonly relation: string | ((object: ObjectLiteral) => unknown);
+  readonly relation: string | RelationCountPropertyFactory;
 
   /**
    * Alias of the joined (destination) table.

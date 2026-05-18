@@ -951,6 +951,42 @@ const adapter = db.databaseAdapter;
 - Oracle/PostgreSQL column types и query-runner API сужены под поддерживаемые
   драйверы.
 
+### Карты свойств metadata
+
+`EntityMetadata.propertiesMap` типизирована как `EntityPropertiesMap<T>` и
+сохраняет TypeORM-compatible property-path семантику. Callback decorators для
+`Index`, `Unique`, `RelationId`, `RelationCount` и `EntityOptions.orderBy`
+получают эту карту на runtime, поэтому их значения по-прежнему резолвятся в
+property paths сущности. `orderBy` callbacks вычисляются после создания
+`propertiesMap`.
+
+`EntityMetadata.databasePropertiesMap` — отдельная
+`EntityDatabasePropertiesMap<T>`. Это column-only карта: leaf values содержат
+database column names или database paths после применения явных
+`@Column({ name })` options и правил naming strategy. Relation virtual join
+columns намеренно исключены из этой карты.
+
+```ts
+import { Column, Entity, PrimaryColumn } from 'typeorm-procedure-kit/typeorm';
+
+@Entity()
+class User {
+  @PrimaryColumn()
+  id!: number;
+
+  @Column({ name: 'user_id' })
+  userId!: string;
+}
+
+// metadata.propertiesMap.userId === 'userId'
+// metadata.databasePropertiesMap.userId === 'user_id'
+```
+
+Для callback decorators `user.userId` в `@Index((user) => [user.userId])`
+по-прежнему означает property path `userId`; используйте
+`databasePropertiesMap` только там, где из metadata напрямую нужны database
+column names или paths.
+
 Kit устанавливает `isQuotingDisabled: true` при инициализации DataSource.
 Query builder по умолчанию не экранирует identifiers, поэтому generated SQL не
 получает случайные `"USERS"` или `"CREATED_AT"`, когда схема базы ожидает

@@ -1,4 +1,5 @@
 import type { OrderByCondition } from '../../find-options/OrderByCondition.js';
+import type { EntityPropertiesMap } from '../../metadata/types/EntityPropertiesMap.js';
 
 /**
  * Describes all entity's options.
@@ -15,7 +16,7 @@ export interface EntityOptions {
    */
   orderBy?:
     | OrderByCondition
-    | ((object: unknown) => OrderByCondition | unknown);
+    | ((object: EntityPropertiesMap) => OrderByCondition | undefined);
 
   /**
    * Table's database engine type (like "InnoDB", "MyISAM", etc).

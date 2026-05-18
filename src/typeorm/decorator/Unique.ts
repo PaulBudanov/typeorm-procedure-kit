@@ -1,12 +1,13 @@
 import { getMetadataArgsStorage } from '../globals.js';
-import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
+import type {
+  UniqueColumnsResolver,
+  UniqueMetadataArgs,
+} from '../metadata-args/UniqueMetadataArgs.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import type { UniqueOptions } from './options/UniqueOptions.js';
 
-type FieldsFunction = (
-  object?: unknown
-) => Array<unknown> | Record<string, number>;
+type FieldsFunction = UniqueColumnsResolver;
 
 // Type alias to avoid ESLint no-unsafe-function-type
 type AnyFunction = (...args: Array<unknown>) => unknown;

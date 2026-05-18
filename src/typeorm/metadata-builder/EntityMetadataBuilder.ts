@@ -921,6 +921,12 @@ export class EntityMetadataBuilder {
       foreignKey.build(this.connection.namingStrategy)
     );
     entityMetadata.propertiesMap = entityMetadata.createPropertiesMap();
+    entityMetadata.databasePropertiesMap =
+      entityMetadata.createDatabasePropertiesMap();
+    entityMetadata.orderBy =
+      typeof entityMetadata.tableMetadataArgs.orderBy === 'function'
+        ? entityMetadata.tableMetadataArgs.orderBy(entityMetadata.propertiesMap)
+        : entityMetadata.tableMetadataArgs.orderBy;
     entityMetadata.relationIds.forEach((relationId) => relationId.build());
     entityMetadata.relationCounts.forEach((relationCount) =>
       relationCount.build()

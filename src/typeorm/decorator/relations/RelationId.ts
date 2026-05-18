@@ -1,5 +1,6 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { getMetadataArgsStorage } from '../../globals.js';
+import type { EntityPropertiesMap } from '../../metadata/types/EntityPropertiesMap.js';
 import type { RelationIdMetadataArgs } from '../../metadata-args/RelationIdMetadataArgs.js';
 import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 
@@ -8,8 +9,10 @@ import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.
  *
  * @experimental
  */
-export function RelationId<T>(
-  relation: string | ((object: T) => unknown),
+export function RelationId<
+  TPropertiesMap extends EntityPropertiesMap = EntityPropertiesMap,
+>(
+  relation: string | ((object: TPropertiesMap) => unknown),
   alias?: string,
   queryBuilderFactory?: (
     qb: SelectQueryBuilder<ObjectLiteral>

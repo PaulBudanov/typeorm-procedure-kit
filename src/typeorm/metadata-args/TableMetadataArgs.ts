@@ -2,6 +2,7 @@ import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
+import type { EntityPropertiesMap } from '../metadata/types/EntityPropertiesMap.js';
 import type { TableType } from '../metadata/types/TableTypes.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
@@ -31,7 +32,7 @@ export interface TableMetadataArgs {
    */
   orderBy?:
     | OrderByCondition
-    | ((object: ObjectLiteral) => OrderByCondition | undefined);
+    | ((object: EntityPropertiesMap) => OrderByCondition | undefined);
 
   /**
    * Table's database engine type (like "InnoDB", "MyISAM", etc).

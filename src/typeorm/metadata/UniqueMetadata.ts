@@ -4,6 +4,7 @@ import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js'
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
 import { ColumnMetadata } from './ColumnMetadata.js';
+import { resolveColumnPath } from './ColumnPathResolver.js';
 import { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import { EntityMetadata } from './EntityMetadata.js';
 import type { DeferrableType } from './types/DeferrableType.js';
@@ -49,9 +50,7 @@ export class UniqueMetadata {
   /**
    * User specified column names.
    */
-  public givenColumnNames?:
-    | ((object?: unknown) => Array<unknown> | Record<string, number>)
-    | Array<string>;
+  public givenColumnNames?: UniqueMetadataArgs['columns'];
 
   /**
    * Final unique constraint name.
@@ -130,26 +129,18 @@ export class UniqueMetadata {
       }
 
       this.columns = columnPropertyPaths
-        .map((propertyName) => {
-          const columnWithSameName = this.entityMetadata.columns.find(
-            (column) => column.propertyPath === propertyName
+        .map((propertyPath) => {
+          const columnsWithSameName = resolveColumnPath(
+            this.entityMetadata,
+            propertyPath
           );
-          if (columnWithSameName) {
-            return [columnWithSameName];
-          }
-          const relationWithSameName = this.entityMetadata.relations.find(
-            (relation) =>
-              relation.isWithJoinColumn &&
-              relation.propertyName === propertyName
-          );
-          if (relationWithSameName) {
-            return relationWithSameName.joinColumns;
-          }
+          if (columnsWithSameName.length > 0) return columnsWithSameName;
+
           const indexName = this.givenName ? '"' + this.givenName + '" ' : '';
           const entityName = this.entityMetadata.targetName;
           throw new TypeORMError(
             `Unique constraint ${indexName}contains column that is missing in the entity (${entityName}): ` +
-              propertyName
+              propertyPath
           );
         })
         .reduce((a, b) => a.concat(b));

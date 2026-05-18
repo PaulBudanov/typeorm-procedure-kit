@@ -1,5 +1,10 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { DeferrableType } from '../metadata/types/DeferrableType.js';
+import type { EntityPropertiesMap } from '../metadata/types/EntityPropertiesMap.js';
+
+export type UniqueColumnsResolver = (
+  object: EntityPropertiesMap
+) => Array<unknown> | Record<string, number>;
 
 /**
  * Arguments for UniqueMetadata class.
@@ -18,9 +23,7 @@ export interface UniqueMetadataArgs {
   /**
    * Columns combination to be unique.
    */
-  columns?:
-    | ((object?: unknown) => Array<unknown> | Record<string, number>)
-    | Array<string>;
+  columns?: UniqueColumnsResolver | Array<string>;
 
   /**
    * Indicate if unique constraints can be deferred.

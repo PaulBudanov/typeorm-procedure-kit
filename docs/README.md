@@ -944,6 +944,40 @@ The TypeORM typing layer was reworked for stricter TypeScript projects:
 - Oracle/PostgreSQL column types and query-runner surfaces are narrowed for the
   supported drivers.
 
+### Metadata property maps
+
+`EntityMetadata.propertiesMap` is typed as `EntityPropertiesMap<T>` and keeps
+TypeORM-compatible property-path semantics. Decorator callbacks for `Index`,
+`Unique`, `RelationId`, `RelationCount`, and `EntityOptions.orderBy` receive
+this map at runtime, so their values still resolve to entity property paths.
+`orderBy` callbacks are evaluated after `propertiesMap` has been created.
+
+`EntityMetadata.databasePropertiesMap` is a separate
+`EntityDatabasePropertiesMap<T>`. It is column-only: leaf values contain
+database column names or database paths after explicit `@Column({ name })`
+options and naming strategy rules are applied. Relation virtual join columns
+are intentionally excluded from this map.
+
+```ts
+import { Column, Entity, PrimaryColumn } from 'typeorm-procedure-kit/typeorm';
+
+@Entity()
+class User {
+  @PrimaryColumn()
+  id!: number;
+
+  @Column({ name: 'user_id' })
+  userId!: string;
+}
+
+// metadata.propertiesMap.userId === 'userId'
+// metadata.databasePropertiesMap.userId === 'user_id'
+```
+
+For callback decorators, `user.userId` in `@Index((user) => [user.userId])`
+continues to mean the property path `userId`; use `databasePropertiesMap` only
+when database column names or paths are needed from metadata directly.
+
 The kit sets `isQuotingDisabled: true` during DataSource initialization. Query
 builders keep identifiers unquoted by default, which avoids SQL like
 `"USERS"` or `"CREATED_AT"` being generated accidentally when the database

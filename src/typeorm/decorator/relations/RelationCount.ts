@@ -1,5 +1,6 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { getMetadataArgsStorage } from '../../globals.js';
+import type { EntityPropertiesMap } from '../../metadata/types/EntityPropertiesMap.js';
 import type { RelationCountMetadataArgs } from '../../metadata-args/RelationCountMetadataArgs.js';
 import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 
@@ -9,8 +10,10 @@ import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.
  * @deprecated This decorator will removed in the future versions.
  * Use {@link VirtualColumn} to calculate the count instead.
  */
-export function RelationCount<T>(
-  relation: string | ((object: T) => unknown),
+export function RelationCount<
+  TPropertiesMap extends EntityPropertiesMap = EntityPropertiesMap,
+>(
+  relation: string | ((object: TPropertiesMap) => unknown),
   alias?: string,
   queryBuilderFactory?: (
     qb: SelectQueryBuilder<ObjectLiteral>

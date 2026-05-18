@@ -1,12 +1,13 @@
 import { getMetadataArgsStorage } from '../globals.js';
-import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
+import type {
+  IndexColumnsResolver,
+  IndexMetadataArgs,
+} from '../metadata-args/IndexMetadataArgs.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import type { IndexOptions } from './options/IndexOptions.js';
 
-type FieldsFunction = (
-  object?: unknown
-) => Array<unknown> | Record<string, number>;
+type FieldsFunction = IndexColumnsResolver;
 
 /**
  * Creates a database index.

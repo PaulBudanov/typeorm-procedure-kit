@@ -1,6 +1,6 @@
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { EntityManager } from '../entity-manager/EntityManager.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { FindTreesOptions } from '../repository/FindTreesOptions.js';
 
 /**
@@ -12,9 +12,9 @@ export class TreeRepositoryUtils {
   // Public Methods
   // -------------------------------------------------------------------------
 
-  public static createRelationMaps(
+  public static createRelationMaps<Entity extends ObjectLiteral>(
     manager: EntityManager,
-    metadata: EntityMetadata,
+    metadata: EntityMetadata<Entity>,
     alias: string,
     rawResults: Array<Record<string, unknown>>
   ): Array<{ id: unknown; parentId: unknown }> {
@@ -42,8 +42,8 @@ export class TreeRepositoryUtils {
     });
   }
 
-  public static buildChildrenEntityTree(
-    metadata: EntityMetadata,
+  public static buildChildrenEntityTree<Entity extends ObjectLiteral>(
+    metadata: EntityMetadata<Entity>,
     entity: ObjectLiteral,
     entities: Array<ObjectLiteral>,
     relationMaps: Array<{ id: unknown; parentId: unknown }>,
@@ -81,8 +81,8 @@ export class TreeRepositoryUtils {
     });
   }
 
-  public static buildParentEntityTree(
-    metadata: EntityMetadata,
+  public static buildParentEntityTree<Entity extends ObjectLiteral>(
+    metadata: EntityMetadata<Entity>,
     entity: ObjectLiteral,
     entities: Array<ObjectLiteral>,
     relationMaps: Array<{ id: unknown; parentId: unknown }>

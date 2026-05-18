@@ -982,7 +982,7 @@ export class EntityManager {
   /**
    * Checks whether any entity exists with the given options.
    */
-  public exists<Entity extends ObjectLiteral>(
+  public async exists<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
   ): Promise<boolean> {
@@ -1012,7 +1012,7 @@ export class EntityManager {
    * Counts entities that match given options.
    * Useful for pagination.
    */
-  public count<Entity extends ObjectLiteral>(
+  public async count<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
   ): Promise<number> {
@@ -1029,7 +1029,7 @@ export class EntityManager {
    * Counts entities that match given conditions.
    * Useful for pagination.
    */
-  public countBy<Entity extends ObjectLiteral>(
+  public async countBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<number> {
@@ -1142,7 +1142,7 @@ export class EntityManager {
    * Also counts all entities that match given conditions,
    * but ignores pagination settings (from and take options).
    */
-  public findAndCount<Entity extends ObjectLiteral>(
+  public async findAndCount<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     options?: FindManyOptions<Entity>
   ): Promise<[Array<Entity>, number]> {
@@ -1160,7 +1160,7 @@ export class EntityManager {
    * Also counts all entities that match given conditions,
    * but ignores pagination settings (from and take options).
    */
-  public findAndCountBy<Entity extends ObjectLiteral>(
+  public async findAndCountBy<Entity extends ObjectLiteral>(
     entityClass: EntityTarget<Entity>,
     where: FindOptionsWhere<Entity> | Array<FindOptionsWhere<Entity>>
   ): Promise<[Array<Entity>, number]> {

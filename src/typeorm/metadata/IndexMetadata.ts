@@ -4,6 +4,7 @@ import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
 import { ColumnMetadata } from './ColumnMetadata.js';
+import { resolveColumnPath } from './ColumnPathResolver.js';
 import { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import { EntityMetadata } from './EntityMetadata.js';
 
@@ -105,9 +106,7 @@ export class IndexMetadata {
   /**
    * User specified column names.
    */
-  public givenColumnNames?:
-    | ((object?: unknown) => Array<unknown> | Record<string, number>)
-    | Array<string>;
+  public givenColumnNames?: IndexMetadataArgs['columns'];
 
   /**
    * Final index name.
@@ -212,20 +211,12 @@ export class IndexMetadata {
 
       this.columns = columnPropertyPaths
         .map((propertyPath) => {
-          const columnWithSameName = this.entityMetadata.columns.find(
-            (column) => column.propertyPath === propertyPath
+          const columnsWithSameName = resolveColumnPath(
+            this.entityMetadata,
+            propertyPath
           );
-          if (columnWithSameName) {
-            return [columnWithSameName];
-          }
-          const relationWithSameName = this.entityMetadata.relations.find(
-            (relation) =>
-              relation.isWithJoinColumn &&
-              relation.propertyName === propertyPath
-          );
-          if (relationWithSameName) {
-            return relationWithSameName.joinColumns as Array<ColumnMetadata>;
-          }
+          if (columnsWithSameName.length > 0) return columnsWithSameName;
+
           const indexName = this.givenName ? '"' + this.givenName + '" ' : '';
           const entityName = this.entityMetadata.targetName;
           throw new TypeORMError(

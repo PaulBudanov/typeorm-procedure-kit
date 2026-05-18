@@ -1,4 +1,9 @@
 import type { TFunction } from '../../types/utility.types.js';
+import type { EntityPropertiesMap } from '../metadata/types/EntityPropertiesMap.js';
+
+export type IndexColumnsResolver = (
+  object: EntityPropertiesMap
+) => Array<unknown> | Record<string, number>;
 
 /**
  * Arguments for IndexMetadata class.
@@ -17,9 +22,7 @@ export interface IndexMetadataArgs {
   /**
    * Columns combination to be used as index.
    */
-  columns?:
-    | ((object?: unknown) => Array<unknown> | Record<string, number>)
-    | Array<string>;
+  columns?: IndexColumnsResolver | Array<string>;
 
   /**
    * Indicates if index must be unique or not.

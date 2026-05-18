@@ -25,6 +25,10 @@ import type { RelationCountMetadata } from './RelationCountMetadata.js';
 import type { RelationIdMetadata } from './RelationIdMetadata.js';
 import type { RelationMetadata } from './RelationMetadata.js';
 import type { ClosureTreeOptions } from './types/ClosureTreeOptions.js';
+import type {
+  EntityDatabasePropertiesMap,
+  EntityPropertiesMap,
+} from './types/EntityPropertiesMap.js';
 import type { TableType } from './types/TableTypes.js';
 import type { TreeType } from './types/TreeTypes.js';
 import type { UniqueMetadata } from './UniqueMetadata.js';
@@ -32,7 +36,7 @@ import type { UniqueMetadata } from './UniqueMetadata.js';
 /**
  * Contains all entity metadata.
  */
-export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
+export class EntityMetadata<Entity = ObjectLiteral> {
   public readonly '@instanceof' = Symbol.for('EntityMetadata');
 
   // -------------------------------------------------------------------------
@@ -528,7 +532,16 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
    * This method will create following object:
    * { id: "id", counterEmbed: { count: "counterEmbed.count" }, category: "category" }
    */
-  public propertiesMap!: MetadataPropertiesMap;
+  public propertiesMap!: EntityPropertiesMap<Entity>;
+
+  /**
+   * Map of columns of the entity using database column names and paths as leaf values.
+   *
+   * example: Post{ userId: number, counterEmbed: { count: number } } with
+   * userId mapped to "user_id" will create:
+   * { userId: "user_id", counterEmbed: { count: "counterEmbed.count" } }
+   */
+  public databasePropertiesMap!: EntityDatabasePropertiesMap<Entity>;
 
   /**
    * Table comment. Not supported by all database types.
@@ -633,7 +646,7 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
     if (ObjectUtils.isObject(id)) return id as ObjectLiteral;
 
     if (this.hasMultiplePrimaryKeys)
-      throw new CannotCreateEntityIdMapError<MetadataPropertiesMap>(this, id);
+      throw new CannotCreateEntityIdMapError<Entity>(this, id);
 
     return this.primaryColumns[0]?.createValueMap(id) as ObjectLiteral;
   }
@@ -871,9 +884,7 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
    * @returns The found metadata for the entity or the base metadata if no matching metadata
    *          was found in the whole inheritance tree.
    */
-  public findInheritanceMetadata(
-    value: ObjectLiteral
-  ): EntityMetadata<MetadataPropertiesMap> {
+  public findInheritanceMetadata(value: ObjectLiteral): EntityMetadata<Entity> {
     // Check for single table inheritance and find the correct metadata in that case.
     // Goal is to use the correct discriminator as we could have a repository
     // for an (abstract) base class and thus the target would not match.
@@ -892,7 +903,7 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
         (meta) =>
           manuallySetDiscriminatorValue === meta.discriminatorValue ||
           value.constructor === meta.target
-      ) || this) as EntityMetadata<MetadataPropertiesMap>;
+      ) || this) as EntityMetadata<Entity>;
     }
     return this;
   }
@@ -1060,10 +1071,6 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
       this.schema,
       this.database
     );
-    this.orderBy =
-      typeof this.tableMetadataArgs.orderBy === 'function'
-        ? this.tableMetadataArgs.orderBy(this.propertiesMap as ObjectLiteral)
-        : this.tableMetadataArgs.orderBy; // todo: is propertiesMap available here? Looks like its not
     if (entitySkipConstructor !== undefined) {
       this.isAlwaysUsingConstructor = !entitySkipConstructor;
     }
@@ -1092,7 +1099,10 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
       this.columns.filter(
         (column) => column.isGenerated || column.generationStrategy === 'uuid'
       ).length > 0;
-    this.propertiesMap = this.createPropertiesMap() as MetadataPropertiesMap;
+    this.propertiesMap =
+      this.createPropertiesMap() as EntityPropertiesMap<Entity>;
+    this.databasePropertiesMap =
+      this.createDatabasePropertiesMap() as EntityDatabasePropertiesMap<Entity>;
     if (this.childEntityMetadatas)
       this.childEntityMetadatas.forEach((entityMetadata) =>
         entityMetadata.registerColumn(column)
@@ -1107,7 +1117,7 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
    * This method will create following object:
    * { id: "id", counterEmbed: { count: "counterEmbed.count" }, category: "category" }
    */
-  public createPropertiesMap(): ObjectLiteral {
+  public createPropertiesMap(): EntityPropertiesMap {
     const map: ObjectLiteral = {};
     this.columns.forEach((column) =>
       OrmUtils.mergeDeep(map, column.createValueMap(column.propertyPath))
@@ -1115,7 +1125,23 @@ export class EntityMetadata<MetadataPropertiesMap = ObjectLiteral> {
     this.relations.forEach((relation) =>
       OrmUtils.mergeDeep(map, relation.createValueMap(relation.propertyPath))
     );
-    return map;
+    return map as EntityPropertiesMap;
+  }
+
+  /**
+   * Creates a column-only map with database column names and paths as leaf values.
+   *
+   * This intentionally does not include relations. `propertiesMap` keeps TypeORM's
+   * propertyPath semantics for relations and relation callbacks.
+   */
+  public createDatabasePropertiesMap(): EntityDatabasePropertiesMap {
+    const map: ObjectLiteral = {};
+    this.columns.forEach((column) => {
+      if (column.isVirtual && column.relationMetadata) return;
+
+      OrmUtils.mergeDeep(map, column.createValueMap(column.databasePath));
+    });
+    return map as EntityDatabasePropertiesMap;
   }
 
   /**

@@ -5,6 +5,7 @@ import { TypeORMError } from '../error/TypeORMError.js';
 import type { RelationMetadataArgs } from '../metadata-args/RelationMetadataArgs.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
+import { OrmUtils } from '../util/OrmUtils.js';
 
 import { ColumnMetadata } from './ColumnMetadata.js';
 import { EmbeddedMetadata } from './EmbeddedMetadata.js';
@@ -522,7 +523,11 @@ export class RelationMetadata {
         entity
       );
     } else {
-      entity[propertyName] = value;
+      if (ObjectUtils.isObject(entity[propertyName])) {
+        OrmUtils.mergeDeep(entity[propertyName], value);
+      } else {
+        entity[propertyName] = value;
+      }
     }
   }
 
