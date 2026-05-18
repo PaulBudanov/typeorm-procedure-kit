@@ -124,7 +124,11 @@ export class TypeOrmProcedureKit {
     const procedureListBase = this.requireProcedureListBase();
     await procedureListBase.initPackagesMap();
     const packagesSettings = this.settings.config.packagesSettings;
-    if (packagesSettings && packagesSettings.packages.length > 0) {
+    if (
+      packagesSettings &&
+      packagesSettings.packages.length > 0 &&
+      packagesSettings.isNeedDynamicallyUpdatePackagesInfo
+    ) {
       const notifyBase = this.requireNotifyBase();
       await notifyBase.createNotification<TNotifyPackageCallback>({
         sql: this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(

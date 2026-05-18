@@ -30,10 +30,6 @@ interface IPackagesSettingsDefault {
    * custom channel.
    */
   isNeedDynamicallyUpdatePackagesInfo?: boolean;
-  /**
-   * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
-   */
-  isNeedDynamiclyUpdatePackagesInfo?: boolean;
 }
 
 export interface IBaseConfig {
@@ -95,23 +91,10 @@ interface IPostgresDbConfigWithPackagesEvent extends IBaseConfig {
    * of strings. Values above Number.MAX_SAFE_INTEGER can lose precision.
    */
   parseInt8AsBigInt: boolean;
-  packagesSettings?:
-    | (IPackagesSettingsDefault & {
-        listenEventName: string;
-        isNeedDynamicallyUpdatePackagesInfo: true;
-        /**
-         * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
-         */
-        isNeedDynamiclyUpdatePackagesInfo?: true;
-      })
-    | (IPackagesSettingsDefault & {
-        listenEventName: string;
-        isNeedDynamicallyUpdatePackagesInfo?: true;
-        /**
-         * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
-         */
-        isNeedDynamiclyUpdatePackagesInfo: true;
-      });
+  packagesSettings?: IPackagesSettingsDefault & {
+    listenEventName: string;
+    isNeedDynamicallyUpdatePackagesInfo: true;
+  };
 }
 
 interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
@@ -121,10 +104,6 @@ interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
   packagesSettings?: IPackagesSettingsDefault & {
     listenEventName?: string;
     isNeedDynamicallyUpdatePackagesInfo?: false;
-    /**
-     * @deprecated Use `isNeedDynamicallyUpdatePackagesInfo` instead.
-     */
-    isNeedDynamiclyUpdatePackagesInfo?: false;
   };
 }
 

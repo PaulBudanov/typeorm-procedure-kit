@@ -61,17 +61,17 @@
 that use Oracle or PostgreSQL stored procedures, raw SQL transactions, database
 notifications, and TypeORM-style entity APIs.
 
-| Field | Value |
-| --- | --- |
-| npm package | `typeorm-procedure-kit` |
-| Runtime | Node.js `>=20` |
-| Module formats | ESM and CommonJS |
-| Supported databases | PostgreSQL through `pg`; Oracle through `oracledb` |
-| Main API | `TypeOrmProcedureKit` |
-| NestJS API | `typeorm-procedure-kit/nestjs` |
-| TypeORM-compatible API | `typeorm-procedure-kit/typeorm` |
-| Entity extension API | `typeorm-procedure-kit/typeorm-extend` |
-| Primary topics | stored procedures, raw SQL transactions, LISTEN/NOTIFY, Oracle CQN, serializers, TypeORM-compatible repositories |
+| Field                  | Value                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| npm package            | `typeorm-procedure-kit`                                                                                          |
+| Runtime                | Node.js `>=20`                                                                                                   |
+| Module formats         | ESM and CommonJS                                                                                                 |
+| Supported databases    | PostgreSQL through `pg`; Oracle through `oracledb`                                                               |
+| Main API               | `TypeOrmProcedureKit`                                                                                            |
+| NestJS API             | `typeorm-procedure-kit/nestjs`                                                                                   |
+| TypeORM-compatible API | `typeorm-procedure-kit/typeorm`                                                                                  |
+| Entity extension API   | `typeorm-procedure-kit/typeorm-extend`                                                                           |
+| Primary topics         | stored procedures, raw SQL transactions, LISTEN/NOTIFY, Oracle CQN, serializers, TypeORM-compatible repositories |
 
 ## Use cases
 
@@ -89,28 +89,28 @@ Use this package when your service needs one or more of these capabilities:
 
 ## API map
 
-| Task | API | Import path |
-| --- | --- | --- |
-| Initialize database access | `new TypeOrmProcedureKit(config)`, `initDatabase()` | `typeorm-procedure-kit` |
-| Call a stored procedure | `db.call<T>(name, params, options?)` | `typeorm-procedure-kit` |
-| Execute raw SQL transaction | `db.callSqlTransaction<T>(sql, params?, options?)` | `typeorm-procedure-kit` |
-| Subscribe to database notifications | `db.makeNotify<T>(options, oracleOptions?)` | `typeorm-procedure-kit` |
-| Unsubscribe from notifications | `db.unlistenNotify(channel)` | `typeorm-procedure-kit` |
-| Register serializers | `db.setSerializer()`, `db.deleteSerializer()` | `typeorm-procedure-kit` |
-| Access DataSource or EntityManager | `db.dataSource`, `db.getEntityManager()` | `typeorm-procedure-kit` |
-| Use NestJS integration | `TypeOrmProcedureKitNestModule` and injection decorators | `typeorm-procedure-kit/nestjs` |
-| Use TypeORM-compatible APIs | `Entity`, `Column`, `DataSource`, `Repository` | `typeorm-procedure-kit/typeorm` |
-| Extend entity metadata | `ExtendEntity`, `ExtendColumn` | `typeorm-procedure-kit/typeorm-extend` |
+| Task                                | API                                                      | Import path                            |
+| ----------------------------------- | -------------------------------------------------------- | -------------------------------------- |
+| Initialize database access          | `new TypeOrmProcedureKit(config)`, `initDatabase()`      | `typeorm-procedure-kit`                |
+| Call a stored procedure             | `db.call<T>(name, params, options?)`                     | `typeorm-procedure-kit`                |
+| Execute raw SQL transaction         | `db.callSqlTransaction<T>(sql, params?, options?)`       | `typeorm-procedure-kit`                |
+| Subscribe to database notifications | `db.makeNotify<T>(options, oracleOptions?)`              | `typeorm-procedure-kit`                |
+| Unsubscribe from notifications      | `db.unlistenNotify(channel)`                             | `typeorm-procedure-kit`                |
+| Register serializers                | `db.setSerializer()`, `db.deleteSerializer()`            | `typeorm-procedure-kit`                |
+| Access DataSource or EntityManager  | `db.dataSource`, `db.getEntityManager()`                 | `typeorm-procedure-kit`                |
+| Use NestJS integration              | `TypeOrmProcedureKitNestModule` and injection decorators | `typeorm-procedure-kit/nestjs`         |
+| Use TypeORM-compatible APIs         | `Entity`, `Column`, `DataSource`, `Repository`           | `typeorm-procedure-kit/typeorm`        |
+| Extend entity metadata              | `ExtendEntity`, `ExtendColumn`                           | `typeorm-procedure-kit/typeorm-extend` |
 
 ## At a glance
 
-| Area          | What you get                                                                                           |
-| ------------- | ------------------------------------------------------------------------------------------------------ |
-| Procedures    | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas.                      |
-| SQL           | Raw SQL execution through the same transaction flow as procedure calls.                                |
-| Notifications | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support.                           |
+| Area          | What you get                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| Procedures    | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas.                       |
+| SQL           | Raw SQL execution through the same transaction flow as procedure calls.                                 |
+| Notifications | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support.                            |
 | Case strategy | Shared casing rules for native result keys and bundled TypeORM-compatible column names.                 |
-| Serialization | Built-in and custom serializers for database result values.                                            |
+| Serialization | Built-in and custom serializers for database result values.                                             |
 | NestJS        | Global dynamic module plus focused injection decorators for the public runtime methods.                 |
 | TypeORM API   | Bundled TypeORM-compatible exports with stricter project-local types for repositories and query APIs.   |
 | Identifiers   | TypeORM-compatible query builders keep identifiers unquoted by default to avoid unwanted double quotes. |
@@ -158,37 +158,37 @@ Maintained by Paul Budanov.
 
 Use your package manager of choice:
 
-| Package manager | Command |
-| --------------- | ------- |
-| npm | `npm install typeorm-procedure-kit` |
-| Yarn | `yarn add typeorm-procedure-kit` |
-| pnpm | `pnpm add typeorm-procedure-kit` |
+| Package manager | Command                             |
+| --------------- | ----------------------------------- |
+| npm             | `npm install typeorm-procedure-kit` |
+| Yarn            | `yarn add typeorm-procedure-kit`    |
+| pnpm            | `pnpm add typeorm-procedure-kit`    |
 
 Install the driver for the database you use.
 
 PostgreSQL:
 
-| Package manager | Command |
-| --------------- | ------- |
-| npm | `npm install pg` |
-| Yarn | `yarn add pg` |
-| pnpm | `pnpm add pg` |
+| Package manager | Command          |
+| --------------- | ---------------- |
+| npm             | `npm install pg` |
+| Yarn            | `yarn add pg`    |
+| pnpm            | `pnpm add pg`    |
 
 Oracle:
 
-| Package manager | Command |
-| --------------- | ------- |
-| npm | `npm install oracledb` |
-| Yarn | `yarn add oracledb` |
-| pnpm | `pnpm add oracledb` |
+| Package manager | Command                |
+| --------------- | ---------------------- |
+| npm             | `npm install oracledb` |
+| Yarn            | `yarn add oracledb`    |
+| pnpm            | `pnpm add oracledb`    |
 
 Install `pg-query-stream` only when you use PostgreSQL streaming:
 
-| Package manager | Command |
-| --------------- | ------- |
-| npm | `npm install pg-query-stream` |
-| Yarn | `yarn add pg-query-stream` |
-| pnpm | `pnpm add pg-query-stream` |
+| Package manager | Command                       |
+| --------------- | ----------------------------- |
+| npm             | `npm install pg-query-stream` |
+| Yarn            | `yarn add pg-query-stream`    |
+| pnpm            | `pnpm add pg-query-stream`    |
 
 ## Quick start
 
@@ -267,12 +267,12 @@ repositories, query builders, and related classes are exported from the
 from `typeorm-procedure-kit/typeorm` instead of installing or importing the
 upstream `typeorm` package separately.
 
-| Import path | Use it for |
-| --- | --- |
-| `typeorm-procedure-kit` | `TypeOrmProcedureKit`, public types, utilities, constants |
-| `typeorm-procedure-kit/nestjs` | NestJS module, service, method injection decorators |
-| `typeorm-procedure-kit/typeorm` | Bundled TypeORM-compatible decorators, DataSource, repositories, query builders |
-| `typeorm-procedure-kit/typeorm-extend` | `ExtendEntity`, `ExtendColumn`, and related metadata extension decorators |
+| Import path                            | Use it for                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| `typeorm-procedure-kit`                | `TypeOrmProcedureKit`, public types, utilities, constants                       |
+| `typeorm-procedure-kit/nestjs`         | NestJS module, service, method injection decorators                             |
+| `typeorm-procedure-kit/typeorm`        | Bundled TypeORM-compatible decorators, DataSource, repositories, query builders |
+| `typeorm-procedure-kit/typeorm-extend` | `ExtendEntity`, `ExtendColumn`, and related metadata extension decorators       |
 
 ## Configuration shape
 
@@ -381,11 +381,11 @@ TypeORM-compatible naming strategy. Configure it with
 
 Supported values:
 
-| Value | Example database key | Output key |
-| ----- | -------------------- | ---------- |
-| `camelCase` | `USER_ID`, `user_id`, `user id` | `userId` |
-| `snakeCase` | `USER_ID`, `userId`, `User Id` | `user_id` |
-| `lowerCase` | `USER_ID`, `User_Id` | `user_id` |
+| Value       | Example database key            | Output key |
+| ----------- | ------------------------------- | ---------- |
+| `camelCase` | `USER_ID`, `user_id`, `user id` | `userId`   |
+| `snakeCase` | `USER_ID`, `userId`, `User Id`  | `user_id`  |
+| `lowerCase` | `USER_ID`, `User_Id`            | `user_id`  |
 
 When `outKeyTransformCase` is omitted, `camelCase` is used. Unknown values also
 fall back to `camelCase` at runtime.
@@ -762,10 +762,6 @@ packagesSettings: {
 }
 ```
 
-The deprecated misspelling `isNeedDynamiclyUpdatePackagesInfo` is still
-accepted for compatibility, but new code should use
-`isNeedDynamicallyUpdatePackagesInfo`.
-
 ## Serializers
 
 Enable built-in serializers:
@@ -858,14 +854,14 @@ The Nest service extends `TypeOrmProcedureKit`, initializes the database in
 The NestJS entry point also exports focused decorators for injecting individual
 public methods instead of the full service:
 
-| Decorator | Injected function type | Delegates to |
-| --- | --- | --- |
-| `@InjectCallProcedure()` | `TCallProcedure` | `TypeOrmProcedureKit.call()` |
-| `@InjectCallSql()` | `TCallSql` | `TypeOrmProcedureKit.callSqlTransaction()` |
-| `@InjectMakeNotify()` | `TMakeNotify` | `TypeOrmProcedureKit.makeNotify()` |
-| `@InjectUnlistenNotify()` | `TUnlistenNotify` | `TypeOrmProcedureKit.unlistenNotify()` |
-| `@InjectSetSerializer()` | `TSetSerializer` | `TypeOrmProcedureKit.setSerializer()` |
-| `@InjectDeleteSerializer()` | `TDeleteSerializer` | `TypeOrmProcedureKit.deleteSerializer()` |
+| Decorator                       | Injected function type  | Delegates to                                 |
+| ------------------------------- | ----------------------- | -------------------------------------------- |
+| `@InjectCallProcedure()`        | `TCallProcedure`        | `TypeOrmProcedureKit.call()`                 |
+| `@InjectCallSql()`              | `TCallSql`              | `TypeOrmProcedureKit.callSqlTransaction()`   |
+| `@InjectMakeNotify()`           | `TMakeNotify`           | `TypeOrmProcedureKit.makeNotify()`           |
+| `@InjectUnlistenNotify()`       | `TUnlistenNotify`       | `TypeOrmProcedureKit.unlistenNotify()`       |
+| `@InjectSetSerializer()`        | `TSetSerializer`        | `TypeOrmProcedureKit.setSerializer()`        |
+| `@InjectDeleteSerializer()`     | `TDeleteSerializer`     | `TypeOrmProcedureKit.deleteSerializer()`     |
 | `@InjectDeleteAllSerializers()` | `TDeleteAllSerializers` | `TypeOrmProcedureKit.deleteAllSerializers()` |
 
 ```ts

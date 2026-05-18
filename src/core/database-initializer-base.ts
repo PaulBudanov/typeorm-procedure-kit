@@ -193,17 +193,11 @@ export class DatabaseInitializerBase {
       case 'postgres': {
         const { PostgreAdapter } =
           await import('../adapters/postgres/postgre-adapter.js');
-        const { packagesSettings } = this.dbConfig;
-        const isNeedDynamicallyUpdatePackagesInfo =
-          packagesSettings?.isNeedDynamicallyUpdatePackagesInfo ??
-          packagesSettings?.isNeedDynamiclyUpdatePackagesInfo;
         return new PostgreAdapter(
           this.appDataSource,
           this.logger,
           fetchHandlerOptions,
-          isNeedDynamicallyUpdatePackagesInfo && packagesSettings
-            ? packagesSettings.listenEventName
-            : undefined
+          this.dbConfig.packagesSettings?.listenEventName
         );
       }
       case 'oracle': {
