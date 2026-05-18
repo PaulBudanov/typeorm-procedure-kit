@@ -1,3 +1,15 @@
+# [1.4.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.3.1...v1.4.0) (2026-05-18)
+
+
+### Bug Fixes
+
+* added flag tracking isNeedDynamicallyUpdatePackagesInfo for oracle. ([35b5b9b](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/35b5b9b592b31e4836ff19112cae95dc0277df12))
+
+
+### Features
+
+* **typeorm:** add typed entity metadata property maps ([c8e84dc](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/c8e84dc79608cfb36ff02ca792c3368d2cd65bcc))
+
 ## [1.3.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.3.0...v1.3.1) (2026-05-14)
 
 
