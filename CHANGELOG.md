@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.4.0...v1.5.0) (2026-05-19)
+
+
+### Features
+
+* **typeorm:** unify case strategy and raw result mapping ([034a18e](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/034a18ea264df10f9cfe5d967b964c4a771410fc))
+
 # [1.4.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.3.1...v1.4.0) (2026-05-18)
 
 
