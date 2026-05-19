@@ -30,6 +30,16 @@ describe('OrmStrategy', (): void => {
     );
   });
 
+  it('transforms raw aliases with the configured ORM case utility', (): void => {
+    const strategy = new OrmStrategy(
+      Symbol('orm-columns'),
+      (value: string): string => value.toLowerCase(),
+      new DatabaseNamingCache<string>()
+    );
+
+    expect(strategy.transformColumnName('m_KEYID')).toBe('m_keyid');
+  });
+
   it('throws after the backing cache is destroyed', (): void => {
     const strategy = new OrmStrategy(
       Symbol('orm-columns'),

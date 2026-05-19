@@ -32,7 +32,7 @@ export class OracleSerializer extends DatabaseSerializer {
       this.registerDefaultSerializers();
     oracledb.fetchTypeHandler = (metaData): FetchTypeResponse | undefined => {
       if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
-        metaData.name = this.options.caseNativeStrategy.transformColumnName(
+        metaData.name = this.options.caseStrategy.transformColumnName(
           metaData.name
         );
 

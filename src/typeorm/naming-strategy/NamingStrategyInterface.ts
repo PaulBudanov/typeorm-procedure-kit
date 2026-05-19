@@ -36,6 +36,11 @@ export interface NamingStrategyInterface {
   ): string;
 
   /**
+   * Transforms raw query result aliases to the naming strategy result-key case.
+   */
+  transformColumnName(columnName: string): string;
+
+  /**
    * Gets the table's relation name from the given property name.
    */
   relationName(propertyName: string): string;

@@ -2,11 +2,18 @@ import type {
   ICreateNotify,
   IOracleOptionsNotify,
 } from './notification.types.js';
+import type {
+  TProcedurePayload,
+  TProcedurePayloadInput,
+} from './procedure.types.js';
 import type { ISetSerializer } from './serializer.types.js';
 
-export type TCallProcedure = <T>(
+export type TCallProcedure = <
+  T,
+  U extends TProcedurePayload = TProcedurePayload,
+>(
   executeString: string,
-  params?: Record<string, unknown> | Array<unknown>,
+  params?: TProcedurePayloadInput<U>,
   options?: Array<string>
 ) => Promise<Array<T>>;
 

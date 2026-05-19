@@ -89,31 +89,33 @@ Use this package when your service needs one or more of these capabilities:
 
 ## API map
 
-| Task                                | API                                                      | Import path                            |
-| ----------------------------------- | -------------------------------------------------------- | -------------------------------------- |
-| Initialize database access          | `new TypeOrmProcedureKit(config)`, `initDatabase()`      | `typeorm-procedure-kit`                |
-| Call a stored procedure             | `db.call<T>(name, params, options?)`                     | `typeorm-procedure-kit`                |
-| Execute raw SQL transaction         | `db.callSqlTransaction<T>(sql, params?, options?)`       | `typeorm-procedure-kit`                |
-| Subscribe to database notifications | `db.makeNotify<T>(options, oracleOptions?)`              | `typeorm-procedure-kit`                |
-| Unsubscribe from notifications      | `db.unlistenNotify(channel)`                             | `typeorm-procedure-kit`                |
-| Register serializers                | `db.setSerializer()`, `db.deleteSerializer()`            | `typeorm-procedure-kit`                |
-| Access DataSource or EntityManager  | `db.dataSource`, `db.getEntityManager()`                 | `typeorm-procedure-kit`                |
-| Use NestJS integration              | `TypeOrmProcedureKitNestModule` and injection decorators | `typeorm-procedure-kit/nestjs`         |
-| Use TypeORM-compatible APIs         | `Entity`, `Column`, `DataSource`, `Repository`           | `typeorm-procedure-kit/typeorm`        |
-| Extend entity metadata              | `ExtendEntity`, `ExtendColumn`                           | `typeorm-procedure-kit/typeorm-extend` |
+| Task                                 | API                                                                                   | Import path                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | -------------------------------------- |
+| Initialize database access           | `new TypeOrmProcedureKit(config)`, `initDatabase()`                                   | `typeorm-procedure-kit`                |
+| Call a stored procedure              | `db.call<T>(name, params, options?)`                                                  | `typeorm-procedure-kit`                |
+| Execute raw SQL transaction          | `db.callSqlTransaction<T>(sql, params?, options?)`                                    | `typeorm-procedure-kit`                |
+| Subscribe to database notifications  | `db.makeNotify<T>(options, oracleOptions?)`                                           | `typeorm-procedure-kit`                |
+| Unsubscribe from notifications       | `db.unlistenNotify(channel)`                                                          | `typeorm-procedure-kit`                |
+| Register serializers                 | `db.setSerializer()`, `db.deleteSerializer()`                                         | `typeorm-procedure-kit`                |
+| Access DataSource or EntityManager   | `db.dataSource`, `db.getEntityManager()`                                              | `typeorm-procedure-kit`                |
+| Use NestJS integration               | `TypeOrmProcedureKitNestModule` and injection decorators                              | `typeorm-procedure-kit/nestjs`         |
+| Use TypeORM-compatible APIs          | `Entity`, `Column`, `DataSource`, `Repository`                                        | `typeorm-procedure-kit/typeorm`        |
+| Extend entity metadata               | `ExtendEntity`, `ExtendColumn`, `ExtendPrimaryColumn`, `ExtendPrimaryGeneratedColumn` | `typeorm-procedure-kit/typeorm-extend` |
+| Build database-specific repositories | `AbstractTypeormRepository`, `AbstractTypeormRepository.createEntityTargetFactory`    | `typeorm-procedure-kit/typeorm-extend` |
 
 ## At a glance
 
-| Area          | What you get                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------- |
-| Procedures    | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas.                       |
-| SQL           | Raw SQL execution through the same transaction flow as procedure calls.                                 |
-| Notifications | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support.                            |
-| Case strategy | Shared casing rules for native result keys and bundled TypeORM-compatible column names.                 |
-| Serialization | Built-in and custom serializers for database result values.                                             |
-| NestJS        | Global dynamic module plus focused injection decorators for the public runtime methods.                 |
-| TypeORM API   | Bundled TypeORM-compatible exports with stricter project-local types for repositories and query APIs.   |
-| Identifiers   | TypeORM-compatible query builders keep identifiers unquoted by default to avoid unwanted double quotes. |
+| Area           | What you get                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| Procedures     | Metadata-aware stored procedure calls for Oracle and PostgreSQL packages/schemas.                       |
+| SQL            | Raw SQL execution through the same transaction flow as procedure calls.                                 |
+| Notifications  | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support.                            |
+| Case strategy  | Shared casing rules for native result keys and bundled TypeORM-compatible column names.                 |
+| Serialization  | Built-in and custom serializers for database result values.                                             |
+| NestJS         | Global dynamic module plus focused injection decorators for the public runtime methods.                 |
+| TypeORM API    | Bundled TypeORM-compatible exports with stricter project-local types for repositories and query APIs.   |
+| TypeORM Extend | Entity metadata extension decorators plus database-specific repository helpers.                         |
+| Identifiers    | TypeORM-compatible query builders keep identifiers unquoted by default to avoid unwanted double quotes. |
 
 Maintained by Paul Budanov.
 
@@ -132,7 +134,9 @@ Maintained by Paul Budanov.
   injecting individual public methods.
 - A bundled TypeORM-compatible export for Oracle/PostgreSQL projects; TypeORM
   is included in this package with type fixes for stricter TypeScript projects.
-- `typeorm-extend` decorators for deriving database-specific entity metadata.
+- `typeorm-extend` decorators for deriving database-specific entity metadata,
+  plus repository helpers for selecting the entity target from the active
+  DataSource.
 - Identifier quoting is disabled by default for the bundled TypeORM-compatible
   DataSource, so generated SQL avoids accidental double-quoted table and column
   names unless you explicitly enable escaping.
@@ -255,8 +259,11 @@ import { TypeOrmProcedureKitNestModule } from 'typeorm-procedure-kit/nestjs';
 import { Entity, Column, PrimaryColumn } from 'typeorm-procedure-kit/typeorm';
 
 import {
+  AbstractTypeormRepository,
   ExtendColumn,
   ExtendEntity,
+  ExtendPrimaryColumn,
+  ExtendPrimaryGeneratedColumn,
 } from 'typeorm-procedure-kit/typeorm-extend';
 ```
 
@@ -272,7 +279,7 @@ upstream `typeorm` package separately.
 | `typeorm-procedure-kit`                | `TypeOrmProcedureKit`, public types, utilities, constants                       |
 | `typeorm-procedure-kit/nestjs`         | NestJS module, service, method injection decorators                             |
 | `typeorm-procedure-kit/typeorm`        | Bundled TypeORM-compatible decorators, DataSource, repositories, query builders |
-| `typeorm-procedure-kit/typeorm-extend` | `ExtendEntity`, `ExtendColumn`, and related metadata extension decorators       |
+| `typeorm-procedure-kit/typeorm-extend` | Entity metadata extension decorators and database-specific repository helpers   |
 
 ## Configuration shape
 
@@ -390,16 +397,34 @@ Supported values:
 When `outKeyTransformCase` is omitted, `camelCase` is used. Unknown values also
 fall back to `camelCase` at runtime.
 
-The package creates two strategy objects from the same setting:
+The package creates one shared `OrmStrategy` from this setting. It is installed
+as the DataSource naming strategy during initialization and is also passed to
+driver fetch hooks as the raw result key transformer.
 
-- `NativeStrategy` transforms column names reported by `pg` or `oracledb`
-  metadata before native rows are returned from procedure calls and raw SQL
-  calls. SQL aliases are transformed too because drivers expose aliases as
-  result metadata.
-- `OrmStrategy` is installed as the DataSource naming strategy during
-  initialization. It transforms entity property names before delegating to the
-  bundled default naming strategy, so generated column names follow the
-  configured convention when a decorator does not provide an explicit name.
+`OrmStrategy` transforms entity property names before delegating to the bundled
+default naming strategy, so generated column names follow the configured
+convention when a decorator does not provide an explicit name. The same
+`transformColumnName` method is used for column names reported by `pg` or
+`oracledb` metadata before native rows are returned from procedure calls and raw
+SQL calls. SQL aliases are transformed too because drivers expose aliases as
+result metadata.
+
+TypeORM entity hydration uses the active `OrmStrategy` transform function when
+reading raw results, so query builder aliases can be matched after driver-level
+key transformation.
+
+For TypeORM query builder selections that can be resolved through entity
+metadata, raw result keys are normalized back to entity property names. For
+example, selecting database columns such as `m.KEYID`, `m.STATUS`, and `m.TEXT`
+can still return raw keys `keyId`, `status`, and `text`. In that case
+`outKeyTransformCase` is only an intermediate driver-level transformation. It
+still applies directly to native adapter results and to custom raw aliases that
+cannot be mapped to entity metadata.
+
+Partial selections can be written as `alias.propertyPath`,
+`alias.databaseName`, or `alias.databasePath`. Resolvable selections hydrate
+entities and normalize raw result keys by entity property path; custom raw
+aliases are left unchanged.
 
 Example:
 
@@ -633,8 +658,14 @@ Payload rules:
 - Pass an object to bind by argument name. The adapters also try the same name
   without a leading `p_`, so `p_customer_id` can be supplied as `customer_id`.
 - Pass an array to bind by procedure argument position.
-- Omit the payload or pass `undefined` to bind all non-cursor values as `null`.
+- Omit the payload or pass `undefined`/`null` to bind all non-cursor values as
+  `null`.
 - Do not pass a scalar string or number as the procedure payload.
+
+The public procedure payload types are exported as `TProcedurePayload` and
+`TProcedurePayloadInput`. `call<T, U extends TProcedurePayload>()` accepts
+object-like payloads, including arrays for positional binding, plus
+`undefined`/`null`.
 
 ```ts
 await db.call('billing.update_invoice', [42, 'PAID']);
@@ -978,6 +1009,12 @@ For callback decorators, `user.userId` in `@Index((user) => [user.userId])`
 continues to mean the property path `userId`; use `databasePropertiesMap` only
 when database column names or paths are needed from metadata directly.
 
+QueryBuilder replacement also resolves aliased property names to database
+column names. For example, a condition like `m.lockStatus = :isLocked` is
+rendered with the configured column name from metadata, such as
+`m.LOCK_STATUS`, when `lockStatus` is declared with
+`@Column({ name: 'LOCK_STATUS' })`.
+
 The kit sets `isQuotingDisabled: true` during DataSource initialization. Query
 builders keep identifiers unquoted by default, which avoids SQL like
 `"USERS"` or `"CREATED_AT"` being generated accidentally when the database
@@ -1004,10 +1041,18 @@ strict TypeScript types. Any transition is expected to be incremental and
 documented through the public entry points, without promising a specific
 release date.
 
-## TypeORM extension decorators
+## TypeORM Extension API
 
 `./typeorm-extend` exports decorators for reusing base entity metadata while
-overriding options for database-specific variants.
+overriding options for database-specific variants:
+
+- `ExtendEntity`
+- `ExtendColumn`
+- `ExtendPrimaryColumn`
+- `ExtendPrimaryGeneratedColumn`
+
+It also exports `AbstractTypeormRepository`, a base class for repositories that
+need to choose an entity target from the active `DataSource`.
 
 ```ts
 import {
@@ -1164,6 +1209,55 @@ export class OutboundMessagePostgres extends OutboundMessage {
   declare public readonly isDeleted: number;
 }
 ```
+
+`AbstractTypeormRepository` is a small base class for repositories that keep
+separate Oracle and PostgreSQL entity classes. It accepts an entity target
+factory and exposes a base query context with
+`repository`, `builder`, `alias`, and `property`. The `property` object is
+`EntityMetadata.databasePropertiesMap`, so `@Column({ name })` values and naming
+strategy results are used when building SQL fragments manually.
+
+`AbstractTypeormRepository.createEntityTargetFactory()` accepts a target map
+keyed by `DataSourceOptions['type']` and returns a factory. The helper does not
+hardcode driver names; it resolves the target with
+`entityTargets[dataSource.options.type]`. With the current supported drivers,
+the map contains `oracle` and `postgres` keys.
+
+```ts
+import type { DataSource, EntityTarget } from 'typeorm-procedure-kit/typeorm';
+import { AbstractTypeormRepository } from 'typeorm-procedure-kit/typeorm-extend';
+
+class ManRepository extends AbstractTypeormRepository<
+  ManEntity,
+  EntityTarget<ManEntity>
+> {
+  public constructor(getDataSource: () => DataSource) {
+    super(
+      getDataSource,
+      AbstractTypeormRepository.createEntityTargetFactory({
+        oracle: ManEntityOracle,
+        postgres: ManEntityPostgres,
+      })
+    );
+  }
+
+  public loginMan(passwordHash: string): Promise<Pick<ManEntity, 'keyId'>> {
+    const { builder, property, alias } = this.buildBaseQueryContext('m');
+
+    return builder
+      .select([`${alias}.${property.keyId}`])
+      .where(`${alias}.${property.lockStatus} = :isLocked`, { isLocked: 0 })
+      .andWhere(`${alias}.${property.passhash} = :passwordHash`, {
+        passwordHash,
+      })
+      .getOneOrFail();
+  }
+}
+```
+
+The repository helper types are exported from `typeorm-procedure-kit` and
+`typeorm-procedure-kit/typeorm-extend`: `IEntityTargets`,
+`TEntityTargetFactory`, `IRepositoryContext`, and `IBuildBaseQueryContext`.
 
 The base metadata must already exist through `@Entity`, `@Column`,
 `@PrimaryColumn`, or `@PrimaryGeneratedColumn`.

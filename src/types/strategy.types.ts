@@ -1,7 +1,6 @@
-import type { NativeStrategy } from '../case-strategy/native-strategy.js';
 import type { OrmStrategy } from '../case-strategy/orm-strategy.js';
 
-export interface INativeStrategyMethods {
+export interface IColumnNameTransformStrategy {
   /**
    * Transforms a raw database column name to the configured output case.
    */
@@ -10,13 +9,9 @@ export interface INativeStrategyMethods {
 
 export interface ICaseStrategyFactory {
   /**
-   * TypeORM naming strategy used while building entity metadata and SQL.
+   * Shared TypeORM naming and raw result strategy.
    */
   strategy: OrmStrategy;
-  /**
-   * Native result strategy used by driver fetch hooks.
-   */
-  nativeStrategy: NativeStrategy;
 }
 
 /**

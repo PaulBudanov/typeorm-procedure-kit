@@ -2,7 +2,11 @@ import { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import type { TProcedureArgumentList } from '../../types/procedure.types.js';
+import type {
+  TProcedureArgumentList,
+  TProcedurePayload,
+  TProcedurePayloadInput,
+} from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
@@ -95,13 +99,11 @@ export class PostgreAdapter extends DatabaseAdapter<
    * - bindings: an array of values to be passed to the procedure
    * - cursorsNames: an array of PostgreSQL refcursor argument names to fetch after the call
    */
-  public override makeBindings<
-    U extends Record<string, unknown> | Array<unknown>,
-  >(
+  public override makeBindings<U extends TProcedurePayload = TProcedurePayload>(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: TProcedureArgumentList | undefined,
-    payload?: U
+    payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn {
     // Проверка наличия пакета и процедуры в списках
     if (!procedures?.[processName]) {

@@ -10,7 +10,7 @@ function createPostgreAdapter(): PostgreAdapter {
     createLogger(),
     {
       isNeedRegisterDefaultSerializers: false,
-      caseNativeStrategy: {
+      caseStrategy: {
         transformColumnName: (value: string): string => value,
       },
     }

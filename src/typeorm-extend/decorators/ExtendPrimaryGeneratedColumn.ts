@@ -2,7 +2,7 @@ import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import type {
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,
-} from '../../types/extend-decorator.types.js';
+} from '../../types/typeorm-extend.types.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
 

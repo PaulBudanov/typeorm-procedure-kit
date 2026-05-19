@@ -10,6 +10,10 @@ import type {
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
 import type {
+  TProcedurePayload,
+  TProcedurePayloadInput,
+} from '../types/procedure.types.js';
+import type {
   ISetSerializer,
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
@@ -140,20 +144,20 @@ export class TypeOrmProcedureKit {
   }
 
   /**
-   * Calls a stored procedure or SQL query with the given execute string and params.
+   * Calls a stored procedure with the given execute string and params.
    * The execute string can be in the format of either 'packageName.procedureName' or just 'procedureName'.
    * If the execute string is in the format of 'packageName.procedureName', it will be parsed into a procedure name and package name.
    * If the execute string is just 'procedureName', it will be parsed into a procedure name and package name only if there is one package in the packages array.
    * If the execute string cannot be parsed into a procedure name and package name, it will throw a ServerError.
    * @param executeString - the string to be parsed
-   * @param params - object or array with data to be passed to the procedure, or undefined/null
+   * @param params - typed object or array with data to be passed to the procedure, or undefined/null
    * @param options - array of strings representing the options for the procedure call
    * @returns Promise<Array<T>> - promise that resolves with an array of result objects
    * @throws ServerError - if the executeString cannot be parsed into a procedure name and package name
    */
-  public call<T>(
+  public call<T, U extends TProcedurePayload = TProcedurePayload>(
     executeString: string,
-    params?: Record<string, unknown> | Array<unknown>,
+    params?: TProcedurePayloadInput<U>,
     options?: Array<string>
   ): Promise<Array<T>> {
     const packages = this.settings.config.packagesSettings?.packages;
@@ -169,9 +173,7 @@ export class TypeOrmProcedureKit {
       packages
     );
     const { paramExecuteString, bindings, cursorsNames } =
-      this.databaseInitializerBase.databaseAdapter.makeBindings<
-        Record<string, unknown> | Array<unknown>
-      >(
+      this.databaseInitializerBase.databaseAdapter.makeBindings<U>(
         packageName,
         processName,
         procedureListBase.packagesWithProceduresList.get(packageName),
@@ -360,7 +362,6 @@ export class TypeOrmProcedureKit {
     }
     // destroy cache
     procedureNameParser.destroy();
-    this.databaseInitializerBase.caseSettings.nativeStrategy.destroy();
     this.databaseInitializerBase.caseSettings.strategy.destroy();
 
     if (errors.length > 0) {

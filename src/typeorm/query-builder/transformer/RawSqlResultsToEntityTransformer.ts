@@ -40,7 +40,8 @@ export class RawSqlResultsToEntityTransformer {
     protected driver: Driver,
     protected rawRelationIdResults: Array<RelationIdLoadResult>,
     protected rawRelationCountResults: Array<RelationCountLoadResult>,
-    protected queryRunner?: QueryRunner
+    protected queryRunner?: QueryRunner,
+    protected rawAliasTransform?: (columnName: string) => string
   ) {
     this.pojo = this.expressionMap.options.includes('create-pojo');
     this.selections = new Set(
@@ -94,6 +95,19 @@ export class RawSqlResultsToEntityTransformer {
     return columnAlias;
   }
 
+  private getRawValue(result: ObjectLiteral, key: string): unknown {
+    const transformedKey = this.rawAliasTransform?.(key);
+    const keyCases =
+      transformedKey && transformedKey !== key ? [key, transformedKey] : [key];
+
+    for (const keyCase of keyCases) {
+      if (Object.prototype.hasOwnProperty.call(result, keyCase))
+        return result[keyCase];
+    }
+
+    return undefined;
+  }
+
   /**
    * Groups given raw results by ids of given alias.
    */
@@ -119,7 +133,7 @@ export class RawSqlResultsToEntityTransformer {
     for (const rawResult of rawResults) {
       const id = keys
         .map((key) => {
-          const keyValue = (rawResult as ObjectLiteral)[key];
+          const keyValue = this.getRawValue(rawResult as ObjectLiteral, key);
 
           if (Buffer.isBuffer(keyValue)) {
             return keyValue.toString('hex');
@@ -236,7 +250,7 @@ export class RawSqlResultsToEntityTransformer {
       alias.name,
       metadata
     )) {
-      const value = result[key];
+      const value = this.getRawValue(result, key);
 
       if (value === undefined) continue;
       // we don't mark it as has data because if we will have all nulls in our object - we don't need such object
@@ -406,9 +420,10 @@ export class RawSqlResultsToEntityTransformer {
         referenceColumnName = joinColumn.referencedColumn!.databaseName;
       }
 
-      const referenceColumnValue = (rawSqlResults[0] as ObjectLiteral)[
+      const referenceColumnValue = this.getRawValue(
+        rawSqlResults[0] as ObjectLiteral,
         this.buildAlias(alias.name, referenceColumnName)
-      ]; // we use zero index since its grouped data // todo: selection with alias for entity columns wont work
+      ); // we use zero index since its grouped data // todo: selection with alias for entity columns wont work
       if (referenceColumnValue !== undefined && referenceColumnValue !== null) {
         entity[
           rawRelationCountResult.relationCountAttribute.mapToPropertyPropertyName
@@ -446,7 +461,9 @@ export class RawSqlResultsToEntityTransformer {
             // if user does not selected the whole entity or he used partial selection and does not select this particular column
             // then we don't add this column and its value into the entity
             (this.selections.has(aliasName) ||
-              this.selections.has(`${aliasName}.${column.propertyPath}`)) &&
+              this.selections.has(`${aliasName}.${column.propertyPath}`) ||
+              this.selections.has(`${aliasName}.${column.databaseName}`) ||
+              this.selections.has(`${aliasName}.${column.databasePath}`)) &&
             // if table inheritance is used make sure this column is not child's column
             !metadata.childEntityMetadatas.some(
               (childMetadata) => childMetadata.target === column.target
@@ -488,19 +505,21 @@ export class RawSqlResultsToEntityTransformer {
       for (const rawSqlResult of rawSqlResults) {
         if (relation.isManyToOne || relation.isOneToOneOwner) {
           valueMap[column.databaseName] = this.driver.prepareHydratedValue(
-            (rawSqlResult as ObjectLiteral)[
+            this.getRawValue(
+              rawSqlResult as ObjectLiteral,
               this.buildAlias(parentAlias, column.databaseName)
-            ],
+            ),
             column
           );
         } else {
           valueMap[column.databaseName] = this.driver.prepareHydratedValue(
-            (rawSqlResult as ObjectLiteral)[
+            this.getRawValue(
+              rawSqlResult as ObjectLiteral,
               this.buildAlias(
                 parentAlias,
                 column.referencedColumn!.databaseName
               )
-            ],
+            ),
             column.referencedColumn!
           );
         }
@@ -532,9 +551,10 @@ export class RawSqlResultsToEntityTransformer {
       }
     }
     return columns.reduce((data, column) => {
-      data[column.databaseName] = (relationIdRawResult as ObjectLiteral)[
+      data[column.databaseName] = this.getRawValue(
+        relationIdRawResult as ObjectLiteral,
         column.databaseName
-      ];
+      );
       return data;
     }, {} as ObjectLiteral);
   }
@@ -579,7 +599,10 @@ export class RawSqlResultsToEntityTransformer {
           Record<string, Array<unknown>>
         >((agg, result) => {
           let idMap = columns.reduce((idMap, column) => {
-            let value = (result as ObjectLiteral)[column.databaseName];
+            let value = this.getRawValue(
+              result as ObjectLiteral,
+              column.databaseName
+            );
             if (relation.isOneToMany || relation.isOneToOneNotOwner) {
               if (
                 column.isVirtual &&

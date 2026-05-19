@@ -5,7 +5,6 @@ import type {
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { StringUtilities } from '../utils/string-utilities.js';
 
-import { NativeStrategy } from './native-strategy.js';
 import { OrmStrategy } from './orm-strategy.js';
 
 export abstract class CaseStrategyFactory {
@@ -19,8 +18,8 @@ export abstract class CaseStrategyFactory {
   };
 
   /**
-   * Returns an instance of ICaseStrategyFactory with the specified transformation function.
-   * The transformation function is used to transform column names from the database to the desired format.
+   * Returns a shared case strategy with the specified transformation function.
+   * The strategy is used both as a TypeORM naming strategy and as a raw result key transformer.
    * The default transformation function is StringUtilities.toCamelCase.
    * @param {TKeyTransformCase} [outKeyTransformCase='camelCase'] - The key to the transformation function.
    * @returns {ICaseStrategyFactory} - An instance of ICaseStrategyFactory with the specified transformation function.
@@ -35,9 +34,6 @@ export abstract class CaseStrategyFactory {
     const cache = new DatabaseNamingCache<string>();
     cache.createCache(cacheKey);
 
-    return {
-      strategy: new OrmStrategy(cacheKey, transformFn, cache),
-      nativeStrategy: new NativeStrategy(cacheKey, transformFn, cache),
-    };
+    return { strategy: new OrmStrategy(cacheKey, transformFn, cache) };
   }
 }

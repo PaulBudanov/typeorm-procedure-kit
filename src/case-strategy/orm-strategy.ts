@@ -56,6 +56,26 @@ export class OrmStrategy
     return data;
   }
 
+  /**
+   * Transforms raw column names and query aliases with the configured case utility.
+   */
+  public transformColumnName(columnName: string): string {
+    if (typeof columnName !== 'string')
+      throw new ServerError('Column name must be a string');
+    if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, columnName))
+      return this.databaseNamingCache.cacheGet(
+        this.columnNameCacheKey,
+        columnName
+      )!;
+    const cacheData = this.stringTransformUtility(columnName);
+    this.databaseNamingCache.cacheSet(
+      this.columnNameCacheKey,
+      columnName,
+      cacheData
+    );
+    return cacheData;
+  }
+
   public destroy(): void {
     this.cacheClassInstance.destroyCache();
   }

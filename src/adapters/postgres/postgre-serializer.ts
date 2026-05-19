@@ -54,11 +54,11 @@ export class PostgreSerializer extends DatabaseSerializer {
             this.fields[i]?.format === 'binary'
               ? Buffer.from(rawValue)
               : rawValue;
-          row[options.caseNativeStrategy.transformColumnName(field)] = (
+          row[options.caseStrategy.transformColumnName(field)] = (
             this._parsers[i] as (value: string | Buffer | null) => unknown
           )(valueToParse);
         } else {
-          row[options.caseNativeStrategy.transformColumnName(field)] = null;
+          row[options.caseStrategy.transformColumnName(field)] = null;
         }
       }
       return row;

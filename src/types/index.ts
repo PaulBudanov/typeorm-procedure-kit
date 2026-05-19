@@ -17,6 +17,8 @@ export type {
   IProcedureArgumentOracle,
   TDBMapStructure,
   TProcedureArgumentList,
+  TProcedurePayload,
+  TProcedurePayloadInput,
 } from './procedure.types.js';
 
 // Notification
@@ -67,7 +69,7 @@ export type {
 export type {
   ICaseStratefyFactory,
   ICaseStrategyFactory,
-  INativeStrategyMethods,
+  IColumnNameTransformStrategy,
   TKeyTransformCase,
 } from './strategy.types.js';
 
@@ -88,8 +90,12 @@ export type {
   TUnlistenNotify,
 } from './nest-decorator.types.js';
 
-// Extend Decorator
+// TypeORM Extend
 export type {
+  IBuildBaseQueryContext,
+  IEntityTargets,
+  IRepositoryContext,
+  TEntityTargetFactory,
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,
-} from './extend-decorator.types.js';
+} from './typeorm-extend.types.js';

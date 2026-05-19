@@ -50,6 +50,10 @@ export class DefaultNamingStrategy implements NamingStrategyInterface {
     return name;
   }
 
+  public transformColumnName(columnName: string): string {
+    return columnName;
+  }
+
   public relationName(propertyName: string): string {
     return propertyName;
   }

@@ -187,7 +187,7 @@ export class DatabaseInitializerBase {
     const fetchHandlerOptions: IRegisteredFetchHandlerOptions = {
       isNeedRegisterDefaultSerializers:
         this.dbConfig.isNeedRegisterDefaultSerializers ?? false,
-      caseNativeStrategy: this.caseSettings.nativeStrategy,
+      caseStrategy: this.caseSettings.strategy,
     };
     switch (this.dbConfig.type) {
       case 'postgres': {

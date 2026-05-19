@@ -1,5 +1,4 @@
 import type { TFunction } from '../../types/utility.types.js';
-import { StringUtilities } from '../../utils/string-utilities.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
@@ -831,19 +830,18 @@ export abstract class QueryBuilder<Entity = unknown> {
             match = matches[0];
             pre = matches[1] as string;
             p = matches[3] as string;
-            // const strategysFind = [(item: string |)]
-            const findPropertyInAnotherCases = this.findPropertyInAnotherCases(
+            const replacement = this.findReplacementInAnotherCases(
               p,
               replacements[matches[2] as string]
             );
-            if (findPropertyInAnotherCases) {
+            if (replacement) {
               return `${pre}${this.escape(
                 (matches[2] as string).substring(
                   0,
                   (matches[2] as string).length - 1
                 ),
                 true
-              )}.${this.escape(findPropertyInAnotherCases as string)}`;
+              )}.${this.escape(replacement)}`;
             }
           } else {
             match = matches[0];
@@ -862,23 +860,21 @@ export abstract class QueryBuilder<Entity = unknown> {
     return statement;
   }
 
-  private findPropertyInAnotherCases(
+  private findReplacementInAnotherCases(
     propertyName: string | undefined,
     findObject: Record<string, string | undefined> | undefined
   ): string | undefined {
     if (!propertyName || !findObject) return undefined;
-    const propertyCasesArray = [
-      propertyName,
-      StringUtilities.toLowerCase(propertyName),
-      propertyName.toUpperCase(),
-      StringUtilities.toCamelCase(propertyName),
-    ];
-    propertyCasesArray.forEach((propertyCase) => {
-      if (findObject[propertyCase]) {
-        propertyName = propertyCase;
-      }
-    });
-    return propertyName;
+    const propertyCasesArray = [propertyName];
+    const transformedPropertyName =
+      this.connection.namingStrategy.transformColumnName(propertyName);
+    if (transformedPropertyName !== propertyName)
+      propertyCasesArray.push(transformedPropertyName);
+    for (const propertyCase of propertyCasesArray) {
+      const replacement = findObject[propertyCase];
+      if (replacement) return replacement;
+    }
+    return undefined;
   }
 
   protected createComment(): string {

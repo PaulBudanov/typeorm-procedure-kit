@@ -9,7 +9,11 @@ import type {
   INotifyOracleDefaultSettings,
   IOracleOptionsNotify,
 } from '../../types/notification.types.js';
-import type { TProcedureArgumentList } from '../../types/procedure.types.js';
+import type {
+  TProcedureArgumentList,
+  TProcedurePayload,
+  TProcedurePayloadInput,
+} from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
@@ -81,13 +85,11 @@ export class OracleAdapter extends DatabaseAdapter<
    * - bindings: an array of values to be passed to the procedure
    * - cursorsNames: an array of names of cursors (for Oracle only)
    */
-  public override makeBindings<
-    U extends Record<string, unknown> | Array<unknown>,
-  >(
+  public override makeBindings<U extends TProcedurePayload = TProcedurePayload>(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: TProcedureArgumentList | undefined,
-    payload?: U
+    payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn {
     if (!procedures?.[processName]) {
       throw new ServerError(

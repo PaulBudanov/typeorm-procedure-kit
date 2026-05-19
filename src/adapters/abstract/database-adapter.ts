@@ -15,6 +15,8 @@ import type {
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
+  TProcedurePayload,
+  TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type {
   ISetSerializer,
@@ -166,13 +168,11 @@ export abstract class DatabaseAdapter<
    * @param payload - procedure input values as object, array, null, or undefined.
    * @returns procedure call SQL, binding values, and output cursor names.
    */
-  public abstract makeBindings<
-    U extends Record<string, unknown> | Array<unknown>,
-  >(
+  public abstract makeBindings<U extends TProcedurePayload = TProcedurePayload>(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: TProcedureArgumentList | undefined,
-    payload?: U
+    payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn;
 
   /**

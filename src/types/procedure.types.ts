@@ -6,6 +6,22 @@ export interface IProcedureArgumentBase {
   mode: string;
 }
 
+/**
+ * Procedure input payload accepted by database adapters.
+ *
+ * Objects bind values by argument name, arrays bind values by argument order,
+ * and scalar strings/numbers are rejected at runtime by the adapters.
+ */
+export type TProcedurePayload = object;
+
+/**
+ * Public procedure payload argument type. Null and undefined mean that
+ * non-cursor procedure arguments are bound as null.
+ */
+export type TProcedurePayloadInput<
+  TPayload extends TProcedurePayload = TProcedurePayload,
+> = TPayload | null | undefined;
+
 export interface IProcedureArgumentOracle extends IProcedureArgumentBase {
   packageName: Lowercase<string>;
 }

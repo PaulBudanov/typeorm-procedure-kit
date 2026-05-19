@@ -18,12 +18,14 @@ import type {
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
+  TProcedurePayload,
+  TProcedurePayloadInput,
 } from './procedure.types.js';
 import type {
   ISetSerializer,
   TSerializerTypeCastWithoutFormat,
 } from './serializer.types.js';
-import type { INativeStrategyMethods } from './strategy.types.js';
+import type { IColumnNameTransformStrategy } from './strategy.types.js';
 import type {
   IBindingsObjectReturn,
   ISqlBindingsObjectReturn,
@@ -31,9 +33,9 @@ import type {
 
 export interface IRegisteredFetchHandlerOptions {
   /**
-   * Strategy used by driver fetch hooks to transform raw column names.
+   * Strategy used by driver fetch hooks to transform raw column names and aliases.
    */
-  caseNativeStrategy: INativeStrategyMethods;
+  caseStrategy: IColumnNameTransformStrategy;
   /**
    * Whether adapter initialization should register built-in date/time serializers.
    */
@@ -82,11 +84,11 @@ export interface IDatabaseAdapterContract<
   /**
    * Builds vendor-specific procedure call SQL and bindings.
    */
-  makeBindings<U extends Record<string, unknown> | Array<unknown>>(
+  makeBindings<U extends TProcedurePayload = TProcedurePayload>(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: TProcedureArgumentList | undefined,
-    payload?: U
+    payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn;
   /**
    * Registers or replaces a result serializer.

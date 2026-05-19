@@ -13,6 +13,10 @@ import type {
   ICreateNotify,
   IOracleOptionsNotify,
 } from '../../types/notification.types.js';
+import type {
+  TProcedurePayload,
+  TProcedurePayloadInput,
+} from '../../types/procedure.types.js';
 import {
   CALL_PROCEDURE,
   CALL_SQL,
@@ -28,11 +32,12 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   {
     provide: CALL_PROCEDURE,
     useFactory: (service: TypeOrmProcedureKitNestService): TCallProcedure => {
-      return <T>(
+      return <T, U extends TProcedurePayload = TProcedurePayload>(
         executeString: string,
-        params?: Record<string, unknown> | Array<unknown>,
+        params?: TProcedurePayloadInput<U>,
         options?: Array<string>
-      ): Promise<Array<T>> => service.call<T>(executeString, params, options);
+      ): Promise<Array<T>> =>
+        service.call<T, U>(executeString, params, options);
     },
     inject: [TypeOrmProcedureKitNestService],
   },

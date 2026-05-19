@@ -23,6 +23,10 @@ import type {
   TUnlistenNotify,
 } from '../../src/types/nest-decorator.types.js';
 
+interface IProcedureParams {
+  id: number;
+}
+
 function getFactoryProvider(token: symbol): FactoryProvider<unknown> {
   const provider = TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS.find(
     (item: Provider): boolean =>
@@ -88,6 +92,13 @@ describe('core method Nest providers', (): void => {
     await expect(
       callProcedure<{ id: number }>('pkg.proc', { id: 1 }, ['SET x = 1'])
     ).resolves.toEqual([{ id: 1 }]);
+    const typedParams: IProcedureParams = { id: 1 };
+    await expect(
+      callProcedure<{ id: number }>('pkg.proc', typedParams)
+    ).resolves.toEqual([{ id: 1 }]);
+    await expect(
+      callProcedure<{ id: number }, IProcedureParams>('pkg.proc', typedParams)
+    ).resolves.toEqual([{ id: 1 }]);
     await expect(
       callSql<{ value: number }>('SELECT :ID', { ID: 1 }, ['SET x = 1'])
     ).resolves.toEqual([{ value: 1 }]);
@@ -104,9 +115,21 @@ describe('core method Nest providers', (): void => {
     deleteSerializer({ serializerType: 'DATE' });
     deleteAllSerializers();
 
-    expect(service.call).toHaveBeenCalledWith('pkg.proc', { id: 1 }, [
+    expect(service.call).toHaveBeenNthCalledWith(1, 'pkg.proc', { id: 1 }, [
       'SET x = 1',
     ]);
+    expect(service.call).toHaveBeenNthCalledWith(
+      2,
+      'pkg.proc',
+      typedParams,
+      undefined
+    );
+    expect(service.call).toHaveBeenNthCalledWith(
+      3,
+      'pkg.proc',
+      typedParams,
+      undefined
+    );
     expect(service.callSqlTransaction).toHaveBeenCalledWith(
       'SELECT :ID',
       { ID: 1 },

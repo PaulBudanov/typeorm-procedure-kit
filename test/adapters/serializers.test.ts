@@ -7,7 +7,7 @@ import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serialize
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
-const caseNativeStrategy = {
+const caseStrategy = {
   transformColumnName: (value: string): string => value.toLowerCase(),
   destroy: (): void => undefined,
 };
@@ -21,7 +21,7 @@ describe('database serializers', (): void => {
     const logger = createLogger();
     const serializer = new PostgreSerializer(logger, {
       isNeedRegisterDefaultSerializers: false,
-      caseNativeStrategy,
+      caseStrategy,
     });
     const strategy = vi.fn((value: string | Buffer): string =>
       value.toString().toUpperCase()
@@ -46,7 +46,7 @@ describe('database serializers', (): void => {
   it('registers, uses, and deletes Oracle serializers', (): void => {
     const serializer = new OracleSerializer(createLogger(), {
       isNeedRegisterDefaultSerializers: false,
-      caseNativeStrategy,
+      caseStrategy,
     });
     const strategy = vi.fn((value: string | Buffer): string => `v:${value}`);
 
