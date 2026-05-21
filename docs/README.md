@@ -343,8 +343,8 @@ Common database options:
 
 - `master`: credentials for the primary database connection.
 - `slaves`: optional read replicas for TypeORM replication. Public kit methods
-  fail fast when `mode: 'slave'` is requested without at least one configured
-  slave database.
+  log a warning and use the master connection when `mode: 'slave'` is requested
+  without at least one configured slave database.
 - `poolSize`: connection pool size.
 - `appName`: application name passed to supported drivers.
 - `callTimeout`: slow-query logging threshold passed to TypeORM.
@@ -706,7 +706,7 @@ placeholders.
 Use `slave` only for read-only operations. Procedure calls and SQL statements
 that write data should use the default `master` mode. If `mode: 'slave'` is
 explicitly requested and `slaves` is empty or not configured, the public kit
-execution flow throws instead of silently falling back to master.
+execution flow logs a warning and uses the master connection.
 
 ## Notifications
 
@@ -990,9 +990,9 @@ const dataSource = db.dataSource;
 const adapter = db.databaseAdapter;
 ```
 
-`getEntityManager()` accepts `master` or `slave`. Requesting `slave` requires at
-least one configured slave database; otherwise the method throws before a query
-runner is created.
+`getEntityManager()` accepts `master` or `slave`. Requesting `slave` without at
+least one configured slave database logs a warning and uses the master
+connection.
 `databaseAdapter` exposes the low-level adapter contract for diagnostics and
 advanced integration code.
 

@@ -30,22 +30,29 @@ describe('ConnectionBase', (): void => {
     expect(queryRunner.connect).toHaveBeenCalledOnce();
   });
 
-  it('throws when slave mode is requested without configured slave databases', async (): Promise<void> => {
+  it('warns and lets driver fallback use master when slave mode is requested without configured slaves', async (): Promise<void> => {
     const logger = createLogger();
+    const manager = { connection: { isInitialized: true } };
+    const queryRunner = {
+      connect: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      manager,
+    };
     const dataSource = {
       isInitialized: true,
       options: {},
-      createQueryRunner: vi.fn(),
+      createQueryRunner: vi.fn(
+        (_mode: string): typeof queryRunner => queryRunner
+      ),
     };
     const connectionBase = new ConnectionBase(dataSource as never, logger);
 
-    await expect(connectionBase.getEntityManager('slave')).rejects.toThrow(
-      'Slave connection requested but no slave databases configured'
+    await expect(connectionBase.getEntityManager('slave')).resolves.toBe(
+      manager
     );
-    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledWith(
-      'Error getting connection from pool',
-      expect.any(String)
+    expect(dataSource.createQueryRunner).toHaveBeenCalledWith('slave');
+    expect(queryRunner.connect).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Slave connection requested but no slave databases configured. Using master connection.'
     );
   });
 

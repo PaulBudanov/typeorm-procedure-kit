@@ -344,8 +344,9 @@ const config: IModuleConfig = {
 Общие параметры:
 
 - `master`: учетные данные основного подключения к базе.
-- `slaves`: read replicas для TypeORM replication. Публичные методы kit падают
-  сразу, если явно запрошен `mode: 'slave'`, но не настроена ни одна slave-БД.
+- `slaves`: read replicas для TypeORM replication. Публичные методы kit пишут
+  warning и используют master connection, если явно запрошен `mode: 'slave'`,
+  но не настроена ни одна slave-БД.
 - `poolSize`: размер пула соединений.
 - `appName`: имя приложения для драйвера, если он это поддерживает.
 - `callTimeout`: порог логирования медленных запросов для TypeORM.
@@ -709,7 +710,7 @@ PostgreSQL переписывает плейсхолдеры в `$1`, `$2`, а O
 Используйте `slave` только для read-only операций. Вызовы процедур и SQL,
 которые пишут данные, должны использовать режим `master` по умолчанию. Если
 явно передан `mode: 'slave'`, а `slaves` пустой или не настроен, публичный flow
-выполнения kit бросит ошибку вместо тихого fallback на master.
+выполнения kit запишет warning и использует master connection.
 
 ## Уведомления
 
@@ -995,9 +996,8 @@ const dataSource = db.dataSource;
 const adapter = db.databaseAdapter;
 ```
 
-`getEntityManager()` принимает `master` или `slave`. Для запроса `slave` нужна
-минимум одна настроенная slave-БД; иначе метод бросит ошибку до создания query
-runner.
+`getEntityManager()` принимает `master` или `slave`. Запрос `slave` без хотя бы
+одной настроенной slave-БД запишет warning и использует master connection.
 `databaseAdapter` открывает низкоуровневый adapter contract для диагностики и
 расширенной интеграции.
 

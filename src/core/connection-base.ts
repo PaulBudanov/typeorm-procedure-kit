@@ -14,9 +14,8 @@ export class ConnectionBase {
    * Retrieves an EntityManager from the pool.
    * If the connection to the database is not established, throws an error.
    * If the connection is not initialized, throws an error.
-   * If `slave` mode is explicitly requested, at least one slave database must
-   * be configured. This avoids silently routing explicit read-replica requests
-   * to the master connection.
+   * If `slave` mode is explicitly requested without configured slave databases,
+   * a warning is logged and the driver fallback uses the master connection.
    * @param {string} [mode] - The mode of the connection. 'master' or 'slave'. Defaults to 'master'.
    * @returns {Promise<EntityManager>} - A promise that resolves with the EntityManager.
    * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
@@ -26,7 +25,7 @@ export class ConnectionBase {
   ): Promise<EntityManager> {
     try {
       if (this.appDataSource.isInitialized) {
-        this.ensureConnectionModeAvailable(mode);
+        this.warnWhenSlaveModeFallsBackToMaster(mode);
         const queryRunner: QueryRunner =
           this.appDataSource.createQueryRunner(mode);
         await queryRunner.connect();
@@ -46,24 +45,23 @@ export class ConnectionBase {
   }
 
   /**
-   * Verifies that the requested connection mode can be satisfied by the current
-   * DataSource configuration.
+   * Logs a warning when slave mode cannot be satisfied by the current
+   * DataSource configuration and the underlying driver will use master instead.
    *
    * Driver-level replication can fall back from slave to master when no slave
-   * pools exist. Public kit APIs use this guard to fail fast instead, because an
-   * explicit `slave` request should not be silently executed on master.
+   * pools exist. Public kit APIs keep that fallback behavior but make it visible
+   * through the configured logger.
    *
    * @param mode - Requested connection mode.
-   * @throws ServerError - When `slave` mode is requested without configured slaves.
    */
-  private ensureConnectionModeAvailable(mode: TConnectionMode): void {
+  private warnWhenSlaveModeFallsBackToMaster(mode: TConnectionMode): void {
     if (mode !== 'slave') return;
 
     const slaves = this.appDataSource.options.replication?.slaves;
     if (Array.isArray(slaves) && slaves.length > 0) return;
 
-    throw new ServerError(
-      'Slave connection requested but no slave databases configured'
+    this.logger.warn(
+      'Slave connection requested but no slave databases configured. Using master connection.'
     );
   }
 
