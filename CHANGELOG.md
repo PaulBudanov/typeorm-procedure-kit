@@ -1,3 +1,25 @@
+# [2.0.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.5.0...v2.0.0) (2026-05-21)
+
+
+* feat!: add execution options and strict slave routing ([3fa5322](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/3fa53225b18ceb5d02513f2a7da1d40e5fa58211))
+
+
+### BREAKING CHANGES
+
+* call() and callSqlTransaction() no longer accept an array as
+the third argument. Pass an execution options object instead:
+
+  { mode?: 'master' | 'slave', optionsCommands?: string[], queryId?: string }
+* getEntityManager('slave'), call(..., { mode: 'slave' }), and
+callSqlTransaction(..., { mode: 'slave' }) now throw when no slave databases are
+configured instead of silently falling back to master.
+
+- support explicit master/slave mode for procedure and SQL execution
+- move setup SQL commands to executionOptions.optionsCommands
+- update Nest method provider types for execution options
+- document scoped/global Nest registration behavior and multi-registration limits
+- expand integration coverage for procedure calls, replication routing, and SelectQueryBuilder slave reads
+
 # [1.5.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.4.0...v1.5.0) (2026-05-19)
 
 
