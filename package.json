@@ -134,16 +134,10 @@
     "pg": {
       "optional": true
     },
-    "@types/pg": {
-      "optional": true
-    },
     "pg-query-stream": {
       "optional": true
     },
     "oracledb": {
-      "optional": true
-    },
-    "@types/oracledb": {
       "optional": true
     }
   },
