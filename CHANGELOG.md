@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.1...v2.0.2) (2026-05-21)
+
+
+### Bug Fixes
+
+* install database driver types with package ([e9535fa](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/e9535face4834c5c6186fd11176b45f32689e5bc))
+
 ## [2.0.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.0...v2.0.1) (2026-05-21)
 
 
