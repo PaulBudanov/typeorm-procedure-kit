@@ -3,7 +3,10 @@ import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IModuleConfig } from '../types/base.types.js';
-import type { TConnectionMode } from '../types/config.types.js';
+import type {
+  IExecutionOptions,
+  TConnectionMode,
+} from '../types/config.types.js';
 import type {
   ICreateNotify,
   IOracleOptionsNotify,
@@ -151,14 +154,14 @@ export class TypeOrmProcedureKit {
    * If the execute string cannot be parsed into a procedure name and package name, it will throw a ServerError.
    * @param executeString - the string to be parsed
    * @param params - typed object or array with data to be passed to the procedure, or undefined/null
-   * @param options - array of strings representing the options for the procedure call
+   * @param executionOptions - options for connection mode, setup commands, and query id
    * @returns Promise<Array<T>> - promise that resolves with an array of result objects
    * @throws ServerError - if the executeString cannot be parsed into a procedure name and package name
    */
   public call<T, U extends TProcedurePayload = TProcedurePayload>(
     executeString: string,
     params?: TProcedurePayloadInput<U>,
-    options?: Array<string>
+    executionOptions?: IExecutionOptions
   ): Promise<Array<T>> {
     const packages = this.settings.config.packagesSettings?.packages;
     if (!packages || packages.length < 1) {
@@ -182,8 +185,8 @@ export class TypeOrmProcedureKit {
     return this.requireExecuteBase().execute<T>(
       paramExecuteString,
       bindings,
-      options,
-      cursorsNames
+      cursorsNames,
+      executionOptions
     );
   }
   /**
@@ -195,18 +198,23 @@ export class TypeOrmProcedureKit {
    *
    * @param sql - SQL query string with optional uppercase named parameters.
    * @param [params] - Object with values for the named SQL parameters.
-   * @param [options] - SQL commands to execute in the transaction before the main query.
+   * @param [executionOptions] - options for connection mode, setup commands, and query id.
    * @returns Promise that resolves with an array of result objects.
    * @throws ServerError - If an error occurs during command execution.
    */
   public callSqlTransaction<T>(
     sql: string,
     params?: Record<string, unknown>,
-    options?: Array<string>
+    executionOptions?: IExecutionOptions
   ): Promise<Array<T>> {
     const { sqlString, bindings } =
       this.databaseInitializerBase.databaseAdapter.makeSqlBindings(sql, params);
-    return this.requireExecuteBase().execute(sqlString, bindings, options);
+    return this.requireExecuteBase().execute(
+      sqlString,
+      bindings,
+      [],
+      executionOptions
+    );
   }
   /**
    * Create a notification channel and subscribe to it.

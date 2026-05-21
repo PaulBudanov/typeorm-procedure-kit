@@ -14,6 +14,9 @@ export class ConnectionBase {
    * Retrieves an EntityManager from the pool.
    * If the connection to the database is not established, throws an error.
    * If the connection is not initialized, throws an error.
+   * If `slave` mode is explicitly requested, at least one slave database must
+   * be configured. This avoids silently routing explicit read-replica requests
+   * to the master connection.
    * @param {string} [mode] - The mode of the connection. 'master' or 'slave'. Defaults to 'master'.
    * @returns {Promise<EntityManager>} - A promise that resolves with the EntityManager.
    * @throws {Error} - If the connection to the database is not established or the connection is not initialized.
@@ -23,6 +26,7 @@ export class ConnectionBase {
   ): Promise<EntityManager> {
     try {
       if (this.appDataSource.isInitialized) {
+        this.ensureConnectionModeAvailable(mode);
         const queryRunner: QueryRunner =
           this.appDataSource.createQueryRunner(mode);
         await queryRunner.connect();
@@ -39,6 +43,28 @@ export class ConnectionBase {
       );
       throw e;
     }
+  }
+
+  /**
+   * Verifies that the requested connection mode can be satisfied by the current
+   * DataSource configuration.
+   *
+   * Driver-level replication can fall back from slave to master when no slave
+   * pools exist. Public kit APIs use this guard to fail fast instead, because an
+   * explicit `slave` request should not be silently executed on master.
+   *
+   * @param mode - Requested connection mode.
+   * @throws ServerError - When `slave` mode is requested without configured slaves.
+   */
+  private ensureConnectionModeAvailable(mode: TConnectionMode): void {
+    if (mode !== 'slave') return;
+
+    const slaves = this.appDataSource.options.replication?.slaves;
+    if (Array.isArray(slaves) && slaves.length > 0) return;
+
+    throw new ServerError(
+      'Slave connection requested but no slave databases configured'
+    );
   }
 
   /**

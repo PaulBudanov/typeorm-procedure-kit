@@ -90,7 +90,14 @@ describe('core method Nest providers', (): void => {
     ).useFactory(service) as TDeleteAllSerializers;
 
     await expect(
-      callProcedure<{ id: number }>('pkg.proc', { id: 1 }, ['SET x = 1'])
+      callProcedure<{ id: number }>(
+        'pkg.proc',
+        { id: 1 },
+        {
+          optionsCommands: ['SET x = 1'],
+          mode: 'slave',
+        }
+      )
     ).resolves.toEqual([{ id: 1 }]);
     const typedParams: IProcedureParams = { id: 1 };
     await expect(
@@ -100,7 +107,14 @@ describe('core method Nest providers', (): void => {
       callProcedure<{ id: number }, IProcedureParams>('pkg.proc', typedParams)
     ).resolves.toEqual([{ id: 1 }]);
     await expect(
-      callSql<{ value: number }>('SELECT :ID', { ID: 1 }, ['SET x = 1'])
+      callSql<{ value: number }>(
+        'SELECT :ID',
+        { ID: 1 },
+        {
+          optionsCommands: ['SET x = 1'],
+          mode: 'slave',
+        }
+      )
     ).resolves.toEqual([{ value: 1 }]);
     await expect(
       makeNotify({ sql: 'LISTEN channel', notifyCallback: vi.fn() })
@@ -115,9 +129,15 @@ describe('core method Nest providers', (): void => {
     deleteSerializer({ serializerType: 'DATE' });
     deleteAllSerializers();
 
-    expect(service.call).toHaveBeenNthCalledWith(1, 'pkg.proc', { id: 1 }, [
-      'SET x = 1',
-    ]);
+    expect(service.call).toHaveBeenNthCalledWith(
+      1,
+      'pkg.proc',
+      { id: 1 },
+      {
+        optionsCommands: ['SET x = 1'],
+        mode: 'slave',
+      }
+    );
     expect(service.call).toHaveBeenNthCalledWith(
       2,
       'pkg.proc',
@@ -133,7 +153,10 @@ describe('core method Nest providers', (): void => {
     expect(service.callSqlTransaction).toHaveBeenCalledWith(
       'SELECT :ID',
       { ID: 1 },
-      ['SET x = 1']
+      {
+        optionsCommands: ['SET x = 1'],
+        mode: 'slave',
+      }
     );
     expect(service.makeNotify).toHaveBeenCalledWith(
       expect.objectContaining({ sql: 'LISTEN channel' }),

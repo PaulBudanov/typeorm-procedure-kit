@@ -27,10 +27,10 @@ const config = {
 } as const;
 
 describe('TypeOrmProcedureKitNestModule', (): void => {
-  it('creates a synchronous global dynamic module', (): void => {
+  it('creates a synchronous scoped dynamic module by default', (): void => {
     const module = TypeOrmProcedureKitNestModule.forRoot(config);
 
-    expect(module.global).toBe(true);
+    expect(module.global).toBe(false);
     expect(module.providers).toContain(TypeOrmProcedureKitNestService);
     expect(module.exports).toEqual([
       TypeOrmProcedureKitNestService,
@@ -49,7 +49,13 @@ describe('TypeOrmProcedureKitNestModule', (): void => {
     );
   });
 
-  it('creates an asynchronous global dynamic module', (): void => {
+  it('creates a synchronous global dynamic module when requested', (): void => {
+    const module = TypeOrmProcedureKitNestModule.forRoot(config, true);
+
+    expect(module.global).toBe(true);
+  });
+
+  it('creates an asynchronous scoped dynamic module by default', (): void => {
     const useFactory = (): typeof config => config;
     const module = TypeOrmProcedureKitNestModule.forRootAsync({
       useFactory,
@@ -57,7 +63,7 @@ describe('TypeOrmProcedureKitNestModule', (): void => {
       imports: [],
     });
 
-    expect(module.global).toBe(true);
+    expect(module.global).toBe(false);
     expect(module.imports).toEqual([]);
     expect(module.providers).toEqual(
       expect.arrayContaining([
@@ -74,5 +80,15 @@ describe('TypeOrmProcedureKitNestModule', (): void => {
       DATABASE_SERVICE_TOKEN,
       ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
     ]);
+  });
+
+  it('creates an asynchronous global dynamic module when requested', (): void => {
+    const useFactory = (): typeof config => config;
+    const module = TypeOrmProcedureKitNestModule.forRootAsync({
+      useFactory,
+      isGlobal: true,
+    });
+
+    expect(module.global).toBe(true);
   });
 });

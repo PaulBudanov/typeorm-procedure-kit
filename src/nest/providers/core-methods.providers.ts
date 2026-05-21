@@ -1,5 +1,6 @@
 import type { Provider } from '@nestjs/common';
 
+import type { IExecutionOptions } from '../../types/config.types.js';
 import type {
   TCallProcedure,
   TCallSql,
@@ -35,9 +36,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
       return <T, U extends TProcedurePayload = TProcedurePayload>(
         executeString: string,
         params?: TProcedurePayloadInput<U>,
-        options?: Array<string>
+        executionOptions?: IExecutionOptions
       ): Promise<Array<T>> =>
-        service.call<T, U>(executeString, params, options);
+        service.call<T, U>(executeString, params, executionOptions);
     },
     inject: [TypeOrmProcedureKitNestService],
   },
@@ -47,9 +48,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
       return <T>(
         sql: string,
         params?: Record<string, unknown>,
-        options?: Array<string>
+        executionOptions?: IExecutionOptions
       ): Promise<Array<T>> =>
-        service.callSqlTransaction<T>(sql, params, options);
+        service.callSqlTransaction<T>(sql, params, executionOptions);
     },
     inject: [TypeOrmProcedureKitNestService],
   },

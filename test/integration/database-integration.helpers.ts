@@ -21,6 +21,33 @@ function handleMissingEnv(database: string): null {
   return null;
 }
 
+function cloneCredentials(
+  credentials: TPostgresDbConfig['master']
+): TPostgresDbConfig['master'] {
+  return { ...credentials };
+}
+
+function getPostgresSlaveCredentials(
+  master: TPostgresDbConfig['master']
+): TPostgresDbConfig['master'] {
+  const host = process.env.POSTGRES_SLAVE_HOST;
+  const port = process.env.POSTGRES_SLAVE_PORT;
+  const database = process.env.POSTGRES_SLAVE_DATABASE;
+  const username = process.env.POSTGRES_SLAVE_USERNAME;
+  const password = process.env.POSTGRES_SLAVE_PASSWORD;
+
+  if (!host || !port || !database || !username || !password)
+    return cloneCredentials(master);
+
+  return {
+    host,
+    port: Number(port),
+    database,
+    username,
+    password,
+  };
+}
+
 export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPostgresDbConfig> | null {
   const host = process.env.POSTGRES_HOST;
   const port = process.env.POSTGRES_PORT;
@@ -45,6 +72,20 @@ export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPo
         username,
         password,
       },
+    },
+  };
+}
+
+export function createPostgresReplicationIntegrationSettings(): IntegrationTestSettings<TPostgresDbConfig> | null {
+  const settings = createPostgresIntegrationSettings();
+
+  if (!settings) return null;
+
+  return {
+    ...settings,
+    config: {
+      ...settings.config,
+      slaves: [getPostgresSlaveCredentials(settings.config.master)],
     },
   };
 }

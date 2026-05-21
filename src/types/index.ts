@@ -3,6 +3,7 @@ export type {
   IBaseConfig,
   IDatabaseFactory,
   IEntityOptions,
+  IExecutionOptions,
   IMigrationOptions,
   TConnectionMode,
   TDbConfig,

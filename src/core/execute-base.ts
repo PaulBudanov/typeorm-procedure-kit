@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
+import type { IExecutionOptions } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { IBindingsObjectReturn } from '../types/utility.types.js';
 import { DatabaseErrorHandler } from '../utils/database-error-handler.js';
@@ -28,21 +29,25 @@ export class ExecuteBase {
    *
    * @param sql - SQL query string
    * @param bindings - bindings for the SQL query or procedure
-   * @param optionsCommands - options commands to be executed before the query (e.g. SET ROLE, SET SCHEMA)
    * @param cursorsNames - names of the cursors to fetch results from
-   * @param queryId - ID of the query to log (optional)
+   * @param executionOptions - execution options such as connection mode, setup commands, and query id
    *
    * @returns a promise that resolves with an array of the results of the query or procedure
    */
   public async execute<T>(
     sql: string,
     bindings: IBindingsObjectReturn['bindings'] = [],
-    optionsCommands: Array<string> = [],
     cursorsNames: Array<string> = [],
-    queryId: string = randomUUID()
+    executionOptions: IExecutionOptions = {}
   ): Promise<Awaited<Array<T>>> {
+    const {
+      mode = 'master',
+      optionsCommands = [],
+      queryId = randomUUID(),
+    } = executionOptions;
     const queryTimer = new QueryTimer(sql, this.logger, queryId, bindings);
-    const client: EntityManager = await this.connectionBase.getEntityManager();
+    const client: EntityManager =
+      await this.connectionBase.getEntityManager(mode);
     try {
       const result: Awaited<Array<T> | T> =
         await this.databaseAdapter.execute<T>(

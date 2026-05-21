@@ -23,16 +23,20 @@ export class TypeOrmProcedureKitNestModule {
   /**
    * Returns a dynamic module for the given options.
    *
-   * This method is used to create a global module which is used
-   * to register the TypeOrmProcedureKitNestService globally.
+   * This method registers TypeOrmProcedureKitNestService in the importing
+   * module, or globally when isGlobal is true.
    *
-   * @param options - The options to register the global module with.
+   * @param options - The options to register the module with.
+   * @param isGlobal - Whether to register the dynamic module globally.
    * @returns A dynamic module for the given options.
    */
-  public static forRoot(options: IModuleConfig): DynamicModule {
+  public static forRoot(
+    options: IModuleConfig,
+    isGlobal = false
+  ): DynamicModule {
     return {
       module: TypeOrmProcedureKitNestModule,
-      global: true,
+      global: isGlobal,
       providers: [
         {
           provide: DATABASE_CONFIG_TOKEN,
@@ -55,12 +59,13 @@ export class TypeOrmProcedureKitNestModule {
   /**
    * Returns a dynamic module for the given options.
    *
-   * This method is used to create a global module which is used
-   * to register the TypeORMProcedureKitService globally.
+   * This method registers TypeORMProcedureKitService in the importing module,
+   * or globally when options.isGlobal is true.
    *
    * @param options - An object containing the following properties:
    *  - useFactory: A function that returns a Promise of IModuleConfig or IModuleConfig
    *  - inject: An array of InjectionToken or OptionalFactoryDependency
+   *  - isGlobal: Whether to register the dynamic module globally
    * @returns A dynamic module for the given options.
    */
   public static forRootAsync(options: {
@@ -75,6 +80,7 @@ export class TypeOrmProcedureKitNestModule {
       | Promise<DynamicModule>
       | ForwardReference
     >;
+    isGlobal?: boolean;
   }): DynamicModule {
     const configProvider: Provider = {
       provide: DATABASE_CONFIG_TOKEN,
@@ -83,7 +89,7 @@ export class TypeOrmProcedureKitNestModule {
     };
     return {
       module: TypeOrmProcedureKitNestModule,
-      global: true,
+      global: options.isGlobal !== undefined ? options.isGlobal : false,
       imports: options.imports ?? [],
       providers: [
         configProvider,

@@ -1,3 +1,4 @@
+import type { IExecutionOptions } from './config.types.js';
 import type {
   ICreateNotify,
   IOracleOptionsNotify,
@@ -14,13 +15,13 @@ export type TCallProcedure = <
 >(
   executeString: string,
   params?: TProcedurePayloadInput<U>,
-  options?: Array<string>
+  executionOptions?: IExecutionOptions
 ) => Promise<Array<T>>;
 
 export type TCallSql = <T>(
   sql: string,
   params?: Record<string, unknown>,
-  options?: Array<string>
+  executionOptions?: IExecutionOptions
 ) => Promise<Array<T>>;
 
 export type TMakeNotify = <T>(

@@ -13,6 +13,7 @@ describe('ConnectionBase', (): void => {
     };
     const dataSource = {
       isInitialized: true,
+      options: { replication: { slaves: [{}] } },
       createQueryRunner: vi.fn(
         (_mode: string): typeof queryRunner => queryRunner
       ),
@@ -27,6 +28,25 @@ describe('ConnectionBase', (): void => {
     );
     expect(dataSource.createQueryRunner).toHaveBeenCalledWith('slave');
     expect(queryRunner.connect).toHaveBeenCalledOnce();
+  });
+
+  it('throws when slave mode is requested without configured slave databases', async (): Promise<void> => {
+    const logger = createLogger();
+    const dataSource = {
+      isInitialized: true,
+      options: {},
+      createQueryRunner: vi.fn(),
+    };
+    const connectionBase = new ConnectionBase(dataSource as never, logger);
+
+    await expect(connectionBase.getEntityManager('slave')).rejects.toThrow(
+      'Slave connection requested but no slave databases configured'
+    );
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      'Error getting connection from pool',
+      expect.any(String)
+    );
   });
 
   it('throws and logs when data source is not initialized', async (): Promise<void> => {

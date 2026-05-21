@@ -126,6 +126,22 @@ export interface IMigrationOptions {
 
 export type TConnectionMode = 'master' | 'slave';
 
+export interface IExecutionOptions {
+  /**
+   * Connection pool mode used to create an EntityManager.
+   * Defaults to `master`.
+   */
+  mode?: TConnectionMode;
+  /**
+   * SQL commands executed inside the same transaction before the main query.
+   */
+  optionsCommands?: Array<string>;
+  /**
+   * Optional query id used by logs and database error wrapping.
+   */
+  queryId?: string;
+}
+
 export interface IDatabaseFactory {
   additionalConfig: PostgresConnectionOptions | OracleConnectionOptions;
   databaseAdapter: TAdapterUtilsClassTypes;

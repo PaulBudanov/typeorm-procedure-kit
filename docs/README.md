@@ -112,7 +112,7 @@ Use this package when your service needs one or more of these capabilities:
 | Notifications  | PostgreSQL `LISTEN/NOTIFY` and Oracle Continuous Query Notification support.                            |
 | Case strategy  | Shared casing rules for native result keys and bundled TypeORM-compatible column names.                 |
 | Serialization  | Built-in and custom serializers for database result values.                                             |
-| NestJS         | Global dynamic module plus focused injection decorators for the public runtime methods.                 |
+| NestJS         | Dynamic module with optional global registration plus focused injection decorators for runtime methods. |
 | TypeORM API    | Bundled TypeORM-compatible exports with stricter project-local types for repositories and query APIs.   |
 | TypeORM Extend | Entity metadata extension decorators plus database-specific repository helpers.                         |
 | Identifiers    | TypeORM-compatible query builders keep identifiers unquoted by default to avoid unwanted double quotes. |
@@ -130,8 +130,8 @@ Maintained by Paul Budanov.
 - A built-in case strategy for native result keys and bundled
   TypeORM-compatible column names: `camelCase`, `lowerCase`, or `snakeCase`.
 - Built-in and custom serializers for database result values.
-- NestJS integration through a global dynamic module and decorators for
-  injecting individual public methods.
+- NestJS integration through a dynamic module with optional global registration
+  and decorators for injecting individual public methods.
 - A bundled TypeORM-compatible export for Oracle/PostgreSQL projects; TypeORM
   is included in this package with type fixes for stricter TypeScript projects.
 - `typeorm-extend` decorators for deriving database-specific entity metadata,
@@ -342,7 +342,9 @@ const config: IModuleConfig = {
 Common database options:
 
 - `master`: credentials for the primary database connection.
-- `slaves`: optional read replicas for TypeORM replication.
+- `slaves`: optional read replicas for TypeORM replication. Public kit methods
+  fail fast when `mode: 'slave'` is requested without at least one configured
+  slave database.
 - `poolSize`: connection pool size.
 - `appName`: application name passed to supported drivers.
 - `callTimeout`: slow-query logging threshold passed to TypeORM.
@@ -671,13 +673,16 @@ object-like payloads, including arrays for positional binding, plus
 await db.call('billing.update_invoice', [42, 'PAID']);
 ```
 
-The third argument is an array of SQL commands executed before the main call
-inside the same transaction:
+The third argument is an execution options object. Use `optionsCommands` for
+SQL commands executed before the main call inside the same transaction, and
+`mode` to select `master` or `slave` connection mode. The default mode is
+`master`.
 
 ```ts
-await db.call('billing.recalculate', { invoiceId: 42 }, [
-  'SET LOCAL statement_timeout = 30000',
-]);
+await db.call('billing.recalculate', { invoiceId: 42 }, {
+  mode: 'master',
+  optionsCommands: ['SET LOCAL statement_timeout = 30000'],
+});
 ```
 
 ## Raw SQL transactions
@@ -690,12 +695,18 @@ Parameters are detected only from uppercase `:PARAM_NAME` placeholders.
 ```ts
 const rows = await db.callSqlTransaction<{ id: number; name: string }>(
   'SELECT id, name FROM users WHERE id = :USER_ID',
-  { USER_ID: 7 }
+  { USER_ID: 7 },
+  { mode: 'slave' }
 );
 ```
 
 PostgreSQL rewrites placeholders to `$1`, `$2`, and Oracle keeps `:PARAM`
 placeholders.
+
+Use `slave` only for read-only operations. Procedure calls and SQL statements
+that write data should use the default `master` mode. If `mode: 'slave'` is
+explicitly requested and `slaves` is empty or not configured, the public kit
+execution flow throws instead of silently falling back to master.
 
 ## Notifications
 
@@ -879,6 +890,39 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 });
 ```
 
+By default the Nest module is scoped to the module that imports it. To register
+it as a global Nest module, pass `true` as the second `forRoot()` argument:
+
+```ts
+TypeOrmProcedureKitNestModule.forRoot(
+  {
+    logger: new Logger('TypeOrmProcedureKit'),
+    config,
+  },
+  true
+);
+```
+
+For async registration, set `isGlobal: true`:
+
+```ts
+TypeOrmProcedureKitNestModule.forRootAsync({
+  isGlobal: true,
+  useFactory: async () => ({
+    logger: new Logger('TypeOrmProcedureKit'),
+    config,
+  }),
+});
+```
+
+Multiple non-global registrations are safe only when they stay isolated in
+different feature module scopes. Do not import two `TypeOrmProcedureKitNestModule`
+registrations into the same Nest module, and do not re-export two differently
+configured registrations into a third module. The Nest providers use the same
+injection tokens (`CALL_SQL`, `CALL_PROCEDURE`, `DATABASE_SERVICE_TOKEN`, and
+the related method tokens), so the current API cannot reliably choose between
+two databases in one Nest scope.
+
 The Nest service extends `TypeOrmProcedureKit`, initializes the database in
 `onModuleInit()`, and calls `destroy()` from `onApplicationShutdown()`.
 
@@ -946,7 +990,9 @@ const dataSource = db.dataSource;
 const adapter = db.databaseAdapter;
 ```
 
-`getEntityManager()` accepts `master` or `slave`.
+`getEntityManager()` accepts `master` or `slave`. Requesting `slave` requires at
+least one configured slave database; otherwise the method throws before a query
+runner is created.
 `databaseAdapter` exposes the low-level adapter contract for diagnostics and
 advanced integration code.
 
