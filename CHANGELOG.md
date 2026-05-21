@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.0...v2.0.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* warn on missing slave fallback ([014296c](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/014296c2d5208594a07e2465c53ec327c30c677f))
+
 # [2.0.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v1.5.0...v2.0.0) (2026-05-21)
 
 
