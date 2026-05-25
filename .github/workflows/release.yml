@@ -145,7 +145,6 @@ jobs:
         if: steps.release-target.outputs.ready == 'true'
         run: |
           cp docs/README.md README.md
-          cp docs/README.ru.md README.ru.md
 
       - name: Publish release
         if: steps.release-target.outputs.ready == 'true'
