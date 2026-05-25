@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.2...v2.0.3) (2026-05-25)
+
+
+### Bug Fixes
+
+* **docs:** update README translations ([a13a6a8](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/a13a6a82963acd776b5731da4b595228ed66a849))
+
 ## [2.0.2](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.1...v2.0.2) (2026-05-21)
 
 
