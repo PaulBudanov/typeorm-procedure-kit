@@ -108,4 +108,21 @@ describe('OracleAdapter', (): void => {
       bindings: [1, null],
     });
   });
+
+  it('does not collect placeholders inside literals or comments', (): void => {
+    const adapter = createOracleAdapter();
+    const sql =
+      "select :ID, ':SKIP' from dual /* :SKIP */ -- :SKIP\nwhere x = :X";
+
+    expect(
+      adapter.makeSqlBindings(sql, {
+        id: 1,
+        skip: 'ignored',
+        x: 2,
+      })
+    ).toEqual({
+      sqlString: sql,
+      bindings: [1, 2],
+    });
+  });
 });

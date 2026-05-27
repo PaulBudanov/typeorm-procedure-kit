@@ -21,7 +21,8 @@ export class ExecuteBase {
   public constructor(
     private readonly connectionBase: ConnectionBase,
     private readonly databaseAdapter: TAdapterUtilsClassTypes,
-    private readonly logger: ILoggerModule
+    private readonly logger: ILoggerModule,
+    private readonly defaultQueryTimeoutMs?: number
   ) {}
 
   /**
@@ -55,7 +56,8 @@ export class ExecuteBase {
           client,
           optionsCommands,
           bindings,
-          cursorsNames
+          cursorsNames,
+          this.defaultQueryTimeoutMs
         );
       DatabaseErrorHandler.checkForDatabaseError(result, queryId, this.logger);
       queryTimer.success(result.length);

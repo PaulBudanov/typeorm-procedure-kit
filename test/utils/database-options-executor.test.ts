@@ -11,13 +11,13 @@ describe('DatabaseOptionsExecutor', (): void => {
       .mockResolvedValue([]);
 
     await DatabaseOptionsExecutor.executeCommands(
-      ['SET ROLE app', 'SET search_path TO public'],
+      ["SET LOCAL app.role = 'app'", 'SET LOCAL search_path = public'],
       { query } as never,
       logger
     );
 
-    expect(query).toHaveBeenNthCalledWith(1, 'SET ROLE app');
-    expect(query).toHaveBeenNthCalledWith(2, 'SET search_path TO public');
+    expect(query).toHaveBeenNthCalledWith(1, "SET LOCAL app.role = 'app'");
+    expect(query).toHaveBeenNthCalledWith(2, 'SET LOCAL search_path = public');
     expect(logger.log).toHaveBeenLastCalledWith(
       'All commands executed successfully'
     );
@@ -32,7 +32,7 @@ describe('DatabaseOptionsExecutor', (): void => {
 
     await expect(
       DatabaseOptionsExecutor.executeCommands(
-        ['SET ROLE app'],
+        ["SET LOCAL app.role = 'app'"],
         { query } as never,
         logger
       )
@@ -41,5 +41,19 @@ describe('DatabaseOptionsExecutor', (): void => {
       'Ошибка выполнения команд базы данных: denied',
       error.stack
     );
+  });
+
+  it('rejects unsafe raw option commands before execution', async (): Promise<void> => {
+    const logger = createLogger();
+    const query = vi.fn<(_sql: string) => Promise<unknown>>();
+
+    await expect(
+      DatabaseOptionsExecutor.executeCommands(
+        ['SET ROLE app; DROP TABLE users'],
+        { query } as never,
+        logger
+      )
+    ).rejects.toThrow('Unsafe database option command');
+    expect(query).not.toHaveBeenCalled();
   });
 });

@@ -112,12 +112,17 @@ export abstract class DatabaseAdapter<
     client: EntityManager,
     optionsCommands: Array<string>,
     bindings: IBindingsObjectReturn['bindings'] = [],
-    cursorsNames: Array<string> = []
+    cursorsNames: Array<string> = [],
+    queryTimeoutMs?: number
   ): Promise<Awaited<Array<T>>> {
     return client.transaction(async (manager) => {
-      if (optionsCommands && optionsCommands.length > 0) {
+      const setupCommands = [
+        ...this.getTimeoutSetupCommands(manager, queryTimeoutMs),
+        ...(optionsCommands ?? []),
+      ];
+      if (setupCommands.length > 0) {
         await DatabaseOptionsExecutor.executeCommands(
-          optionsCommands,
+          setupCommands,
           manager,
           this.logger
         );
@@ -137,6 +142,15 @@ export abstract class DatabaseAdapter<
       }
       return result as Array<T>;
     });
+  }
+
+  private getTimeoutSetupCommands(
+    manager: EntityManager,
+    queryTimeoutMs?: number
+  ): Array<string> {
+    if (!queryTimeoutMs || queryTimeoutMs <= 0) return [];
+    if (manager.connection.options.type !== 'postgres') return [];
+    return [`SET LOCAL statement_timeout = ${Math.trunc(queryTimeoutMs)}`];
   }
 
   /**

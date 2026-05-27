@@ -139,11 +139,19 @@ export abstract class DatabaseNotify<
     this.cancelledRestores.add(channelName);
   }
 
+  protected isNotificationRestoreCancelled(channelName: string): boolean {
+    return this.cancelledRestores.has(channelName);
+  }
+
   /**
    * Clears restore and health-check bookkeeping for a channel.
    * @param channelName - channel or subscription name.
    */
   protected clearNotificationRestoreState(channelName: string): void {
+    if (this.restoringNotifications.has(channelName)) {
+      this.healthChecksInProgress.delete(channelName);
+      return;
+    }
     this.cancelledRestores.delete(channelName);
     this.restoringNotifications.delete(channelName);
     this.healthChecksInProgress.delete(channelName);
@@ -202,10 +210,13 @@ export abstract class DatabaseNotify<
     let currentRetry = options.currentRetry ?? this.RESTORE_CURRENT_RETRY;
 
     while (currentRetry <= maxRetries) {
+      if (this.cancelledRestores.has(options.channelName)) return;
       try {
         await options.restore(options.settings);
+        if (this.cancelledRestores.has(options.channelName)) return;
         break;
       } catch (error: unknown) {
+        if (this.cancelledRestores.has(options.channelName)) return;
         this.logger.error(
           `Attempt ${currentRetry}/${maxRetries} failed to restore ${
             options.channelName
@@ -219,6 +230,7 @@ export abstract class DatabaseNotify<
             }. Scheduling recovery in ${retryAfterMaxDelayMs / 1000} seconds.`
           );
           await AsyncUtils.delay(retryAfterMaxDelayMs);
+          if (this.cancelledRestores.has(options.channelName)) return;
           currentRetry = this.RESTORE_CURRENT_RETRY;
           continue;
         }
@@ -228,6 +240,7 @@ export abstract class DatabaseNotify<
           }/${maxRetries})`
         );
         await AsyncUtils.delay(retryDelayMs);
+        if (this.cancelledRestores.has(options.channelName)) return;
         currentRetry += 1;
       }
     }

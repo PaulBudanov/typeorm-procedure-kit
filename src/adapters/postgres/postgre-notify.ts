@@ -234,9 +234,18 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: INotifyRetryOptions
   ): Promise<void> {
-    await this.unlistenNotify(channelName);
+    await this.closeListenerConnection(channelName);
+    if (this.isNotificationRestoreCancelled(channelName)) return;
     if (!channelName.includes('LISTEN ')) channelName = `LISTEN ${channelName}`;
-    await this.listenNotify(channelName, notifyCallback, options);
+    const restoredChannelName = await this.listenNotify(
+      channelName,
+      notifyCallback,
+      options
+    );
+    if (this.isNotificationRestoreCancelled(restoredChannelName)) {
+      await this.closeListenerConnection(restoredChannelName);
+      return;
+    }
     this.logger.log(
       `Successfully restored listener for sqlCommand: ${channelName}`
     );

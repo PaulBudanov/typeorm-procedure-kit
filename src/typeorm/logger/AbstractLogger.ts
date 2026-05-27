@@ -1,3 +1,4 @@
+import { safeStringify } from '../../utils/safe-stringify.js';
 import { PlatformTools } from '../platform/PlatformTools.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
@@ -348,11 +349,6 @@ export abstract class AbstractLogger implements Logger {
   protected stringifyParams(
     parameters: Array<unknown>
   ): string | Array<unknown> {
-    try {
-      return JSON.stringify(parameters);
-    } catch {
-      // most probably circular objects in parameters
-      return parameters;
-    }
+    return safeStringify(parameters);
   }
 }

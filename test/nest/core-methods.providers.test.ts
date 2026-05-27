@@ -94,7 +94,7 @@ describe('core method Nest providers', (): void => {
         'pkg.proc',
         { id: 1 },
         {
-          optionsCommands: ['SET x = 1'],
+          optionsCommands: ['SET LOCAL x = 1'],
           mode: 'slave',
         }
       )
@@ -111,7 +111,7 @@ describe('core method Nest providers', (): void => {
         'SELECT :ID',
         { ID: 1 },
         {
-          optionsCommands: ['SET x = 1'],
+          optionsCommands: ['SET LOCAL x = 1'],
           mode: 'slave',
         }
       )
@@ -134,7 +134,7 @@ describe('core method Nest providers', (): void => {
       'pkg.proc',
       { id: 1 },
       {
-        optionsCommands: ['SET x = 1'],
+        optionsCommands: ['SET LOCAL x = 1'],
         mode: 'slave',
       }
     );
@@ -154,7 +154,7 @@ describe('core method Nest providers', (): void => {
       'SELECT :ID',
       { ID: 1 },
       {
-        optionsCommands: ['SET x = 1'],
+        optionsCommands: ['SET LOCAL x = 1'],
         mode: 'slave',
       }
     );

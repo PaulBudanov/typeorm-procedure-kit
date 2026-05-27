@@ -3,6 +3,7 @@ import { finished } from 'stream/promises';
 import oracledb from 'oracledb';
 
 import { DataSource } from '../../typeorm/data-source/DataSource.js';
+import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
@@ -185,13 +186,10 @@ export class OracleAdapter extends DatabaseAdapter<
           })
         : []
     );
-    const paramOccurrences = Array.from(
-      sqlQuery.matchAll(/:([A-Z_][A-Z0-9_]*)\b/g)
-    ).map(([, param]) => param);
-    paramOccurrences.forEach((paramName) => {
-      bindings.push(
-        paramsInUpperCase?.[(paramName as string).toUpperCase()] ?? null
-      );
+    replaceNamedParameters(sqlQuery, ({ full, key }) => {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
+      bindings.push(paramsInUpperCase?.[(key as string).toUpperCase()] ?? null);
+      return full;
     });
     return { bindings, sqlString: sqlQuery ?? '' };
   }

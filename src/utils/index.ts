@@ -13,6 +13,9 @@ export { TypeGuards } from './type-guards.js';
 // Timer
 export { QueryTimer } from './query-timer.js';
 
+// Safe log serialization
+export { safeStringify } from './safe-stringify.js';
+
 // formatter utils
 export { DateFormatter } from './date-formatter.js';
 

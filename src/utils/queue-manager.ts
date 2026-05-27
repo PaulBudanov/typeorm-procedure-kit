@@ -33,6 +33,22 @@ export class QueueManager<TQueueItem> {
   }
 
   public enqueue(key: string | number | undefined, item: TQueueItem): void {
+    this.addItem(key, item);
+    this._eventBusService.emit(`${this.queueName}:enqueue`, { key, item });
+  }
+
+  public async enqueueAsync(
+    key: string | number | undefined,
+    item: TQueueItem
+  ): Promise<void> {
+    this.addItem(key, item);
+    await this._eventBusService.emitAsync(`${this.queueName}:enqueue`, {
+      key,
+      item,
+    });
+  }
+
+  private addItem(key: string | number | undefined, item: TQueueItem): void {
     if (this.queue instanceof Array) {
       this.queue.push(item);
     } else if (this.queue instanceof Map) {
@@ -43,8 +59,6 @@ export class QueueManager<TQueueItem> {
     } else {
       this.queue.add(item);
     }
-
-    this._eventBusService.emit(`${this.queueName}:enqueue`, { key, item });
   }
 
   public dequeue(key?: TMapKey | TQueueItem): TQueueItem | undefined {

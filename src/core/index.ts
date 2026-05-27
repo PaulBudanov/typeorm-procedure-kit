@@ -38,6 +38,7 @@ export class TypeOrmProcedureKit {
   private procedureListBase: ProcedureListBase | null = null;
   private serialzierBase: SerializerBase | null = null;
   private isDestroyed = false;
+  private destroyPromise: Promise<void> | null = null;
   /**
    * Creates a new instance of the TypeOrmProcedureKit class.
    *
@@ -72,7 +73,8 @@ export class TypeOrmProcedureKit {
     this.executeBase = new ExecuteBase(
       this.connectionBase,
       this.databaseInitializerBase.databaseAdapter,
-      this.settings.logger
+      this.settings.logger,
+      this.settings.config.callTimeout
     );
     this.procedureListBase = new ProcedureListBase(
       this.settings.logger,
@@ -338,11 +340,19 @@ export class TypeOrmProcedureKit {
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
   public async destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
     if (this.isDestroyed) {
       this.settings.logger.warn('TypeOrmProcedureKit already destroyed');
       return;
     }
-    this.isDestroyed = true;
+
+    this.destroyPromise = this.destroyInternal().finally(() => {
+      this.destroyPromise = null;
+    });
+    return this.destroyPromise;
+  }
+
+  private async destroyInternal(): Promise<void> {
     const errors: Array<Error> = [];
     // destroy notify
     try {
@@ -373,12 +383,14 @@ export class TypeOrmProcedureKit {
     this.databaseInitializerBase.caseSettings.strategy.destroy();
 
     if (errors.length > 0) {
+      this.isDestroyed = false;
       throw new AggregateError(
         errors,
         'Some resources failed to cleanup during shutdown'
       );
     }
 
+    this.isDestroyed = true;
     this.settings.logger.log('TypeOrmProcedureKit shutdown completed');
   }
 

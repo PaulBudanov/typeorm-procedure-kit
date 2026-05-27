@@ -100,7 +100,7 @@ export class DatabaseInitializerBase {
       ...(await this.configFactory()),
       synchronize: this.entity?.isNeedEntitySync,
       logger: 'advanced-console',
-      logging: true,
+      logging: false,
       poolSize: this.dbConfig.poolSize,
       maxQueryExecutionTime: this.dbConfig.callTimeout,
       namingStrategy: this.caseSettings.strategy,

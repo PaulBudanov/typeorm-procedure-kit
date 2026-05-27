@@ -148,6 +148,11 @@ export { DeleteResult } from './query-builder/result/DeleteResult.js';
 export { InsertResult } from './query-builder/result/InsertResult.js';
 export { UpdateResult } from './query-builder/result/UpdateResult.js';
 export { SelectQueryBuilder } from './query-builder/SelectQueryBuilder.js';
+export {
+  sqlIdentifier,
+  sqlParameterList,
+  unsafeRawSql,
+} from './util/SqlTagUtils.js';
 export { UpdateQueryBuilder } from './query-builder/UpdateQueryBuilder.js';
 export type { WhereExpressionBuilder } from './query-builder/WhereExpressionBuilder.js';
 export { QueryResult } from './query-runner/QueryResult.js';

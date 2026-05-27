@@ -1,5 +1,6 @@
 import { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
+import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
@@ -174,20 +175,13 @@ export class PostgreAdapter extends DatabaseAdapter<
           })
         : []
     );
-    const paramOccurrences = Array.from(
-      sqlQuery.matchAll(/:([A-Z_][A-Z0-9_]*)\b/g)
-    ).map(([, param]) => param);
-    paramOccurrences.forEach((paramName) => {
-      bindings.push(
-        paramsInUpperCase?.[(paramName ?? '').toUpperCase()] ?? null
-      );
+    let parameterIndex = 0;
+    const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
+      bindings.push(paramsInUpperCase?.[(key ?? '').toUpperCase()] ?? null);
+      parameterIndex += 1;
+      return `$${parameterIndex}`;
     });
-
-    const sqlString = paramOccurrences.reduce(
-      (sql, paramName, index) =>
-        (sql as string).replace(`:${paramName}`, `$${index + 1}`),
-      sqlQuery
-    );
     return { bindings, sqlString: sqlString ?? '' };
   }
 }

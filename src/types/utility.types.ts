@@ -22,6 +22,7 @@ export type TFunction<T = unknown> = (...args: Array<unknown>) => T;
 
 export interface IEventBusService {
   emit<T>(event: string | symbol, data: T): void;
+  emitAsync<T>(event: string | symbol, data: T): Promise<void>;
   registerListener<T, U extends string | symbol>(
     event: string | symbol,
     callback: (data?: T) => U | void | Promise<void>

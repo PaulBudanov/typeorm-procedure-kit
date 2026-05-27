@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { IBindingsObjectReturn } from '../types/utility.types.js';
 
+import { safeStringify } from './safe-stringify.js';
 import { ServerError } from './server-error.js';
 
 export class QueryTimer {
@@ -81,6 +82,6 @@ export class QueryTimer {
 
   private formatBindingsInfo(): string {
     if (!this.bindings?.length) return '';
-    return `\nBindings: ${JSON.stringify(this.bindings)} value(s)`;
+    return `\nBindings: ${safeStringify(this.bindings)} value(s)`;
   }
 }

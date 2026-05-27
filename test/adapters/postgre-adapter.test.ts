@@ -139,4 +139,22 @@ describe('PostgreAdapter', (): void => {
       bindings: [1, null],
     });
   });
+
+  it('does not bind placeholders inside casts, literals, or comments', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect(
+      adapter.makeSqlBindings(
+        "select :ID::uuid, ':SKIP', /* :SKIP */ -- :SKIP\nwhere x = :X",
+        {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          skip: 'ignored',
+          x: 1,
+        }
+      )
+    ).toEqual({
+      sqlString: "select $1::uuid, ':SKIP', /* :SKIP */ -- :SKIP\nwhere x = $2",
+      bindings: ['550e8400-e29b-41d4-a716-446655440000', 1],
+    });
+  });
 });

@@ -68,7 +68,8 @@ export interface IDatabaseAdapterContract<
     client: EntityManager,
     optionsCommands: Array<string>,
     bindings?: IBindingsObjectReturn['bindings'],
-    cursorsNames?: Array<string>
+    cursorsNames?: Array<string>,
+    queryTimeoutMs?: number
   ): Promise<Awaited<Array<T>>>;
   /**
    * Builds vendor-specific SQL for loading procedure metadata.

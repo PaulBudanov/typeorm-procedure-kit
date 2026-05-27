@@ -160,7 +160,7 @@ describe('OracleNotify', (): void => {
     expect(notify.getNotificationPool().size).toBe(0);
   });
 
-  it('keeps the restored subscription active when manual unlisten races with resubscribe', async (): Promise<void> => {
+  it('does not keep a restored subscription when manual unlisten races with resubscribe', async (): Promise<void> => {
     let capturedCallback:
       | ((message: oracledb.SubscriptionMessage) => void | Promise<void>)
       | undefined;
@@ -241,10 +241,8 @@ describe('OracleNotify', (): void => {
     expect(oracleConnection.closeSingleConnection).toHaveBeenCalledWith(
       firstConnection
     );
-    expect(notify.getNotificationPool().get(channelName)).toBe(
-      secondConnection
-    );
-    expect(oracleConnection.closeSingleConnection).not.toHaveBeenCalledWith(
+    expect(notify.getNotificationPool().has(channelName)).toBe(false);
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledWith(
       secondConnection
     );
   });

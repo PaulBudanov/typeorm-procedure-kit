@@ -2,6 +2,12 @@ import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 
 export abstract class DatabaseOptionsExecutor {
+  private static readonly SAFE_OPTION_COMMANDS = [
+    /^\s*SET\s+LOCAL\s+[A-Za-z_][A-Za-z0-9_.$]*\s*=\s*(?:'[^']*'|[A-Za-z0-9_.$:+-]+)\s*$/i,
+    /^\s*SET\s+TRANSACTION\s+(?:ISOLATION\s+LEVEL\s+(?:READ\s+UNCOMMITTED|READ\s+COMMITTED|REPEATABLE\s+READ|SERIALIZABLE)|READ\s+ONLY|READ\s+WRITE|DEFERRABLE|NOT\s+DEFERRABLE)\s*$/i,
+    /^\s*ALTER\s+SESSION\s+SET\s+[A-Za-z_][A-Za-z0-9_.$]*\s*=\s*(?:'[^']*'|[A-Za-z0-9_.$:+-]+)\s*$/i,
+  ];
+
   /**
    * Executes an array of SQL commands in the database.
    * @param {Array<string>} commands - an array of SQL commands
@@ -17,8 +23,9 @@ export abstract class DatabaseOptionsExecutor {
   ): Promise<void> {
     try {
       for (const [index, command] of commands.entries()) {
+        this.assertSafeOptionCommand(command);
         logger.log(
-          `Execute command ${index + 1}/${commands.length}: ${this.truncateCommand(command)}`
+          `Execute safe database option command ${index + 1}/${commands.length}`
         );
         await connection.query(command);
       }
@@ -33,18 +40,18 @@ export abstract class DatabaseOptionsExecutor {
     }
   }
 
-  /**
-   * Truncates a given SQL command string to a given maximum length.
-   * If the command string is shorter than the maximum length, it is returned as is.
-   * If the command string is longer than the maximum length, it is truncated to the maximum length and '...' is appended to the end.
-   * @param {string} command - SQL command string to truncate
-   * @param {number} [maxLength] - maximum length of the truncated string
-   * @returns {string} - truncated SQL command string
-   */
-  private static truncateCommand(command: string, maxLength = 50): string {
-    if (command.length <= maxLength) {
-      return command;
+  private static assertSafeOptionCommand(command: string): void {
+    const trimmed = command.trim();
+    if (
+      trimmed.includes(';') ||
+      trimmed.includes('--') ||
+      trimmed.includes('/*') ||
+      trimmed.includes('*/') ||
+      !this.SAFE_OPTION_COMMANDS.some((pattern) => pattern.test(trimmed))
+    ) {
+      throw new Error(
+        'Unsafe database option command. Only single SET LOCAL, SET TRANSACTION, and ALTER SESSION SET commands are allowed.'
+      );
     }
-    return command.substring(0, maxLength) + '...';
   }
 }

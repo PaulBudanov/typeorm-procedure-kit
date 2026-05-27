@@ -66,11 +66,18 @@ export class OracleNotify extends DatabaseNotify<
    * @param channelName - subscription name returned by listenNotify.
    */
   public override async unlistenNotify(channelName: string): Promise<void> {
-    this.cancelNotificationRestore(channelName);
+    await this.closeSubscription(channelName, true);
+  }
+
+  private async closeSubscription(
+    channelName: string,
+    cancelRestore: boolean
+  ): Promise<void> {
+    if (cancelRestore) this.cancelNotificationRestore(channelName);
     const connection = this.notificationPool.get(channelName);
     this.notificationPool.delete(channelName);
     this.stopConnectionHealthCheck(channelName);
-    this.clearNotificationRestoreState(channelName);
+    if (cancelRestore) this.clearNotificationRestoreState(channelName);
     if (!connection) {
       this.logger.warn(`No active subscription for channel: ${channelName}`);
       return;
@@ -359,10 +366,11 @@ export class OracleNotify extends DatabaseNotify<
     settings: IOracleNotifyRestoreSettings<T>,
     channelName: string
   ): Promise<void> {
-    const connection = await this.oracleConnection.createSingleConnection();
+    let connection: oracledb.Connection | undefined;
     try {
       try {
-        await this.unlistenNotify(channelName);
+        await this.closeSubscription(channelName, false);
+        if (this.isNotificationRestoreCancelled(channelName)) return;
       } catch {
         const newChannelName = randomUUID();
         this.logger.warn(
@@ -370,6 +378,8 @@ export class OracleNotify extends DatabaseNotify<
         );
         channelName = newChannelName;
       }
+      if (this.isNotificationRestoreCancelled(channelName)) return;
+      connection = await this.oracleConnection.createSingleConnection();
       await this.subscribe(
         connection,
         channelName,
@@ -384,9 +394,14 @@ export class OracleNotify extends DatabaseNotify<
         settings.notifyCallback,
         settings.options
       );
+      if (this.isNotificationRestoreCancelled(channelName)) {
+        await this.closeSubscription(channelName, false);
+        return;
+      }
     } catch (error: unknown) {
       this.stopConnectionHealthCheck(channelName);
-      await this.oracleConnection.closeSingleConnection(connection);
+      if (connection)
+        await this.oracleConnection.closeSingleConnection(connection);
       this.clearNotificationRestoreState(channelName);
       throw error;
     }
