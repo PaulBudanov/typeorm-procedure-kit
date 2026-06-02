@@ -7,10 +7,10 @@ import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
-import { ColumnMetadata } from './ColumnMetadata.js';
-import { EmbeddedMetadata } from './EmbeddedMetadata.js';
+import type { ColumnMetadata } from './ColumnMetadata.js';
+import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import { EntityMetadata } from './EntityMetadata.js';
-import { ForeignKeyMetadata } from './ForeignKeyMetadata.js';
+import type { ForeignKeyMetadata } from './ForeignKeyMetadata.js';
 import type { DeferrableType } from './types/DeferrableType.js';
 import type { OnDeleteType } from './types/OnDeleteType.js';
 import type { OnUpdateType } from './types/OnUpdateType.js';

@@ -4,7 +4,7 @@ import { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import { Brackets } from '../../query-builder/Brackets.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
-import { Subject } from '../Subject.js';
+import type { Subject } from '../Subject.js';
 
 /**
  * Executes subject operations for materialized-path tree entities.

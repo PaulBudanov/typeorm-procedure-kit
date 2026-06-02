@@ -1,4 +1,4 @@
-import { RelationIdAttribute } from './RelationIdAttribute.js';
+import type { RelationIdAttribute } from './RelationIdAttribute.js';
 
 export interface RelationIdLoadResult {
   relationIdAttribute: RelationIdAttribute;

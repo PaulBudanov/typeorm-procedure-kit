@@ -2,10 +2,10 @@ import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { CannotAttachTreeChildrenEntityError } from '../../error/CannotAttachTreeChildrenEntityError.js';
 import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
 import type { DeleteQueryBuilder } from '../../query-builder/DeleteQueryBuilder.js';
-import { QueryBuilder } from '../../query-builder/QueryBuilder.js';
+import type { QueryBuilder } from '../../query-builder/QueryBuilder.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
-import { Subject } from '../Subject.js';
+import type { Subject } from '../Subject.js';
 
 /**
  * Executes subject operations for closure entities.

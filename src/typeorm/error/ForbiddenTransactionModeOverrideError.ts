@@ -1,4 +1,4 @@
-import { Migration } from '../migration/Migration.js';
+import type { Migration } from '../migration/Migration.js';
 
 import { TypeORMError } from './TypeORMError.js';
 

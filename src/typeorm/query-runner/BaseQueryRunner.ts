@@ -16,7 +16,7 @@ import type { TableColumn } from '../schema-builder/table/TableColumn.js';
 import type { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
 import type { TableIndex } from '../schema-builder/table/TableIndex.js';
 import type { View } from '../schema-builder/view/View.js';
-import { Broadcaster } from '../subscriber/Broadcaster.js';
+import type { Broadcaster } from '../subscriber/Broadcaster.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 import { buildSqlTag } from '../util/SqlTagUtils.js';

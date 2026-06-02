@@ -1,10 +1,10 @@
 import type { TFunction } from '../../types/utility.types.js';
 import { getFromContainer } from '../container.js';
-import { DataSource } from '../data-source/DataSource.js';
-import { EntitySchema } from '../entity-schema/EntitySchema.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { EntitySchemaTransformer } from '../entity-schema/EntitySchemaTransformer.js';
 import { getMetadataArgsStorage } from '../globals.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { EntityMetadataBuilder } from '../metadata-builder/EntityMetadataBuilder.js';
 import type { MigrationInterface } from '../migration/MigrationInterface.js';
 import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';

@@ -1,6 +1,6 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import { EmbeddedMetadata } from '../../metadata/EmbeddedMetadata.js';
-import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { EmbeddedMetadata } from '../../metadata/EmbeddedMetadata.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 
 /**
  * Transforms raw document into entity object.

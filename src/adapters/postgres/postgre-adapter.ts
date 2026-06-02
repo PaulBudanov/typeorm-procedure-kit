@@ -1,4 +1,4 @@
-import { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';

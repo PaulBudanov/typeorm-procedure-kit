@@ -6,7 +6,7 @@ import { QueryFailedError } from '../../error/QueryFailedError.js';
 import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
 import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import { ReadStream } from '../../platform/PlatformTools.js';
+import type { ReadStream } from '../../platform/PlatformTools.js';
 import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
 import { QueryResult } from '../../query-runner/QueryResult.js';
@@ -29,7 +29,7 @@ import type { IsolationLevel } from '../types/IsolationLevel.js';
 import { MetadataTableType } from '../types/MetadataTableType.js';
 import type { ReplicationMode } from '../types/ReplicationMode.js';
 
-import { OracleDriver } from './OracleDriver.js';
+import type { OracleDriver } from './OracleDriver.js';
 
 /**
  * Runs queries on a single oracle database connection.

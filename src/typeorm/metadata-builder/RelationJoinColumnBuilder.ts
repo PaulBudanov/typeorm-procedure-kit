@@ -1,8 +1,8 @@
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import { ForeignKeyMetadata } from '../metadata/ForeignKeyMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import { UniqueMetadata } from '../metadata/UniqueMetadata.js';
 import type { JoinColumnMetadataArgs } from '../metadata-args/JoinColumnMetadataArgs.js';
 import { OrmUtils } from '../util/OrmUtils.js';

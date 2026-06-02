@@ -1,4 +1,4 @@
-import { Table } from '../schema-builder/table/Table.js';
+import type { Table } from '../schema-builder/table/Table.js';
 import { RandomGenerator } from '../util/RandomGenerator.js';
 import { camelCase, snakeCase, titleCase } from '../util/StringUtils.js';
 

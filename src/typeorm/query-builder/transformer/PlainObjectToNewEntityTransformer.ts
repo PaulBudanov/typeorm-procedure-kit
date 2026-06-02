@@ -1,5 +1,5 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
 
 /**
