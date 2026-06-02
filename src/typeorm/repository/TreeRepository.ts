@@ -2,7 +2,7 @@ import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
 import type { FindTreeOptions } from '../find-options/FindTreeOptions.js';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import { TreeRepositoryUtils } from '../util/TreeRepositoryUtils.js';
 
 import { Repository } from './Repository.js';

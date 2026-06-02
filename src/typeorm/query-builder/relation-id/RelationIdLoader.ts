@@ -2,6 +2,7 @@ import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { DataSource } from '../../data-source/DataSource.js';
 import { DriverUtils } from '../../driver/DriverUtils.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 
@@ -385,9 +386,7 @@ export class RelationIdLoader {
    */
   protected prepareHydratedValue(
     value: unknown,
-    columnMetadata:
-      | import('../../metadata/ColumnMetadata.js').ColumnMetadata
-      | undefined
+    columnMetadata: ColumnMetadata | undefined
   ): unknown {
     if (!columnMetadata) {
       return value;

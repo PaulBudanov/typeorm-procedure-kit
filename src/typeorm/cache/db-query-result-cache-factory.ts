@@ -1,4 +1,4 @@
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 
 import { DbQueryResultCache } from './db-query-result-cache.js';

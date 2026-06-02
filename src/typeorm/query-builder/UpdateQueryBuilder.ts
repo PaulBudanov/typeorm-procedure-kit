@@ -11,7 +11,7 @@ import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
-import { Brackets } from './Brackets.js';
+import type { Brackets } from './Brackets.js';
 import { QueryBuilder } from './QueryBuilder.js';
 import type { QueryDeepPartialEntity } from './QueryPartialEntity.js';
 import { UpdateResult } from './result/UpdateResult.js';

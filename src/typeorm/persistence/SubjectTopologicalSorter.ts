@@ -1,5 +1,5 @@
 import { TypeORMError } from '../error/index.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 import type { Subject } from './Subject.js';
 

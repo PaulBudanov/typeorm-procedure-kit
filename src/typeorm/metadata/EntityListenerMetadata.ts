@@ -2,8 +2,8 @@ import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { EntityListenerMetadataArgs } from '../metadata-args/EntityListenerMetadataArgs.js';
 
-import { EmbeddedMetadata } from './EmbeddedMetadata.js';
-import { EntityMetadata } from './EntityMetadata.js';
+import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
+import type { EntityMetadata } from './EntityMetadata.js';
 import type { EventListenerType } from './types/EventListenerTypes.js';
 
 /**

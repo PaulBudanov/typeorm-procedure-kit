@@ -1,16 +1,16 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { UpsertType } from '../driver/types/UpsertType.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 
 import { Alias } from './Alias.js';
 import { JoinAttribute } from './JoinAttribute.js';
-import { QueryBuilder } from './QueryBuilder.js';
+import type { QueryBuilder } from './QueryBuilder.js';
 import type { QueryBuilderCteOptions } from './QueryBuilderCte.js';
 import { RelationCountAttribute } from './relation-count/RelationCountAttribute.js';
 import { RelationIdAttribute } from './relation-id/RelationIdAttribute.js';

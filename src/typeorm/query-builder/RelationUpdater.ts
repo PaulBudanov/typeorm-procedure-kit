@@ -2,7 +2,7 @@ import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { TypeORMError } from '../error/index.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { QueryBuilder } from './QueryBuilder.js';
+import type { QueryBuilder } from './QueryBuilder.js';
 import type { QueryExpressionMap } from './QueryExpressionMap.js';
 
 /**

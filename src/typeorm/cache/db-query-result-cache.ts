@@ -1,5 +1,5 @@
 import type { BaseDataSourceOptions } from '../data-source/BaseDataSourceOptions.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { Table } from '../schema-builder/table/Table.js';

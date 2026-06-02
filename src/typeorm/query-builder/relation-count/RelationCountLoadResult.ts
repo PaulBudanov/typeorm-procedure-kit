@@ -1,4 +1,4 @@
-import { RelationCountAttribute } from './RelationCountAttribute.js';
+import type { RelationCountAttribute } from './RelationCountAttribute.js';
 
 export interface RelationCountLoadResult {
   relationCountAttribute: RelationCountAttribute;

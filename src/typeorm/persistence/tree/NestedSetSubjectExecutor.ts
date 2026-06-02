@@ -3,7 +3,7 @@ import { NestedSetMultipleRootError } from '../../error/NestedSetMultipleRootErr
 import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
-import { Subject } from '../Subject.js';
+import type { Subject } from '../Subject.js';
 
 class NestedSetIds {
   public left!: number;

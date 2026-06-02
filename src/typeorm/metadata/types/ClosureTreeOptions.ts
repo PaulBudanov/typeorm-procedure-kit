@@ -2,7 +2,7 @@
  * Tree type.
  * Specifies what table pattern will be used for the tree entity.
  */
-import { ColumnMetadata } from '../ColumnMetadata.js';
+import type { ColumnMetadata } from '../ColumnMetadata.js';
 
 export interface ClosureTreeOptions {
   closureTableName?: string;

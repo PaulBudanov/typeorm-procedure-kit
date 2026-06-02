@@ -1,5 +1,5 @@
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Query } from '../driver/Query.js';
 import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import type { EqualOperator } from '../find-options/EqualOperator.js';
@@ -15,7 +15,7 @@ import type { RelationQueryBuilder } from '../query-builder/RelationQueryBuilder
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import type { SoftDeleteQueryBuilder } from '../query-builder/SoftDeleteQueryBuilder.js';
 import type { UpdateQueryBuilder } from '../query-builder/UpdateQueryBuilder.js';
-import { BaseEntity } from '../repository/BaseEntity.js';
+import type { BaseEntity } from '../repository/BaseEntity.js';
 import type { RdbmsSchemaBuilder } from '../schema-builder/RdbmsSchemaBuilder.js';
 import type { Table } from '../schema-builder/table/Table.js';
 import type { TableCheck } from '../schema-builder/table/TableCheck.js';

@@ -1,8 +1,8 @@
 import type { TFunction } from '../../../types/utility.types.js';
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import { EntityManager } from '../../entity-manager/EntityManager.js';
-import { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import type { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 
 /**
  */

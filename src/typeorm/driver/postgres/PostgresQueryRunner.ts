@@ -6,7 +6,8 @@ import { QueryFailedError } from '../../error/QueryFailedError.js';
 import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
 import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import { PlatformTools, ReadStream } from '../../platform/PlatformTools.js';
+import type { ReadStream } from '../../platform/PlatformTools.js';
+import { PlatformTools } from '../../platform/PlatformTools.js';
 import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
 import { QueryResult } from '../../query-runner/QueryResult.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
@@ -30,7 +31,7 @@ import type { IsolationLevel } from '../types/IsolationLevel.js';
 import { MetadataTableType } from '../types/MetadataTableType.js';
 import type { ReplicationMode } from '../types/ReplicationMode.js';
 
-import { PostgresDriver } from './PostgresDriver.js';
+import type { PostgresDriver } from './PostgresDriver.js';
 
 /**
  * Runs queries on a single postgres database connection.

@@ -1,6 +1,6 @@
 import type { TDbConfig } from '../../types/config.types.js';
 import { type ColumnType } from '../driver/types/ColumnTypes.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 
 import { TypeORMError } from './TypeORMError.js';
 

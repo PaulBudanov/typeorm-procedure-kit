@@ -1,5 +1,5 @@
-import { RelationIdMetadata } from '../../metadata/RelationIdMetadata.js';
-import { QueryExpressionMap } from '../QueryExpressionMap.js';
+import type { RelationIdMetadata } from '../../metadata/RelationIdMetadata.js';
+import type { QueryExpressionMap } from '../QueryExpressionMap.js';
 
 import { RelationIdAttribute } from './RelationIdAttribute.js';
 

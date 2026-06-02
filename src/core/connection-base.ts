@@ -1,4 +1,4 @@
-import { DataSource } from '../typeorm/data-source/DataSource.js';
+import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { QueryRunner } from '../typeorm/query-runner/QueryRunner.js';
 import type { TConnectionMode } from '../types/config.types.js';
