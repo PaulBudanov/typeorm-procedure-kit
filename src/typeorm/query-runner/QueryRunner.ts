@@ -3,23 +3,23 @@ import type { PoolClient } from 'pg';
 
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
-import { SqlInMemory } from '../driver/SqlInMemory.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { SqlInMemory } from '../driver/SqlInMemory.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
-import { EntityManager } from '../entity-manager/EntityManager.js';
-import { ReadStream } from '../platform/PlatformTools.js';
-import { Table } from '../schema-builder/table/Table.js';
-import { TableCheck } from '../schema-builder/table/TableCheck.js';
-import { TableColumn } from '../schema-builder/table/TableColumn.js';
-import { TableExclusion } from '../schema-builder/table/TableExclusion.js';
-import { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
-import { TableIndex } from '../schema-builder/table/TableIndex.js';
-import { TableUnique } from '../schema-builder/table/TableUnique.js';
-import { View } from '../schema-builder/view/View.js';
-import { Broadcaster } from '../subscriber/Broadcaster.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
+import type { ReadStream } from '../platform/PlatformTools.js';
+import type { Table } from '../schema-builder/table/Table.js';
+import type { TableCheck } from '../schema-builder/table/TableCheck.js';
+import type { TableColumn } from '../schema-builder/table/TableColumn.js';
+import type { TableExclusion } from '../schema-builder/table/TableExclusion.js';
+import type { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
+import type { TableIndex } from '../schema-builder/table/TableIndex.js';
+import type { TableUnique } from '../schema-builder/table/TableUnique.js';
+import type { View } from '../schema-builder/view/View.js';
+import type { Broadcaster } from '../subscriber/Broadcaster.js';
 
-import { QueryResult } from './QueryResult.js';
+import type { QueryResult } from './QueryResult.js';
 
 /**
  * Runs queries on a single database connection.

@@ -1,11 +1,11 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
 import { QueryBuilderUtils } from '../QueryBuilderUtils.js';
-import { QueryExpressionMap } from '../QueryExpressionMap.js';
-import { SelectQueryBuilder } from '../SelectQueryBuilder.js';
+import type { QueryExpressionMap } from '../QueryExpressionMap.js';
+import type { SelectQueryBuilder } from '../SelectQueryBuilder.js';
 
 /**
  * Stores all join relation id attributes which will be used to build a JOIN query.

@@ -16,7 +16,7 @@ import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseNotify } from '../abstract/database-notify.js';
 
-import { OracleConnection } from './oracle-connection.js';
+import type { OracleConnection } from './oracle-connection.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
 export class OracleNotify extends DatabaseNotify<

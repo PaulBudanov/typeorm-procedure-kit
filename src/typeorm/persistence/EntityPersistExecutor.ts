@@ -1,6 +1,6 @@
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import { CannotDetermineEntityError } from '../error/CannotDetermineEntityError.js';
 import { MustBeEntityError } from '../error/MustBeEntityError.js';

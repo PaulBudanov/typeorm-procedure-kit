@@ -1,16 +1,16 @@
 import type { TFunction } from '../../types/utility.types.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import type { EmbeddedMetadataArgs } from '../metadata-args/EmbeddedMetadataArgs.js';
 
-import { ColumnMetadata } from './ColumnMetadata.js';
-import { EntityListenerMetadata } from './EntityListenerMetadata.js';
-import { EntityMetadata } from './EntityMetadata.js';
-import { IndexMetadata } from './IndexMetadata.js';
-import { RelationCountMetadata } from './RelationCountMetadata.js';
-import { RelationIdMetadata } from './RelationIdMetadata.js';
-import { RelationMetadata } from './RelationMetadata.js';
-import { UniqueMetadata } from './UniqueMetadata.js';
+import type { ColumnMetadata } from './ColumnMetadata.js';
+import type { EntityListenerMetadata } from './EntityListenerMetadata.js';
+import type { EntityMetadata } from './EntityMetadata.js';
+import type { IndexMetadata } from './IndexMetadata.js';
+import type { RelationCountMetadata } from './RelationCountMetadata.js';
+import type { RelationIdMetadata } from './RelationIdMetadata.js';
+import type { RelationMetadata } from './RelationMetadata.js';
+import type { UniqueMetadata } from './UniqueMetadata.js';
 
 /**
  * Contains all information about entity's embedded property.

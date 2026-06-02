@@ -3,10 +3,10 @@ import { TypeORMError } from '../error/TypeORMError.js';
 import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
-import { ColumnMetadata } from './ColumnMetadata.js';
+import type { ColumnMetadata } from './ColumnMetadata.js';
 import { resolveColumnPath } from './ColumnPathResolver.js';
-import { EmbeddedMetadata } from './EmbeddedMetadata.js';
-import { EntityMetadata } from './EntityMetadata.js';
+import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
+import type { EntityMetadata } from './EntityMetadata.js';
 import type { DeferrableType } from './types/DeferrableType.js';
 
 /**

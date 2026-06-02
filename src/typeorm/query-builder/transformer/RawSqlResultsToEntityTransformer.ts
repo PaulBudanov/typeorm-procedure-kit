@@ -1,14 +1,14 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { Driver } from '../../driver/Driver.js';
 import { DriverUtils } from '../../driver/DriverUtils.js';
-import { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
-import { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../../metadata/RelationMetadata.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
-import { Alias } from '../Alias.js';
-import { QueryExpressionMap } from '../QueryExpressionMap.js';
+import type { Alias } from '../Alias.js';
+import type { QueryExpressionMap } from '../QueryExpressionMap.js';
 import type { RelationCountLoadResult } from '../relation-count/RelationCountLoadResult.js';
 import type { RelationIdLoadResult } from '../relation-id/RelationIdLoadResult.js';
 

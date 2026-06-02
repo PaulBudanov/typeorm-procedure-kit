@@ -4,7 +4,7 @@ import type { Driver } from '../../driver/Driver.js';
 import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 import type { ViewOptions } from '../options/ViewOptions.js';
-import { TableIndex } from '../table/TableIndex.js';
+import type { TableIndex } from '../table/TableIndex.js';
 
 /**
  * View in the database represented in this class.

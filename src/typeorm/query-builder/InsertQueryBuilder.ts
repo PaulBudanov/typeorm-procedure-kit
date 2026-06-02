@@ -8,7 +8,7 @@ import { DriverUtils } from '../driver/DriverUtils.js';
 import { InsertValuesMissingError } from '../error/InsertValuesMissingError.js';
 import { ReturningStatementNotSupportedError } from '../error/ReturningStatementNotSupportedError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { BroadcasterResult } from '../subscriber/BroadcasterResult.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';

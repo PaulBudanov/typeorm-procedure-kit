@@ -1,7 +1,7 @@
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import { DataSource } from '../../data-source/DataSource.js';
-import { EntityManager } from '../../entity-manager/EntityManager.js';
-import { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**

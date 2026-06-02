@@ -1,14 +1,14 @@
 import type { TFunction } from '../../types/utility.types.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import { Alias } from './Alias.js';
+import type { Alias } from './Alias.js';
 import { QueryBuilderUtils } from './QueryBuilderUtils.js';
-import { QueryExpressionMap } from './QueryExpressionMap.js';
+import type { QueryExpressionMap } from './QueryExpressionMap.js';
 
 /**
  * Stores all join attributes which will be used to build a JOIN query.

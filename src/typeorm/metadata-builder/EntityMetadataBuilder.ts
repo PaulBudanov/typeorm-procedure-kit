@@ -1,6 +1,6 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { CheckMetadata } from '../metadata/CheckMetadata.js';
@@ -17,7 +17,7 @@ import { RelationMetadata } from '../metadata/RelationMetadata.js';
 import { EventListenerTypes } from '../metadata/types/EventListenerTypes.js';
 import { UniqueMetadata } from '../metadata/UniqueMetadata.js';
 import type { EmbeddedMetadataArgs } from '../metadata-args/EmbeddedMetadataArgs.js';
-import { MetadataArgsStorage } from '../metadata-args/MetadataArgsStorage.js';
+import type { MetadataArgsStorage } from '../metadata-args/MetadataArgsStorage.js';
 import type { TableMetadataArgs } from '../metadata-args/TableMetadataArgs.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 
