@@ -134,6 +134,14 @@ export interface IOracleOptionsNotify extends INotifyRetryOptions {
   cqnPort?: number | undefined;
 }
 
+export interface IRestoreState {
+  isCancelled: boolean;
+  isHealthCheckInProgress: boolean;
+  activeRestore?: Promise<void>;
+  cancelRetryDelay?: () => void;
+  healthCheckTimer?: NodeJS.Timeout;
+}
+
 export type TOracleNormilizeOptionsNotify = Omit<
   IOracleOptionsNotify,
   'operations'

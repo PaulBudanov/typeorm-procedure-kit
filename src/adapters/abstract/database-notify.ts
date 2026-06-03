@@ -4,17 +4,10 @@ import type {
   INotifyHealthCheckOptions,
   INotifyRestoreOptions,
   INotifyRetryOptions,
+  IRestoreState,
   TNotifyCallbackGeneric,
 } from '../../types/notification.types.js';
 import { ServerError } from '../../utils/server-error.js';
-
-interface RestoreState {
-  isCancelled: boolean;
-  isHealthCheckInProgress: boolean;
-  activeRestore?: Promise<void>;
-  cancelRetryDelay?: () => void;
-  healthCheckTimer?: NodeJS.Timeout;
-}
 
 export abstract class DatabaseNotify<
   T extends TConnectionTypes,
@@ -27,7 +20,7 @@ export abstract class DatabaseNotify<
   protected readonly RESTORE_CURRENT_RETRY: number = 1;
   protected readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
 
-  private readonly restoreStates = new Map<string, RestoreState>();
+  private readonly IRestoreStates = new Map<string, IRestoreState>();
   private isDestroyed = false;
   private destroyPromise?: Promise<void>;
   protected readonly notificationPool = new Map<string, T>();
@@ -80,7 +73,7 @@ export abstract class DatabaseNotify<
     await Promise.allSettled(this.unsubscribeChannels(remainingChannels));
 
     this.notificationPool.clear();
-    this.restoreStates.clear();
+    this.IRestoreStates.clear();
     this.logger.log('DatabaseNotify shutdown completed');
   }
 
@@ -136,7 +129,7 @@ export abstract class DatabaseNotify<
       void this.checkConnection(options);
     }, options.intervalMs ?? this.CONNECTION_HEALTH_CHECK_INTERVAL_MS);
     timer.unref();
-    this.getOrCreateRestoreState(options.channelName).healthCheckTimer = timer;
+    this.getOrCreateIRestoreState(options.channelName).healthCheckTimer = timer;
   }
 
   /**
@@ -144,11 +137,11 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected stopConnectionHealthCheck(channelName: string): void {
-    const state = this.restoreStates.get(channelName);
+    const state = this.IRestoreStates.get(channelName);
     if (!state?.healthCheckTimer) return;
     clearInterval(state.healthCheckTimer);
     delete state.healthCheckTimer;
-    this.deleteRestoreStateIfIdle(channelName, state);
+    this.deleteIRestoreStateIfIdle(channelName, state);
   }
 
   /**
@@ -162,11 +155,11 @@ export abstract class DatabaseNotify<
       this.cancelNotificationRestore(channelName);
       return;
     }
-    const state = this.restoreStates.get(channelName);
+    const state = this.IRestoreStates.get(channelName);
     if (!state) return;
     if (state.activeRestore) return;
     state.isCancelled = false;
-    this.deleteRestoreStateIfIdle(channelName, state);
+    this.deleteIRestoreStateIfIdle(channelName, state);
   }
 
   protected assertCanRegisterNotification(): void {
@@ -181,14 +174,14 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected cancelNotificationRestore(channelName: string): void {
-    this.getOrCreateRestoreState(channelName).isCancelled = true;
+    this.getOrCreateIRestoreState(channelName).isCancelled = true;
     this.cancelRestoreRetryDelay(channelName);
   }
 
   protected isNotificationRestoreCancelled(channelName: string): boolean {
     return (
       this.isDestroyed ||
-      this.restoreStates.get(channelName)?.isCancelled === true
+      this.IRestoreStates.get(channelName)?.isCancelled === true
     );
   }
 
@@ -197,11 +190,11 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected clearNotificationRestoreState(channelName: string): void {
-    const state = this.restoreStates.get(channelName);
+    const state = this.IRestoreStates.get(channelName);
     if (!state) return;
     state.isHealthCheckInProgress = false;
     if (!this.isDestroyed && !state.activeRestore) state.isCancelled = false;
-    this.deleteRestoreStateIfIdle(channelName, state);
+    this.deleteIRestoreStateIfIdle(channelName, state);
   }
 
   /**
@@ -214,7 +207,7 @@ export abstract class DatabaseNotify<
   ): Promise<void> {
     if (this.isNotificationRestoreCancelled(options.channelName))
       return Promise.resolve();
-    const state = this.getOrCreateRestoreState(options.channelName);
+    const state = this.getOrCreateIRestoreState(options.channelName);
     if (state.activeRestore) return state.activeRestore;
     const restorePromise = Promise.resolve()
       .then(() => this.restoreNotificationWithRetry(options))
@@ -222,7 +215,7 @@ export abstract class DatabaseNotify<
         if (state.activeRestore === restorePromise) {
           delete state.activeRestore;
           if (!this.isDestroyed) state.isCancelled = false;
-          this.deleteRestoreStateIfIdle(options.channelName, state);
+          this.deleteIRestoreStateIfIdle(options.channelName, state);
         }
       });
     state.activeRestore = restorePromise;
@@ -233,14 +226,14 @@ export abstract class DatabaseNotify<
     options: INotifyHealthCheckOptions<T>
   ): Promise<void> {
     const { channelName, connection } = options;
-    const state = this.restoreStates.get(channelName);
+    const state = this.IRestoreStates.get(channelName);
     if (
       this.isDestroyed ||
       this.notificationPool.get(channelName) !== connection ||
       state?.isHealthCheckInProgress === true
     )
       return;
-    const activeState = this.getOrCreateRestoreState(channelName);
+    const activeState = this.getOrCreateIRestoreState(channelName);
     activeState.isHealthCheckInProgress = true;
     try {
       const isHealthy = await options.isHealthy(connection);
@@ -249,7 +242,7 @@ export abstract class DatabaseNotify<
       await options.restore();
     } finally {
       activeState.isHealthCheckInProgress = false;
-      this.deleteRestoreStateIfIdle(channelName, activeState);
+      this.deleteIRestoreStateIfIdle(channelName, activeState);
     }
   }
 
@@ -313,14 +306,14 @@ export abstract class DatabaseNotify<
     delayMs: number
   ): Promise<void> {
     if (this.isDestroyed) return Promise.resolve();
-    const state = this.getOrCreateRestoreState(channelName);
+    const state = this.getOrCreateIRestoreState(channelName);
     return new Promise((resolve) => {
       const complete = (): void => {
         clearTimeout(timer);
         if (state.cancelRetryDelay === complete) {
           delete state.cancelRetryDelay;
         }
-        this.deleteRestoreStateIfIdle(channelName, state);
+        this.deleteIRestoreStateIfIdle(channelName, state);
         resolve();
       };
       const timer = setTimeout(complete, delayMs);
@@ -330,16 +323,16 @@ export abstract class DatabaseNotify<
   }
 
   private cancelRestoreRetryDelay(channelName: string): void {
-    this.restoreStates.get(channelName)?.cancelRetryDelay?.();
+    this.IRestoreStates.get(channelName)?.cancelRetryDelay?.();
   }
 
   private cancelRestoreRetryDelays(): void {
-    this.restoreStates.forEach((state) => state.cancelRetryDelay?.());
+    this.IRestoreStates.forEach((state) => state.cancelRetryDelay?.());
   }
 
   private getActiveRestores(): Array<[string, Promise<void>]> {
     const activeRestores: Array<[string, Promise<void>]> = [];
-    this.restoreStates.forEach((state, channelName) => {
+    this.IRestoreStates.forEach((state, channelName) => {
       if (state.activeRestore)
         activeRestores.push([channelName, state.activeRestore]);
     });
@@ -370,28 +363,28 @@ export abstract class DatabaseNotify<
   }
 
   private stopAllConnectionHealthChecks(): void {
-    this.restoreStates.forEach((state, channelName) => {
+    this.IRestoreStates.forEach((state, channelName) => {
       if (!state.healthCheckTimer) return;
       clearInterval(state.healthCheckTimer);
       delete state.healthCheckTimer;
-      this.deleteRestoreStateIfIdle(channelName, state);
+      this.deleteIRestoreStateIfIdle(channelName, state);
     });
   }
 
-  private getOrCreateRestoreState(channelName: string): RestoreState {
-    const existingState = this.restoreStates.get(channelName);
+  private getOrCreateIRestoreState(channelName: string): IRestoreState {
+    const existingState = this.IRestoreStates.get(channelName);
     if (existingState) return existingState;
-    const state: RestoreState = {
+    const state: IRestoreState = {
       isCancelled: false,
       isHealthCheckInProgress: false,
     };
-    this.restoreStates.set(channelName, state);
+    this.IRestoreStates.set(channelName, state);
     return state;
   }
 
-  private deleteRestoreStateIfIdle(
+  private deleteIRestoreStateIfIdle(
     channelName: string,
-    state: RestoreState
+    state: IRestoreState
   ): void {
     if (
       state.isCancelled ||
@@ -401,6 +394,6 @@ export abstract class DatabaseNotify<
       state.healthCheckTimer
     )
       return;
-    this.restoreStates.delete(channelName);
+    this.IRestoreStates.delete(channelName);
   }
 }
