@@ -1,5 +1,6 @@
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
+import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
@@ -48,12 +49,30 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param packageName - schema name to inspect.
    * @returns SQL query string for procedure metadata loading.
    */
-  public override generatePackageInfoSql(packageName: string): string {
+  public override generatePackageInfoSql(
+    packageName: string,
+    procedureMetadataSql?: string
+  ): string {
     const safePackageName = SqlIdentifier.validateIdentifier(
       packageName,
       'postgres package'
+    ).toLowerCase();
+    return this.replacePackageNamePlaceholder(
+      procedureMetadataSql ?? PostgreSqlCommand.SQL_GET_PACKAGE_INFO,
+      `'${safePackageName}'`
     );
-    return PostgreSqlCommand.SQL_GET_PACKAGE_INFO + ` '${safePackageName}';`;
+  }
+
+  private replacePackageNamePlaceholder(
+    sql: string,
+    packageNameLiteral: string
+  ): string {
+    if (!sql.includes(':PACKAGE_NAME')) {
+      throw new ServerError(
+        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
+      );
+    }
+    return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
   }
 
   /**
@@ -65,16 +84,17 @@ export class PostgreAdapter extends DatabaseAdapter<
    */
   protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,
-    _result = undefined,
-    manager: EntityManager
+    executeResult: {
+      manager: EntityManager;
+    }
   ): Promise<Array<T>> {
     let cursorResults: Array<T> = [];
     await Promise.all(
       cursorsNames.map(async (cursorName) => {
-        const cursorResult: Array<T> = await manager.query<Array<T>>(
-          `FETCH ALL IN ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`
-        );
-        await manager.query(
+        const cursorResult: Array<T> = await executeResult.manager.query<
+          Array<T>
+        >(`FETCH ALL IN ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`);
+        await executeResult.manager.query(
           `CLOSE ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`
         );
         cursorResults = cursorResults.concat(cursorResult);
@@ -174,20 +194,13 @@ export class PostgreAdapter extends DatabaseAdapter<
           })
         : []
     );
-    const paramOccurrences = Array.from(
-      sqlQuery.matchAll(/:([A-Z_][A-Z0-9_]*)\b/g)
-    ).map(([, param]) => param);
-    paramOccurrences.forEach((paramName) => {
-      bindings.push(
-        paramsInUpperCase?.[(paramName ?? '').toUpperCase()] ?? null
-      );
+    let parameterIndex = 0;
+    const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
+      bindings.push(paramsInUpperCase?.[(key ?? '').toUpperCase()] ?? null);
+      parameterIndex += 1;
+      return `$${parameterIndex}`;
     });
-
-    const sqlString = paramOccurrences.reduce(
-      (sql, paramName, index) =>
-        (sql as string).replace(`:${paramName}`, `$${index + 1}`),
-      sqlQuery
-    );
     return { bindings, sqlString: sqlString ?? '' };
   }
 }

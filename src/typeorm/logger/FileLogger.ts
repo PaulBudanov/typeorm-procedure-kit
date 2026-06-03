@@ -1,5 +1,8 @@
+import { isAbsolute, relative, resolve } from 'path';
+
 import appRootPath from 'app-root-path';
 
+import { ServerError } from '../../utils/server-error.js';
 import { PlatformTools } from '../platform/PlatformTools.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
@@ -96,16 +99,23 @@ export class FileLogger extends AbstractLogger {
    */
   protected write(strings: string | Array<string>): void {
     strings = Array.isArray(strings) ? strings : [strings];
-    const basePath = appRootPath.path + '/';
+    const basePath = resolve(appRootPath.path);
     let logPath = 'ormlogs.log';
     if (this.fileLoggerOptions && this.fileLoggerOptions.logPath) {
       logPath = PlatformTools.pathNormalize(this.fileLoggerOptions.logPath);
+    }
+    const resolvedLogPath = resolve(basePath, logPath);
+    const relativeLogPath = relative(basePath, resolvedLogPath);
+    if (relativeLogPath.startsWith('..') || isAbsolute(relativeLogPath)) {
+      throw new ServerError(
+        'File logger path must stay inside the application root.'
+      );
     }
     strings = (strings as Array<string>).map(
       (str) => '[' + new Date().toISOString() + ']' + str
     );
     PlatformTools.appendFileSync(
-      basePath + logPath,
+      resolvedLogPath,
       strings.join('\r\n') + '\r\n'
     ); // todo: use async or implement promises?
   }

@@ -21,9 +21,28 @@ describe('PostgreAdapter', (): void => {
   it('generates safe package info SQL', (): void => {
     const adapter = createPostgreAdapter();
 
-    expect(adapter.generatePackageInfoSql('public')).toContain("'public';");
+    const sql = adapter.generatePackageInfoSql('Public');
+
+    expect(sql).toContain("proc.specific_schema = 'public'");
+    expect(sql).not.toContain(':PACKAGE_NAME');
     expect((): void => {
       adapter.generatePackageInfoSql('public;drop');
+    }).toThrow(ServerError);
+  });
+
+  it('generates package info SQL from a custom template', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect(
+      adapter.generatePackageInfoSql(
+        'Public',
+        'select * from custom_args where schema_name = :PACKAGE_NAME and owner = :PACKAGE_NAME'
+      )
+    ).toBe(
+      "select * from custom_args where schema_name = 'public' and owner = 'public'"
+    );
+    expect((): void => {
+      adapter.generatePackageInfoSql('public', 'select * from custom_args');
     }).toThrow(ServerError);
   });
 
@@ -137,6 +156,24 @@ describe('PostgreAdapter', (): void => {
     ).toEqual({
       sqlString: 'select * from users where id = $1 and x = $2',
       bindings: [1, null],
+    });
+  });
+
+  it('does not bind placeholders inside casts, literals, or comments', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect(
+      adapter.makeSqlBindings(
+        "select :ID::uuid, ':SKIP', /* :SKIP */ -- :SKIP\nwhere x = :X",
+        {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          skip: 'ignored',
+          x: 1,
+        }
+      )
+    ).toEqual({
+      sqlString: "select $1::uuid, ':SKIP', /* :SKIP */ -- :SKIP\nwhere x = $2",
+      bindings: ['550e8400-e29b-41d4-a716-446655440000', 1],
     });
   });
 });

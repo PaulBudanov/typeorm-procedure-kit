@@ -1,3 +1,4 @@
+import { safeStringify } from '../../utils/safe-stringify.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import { TypeORMError } from './TypeORMError.js';
@@ -6,10 +7,14 @@ import { TypeORMError } from './TypeORMError.js';
  * Thrown when query execution has failed.
  */
 export class QueryFailedError<T extends Error = Error> extends TypeORMError {
+  public readonly query!: string;
+  public readonly parameters!: Array<unknown> | undefined;
+  public readonly driverError!: T;
+
   public constructor(
-    public readonly query: string,
-    public readonly parameters: Array<unknown> | undefined,
-    public readonly driverError: T
+    query: string,
+    parameters: Array<unknown> | undefined,
+    driverError: T
   ) {
     super(
       driverError
@@ -26,5 +31,33 @@ export class QueryFailedError<T extends Error = Error> extends TypeORMError {
         ...otherProperties,
       });
     }
+
+    Object.defineProperties(this, {
+      query: {
+        value: query,
+        enumerable: false,
+      },
+      parameters: {
+        value: parameters,
+        enumerable: false,
+      },
+      driverError: {
+        value: driverError,
+        enumerable: false,
+      },
+    });
+  }
+
+  public get safeParameters(): string | undefined {
+    return this.parameters ? safeStringify(this.parameters) : undefined;
+  }
+
+  public toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      query: this.query,
+      parameters: this.safeParameters,
+    };
   }
 }

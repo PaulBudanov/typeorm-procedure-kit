@@ -1,3 +1,4 @@
+import { ServerError } from '../../utils/server-error.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -103,7 +104,9 @@ export class BaseEntity {
       .getRepository()
       .metadata.getEntityIdMap(this as ObjectLiteral);
     if (!id) {
-      throw new Error(`Entity doesn't have id-s set, cannot reload entity`);
+      throw new ServerError(
+        `Entity doesn't have id-s set, cannot reload entity`
+      );
     }
     const reloadedEntity = await baseEntity
       .getRepository()
@@ -130,7 +133,8 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity
   ): Repository<T> {
     const dataSource = (this as typeof BaseEntity).dataSource;
-    if (!dataSource) throw new Error(`DataSource is not set for this entity.`);
+    if (!dataSource)
+      throw new ServerError(`DataSource is not set for this entity.`);
     return dataSource.getRepository(this as unknown as EntityTarget<T>);
   }
 

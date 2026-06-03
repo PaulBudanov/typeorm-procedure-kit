@@ -115,11 +115,64 @@ describe('PostgreNotify', (): void => {
     expect(notify.getNotificationPool().has('channel_name')).toBe(false);
   });
 
-  it('keeps duplicate registration pending until the first listener is active', async (): Promise<void> => {
+  it('rejects registration after destroy without creating a client', async (): Promise<void> => {
+    const connection = {
+      createSingleConnection: vi.fn(),
+      closeSingleConnection: vi.fn(),
+      registerConnectionErrorHandler: vi.fn(),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await notify.destroy();
+
+    await expect(
+      notify.listenNotify('LISTEN channel_name', vi.fn())
+    ).rejects.toThrow('Database notification adapter is shutting down');
+    expect(connection.createSingleConnection).not.toHaveBeenCalled();
+    expect(notify.getNotificationPool().size).toBe(0);
+  });
+
+  it('closes a client when destroy races with LISTEN registration', async (): Promise<void> => {
+    const client = new FakePgClient();
+    let resolveListen!: () => void;
+    let listenStarted!: () => void;
+    const listenPromise = new Promise<void>((resolve) => {
+      resolveListen = resolve;
+    });
+    const listenStartedPromise = new Promise<void>((resolve) => {
+      listenStarted = resolve;
+    });
+    client.query.mockImplementation(() => {
+      listenStarted();
+      return listenPromise;
+    });
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValue(client),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    const registration = notify.listenNotify('LISTEN channel_name', vi.fn());
+    await listenStartedPromise;
+    await notify.destroy();
+    resolveListen();
+
+    await expect(registration).rejects.toThrow(
+      'Database notification adapter is shutting down'
+    );
+    expect(connection.closeSingleConnection).toHaveBeenCalledWith(client);
+    expect(connection.registerConnectionErrorHandler).not.toHaveBeenCalled();
+    expect(notify.getNotificationPool().size).toBe(0);
+  });
+
+  it('rejects a duplicate listener while the first registration is pending', async (): Promise<void> => {
     const client = new FakePgClient();
     client.query.mockResolvedValue(undefined);
-    const duplicateClient = new FakePgClient();
-    duplicateClient.query.mockResolvedValue(undefined);
     let resolveConnection!: (client: FakePgClient) => void;
     const connectionPromise = new Promise<FakePgClient>((resolve) => {
       resolveConnection = resolve;
@@ -127,8 +180,7 @@ describe('PostgreNotify', (): void => {
     const connection = {
       createSingleConnection: vi
         .fn<() => Promise<FakePgClient>>()
-        .mockReturnValueOnce(connectionPromise)
-        .mockResolvedValueOnce(duplicateClient),
+        .mockReturnValueOnce(connectionPromise),
       closeSingleConnection: vi
         .fn<(_client: FakePgClient) => Promise<void>>()
         .mockResolvedValue(undefined),
@@ -145,18 +197,13 @@ describe('PostgreNotify', (): void => {
     );
     await Promise.resolve();
 
-    const duplicateRegistration = notify.listenNotify(
-      'LISTEN channel_name',
-      vi.fn()
-    );
+    await expect(
+      notify.listenNotify('LISTEN channel_name', vi.fn())
+    ).rejects.toThrow('Listener for channel "channel_name" already registered');
 
     resolveConnection(client);
     await expect(firstRegistration).resolves.toBe('channel_name');
-    await expect(duplicateRegistration).resolves.toBe('channel_name');
-    expect(connection.createSingleConnection).toHaveBeenCalledTimes(2);
-    expect(connection.closeSingleConnection).not.toHaveBeenCalledWith(
-      duplicateClient
-    );
+    expect(connection.createSingleConnection).toHaveBeenCalledOnce();
   });
 
   it('keeps a successfully restored listener under the same channel', async (): Promise<void> => {
@@ -196,6 +243,63 @@ describe('PostgreNotify', (): void => {
     expect(connection.closeSingleConnection).not.toHaveBeenCalledWith(
       secondClient
     );
+  });
+
+  it('waits for an in-flight restore and closes the restored listener during destroy', async (): Promise<void> => {
+    const firstClient = new FakePgClient();
+    firstClient.query.mockResolvedValue(undefined);
+    const secondClient = new FakePgClient();
+    let resolveSecondListen!: () => void;
+    let secondListenStarted!: () => void;
+    const secondListenPromise = new Promise<void>((resolve) => {
+      resolveSecondListen = resolve;
+    });
+    const secondListenStartedPromise = new Promise<void>((resolve) => {
+      secondListenStarted = resolve;
+    });
+    secondClient.query.mockImplementation(() => {
+      secondListenStarted();
+      return secondListenPromise;
+    });
+    let connectionLossCallback!: () => void | Promise<void>;
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValueOnce(firstClient)
+        .mockResolvedValueOnce(secondClient),
+      closeSingleConnection: vi
+        .fn<(_client: FakePgClient) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(
+        (_client: FakePgClient, callback: () => void | Promise<void>) => {
+          connectionLossCallback = callback;
+        }
+      ),
+      isSingleConnectionHealthy: vi
+        .fn<(_client: FakePgClient, _timeoutMs?: number) => Promise<boolean>>()
+        .mockResolvedValue(true),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await notify.listenNotify('LISTEN channel_name', vi.fn());
+    connectionLossCallback();
+    await secondListenStartedPromise;
+
+    let destroySettled = false;
+    const destroyPromise = notify.destroy().then(() => {
+      destroySettled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(destroySettled).toBe(false);
+
+    resolveSecondListen();
+    await destroyPromise;
+
+    expect(notify.getNotificationPool().has('channel_name')).toBe(false);
+    expect(connection.closeSingleConnection).toHaveBeenCalledWith(firstClient);
+    expect(connection.closeSingleConnection).toHaveBeenCalledWith(secondClient);
   });
 
   it('ignores stale connection-loss callbacks after manual unlisten', async (): Promise<void> => {

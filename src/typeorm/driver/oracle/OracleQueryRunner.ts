@@ -1,5 +1,6 @@
 import type oracledb from 'oracledb';
 
+import { normalizeQueryTimeoutMs } from '../../../utils/query-timeout.js';
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { DataSource } from '../../data-source/DataSource.js';
 import { QueryFailedError } from '../../error/QueryFailedError.js';
@@ -71,6 +72,40 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
   // Private Helper Methods
   // -------------------------------------------------------------------------
 
+  private buildCatalogTableConditions(
+    tables: Array<{ owner?: string; tableName: string }>,
+    ownerColumn: string,
+    tableColumn: string
+  ): { condition: string; parameters: Array<unknown> } {
+    const parameters: Array<unknown> = [];
+    const condition = tables
+      .map(({ owner, tableName }) => {
+        if (owner) {
+          const ownerParam = this.driver.createParameter(
+            'owner',
+            parameters.length
+          );
+          parameters.push(owner);
+          const tableParam = this.driver.createParameter(
+            'table',
+            parameters.length
+          );
+          parameters.push(tableName);
+          return `(${ownerColumn} = ${ownerParam} AND ${tableColumn} = ${tableParam})`;
+        }
+
+        const tableParam = this.driver.createParameter(
+          'table',
+          parameters.length
+        );
+        parameters.push(tableName);
+        return `(${tableColumn} = ${tableParam})`;
+      })
+      .join(' OR ');
+
+    return { condition: condition || '1=0', parameters };
+  }
+
   /**
    * Type guard to check if an object has an array property.
    */
@@ -93,6 +128,15 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       prop in obj &&
       typeof (obj as Record<string, unknown>)[prop] === 'number'
     );
+  }
+
+  private applyConnectionCallTimeout(connection: oracledb.Connection): void {
+    const queryTimeoutMs = normalizeQueryTimeoutMs(
+      this.driver.options.queryTimeoutMs
+    );
+    if (queryTimeoutMs !== undefined) {
+      connection.callTimeout = queryTimeoutMs;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -119,6 +163,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         : this.driver.obtainMasterConnection();
 
     this.databaseConnectionPromise = connectionPromise.then((connection) => {
+      this.applyConnectionCallTimeout(connection);
       this.databaseConnection = connection;
       return connection;
     });
@@ -138,9 +183,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       return;
     }
 
-    const connection = this.databaseConnection;
+    const connection = this.databaseConnection as oracledb.Connection;
     this.databaseConnection = undefined;
-    void (connection as oracledb.Connection).close();
+    await connection.close();
   }
 
   /**
@@ -256,6 +301,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
     const broadcasterResult = new BroadcasterResult();
     const queryStartTime = Date.now();
+    const oracleConnection = databaseConnection as oracledb.Connection;
+    const maxQueryExecutionTime = this.driver.options.maxQueryExecutionTime;
 
     try {
       const oracleLib = this.driver.oracle as Record<string, unknown>;
@@ -264,14 +311,13 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         outFormat: oracleLib['OUT_FORMAT_OBJECT'] as number,
       };
 
-      const raw = await (databaseConnection as oracledb.Connection).execute(
+      const raw = await oracleConnection.execute(
         query,
         parameters || {},
         executionOptions
       );
 
       // log slow queries if maxQueryExecution time is set
-      const maxQueryExecutionTime = this.driver.options.maxQueryExecutionTime;
       const queryEndTime = Date.now();
       const queryExecutionTime = queryEndTime - queryStartTime;
 
@@ -492,8 +538,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
    */
   public async hasTable(tableOrName: Table | string): Promise<boolean> {
     const { tableName } = this.driver.parseTableName(tableOrName);
-    const sql = `SELECT "TABLE_NAME" FROM "USER_TABLES" WHERE "TABLE_NAME" = '${tableName}'`;
-    const result = await this.query(sql);
+    const sql = `SELECT "TABLE_NAME" FROM "USER_TABLES" WHERE "TABLE_NAME" = :1`;
+    const result = await this.query(sql, [tableName]);
     return Array.isArray(result) && result.length > 0;
   }
 
@@ -505,8 +551,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     columnName: string
   ): Promise<boolean> {
     const { tableName } = this.driver.parseTableName(tableOrName);
-    const sql = `SELECT "COLUMN_NAME" FROM "USER_TAB_COLS" WHERE "TABLE_NAME" = '${tableName}' AND "COLUMN_NAME" = '${columnName}'`;
-    const result = await this.query(sql);
+    const sql = `SELECT "COLUMN_NAME" FROM "USER_TAB_COLS" WHERE "TABLE_NAME" = :1 AND "COLUMN_NAME" = :2`;
+    const result = await this.query(sql, [tableName, columnName]);
     return Array.isArray(result) && result.length > 0;
   }
 
@@ -2335,27 +2381,31 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         }>)
       );
     } else {
-      const tablesCondition = tableNames
-        .map((tableName) => {
-          const parts = tableName.split('.');
+      const tableFilters = tableNames.map((tableName) => {
+        const parts = tableName.split('.');
 
-          if (parts.length >= 3) {
-            const [, schema, name] = parts;
-            return `("OWNER" = '${schema}' AND "TABLE_NAME" = '${name}')`;
-          } else if (parts.length === 2) {
-            const [schema, name] = parts;
-            return `("OWNER" = '${schema}' AND "TABLE_NAME" = '${name}')`;
-          } else if (parts.length === 1) {
-            const [name] = parts;
-            return `("TABLE_NAME" = '${name}')`;
-          } else {
-            return `(1=0)`;
-          }
-        })
-        .join(' OR ');
+        if (parts.length >= 3) {
+          const [, schema, name] = parts;
+          return { owner: schema, tableName: name! };
+        } else if (parts.length === 2) {
+          const [schema, name] = parts;
+          return { owner: schema, tableName: name! };
+        } else if (parts.length === 1) {
+          const [name] = parts;
+          return { tableName: name! };
+        } else {
+          return { tableName: '' };
+        }
+      });
+      const { condition: tablesCondition, parameters } =
+        this.buildCatalogTableConditions(
+          tableFilters,
+          '"OWNER"',
+          '"TABLE_NAME"'
+        );
       const tablesSql = `SELECT "TABLE_NAME", "OWNER" FROM "ALL_TABLES" WHERE ${tablesCondition}`;
       dbTables.push(
-        ...((await this.query(tablesSql)) as Array<{
+        ...((await this.query(tablesSql, parameters)) as Array<{
           TABLE_NAME: string;
           OWNER: string;
         }>)
@@ -2368,11 +2418,15 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     }
 
     // load tables, columns, indices and foreign keys
-    const columnsCondition = dbTables
-      .map(({ TABLE_NAME, OWNER }) => {
-        return `("C"."OWNER" = '${OWNER}' AND "C"."TABLE_NAME" = '${TABLE_NAME}')`;
-      })
-      .join(' OR ');
+    const { condition: columnsCondition, parameters: columnsParameters } =
+      this.buildCatalogTableConditions(
+        dbTables.map(({ TABLE_NAME, OWNER }) => ({
+          owner: OWNER,
+          tableName: TABLE_NAME,
+        })),
+        '"C"."OWNER"',
+        '"C"."TABLE_NAME"'
+      );
     const columnsSql = `SELECT * FROM "ALL_TAB_COLS" "C" WHERE (${columnsCondition})`;
 
     const indicesSql =
@@ -2400,10 +2454,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
     const [dbColumns, dbIndices, dbForeignKeys, dbConstraints] =
       (await Promise.all([
-        this.query(columnsSql),
-        this.query(indicesSql),
-        this.query(foreignKeysSql),
-        this.query(constraintsSql),
+        this.query(columnsSql, columnsParameters),
+        this.query(indicesSql, columnsParameters),
+        this.query(foreignKeysSql, columnsParameters),
+        this.query(constraintsSql, columnsParameters),
       ])) as [
         Array<Record<string, unknown>>,
         Array<Record<string, unknown>>,

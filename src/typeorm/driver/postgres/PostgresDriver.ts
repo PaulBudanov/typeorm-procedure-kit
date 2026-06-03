@@ -18,6 +18,7 @@ import type { View } from '../../schema-builder/view/View.js';
 import { ApplyValueTransformers } from '../../util/ApplyValueTransformers.js';
 import { DateUtils } from '../../util/DateUtils.js';
 import { InstanceChecker } from '../../util/InstanceChecker.js';
+import { replaceNamedParameters } from '../../util/NamedParameterUtils.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import { VersionUtils } from '../../util/VersionUtils.js';
 import type { Driver } from '../Driver.js';
@@ -898,37 +899,34 @@ export class PostgresDriver implements Driver {
       return [sql, escapedParameters];
 
     const parameterIndexMap = new Map<string, number>();
-    sql = sql.replace(
-      /:(\.\.\.)?([A-Za-z0-9_.]+)/g,
-      (full, isArray: string, key: string): string => {
-        if (!Object.prototype.hasOwnProperty.call(parameters, key)) {
-          return full;
-        }
-
-        if (parameterIndexMap.has(key)) {
-          return this.parametersPrefix + parameterIndexMap.get(key);
-        }
-
-        const value: unknown = parameters[key];
-
-        if (isArray) {
-          return (value as Array<unknown>)
-            .map((v: unknown) => {
-              escapedParameters.push(v);
-              return this.createParameter(key, escapedParameters.length - 1);
-            })
-            .join(', ');
-        }
-
-        if (typeof value === 'function') {
-          return (value as () => string)();
-        }
-
-        escapedParameters.push(value);
-        parameterIndexMap.set(key, escapedParameters.length);
-        return this.createParameter(key, escapedParameters.length - 1);
+    sql = replaceNamedParameters(sql, ({ full, isArray, key }): string => {
+      if (!Object.prototype.hasOwnProperty.call(parameters, key)) {
+        return full;
       }
-    ); // todo: make replace only in value statements, otherwise problems
+
+      if (parameterIndexMap.has(key)) {
+        return this.parametersPrefix + parameterIndexMap.get(key);
+      }
+
+      const value: unknown = parameters[key];
+
+      if (isArray) {
+        return (value as Array<unknown>)
+          .map((v: unknown) => {
+            escapedParameters.push(v);
+            return this.createParameter(key, escapedParameters.length - 1);
+          })
+          .join(', ');
+      }
+
+      if (typeof value === 'function') {
+        return (value as () => string)();
+      }
+
+      escapedParameters.push(value);
+      parameterIndexMap.set(key, escapedParameters.length);
+      return this.createParameter(key, escapedParameters.length - 1);
+    }); // todo: make replace only in value statements, otherwise problems
     return [sql, escapedParameters];
   }
 
@@ -936,7 +934,17 @@ export class PostgresDriver implements Driver {
    * Escapes a column name.
    */
   public escape(columnName: string): string {
-    return '"' + columnName + '"';
+    if (
+      Array.from(columnName).some((char) => {
+        const code = char.charCodeAt(0);
+        return code <= 31 || code === 127;
+      })
+    ) {
+      throw new TypeORMError(
+        'SQL identifiers cannot contain control characters.'
+      );
+    }
+    return '"' + columnName.replace(/"/g, '""') + '"';
   }
 
   /**
@@ -1419,6 +1427,7 @@ export class PostgresDriver implements Driver {
         port: credentials.port,
         ssl: credentials.ssl,
         connectionTimeoutMillis: options.connectTimeoutMS,
+        statement_timeout: options.statement_timeout,
         application_name:
           options.applicationName ?? credentials.applicationName,
         max: options.poolSize,

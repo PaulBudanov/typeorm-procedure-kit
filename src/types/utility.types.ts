@@ -4,11 +4,17 @@ export interface ISqlError {
   err_text?: string;
   error_text?: string;
 }
-
+interface IProcedureOutBinding {
+  name: string;
+  type: 'cursor' | 'scalar' | 'lob' | 'object' | 'array';
+}
+//TODO: Add in the future support for another out bindings, at now added new object keys for this.
 export interface IBindingsObjectReturn {
   paramExecuteString: string;
   bindings: Array<unknown>;
-  cursorsNames: Array<string>;
+  cursorsNames?: Array<string>;
+  outNames?: Array<string>;
+  outBindings?: Array<IProcedureOutBinding>;
 }
 
 export interface ISqlBindingsObjectReturn extends Pick<
@@ -22,6 +28,7 @@ export type TFunction<T = unknown> = (...args: Array<unknown>) => T;
 
 export interface IEventBusService {
   emit<T>(event: string | symbol, data: T): void;
+  emitAsync<T>(event: string | symbol, data: T): Promise<void>;
   registerListener<T, U extends string | symbol>(
     event: string | symbol,
     callback: (data?: T) => U | void | Promise<void>

@@ -80,6 +80,31 @@ export class PostgresQueryRunner
   // Private Helper Methods
   // -------------------------------------------------------------------------
 
+  private buildCatalogTableConditions(
+    tables: Array<{ schema: string; tableName: string }>,
+    schemaColumn: string,
+    tableColumn: string
+  ): { condition: string; parameters: Array<unknown> } {
+    const parameters: Array<unknown> = [];
+    const condition = tables
+      .map(({ schema, tableName }) => {
+        const schemaParam = this.driver.createParameter(
+          'schema',
+          parameters.length
+        );
+        parameters.push(schema);
+        const tableParam = this.driver.createParameter(
+          'table',
+          parameters.length
+        );
+        parameters.push(tableName);
+        return `(${schemaColumn} = ${schemaParam} AND ${tableColumn} = ${tableParam})`;
+      })
+      .join(' OR ');
+
+    return { condition: condition || '1=0', parameters };
+  }
+
   /**
    * Type guard to check if an object has an array property.
    */
@@ -500,7 +525,8 @@ export class PostgresQueryRunner
    */
   public async hasSchema(schema: string): Promise<boolean> {
     const result = await this.query(
-      `SELECT * FROM "information_schema"."schemata" WHERE "schema_name" = '${schema}'`
+      `SELECT * FROM "information_schema"."schemata" WHERE "schema_name" = $1`,
+      [schema]
     );
     return Array.isArray(result) && result.length > 0;
   }
@@ -535,8 +561,11 @@ export class PostgresQueryRunner
       parsedTableName.schema = await this.getCurrentSchema();
     }
 
-    const sql = `SELECT * FROM "information_schema"."tables" WHERE "table_schema" = '${parsedTableName.schema}' AND "table_name" = '${parsedTableName.tableName}'`;
-    const result = await this.query(sql);
+    const sql = `SELECT * FROM "information_schema"."tables" WHERE "table_schema" = $1 AND "table_name" = $2`;
+    const result = await this.query(sql, [
+      parsedTableName.schema,
+      parsedTableName.tableName,
+    ]);
     return Array.isArray(result) && result.length > 0;
   }
 
@@ -553,8 +582,12 @@ export class PostgresQueryRunner
       parsedTableName.schema = await this.getCurrentSchema();
     }
 
-    const sql = `SELECT * FROM "information_schema"."columns" WHERE "table_schema" = '${parsedTableName.schema}' AND "table_name" = '${parsedTableName.tableName}' AND "column_name" = '${columnName}'`;
-    const result = await this.query(sql);
+    const sql = `SELECT * FROM "information_schema"."columns" WHERE "table_schema" = $1 AND "table_name" = $2 AND "column_name" = $3`;
+    const result = await this.query(sql, [
+      parsedTableName.schema,
+      parsedTableName.tableName,
+      columnName,
+    ]);
     return Array.isArray(result) && result.length > 0;
   }
 
@@ -3248,20 +3281,23 @@ export class PostgresQueryRunner
         }>)
       );
     } else {
-      const tablesCondition = tableNames
-        .map((tableName) => this.driver.parseTableName(tableName))
-        .map(({ schema, tableName }) => {
-          return `("table_schema" = '${
-            schema || currentSchema
-          }' AND "table_name" = '${tableName}')`;
-        })
-        .join(' OR ');
+      const { condition: tablesCondition, parameters } =
+        this.buildCatalogTableConditions(
+          tableNames
+            .map((tableName) => this.driver.parseTableName(tableName))
+            .map(({ schema, tableName }) => ({
+              schema: schema || currentSchema,
+              tableName,
+            })),
+          '"table_schema"',
+          '"table_name"'
+        );
 
       const tablesSql =
         `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ` +
         tablesCondition;
       dbTables.push(
-        ...((await this.query(tablesSql)) as Array<{
+        ...((await this.query(tablesSql, parameters)) as Array<{
           table_schema: string;
           table_name: string;
           table_comment: string;
@@ -3279,11 +3315,15 @@ export class PostgresQueryRunner
      * pg_catalog.pg_attribute table to get column information.
      * @see https://stackoverflow.com/a/19541865
      */
-    const columnsCondition = dbTables
-      .map(({ table_schema, table_name }) => {
-        return `("table_schema" = '${table_schema}' AND "table_name" = '${table_name}')`;
-      })
-      .join(' OR ');
+    const { condition: columnsCondition, parameters: columnsParameters } =
+      this.buildCatalogTableConditions(
+        dbTables.map(({ table_schema, table_name }) => ({
+          schema: table_schema,
+          tableName: table_name,
+        })),
+        '"table_schema"',
+        '"table_name"'
+      );
     const columnsSql =
       `SELECT columns.*, pg_catalog.col_description(('"' || table_catalog || '"."' || table_schema || '"."' || table_name || '"')::regclass::oid, ordinal_position) AS description, ` +
       `('"' || "udt_schema" || '"."' || "udt_name" || '"')::"regtype"::text AS "regtype", pg_catalog.format_type("col_attr"."atttypid", "col_attr"."atttypmod") AS "format_type" ` +
@@ -3298,11 +3338,17 @@ export class PostgresQueryRunner
       `WHERE ` +
       columnsCondition;
 
-    const constraintsCondition = dbTables
-      .map(({ table_schema, table_name }) => {
-        return `("ns"."nspname" = '${table_schema}' AND "t"."relname" = '${table_name}')`;
-      })
-      .join(' OR ');
+    const {
+      condition: constraintsCondition,
+      parameters: constraintsParameters,
+    } = this.buildCatalogTableConditions(
+      dbTables.map(({ table_schema, table_name }) => ({
+        schema: table_schema,
+        tableName: table_name,
+      })),
+      '"ns"."nspname"',
+      '"t"."relname"'
+    );
 
     const constraintsSql =
       `SELECT "ns"."nspname" AS "table_schema", "t"."relname" AS "table_name", "cnst"."conname" AS "constraint_name", ` +
@@ -3328,11 +3374,17 @@ export class PostgresQueryRunner
       `LEFT JOIN "pg_constraint" "cnst" ON "cnst"."conname" = "i"."relname" ` +
       `WHERE "t"."relkind" IN ('r', 'p') AND "cnst"."contype" IS NULL AND (${constraintsCondition})`;
 
-    const foreignKeysCondition = dbTables
-      .map(({ table_schema, table_name }) => {
-        return `("ns"."nspname" = '${table_schema}' AND "cl"."relname" = '${table_name}')`;
-      })
-      .join(' OR ');
+    const {
+      condition: foreignKeysCondition,
+      parameters: foreignKeysParameters,
+    } = this.buildCatalogTableConditions(
+      dbTables.map(({ table_schema, table_name }) => ({
+        schema: table_schema,
+        tableName: table_name,
+      })),
+      '"ns"."nspname"',
+      '"cl"."relname"'
+    );
 
     const hasRelispartitionColumn = await this.hasSupportForPartitionedTables();
     const isPartitionCondition = hasRelispartitionColumn
@@ -3360,10 +3412,10 @@ export class PostgresQueryRunner
       `INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent"`;
 
     const queryResults = await Promise.all([
-      this.query(columnsSql),
-      this.query(constraintsSql),
-      this.query(indicesSql),
-      this.query(foreignKeysSql),
+      this.query(columnsSql, columnsParameters),
+      this.query(constraintsSql, constraintsParameters),
+      this.query(indicesSql, constraintsParameters),
+      this.query(foreignKeysSql, foreignKeysParameters),
     ]);
     const dbColumns = queryResults[0] as Array<ObjectLiteral>;
     const dbConstraints = queryResults[1] as Array<ObjectLiteral>;
@@ -4525,7 +4577,8 @@ export class PostgresQueryRunner
 
     const result = (await this.query(
       `SELECT "udt_schema", "udt_name" ` +
-        `FROM "information_schema"."columns" WHERE "table_schema" = '${schema}' AND "table_name" = '${name}' AND "column_name"='${column.name}'`
+        `FROM "information_schema"."columns" WHERE "table_schema" = $1 AND "table_name" = $2 AND "column_name" = $3`,
+      [schema, name, column.name]
     )) as Array<ObjectLiteral>;
 
     // docs: https://www.postgresql.org/docs/current/xtypes.html

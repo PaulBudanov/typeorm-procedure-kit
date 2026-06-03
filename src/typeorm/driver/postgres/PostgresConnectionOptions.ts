@@ -85,6 +85,12 @@ export interface PostgresConnectionOptions
   readonly logNotifications?: boolean;
 
   /**
+   * Server-side statement timeout passed to node-postgres Pool config.
+   * `false` disables the driver-level option.
+   */
+  readonly statement_timeout?: false | number;
+
+  /**
    * Automatically install postgres extensions
    */
   readonly installExtensions?: boolean;

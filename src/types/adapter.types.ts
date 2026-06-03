@@ -73,7 +73,10 @@ export interface IDatabaseAdapterContract<
   /**
    * Builds vendor-specific SQL for loading procedure metadata.
    */
-  generatePackageInfoSql(packageName: string): string;
+  generatePackageInfoSql(
+    packageName: string,
+    procedureMetadataSql?: string
+  ): string;
   /**
    * Converts named SQL placeholders to vendor-specific binding format.
    */

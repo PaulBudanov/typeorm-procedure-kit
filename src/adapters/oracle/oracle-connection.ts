@@ -3,6 +3,7 @@ import oracledb from 'oracledb';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { OracleConnectionOptions } from '../../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
+import { normalizeQueryTimeoutMs } from '../../utils/query-timeout.js';
 import { ServerError } from '../../utils/server-error.js';
 import { DatabaseConnection } from '../abstract/database-connection.js';
 
@@ -28,7 +29,7 @@ export class OracleConnection extends DatabaseConnection<
    * connections.
    * @returns connected Oracle connection.
    */
-  public override createSingleConnection(): Promise<oracledb.Connection> {
+  public override async createSingleConnection(): Promise<oracledb.Connection> {
     const options: oracledb.ConnectionAttributes = {
       user: this.options.username,
       password: this.options.password,
@@ -36,7 +37,20 @@ export class OracleConnection extends DatabaseConnection<
       events: true,
       transportConnectTimeout: 10,
     };
-    return oracledb.getConnection(options);
+    const connection = await oracledb.getConnection(options);
+    this.applyConnectionCallTimeout(connection);
+    return connection;
+  }
+
+  private applyConnectionCallTimeout(connection: oracledb.Connection): void {
+    const dataSourceOptions = this.appDataSource
+      .options as OracleConnectionOptions;
+    const queryTimeoutMs =
+      normalizeQueryTimeoutMs(dataSourceOptions.queryTimeoutMs) ??
+      normalizeQueryTimeoutMs(this.options.queryTimeoutMs);
+    if (queryTimeoutMs !== undefined) {
+      connection.callTimeout = queryTimeoutMs;
+    }
   }
 
   /**

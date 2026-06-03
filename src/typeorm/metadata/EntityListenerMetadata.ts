@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { EntityListenerMetadataArgs } from '../metadata-args/EntityListenerMetadataArgs.js';
 
@@ -83,13 +84,13 @@ export class EntityListenerMetadata {
 
       // Check if the Entity Method does not exist
       if (!entityMethod)
-        throw new Error(
+        throw new ServerError(
           `Entity listener method "${this.propertyName}" does not exist in entity "${entity.constructor.name}".`
         );
 
       // Check if the Entity Method is not a function
       if (typeof entityMethod !== 'function')
-        throw new Error(
+        throw new ServerError(
           `Entity listener method "${this.propertyName}" in entity "${
             entity.constructor.name
           }" must be a function but got "${typeof entityMethod}".`
