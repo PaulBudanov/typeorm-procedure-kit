@@ -180,7 +180,7 @@ export class OracleAdapter extends DatabaseAdapter<
     );
     replaceNamedParameters(sqlQuery, ({ full, key }) => {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase?.[(key as string).toUpperCase()] ?? null);
+      bindings.push(paramsInUpperCase?.[key.toUpperCase()] ?? null);
       return full;
     });
     return { bindings, sqlString: sqlQuery ?? '' };
