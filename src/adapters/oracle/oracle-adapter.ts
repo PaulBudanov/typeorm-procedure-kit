@@ -6,10 +6,7 @@ import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import type {
-  INotifyOracleDefaultSettings,
-  IOracleOptionsNotify,
-} from '../../types/notification.types.js';
+import type { IOracleOptionsNotify } from '../../types/notification.types.js';
 import type {
   TProcedureArgumentList,
   TProcedurePayload,
@@ -38,15 +35,10 @@ export class OracleAdapter extends DatabaseAdapter<
   public constructor(
     protected readonly appDataSource: DataSource,
     protected readonly logger: ILoggerModule,
-    protected readonly handlerOptions: IRegisteredFetchHandlerOptions,
-    protected readonly notifySettings: INotifyOracleDefaultSettings
+    protected readonly handlerOptions: IRegisteredFetchHandlerOptions
   ) {
     const oracleConnection = new OracleConnection(appDataSource, logger);
-    const oracleNotify = new OracleNotify(
-      oracleConnection,
-      logger,
-      notifySettings
-    );
+    const oracleNotify = new OracleNotify(oracleConnection, logger);
     const oracleSerializer = new OracleSerializer(logger, handlerOptions);
     super(logger, oracleSerializer, oracleNotify, oracleConnection);
     oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
@@ -207,15 +199,30 @@ export class OracleAdapter extends DatabaseAdapter<
    * @param packageName - package name to inspect.
    * @returns SQL query string for procedure metadata loading.
    */
-  public override generatePackageInfoSql(packageName: string): string {
+  public override generatePackageInfoSql(
+    packageName: string,
+    procedureMetadataSql?: string
+  ): string {
     const safePackageName = SqlIdentifier.validateIdentifier(
       packageName,
       'oracle package'
+    ).toUpperCase();
+    return this.replacePackageNamePlaceholder(
+      procedureMetadataSql ?? OracleSqlCommand.SQL_GET_PACKAGE_INFO,
+      `'${safePackageName}'`
     );
-    return (
-      OracleSqlCommand.SQL_GET_PACKAGE_INFO +
-      `('${safePackageName.toUpperCase()}')`
-    );
+  }
+
+  private replacePackageNamePlaceholder(
+    sql: string,
+    packageNameLiteral: string
+  ): string {
+    if (!sql.includes(':PACKAGE_NAME')) {
+      throw new ServerError(
+        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
+      );
+    }
+    return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
   }
 
   /**
@@ -251,23 +258,19 @@ export class OracleAdapter extends DatabaseAdapter<
    *
    * @param cursorsNames - output cursor names from procedure metadata.
    * @param result - result sets containing cursor rows.
-   * @param _manager - unused for Oracle cursor fetching.
    * @returns rows fetched from all cursors.
    */
   protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,
-    result: Array<oracledb.ResultSet<T>>,
-    _manager = undefined
+    executeResult: { result: Array<oracledb.ResultSet<T>> }
   ): Promise<Array<T>> {
-    let cursorResults: Array<T> = [];
-    await Promise.all(
-      cursorsNames.map(async (_, index) => {
-        const stream = (result[index] as oracledb.ResultSet<T>).toQueryStream();
-        cursorResults = cursorResults.concat(
-          await this.handleQueryStream<T>(stream)
-        );
-      })
-    );
+    const cursorResults: Array<T> = [];
+    for (const [index] of cursorsNames.entries()) {
+      const resultSet = executeResult.result[index];
+      if (!resultSet) continue;
+      const stream = resultSet.toQueryStream();
+      cursorResults.push(...(await this.handleQueryStream<T>(stream)));
+    }
     return cursorResults;
   }
 }

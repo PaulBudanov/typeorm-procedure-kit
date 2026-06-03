@@ -21,9 +21,28 @@ describe('PostgreAdapter', (): void => {
   it('generates safe package info SQL', (): void => {
     const adapter = createPostgreAdapter();
 
-    expect(adapter.generatePackageInfoSql('public')).toContain("'public';");
+    const sql = adapter.generatePackageInfoSql('Public');
+
+    expect(sql).toContain("proc.specific_schema = 'public'");
+    expect(sql).not.toContain(':PACKAGE_NAME');
     expect((): void => {
       adapter.generatePackageInfoSql('public;drop');
+    }).toThrow(ServerError);
+  });
+
+  it('generates package info SQL from a custom template', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect(
+      adapter.generatePackageInfoSql(
+        'Public',
+        'select * from custom_args where schema_name = :PACKAGE_NAME and owner = :PACKAGE_NAME'
+      )
+    ).toBe(
+      "select * from custom_args where schema_name = 'public' and owner = 'public'"
+    );
+    expect((): void => {
+      adapter.generatePackageInfoSql('public', 'select * from custom_args');
     }).toThrow(ServerError);
   });
 

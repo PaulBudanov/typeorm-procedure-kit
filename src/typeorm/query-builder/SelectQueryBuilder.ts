@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { QueryResultCacheOptions } from '../cache/cache.types.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -4335,7 +4336,7 @@ export class SelectQueryBuilder<Entity = unknown>
                       .join(' AND ')
                   );
               } else {
-                throw new Error(
+                throw new ServerError(
                   `This relation isn't supported by given find operator`
                 );
               }
@@ -4365,7 +4366,7 @@ export class SelectQueryBuilder<Entity = unknown>
                   )
                 );
               } else {
-                throw new Error(
+                throw new ServerError(
                   `This relation isn't supported by given find operator`
                 );
               }

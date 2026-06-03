@@ -22,13 +22,9 @@ export type TProcedurePayloadInput<
   TPayload extends TProcedurePayload = TProcedurePayload,
 > = TPayload | null | undefined;
 
-export interface IProcedureArgumentOracle extends IProcedureArgumentBase {
-  packageName: Lowercase<string>;
-}
-
 export type TProcedureArgumentList = Record<
   Lowercase<string>,
-  Array<Omit<IProcedureArgumentOracle, 'packageName' | 'procedureName'>>
+  Array<Omit<IProcedureArgumentBase, 'procedureName'>>
 >;
 
 export type TDBMapStructure = Map<Lowercase<string>, TProcedureArgumentList>;

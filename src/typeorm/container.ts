@@ -1,3 +1,5 @@
+import { ServerError } from '../utils/server-error.js';
+
 /**
  * Container to be used for dependency injection.
  */
@@ -38,7 +40,7 @@ export function getFromContainer<T>(
   if (typeof someClass === 'function') {
     return new (someClass as new (...args: Array<unknown>) => T)();
   }
-  throw new Error(
+  throw new ServerError(
     'Cannot instantiate class from prototype. Container is required.'
   );
 }

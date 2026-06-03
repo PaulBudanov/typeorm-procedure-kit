@@ -1,5 +1,6 @@
 import dedent from 'dedent';
 
+import { ServerError } from '../../utils/server-error.js';
 import type { Driver } from '../driver/Driver.js';
 
 const SQL_RAW_SYMBOL = Symbol.for('typeorm-procedure-kit.sql.raw');
@@ -96,7 +97,7 @@ export function buildSqlTag({
 
     if (isSqlIdentifierExpression(expression)) {
       if (expression.parts.length === 0) {
-        throw new Error(
+        throw new ServerError(
           'SQL identifier expressions require at least one part.'
         );
       }
@@ -106,7 +107,7 @@ export function buildSqlTag({
 
     if (isSqlParameterListExpression(expression)) {
       if (expression.values.length === 0) {
-        throw new Error(
+        throw new ServerError(
           `Expression ${expressionIdx} in this sql tagged template is an empty parameter list. Empty arrays cannot safely be expanded into parameter lists.`
         );
       }
@@ -124,8 +125,26 @@ export function buildSqlTag({
     }
 
     if (typeof expression === 'function') {
-      throw new Error(
-        `Expression ${expressionIdx} in this sql tagged template is a function. Function expressions are not parameterized; use unsafeRawSql(), sqlIdentifier(), or sqlParameterList() explicitly.`
+      const value: unknown = (expression as () => unknown)();
+
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          throw new ServerError(
+            `Expression ${expressionIdx} in this sql tagged template is a function which returned an empty array. Empty arrays cannot safely be expanded into parameter lists.`
+          );
+        }
+        const arrayParams = value.map(() => {
+          return driver.createParameter(`param_${idx + 1}`, idx++);
+        });
+        query += arrayParams.join(', ');
+        parameters.push(...(value as Array<unknown>));
+        continue;
+      }
+
+      throw new ServerError(
+        `Expression ${expressionIdx} in this sql tagged template is a function which returned a value of type "${
+          value === null ? 'null' : typeof value
+        }". Only non-empty arrays are supported as function return values; use unsafeRawSql(), sqlIdentifier(), or sqlParameterList() explicitly for raw SQL, identifiers, or parameter lists.`
       );
     }
 

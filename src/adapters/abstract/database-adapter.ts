@@ -29,9 +29,9 @@ import type {
 import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
 
 export abstract class DatabaseAdapter<
-  T extends TSerializerClassTypes,
-  U extends TNotifyClassTypes,
-  V extends TConnectionClassTypes,
+  TSerializerClass extends TSerializerClassTypes,
+  TNotificationClass extends TNotifyClassTypes,
+  TConnectionClass extends TConnectionClassTypes,
   TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
 > implements IDatabaseAdapterContract<TNotifyOptions> {
   /**
@@ -44,9 +44,9 @@ export abstract class DatabaseAdapter<
    */
   public constructor(
     protected readonly logger: ILoggerModule,
-    protected readonly serializer: T,
-    protected readonly notifier: U,
-    protected readonly connection: V
+    protected readonly serializer: TSerializerClass,
+    protected readonly notifier: TNotificationClass,
+    protected readonly connection: TConnectionClass
   ) {}
   /**
    * Sorts the arguments for a given procedure in a package.
@@ -112,14 +112,10 @@ export abstract class DatabaseAdapter<
     client: EntityManager,
     optionsCommands: Array<string>,
     bindings: IBindingsObjectReturn['bindings'] = [],
-    cursorsNames: Array<string> = [],
-    queryTimeoutMs?: number
+    cursorsNames: Array<string> = []
   ): Promise<Awaited<Array<T>>> {
     return client.transaction(async (manager) => {
-      const setupCommands = [
-        ...this.getTimeoutSetupCommands(manager, queryTimeoutMs),
-        ...(optionsCommands ?? []),
-      ];
+      const setupCommands = optionsCommands ?? [];
       if (setupCommands.length > 0) {
         await DatabaseOptionsExecutor.executeCommands(
           setupCommands,
@@ -138,28 +134,23 @@ export abstract class DatabaseAdapter<
         result !== null &&
         cursorsNames.length > 0;
       if (isCursorResult) {
-        return this.fetchAllCursors<T>(cursorsNames, result, manager);
+        return this.fetchAllCursors<T>(cursorsNames, { result, manager });
       }
       return result as Array<T>;
     });
-  }
-
-  private getTimeoutSetupCommands(
-    manager: EntityManager,
-    queryTimeoutMs?: number
-  ): Array<string> {
-    if (!queryTimeoutMs || queryTimeoutMs <= 0) return [];
-    if (manager.connection.options.type !== 'postgres') return [];
-    return [`SET LOCAL statement_timeout = ${Math.trunc(queryTimeoutMs)}`];
   }
 
   /**
    * Builds the vendor-specific SQL query used to load procedure metadata for a
    * package or schema.
    * @param packageName - package or schema name to inspect.
+   * @param procedureMetadataSql - optional SQL template with `:PACKAGE_NAME`.
    * @returns SQL query string for procedure metadata loading.
    */
-  public abstract generatePackageInfoSql(packageName: string): string;
+  public abstract generatePackageInfoSql(
+    packageName: string,
+    procedureMetadataSql?: string
+  ): string;
 
   /**
    * Converts named `:PARAM` placeholders and parameter values to the binding
@@ -188,7 +179,7 @@ export abstract class DatabaseAdapter<
     procedures: TProcedureArgumentList | undefined,
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn;
-
+  //TODO: Add in the future support for another out bindings
   /**
    * Reads all output cursors returned by a procedure call.
    * @param cursorNames - output cursor names from procedure metadata.
@@ -198,8 +189,10 @@ export abstract class DatabaseAdapter<
    */
   protected abstract fetchAllCursors<T>(
     cursorNames: Array<string>,
-    result?: Array<oracledb.ResultSet<T> | T>,
-    manager?: EntityManager
+    executeResult: {
+      result?: Array<oracledb.ResultSet<T> | T>;
+      manager?: EntityManager;
+    }
   ): Promise<Array<T>>;
 
   /**
@@ -245,13 +238,9 @@ export abstract class DatabaseAdapter<
   public listenNotify<T>(
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void,
-    options?: TNotifyOptions
+    options?: TNotifyOptions | undefined
   ): Promise<string> {
-    return this.notifier.listenNotify<T>(
-      sqlCommand,
-      notifyCallback,
-      options ?? ({} as TNotifyOptions)
-    );
+    return this.notifier.listenNotify<T>(sqlCommand, notifyCallback, options);
   }
 
   /**

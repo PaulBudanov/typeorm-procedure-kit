@@ -305,9 +305,9 @@ export class OracleDriver implements Driver {
    * either create a pool and create connection when needed.
    */
   public async connect(): Promise<void> {
-    const oracleLib = this.oracle as Record<string, unknown>;
-    oracleLib.fetchAsString = [oracleLib.DB_TYPE_CLOB as number];
-    oracleLib.fetchAsBuffer = [oracleLib.DB_TYPE_BLOB as number];
+    const oracleLib = this.oracle;
+    oracleLib.fetchAsString = [oracleLib.DB_TYPE_CLOB];
+    oracleLib.fetchAsBuffer = [oracleLib.DB_TYPE_BLOB];
     if (this.options.replication) {
       this.slaves = await Promise.all(
         this.options.replication.slaves.map((slave) => {

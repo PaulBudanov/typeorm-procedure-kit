@@ -1,5 +1,6 @@
 import type oracledb from 'oracledb';
 
+import { normalizeQueryTimeoutMs } from '../../../utils/query-timeout.js';
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { DataSource } from '../../data-source/DataSource.js';
 import { QueryFailedError } from '../../error/QueryFailedError.js';
@@ -129,6 +130,15 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     );
   }
 
+  private applyConnectionCallTimeout(connection: oracledb.Connection): void {
+    const queryTimeoutMs = normalizeQueryTimeoutMs(
+      this.driver.options.queryTimeoutMs
+    );
+    if (queryTimeoutMs !== undefined) {
+      connection.callTimeout = queryTimeoutMs;
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Public Methods
   // -------------------------------------------------------------------------
@@ -153,6 +163,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         : this.driver.obtainMasterConnection();
 
     this.databaseConnectionPromise = connectionPromise.then((connection) => {
+      this.applyConnectionCallTimeout(connection);
       this.databaseConnection = connection;
       return connection;
     });
@@ -172,9 +183,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       return;
     }
 
-    const connection = this.databaseConnection;
+    const connection = this.databaseConnection as oracledb.Connection;
     this.databaseConnection = undefined;
-    void (connection as oracledb.Connection).close();
+    await connection.close();
   }
 
   /**
@@ -292,10 +303,6 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     const queryStartTime = Date.now();
     const oracleConnection = databaseConnection as oracledb.Connection;
     const maxQueryExecutionTime = this.driver.options.maxQueryExecutionTime;
-    const previousCallTimeout = oracleConnection.callTimeout;
-    if (maxQueryExecutionTime && maxQueryExecutionTime > 0) {
-      oracleConnection.callTimeout = maxQueryExecutionTime;
-    }
 
     try {
       const oracleLib = this.driver.oracle as Record<string, unknown>;
@@ -393,7 +400,6 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
       throw new QueryFailedError(query, parameters, error);
     } finally {
-      oracleConnection.callTimeout = previousCallTimeout;
       await broadcasterResult.wait();
     }
   }

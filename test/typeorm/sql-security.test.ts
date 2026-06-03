@@ -89,6 +89,11 @@ describe('SQL security hardening', (): void => {
       "SELECT E'it\\'s :id'",
       "U&'value :id'",
       "q'[it's :id]'",
+      "Q'[it's :id]'",
+      "nq'{national :id}'",
+      "Nq'<national :id>'",
+      "nQ'(national :id)'",
+      "NQ'!national :id!'",
       ':id::uuid',
     ].join(', ');
 
@@ -99,7 +104,22 @@ describe('SQL security hardening', (): void => {
 
     expect(seenKeys).toEqual(['id']);
     expect(rewritten).toBe(
-      "SELECT E'it\\'s :id', U&'value :id', q'[it's :id]', ?::uuid"
+      "SELECT E'it\\'s :id', U&'value :id', q'[it's :id]', Q'[it's :id]', nq'{national :id}', Nq'<national :id>', nQ'(national :id)', NQ'!national :id!', ?::uuid"
+    );
+  });
+
+  it('does not replace named parameters inside nested Postgres block comments', (): void => {
+    const seenKeys: Array<string> = [];
+    const sql = 'SELECT /* outer /* inner :ignored */ :ignored */ :id';
+
+    const rewritten = replaceNamedParameters(sql, ({ key }) => {
+      seenKeys.push(key);
+      return '?';
+    });
+
+    expect(seenKeys).toEqual(['id']);
+    expect(rewritten).toBe(
+      'SELECT /* outer /* inner :ignored */ :ignored */ ?'
     );
   });
 
@@ -130,13 +150,40 @@ describe('SQL security hardening', (): void => {
       parameters: [1, 2, 'active'],
     });
 
+    expect(
+      buildSqlTag({
+        driver,
+        strings: ['select * from users where id in (', ')'] as never,
+        expressions: [(): Array<number> => [1, 2]],
+      })
+    ).toEqual({
+      query: 'select * from users where id in ($1, $2)',
+      parameters: [1, 2],
+    });
+
     expect(() =>
       buildSqlTag({
         driver,
         strings: ['select ', ''] as never,
         expressions: [(): string => '1'],
       })
-    ).toThrow('Function expressions are not parameterized');
+    ).toThrow('Only non-empty arrays are supported as function return values');
+
+    expect(() =>
+      buildSqlTag({
+        driver,
+        strings: ['select * from users where id in (', ')'] as never,
+        expressions: [(): Array<never> => []],
+      })
+    ).toThrow('function which returned an empty array');
+
+    expect(() =>
+      buildSqlTag({
+        driver,
+        strings: ['select * from users where id in (', ')'] as never,
+        expressions: [sqlParameterList([])],
+      })
+    ).toThrow('is an empty parameter list');
 
     expect(
       buildSqlTag({

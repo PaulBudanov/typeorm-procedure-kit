@@ -60,8 +60,25 @@ function copyUntilLineCommentEnd(sql: string, index: number): number {
 }
 
 function copyUntilBlockCommentEnd(sql: string, index: number): number {
-  const commentEndIndex = sql.indexOf('*/', index + 2);
-  return commentEndIndex === -1 ? sql.length : commentEndIndex + 2;
+  let current = index + 2;
+  let depth = 1;
+
+  while (current < sql.length) {
+    if (sql[current] === '/' && sql[current + 1] === '*') {
+      depth += 1;
+      current += 2;
+      continue;
+    }
+    if (sql[current] === '*' && sql[current + 1] === '/') {
+      depth -= 1;
+      current += 2;
+      if (depth === 0) return current;
+      continue;
+    }
+    current += 1;
+  }
+
+  return sql.length;
 }
 
 function copyUntilDollarQuoteEnd(
@@ -138,6 +155,19 @@ export function replaceNamedParameters(
       result += sql.slice(index, end);
       index = end;
       continue;
+    }
+
+    if (
+      (char === 'N' || char === 'n') &&
+      (next === 'Q' || next === 'q') &&
+      !isIdentifierPart(previous)
+    ) {
+      const end = copyUntilOracleQuotedLiteralEnd(sql, index + 1);
+      if (end !== undefined) {
+        result += sql.slice(index, end);
+        index = end;
+        continue;
+      }
     }
 
     if ((char === 'Q' || char === 'q') && !isIdentifierPart(previous)) {

@@ -43,17 +43,56 @@ describe('DatabaseOptionsExecutor', (): void => {
     );
   });
 
-  it('rejects unsafe raw option commands before execution', async (): Promise<void> => {
-    const logger = createLogger();
-    const query = vi.fn<(_sql: string) => Promise<unknown>>();
+  it.each([
+    'SET ROLE app',
+    'SET LOCAL ROLE app',
+    'SET search_path TO public',
+    'SET LOCAL search_path TO public',
+    'SET LOCAL search_path TO "$user", public, app_private',
+    'SET LOCAL TIME ZONE UTC',
+    "SET LOCAL TIME ZONE 'Europe/Moscow'",
+    "SET LOCAL app.role = 'app'",
+    'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE',
+    'ALTER SESSION SET CURRENT_SCHEMA = app',
+  ])('executes allowed option command: %s', async (command): Promise<void> => {
+    const query = vi
+      .fn<(_sql: string) => Promise<unknown>>()
+      .mockResolvedValue([]);
 
-    await expect(
-      DatabaseOptionsExecutor.executeCommands(
-        ['SET ROLE app; DROP TABLE users'],
-        { query } as never,
-        logger
-      )
-    ).rejects.toThrow('Unsafe database option command');
-    expect(query).not.toHaveBeenCalled();
+    await DatabaseOptionsExecutor.executeCommands(
+      [command],
+      { query } as never,
+      createLogger()
+    );
+
+    expect(query).toHaveBeenCalledWith(command);
   });
+
+  it.each([
+    'SET ROLE app; DROP TABLE users',
+    'SET ROLE app -- trusted',
+    'SET LOCAL ROLE app DROP TABLE users',
+    'SET search_path TO public /* trusted */',
+    'SET search_path TO public, pg_catalog; SELECT current_user',
+    'SET search_path TO public, evil()',
+    'SET search_path TO public UNION SELECT current_user',
+    "SET LOCAL TIME ZONE 'UTC'; SELECT pg_sleep(1)",
+    'SET LOCAL TIME ZONE UTC -- trusted',
+    'ALTER SESSION SET CURRENT_SCHEMA = app; DROP TABLE users',
+    'ALTER SESSION SET CURRENT_SCHEMA = app, OTHER = value',
+  ])(
+    'rejects unsafe raw option command: %s',
+    async (command): Promise<void> => {
+      const query = vi.fn<(_sql: string) => Promise<unknown>>();
+
+      await expect(
+        DatabaseOptionsExecutor.executeCommands(
+          [command],
+          { query } as never,
+          createLogger()
+        )
+      ).rejects.toThrow('Unsafe database option command');
+      expect(query).not.toHaveBeenCalled();
+    }
+  );
 });

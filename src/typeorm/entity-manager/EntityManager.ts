@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -1210,7 +1211,7 @@ export class EntityManager {
     }
 
     if (!options.where) {
-      throw new Error(
+      throw new ServerError(
         `You must provide selection conditions in order to find a single row.`
       );
     }

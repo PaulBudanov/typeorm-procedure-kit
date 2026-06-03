@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
@@ -1329,7 +1330,7 @@ export abstract class QueryBuilder<Entity = unknown> {
         if (!joinAttr?.alias) {
           const fullRelationPath =
             root.length > 0 ? `${root.join('.')}.${part}` : part;
-          throw new Error(
+          throw new ServerError(
             `Cannot find alias for relation at ${fullRelationPath}`
           );
         }
@@ -1344,7 +1345,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     }
 
     if (!alias) {
-      throw new Error(`Cannot find alias for property ${propertyPath}`);
+      throw new ServerError(`Cannot find alias for property ${propertyPath}`);
     }
 
     // Remaining parts are combined back and used to find the actual property path
@@ -1428,7 +1429,7 @@ export abstract class QueryBuilder<Entity = unknown> {
           relation.relationType === 'one-to-many' ||
           relation.relationType === 'many-to-many'
         ) {
-          throw new Error(
+          throw new ServerError(
             `Cannot query across ${relation.relationType} for property ${path}`
           );
         }

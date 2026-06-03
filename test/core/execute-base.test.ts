@@ -35,8 +35,7 @@ describe('ExecuteBase', (): void => {
       manager,
       ['SET LOCAL role = app'],
       [1],
-      [],
-      undefined
+      []
     );
     expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
   });
@@ -66,36 +65,6 @@ describe('ExecuteBase', (): void => {
     ).resolves.toEqual([{ id: 1 }]);
 
     expect(connectionBase.getEntityManager).toHaveBeenCalledWith('slave');
-  });
-
-  it('passes configured query timeout to the adapter', async (): Promise<void> => {
-    const manager = {};
-    const connectionBase = {
-      getEntityManager: vi.fn().mockResolvedValue(manager),
-      releaseEntityManager: vi
-        .fn<(_manager: object) => Promise<void>>()
-        .mockResolvedValue(undefined),
-    };
-    const adapter = createAdapterMock({
-      execute: vi.fn().mockResolvedValue([{ id: 1 }]),
-    });
-    const executeBase = new ExecuteBase(
-      connectionBase as never,
-      adapter,
-      createLogger(),
-      1500
-    );
-
-    await executeBase.execute('select 1', [], [], { queryId: 'query-1' });
-
-    expect(adapter.execute).toHaveBeenCalledWith(
-      'select 1',
-      manager,
-      [],
-      [],
-      [],
-      1500
-    );
   });
 
   it('wraps adapter errors as ServerError and still releases manager', async (): Promise<void> => {

@@ -243,7 +243,7 @@ const settings: IModuleConfig = {
     },
     poolSize: 10,
     appName: 'procedure-service',
-    callTimeout: 30_000,
+    maxQueryExecutionTime: 30_000,
     outKeyTransformCase: 'camelCase',
     isNeedRegisterDefaultSerializers: true,
     packagesSettings: {
@@ -273,7 +273,12 @@ const settings: IModuleConfig = {
 - `slaves`：TypeORM replication 使用的可选只读副本。
 - `poolSize`：连接池大小。
 - `appName`：传递给受支持驱动的应用名称。
-- `callTimeout`：传递给底层 DataSource 的慢查询阈值。
+- `maxQueryExecutionTime`：传递给底层 DataSource 的慢查询阈值；记录慢查询但不会取消。
+- `queryTimeoutMs`：可选的正整数 query timeout（毫秒）。PostgreSQL 会把它作为
+  `statement_timeout` 传给 `pg` pool，这是 statement-level timeout。Oracle 会在每次
+  获取 physical connection 后把它设置为 `oracledb` `connection.callTimeout`；它限制
+  每个 database round-trip，而不是整个 statement 的总耗时。
+- `callTimeout`：`maxQueryExecutionTime` 的 deprecated alias。
 - `outKeyTransformCase`：`camelCase`、`lowerCase` 或 `snakeCase`；默认值为
   `camelCase`。
 - `isNeedRegisterDefaultSerializers`：注册默认的日期和时间序列化器。
@@ -294,8 +299,8 @@ PostgreSQL 选项：
 Oracle 选项：
 
 - `libraryPath`：Oracle 厚模式使用的可选客户端库目录。
-- `cqnPort`：服务器发起的 Oracle CQN 使用的回调端口。
-- `isNeedClientNotificationInit`：默认的 Oracle CQN 客户端发起模式。
+- Oracle CQN 选项（例如 `clientInitiated` 和 legacy `cqnPort`）通过
+  `makeNotify()` 的第二个参数传入，而不是数据库配置。
 
 `packagesSettings.packages` 包含真实的数据库 package/schema 名称，并应使用小写
 值。`procedureObjectList` 的值必须是真实的过程名，例如
@@ -358,7 +363,9 @@ Raw SQL 与过程调用使用同一套执行、事务、序列化和错误处理
 执行选项：
 
 - `mode`：`master` 或 `slave`，默认值为 `master`。
-- `optionsCommands`：在同一事务中、主查询之前执行的 SQL 命令。
+- `optionsCommands`：在同一事务中、主查询之前执行的受限 setup 命令。每个元素必须是
+  一条不含注释或分隔符的安全命令。PostgreSQL 支持允许的 `SET`、`SET LOCAL` 和
+  `SET TRANSACTION` 形式；Oracle 支持 `ALTER SESSION SET name = value`。
 - `queryId`：用于日志和封装后的数据库错误的自定义 id。
 
 ## 通知
@@ -406,6 +413,8 @@ await db.unlistenNotify(channel);
 适配器会生成 UUID 订阅名。当 CQN 报告 changed ROWIDs 时，适配器会获取变更行，
 并把这些行传给回调。Oracle 订阅会被监控，并在 CQN 注销、关闭事件、连接错误或
 静默连接丢失后恢复。
+只有需要数据库回调端口的 server-initiated CQN setup 才应同时使用
+`clientInitiated: false` 和 legacy `cqnPort`。
 
 ### 动态刷新 package 元数据
 
@@ -417,6 +426,19 @@ await db.unlistenNotify(channel);
 
 PostgreSQL 默认监听 `db_object_event`，除非配置了 `listenEventName`。Oracle 会查询
 `SOLUTION_ROOT.DB_OBJECT_LOG` 以获取 package 变更。
+
+`packagesSettings.procedureMetadataSql` 和
+`packagesSettings.metadataNotificationSql` 是 trusted developer SQL config，
+不是 runtime SQL builder。它们应保持静态，或只由经过审查的常量组合；不要从
+user input 构造。
+
+`packagesSettings.procedureMetadataSql` 可以替换两个数据库的默认 procedure metadata
+查询。SQL 必须包含 `:PACKAGE_NAME`，并且必须返回 snake_case 到 camelCase 转换后兼容
+`IProcedureArgumentBase` 的列：`procedure_name`、`argument_name`、
+`argument_type`、`order` 和 `mode`。
+
+`packagesSettings.metadataNotificationSql` 可以替换默认 metadata refresh 订阅 SQL。
+PostgreSQL 需要完整的 `LISTEN ...` 命令。Oracle 需要完整的 CQN `SELECT ...` 查询。
 
 ## 序列化器
 
@@ -524,6 +546,13 @@ NestJS 入口还导出用于注入单个方法的装饰器：
 `typeorm-procedure-kit/typeorm` 入口导出装饰器、DataSource、EntityManager、
 仓储、查询构建器和相关类型。运行时基于一个维护中的 TypeORM 兼容 fork，
 并针对 Oracle 和 PostgreSQL 工作流进行了优化。
+
+请使用文档列出的入口点，不要 deep import 内置 TypeORM 的内部文件。SQL tagged
+template 会自动参数化 scalar value。`SqlTagUtils` 不再把 TypeORM-compatible raw
+function expressions 当作 raw SQL path，因此返回 SQL text 的 callback 会被拒绝。
+Migration path：`unsafeRawSql()` 仅用于经过审查的 trusted SQL fragment，
+`sqlIdentifier()` 用于动态标识符，`sqlParameterList()` 用于 parameter lists。返回
+非空数组的 callback 仍只是 parameter-list expansion，不是 raw SQL。
 
 增强内容包括：
 

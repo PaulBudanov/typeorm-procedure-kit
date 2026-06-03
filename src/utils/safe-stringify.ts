@@ -26,10 +26,8 @@ function sanitizeForLog(
   value: unknown,
   options: Required<ISafeStringifyOptions>,
   depth: number,
-  seen: WeakSet<object>,
-  key?: string
+  seen: WeakSet<object>
 ): unknown {
-  if (key && options.redactKeys.test(key)) return '[REDACTED]';
   if (typeof value === 'string')
     return truncateString(value, options.maxStringLength);
   if (typeof value === 'bigint') return `${value.toString()}n`;
@@ -57,20 +55,23 @@ function sanitizeForLog(
     return values;
   }
 
-  const entries = Object.entries(value).slice(0, options.maxObjectKeys);
   const result: Record<string, unknown> = {};
-  for (const [entryKey, entryValue] of entries) {
-    result[entryKey] = sanitizeForLog(
-      entryValue,
-      options,
-      depth + 1,
-      seen,
-      entryKey
-    );
-  }
-  const keyCount = Object.keys(value).length;
-  if (keyCount > options.maxObjectKeys) {
-    result['[truncated]'] = `${keyCount - options.maxObjectKeys} more keys`;
+  let keyCount = 0;
+  for (const entryKey in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, entryKey)) continue;
+    if (keyCount >= options.maxObjectKeys) {
+      result['[truncated]'] = 'additional keys omitted';
+      break;
+    }
+    result[entryKey] = options.redactKeys.test(entryKey)
+      ? '[REDACTED]'
+      : sanitizeForLog(
+          (value as Record<string, unknown>)[entryKey],
+          options,
+          depth + 1,
+          seen
+        );
+    keyCount += 1;
   }
 
   seen.delete(value);

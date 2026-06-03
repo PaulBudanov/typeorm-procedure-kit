@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { Readable } from 'stream';
+
+import { describe, expect, it, vi } from 'vitest';
 
 import { OracleAdapter } from '../../src/adapters/oracle/oracle-adapter.js';
 import { ServerError } from '../../src/utils/server-error.js';
@@ -13,8 +15,7 @@ function createOracleAdapter(): OracleAdapter {
       caseStrategy: {
         transformColumnName: (value: string): string => value,
       },
-    },
-    {}
+    }
   );
 }
 
@@ -22,9 +23,27 @@ describe('OracleAdapter', (): void => {
   it('generates safe package info SQL', (): void => {
     const adapter = createOracleAdapter();
 
-    expect(adapter.generatePackageInfoSql('pkg')).toContain("('PKG')");
+    const sql = adapter.generatePackageInfoSql('pkg');
+
+    expect(sql).toContain("a.PACKAGE_NAME = 'PKG'");
+    expect(sql).not.toContain(':PACKAGE_NAME');
+    expect(sql).not.toContain('package_name');
     expect((): void => {
       adapter.generatePackageInfoSql('pkg;drop');
+    }).toThrow(ServerError);
+  });
+
+  it('generates package info SQL from a custom template', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect(
+      adapter.generatePackageInfoSql(
+        'pkg',
+        'SELECT * FROM CUSTOM_ARGS WHERE PACKAGE_NAME = :PACKAGE_NAME'
+      )
+    ).toBe("SELECT * FROM CUSTOM_ARGS WHERE PACKAGE_NAME = 'PKG'");
+    expect((): void => {
+      adapter.generatePackageInfoSql('pkg', 'SELECT * FROM CUSTOM_ARGS');
     }).toThrow(ServerError);
   });
 
@@ -124,5 +143,83 @@ describe('OracleAdapter', (): void => {
       sqlString: sql,
       bindings: [1, 2],
     });
+  });
+
+  it('does not obtain the Oracle physical connection from adapter runtime', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const manager = {
+      connection: { options: { type: 'oracle' } },
+      queryRunner: {
+        connect: vi.fn(),
+      },
+      query: vi.fn().mockResolvedValue([]),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) => {
+          return execute(manager);
+        }
+      ),
+    };
+
+    await adapter.execute('select 1 from dual', manager as never, [], [], []);
+
+    expect(manager.queryRunner.connect).not.toHaveBeenCalled();
+    expect(manager.query).toHaveBeenCalledWith('select 1 from dual', []);
+  });
+
+  it('drains Oracle cursor streams sequentially on the shared connection', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    let activeStreams = 0;
+    let maxActiveStreams = 0;
+    const events: Array<string> = [];
+    const createResultSet = (
+      cursorName: string
+    ): { toQueryStream: () => Readable } => {
+      return {
+        toQueryStream: (): Readable => {
+          return Readable.from(
+            (async function* (): AsyncGenerator<{ cursorName: string }> {
+              activeStreams += 1;
+              maxActiveStreams = Math.max(maxActiveStreams, activeStreams);
+              events.push(`${cursorName}:start`);
+              await new Promise<void>((resolve) => setTimeout(resolve, 0));
+              yield { cursorName };
+              activeStreams -= 1;
+              events.push(`${cursorName}:end`);
+            })()
+          );
+        },
+      };
+    };
+    const manager = {
+      connection: { options: { type: 'oracle' } },
+      query: vi
+        .fn()
+        .mockResolvedValue([
+          createResultSet('first'),
+          createResultSet('second'),
+        ]),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) => {
+          return execute(manager);
+        }
+      ),
+    };
+
+    await expect(
+      adapter.execute<{ cursorName: string }>(
+        'begin pkg.run(:first, :second); end;',
+        manager as never,
+        [],
+        [],
+        ['first', 'second']
+      )
+    ).resolves.toEqual([{ cursorName: 'first' }, { cursorName: 'second' }]);
+    expect(maxActiveStreams).toBe(1);
+    expect(events).toEqual([
+      'first:start',
+      'first:end',
+      'second:start',
+      'second:end',
+    ]);
   });
 });

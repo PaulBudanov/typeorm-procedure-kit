@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve } from 'path';
 
 import appRootPath from 'app-root-path';
 
+import { ServerError } from '../../utils/server-error.js';
 import { PlatformTools } from '../platform/PlatformTools.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
@@ -106,7 +107,7 @@ export class FileLogger extends AbstractLogger {
     const resolvedLogPath = resolve(basePath, logPath);
     const relativeLogPath = relative(basePath, resolvedLogPath);
     if (relativeLogPath.startsWith('..') || isAbsolute(relativeLogPath)) {
-      throw new Error(
+      throw new ServerError(
         'File logger path must stay inside the application root.'
       );
     }

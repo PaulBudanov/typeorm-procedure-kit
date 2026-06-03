@@ -15,7 +15,6 @@ export type {
 // Procedures
 export type {
   IProcedureArgumentBase,
-  IProcedureArgumentOracle,
   TDBMapStructure,
   TProcedureArgumentList,
   TProcedurePayload,

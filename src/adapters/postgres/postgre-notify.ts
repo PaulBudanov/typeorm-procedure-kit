@@ -14,6 +14,8 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 import type { PostgreConnection } from './postgre-connection.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
 export class PostgreNotify extends DatabaseNotify<Client> {
+  private readonly pendingRegistrations = new Set<string>();
+
   public constructor(
     private readonly postgreConnection: PostgreConnection,
     protected readonly logger: ILoggerModule,
@@ -51,63 +53,64 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: INotifyRetryOptions = {}
   ): Promise<string> {
+    this.assertCanRegisterNotification();
+    const channelName = this.parseListenChannel(sqlCommand);
+    const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
+      channelName
+    )}`;
+    if (
+      this.notificationPool.has(channelName) ||
+      this.pendingRegistrations.has(channelName)
+    ) {
+      throw new ServerError(
+        `Listener for channel "${channelName}" already registered`
+      );
+    }
+    this.pendingRegistrations.add(channelName);
+
     let client: Client | undefined;
     try {
-      const match = sqlCommand
-        .trim()
-        .match(/^LISTEN\s+"?([A-Za-z_][A-Za-z0-9_$#]*)"?\s*;?$/i);
-      const parsedChannelName = match?.[1];
-      if (!parsedChannelName)
-        throw new ServerError(
-          'SQL command must contain LISTEN for notification, example: LISTEN'
-        );
-      const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
-        parsedChannelName
-      )}`;
-      if (this.notificationPool.has(parsedChannelName)) {
-        throw new ServerError(
-          `Listener for channel "${parsedChannelName}" already registered`
-        );
-      }
       client = await this.postgreConnection.createSingleConnection();
+      this.assertCanRegisterNotification();
       await client.query(listenSql);
+      this.assertCanRegisterNotification();
       this.postgreConnection.registerConnectionErrorHandler(client, () => {
-        if (this.notificationPool.get(parsedChannelName) !== client) return;
+        if (this.notificationPool.get(channelName) !== client) return;
         void this.restoreClientConnectionCallback<T>(
-          parsedChannelName,
+          channelName,
           notifyCallback,
           options
         );
       });
       client.on('notification', (msg) => {
-        if (msg.channel?.toLowerCase() === parsedChannelName.toLowerCase()) {
+        if (msg.channel?.toLowerCase() === channelName.toLowerCase()) {
           void this.handleNotificationPayload<T>(
-            parsedChannelName,
+            channelName,
             msg.payload,
             notifyCallback
           );
         }
         return;
       });
-      this.notificationPool.set(parsedChannelName, client);
-      this.markNotificationActive(parsedChannelName);
+      this.notificationPool.set(channelName, client);
+      this.markNotificationActive(channelName);
       this.startConnectionHealthCheck({
-        channelName: parsedChannelName,
+        channelName,
         connection: client,
         intervalMs: this.CONNECTION_HEALTH_CHECK_INTERVAL_MS,
         isHealthy: (connection) =>
           this.postgreConnection.isSingleConnectionHealthy(connection),
         restore: () =>
           this.restoreClientConnectionCallback<T>(
-            parsedChannelName,
+            channelName,
             notifyCallback,
             options
           ),
       });
       this.logger.log(
-        `Successfully registered listener for channel: ${parsedChannelName}`
+        `Successfully registered listener for channel: ${channelName}`
       );
-      return parsedChannelName;
+      return channelName;
     } catch (error: unknown) {
       this.logger.error(
         `Error registering notification listener: ${(error as Error).message}`,
@@ -115,7 +118,22 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       );
       if (client) await this.postgreConnection.closeSingleConnection(client);
       throw error;
+    } finally {
+      this.pendingRegistrations.delete(channelName);
     }
+  }
+
+  private parseListenChannel(sqlCommand: string): string {
+    const match = sqlCommand
+      .trim()
+      .match(/^LISTEN\s+"?([A-Za-z_][A-Za-z0-9_$#]*)"?\s*;?$/i);
+    const channelName = match?.[1];
+    if (!channelName) {
+      throw new ServerError(
+        'SQL command must contain LISTEN for notification, example: LISTEN'
+      );
+    }
+    return channelName;
   }
 
   private async handleNotificationPayload<T>(

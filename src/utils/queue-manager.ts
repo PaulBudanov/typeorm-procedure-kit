@@ -1,6 +1,7 @@
 import type { TMapKey, TQueueType } from '../types/utility.types.js';
 
 import { EventBusService } from './event-bus.js';
+import { ServerError } from './server-error.js';
 
 export class QueueManager<TQueueItem> {
   private _eventBusService: EventBusService;
@@ -110,7 +111,7 @@ export class QueueManager<TQueueItem> {
     } else if (this.queue instanceof Set) {
       return new Set(this.queue);
     }
-    throw new Error('Unexpected collection type');
+    throw new ServerError('Unexpected collection type');
   }
 
   public getEventBusService(): EventBusService {
@@ -165,13 +166,13 @@ export class QueueManager<TQueueItem> {
       return array.shift();
     } else if (typeof key === 'number') {
       if (key < 0 || key >= array.length) {
-        throw new Error(`Index out of bounds: ${key}`);
+        throw new ServerError(`Index out of bounds: ${key}`);
       }
       return array.splice(key, 1)[0];
     } else {
       const index = array.indexOf(key as unknown as TQueueItem);
       if (index === -1) {
-        throw new Error(`Value not found in array: ${key?.toString()}`);
+        throw new ServerError(`Value not found in array: ${key?.toString()}`);
       }
       return array.splice(index, 1)[0];
     }

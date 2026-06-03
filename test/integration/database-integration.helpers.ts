@@ -1,7 +1,8 @@
-import type {
-  IModuleConfig,
-  TOracleDbConfig,
-  TPostgresDbConfig,
+import {
+  ServerError,
+  type IModuleConfig,
+  type TOracleDbConfig,
+  type TPostgresDbConfig,
 } from '../../src/index.js';
 import { createLogger, type TestLogger } from '../support/helpers.js';
 
@@ -16,7 +17,7 @@ function isIntegrationRequired(): boolean {
 
 function handleMissingEnv(database: string): null {
   if (isIntegrationRequired()) {
-    throw new Error(`${database} integration test env is incomplete`);
+    throw new ServerError(`${database} integration test env is incomplete`);
   }
   return null;
 }
