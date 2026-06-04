@@ -25,9 +25,21 @@ interface IPackagesSettingsDefault {
    */
   procedureObjectList: Record<string, string>;
   /**
-   * Enables dynamic package update mode. In PostgreSQL configs this also
-   * requires `listenEventName` so package-change notifications can use a
-   * custom channel.
+   * Trusted developer SQL used to load procedure argument metadata. Do not
+   * build this value from user input.
+   * The SQL must contain `:PACKAGE_NAME` and return columns compatible with
+   * `IProcedureArgumentBase` after snake_case to camelCase conversion:
+   * `procedure_name`, `argument_name`, `argument_type`, `order`, and `mode`.
+   */
+  procedureMetadataSql?: string;
+  /**
+   * Trusted developer SQL used to subscribe to package metadata change
+   * notifications. Do not build this value from user input. PostgreSQL expects
+   * a full `LISTEN ...` command. Oracle expects a full CQN `SELECT ...` query.
+   */
+  metadataNotificationSql?: string;
+  /**
+   * Enables dynamic package update mode.
    */
   isNeedDynamicallyUpdatePackagesInfo?: boolean;
 }
@@ -50,7 +62,21 @@ export interface IBaseConfig {
    */
   appName?: string;
   /**
-   * Slow-query threshold passed as maxQueryExecutionTime.
+   * Slow-query threshold passed to TypeORM as `maxQueryExecutionTime`.
+   * Queries that exceed this duration are logged but are not cancelled.
+   */
+  maxQueryExecutionTime?: number;
+  /**
+   * Global query timeout in milliseconds for library-managed SQL execution.
+   * PostgreSQL passes this value to `pg` as `statement_timeout`. Oracle applies
+   * it to every acquired physical connection as node-oracledb
+   * `connection.callTimeout`, which limits each database round-trip rather than
+   * the complete statement duration.
+   */
+  queryTimeoutMs?: number;
+  /**
+   * @deprecated Use `maxQueryExecutionTime`. This option is kept as a
+   * slow-query threshold alias and does not cancel queries.
    */
   callTimeout?: number;
   /**
@@ -64,26 +90,15 @@ export interface IBaseConfig {
   outKeyTransformCase?: TKeyTransformCase;
 }
 
-interface IOracleConfigWithoutLibrary extends IBaseConfig {
+interface IOracleBaseConfig extends IBaseConfig {
   type: 'oracle';
-  libraryPath?: undefined;
-  cqnPort?: number;
-  isNeedClientNotificationInit?: boolean;
   packagesSettings?: IPackagesSettingsDefault;
+  libraryPath?: string | undefined;
 }
 
-interface IOracleConfigWithLibrary extends Omit<
-  IOracleConfigWithoutLibrary,
-  'libraryPath'
-> {
-  libraryPath: string;
-}
+export type TOracleDbConfig = IOracleBaseConfig;
 
-export type TOracleDbConfig =
-  | IOracleConfigWithoutLibrary
-  | IOracleConfigWithLibrary;
-
-interface IPostgresDbConfigWithPackagesEvent extends IBaseConfig {
+interface IPostgresDbConfig extends IBaseConfig {
   type: 'postgres';
   /**
    * Passed to the bundled Postgres driver as `parseInt8`.
@@ -92,24 +107,11 @@ interface IPostgresDbConfigWithPackagesEvent extends IBaseConfig {
    */
   parseInt8AsBigInt: boolean;
   packagesSettings?: IPackagesSettingsDefault & {
-    listenEventName: string;
-    isNeedDynamicallyUpdatePackagesInfo: true;
-  };
-}
-
-interface IPostgresDbConfigWithoutPackagesEvent extends Omit<
-  IPostgresDbConfigWithPackagesEvent,
-  'packagesSettings'
-> {
-  packagesSettings?: IPackagesSettingsDefault & {
     listenEventName?: string;
-    isNeedDynamicallyUpdatePackagesInfo?: false;
   };
 }
 
-export type TPostgresDbConfig =
-  | IPostgresDbConfigWithPackagesEvent
-  | IPostgresDbConfigWithoutPackagesEvent;
+export type TPostgresDbConfig = IPostgresDbConfig;
 export type TDbConfig<
   Type = TOracleDbConfig['type'] | TPostgresDbConfig['type'],
 > = Type extends TOracleDbConfig['type'] ? TOracleDbConfig : TPostgresDbConfig;
@@ -133,7 +135,9 @@ export interface IExecutionOptions {
    */
   mode?: TConnectionMode;
   /**
-   * SQL commands executed inside the same transaction before the main query.
+   * Restricted setup commands executed inside the same transaction before the
+   * main query. Each item must match the supported safe SET or ALTER SESSION
+   * grammar.
    */
   optionsCommands?: Array<string>;
   /**

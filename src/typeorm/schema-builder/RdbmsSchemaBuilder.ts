@@ -1,4 +1,4 @@
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import type { PostgresQueryRunner } from '../driver/postgres/PostgresQueryRunner.js';

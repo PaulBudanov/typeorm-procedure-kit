@@ -19,6 +19,7 @@ import type { View } from '../../schema-builder/view/View.js';
 import { ApplyValueTransformers } from '../../util/ApplyValueTransformers.js';
 import { DateUtils } from '../../util/DateUtils.js';
 import { InstanceChecker } from '../../util/InstanceChecker.js';
+import { replaceNamedParameters } from '../../util/NamedParameterUtils.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import type { Driver } from '../Driver.js';
 import { DriverUtils } from '../DriverUtils.js';
@@ -304,9 +305,9 @@ export class OracleDriver implements Driver {
    * either create a pool and create connection when needed.
    */
   public async connect(): Promise<void> {
-    const oracleLib = this.oracle as Record<string, unknown>;
-    oracleLib.fetchAsString = [oracleLib.DB_TYPE_CLOB as number];
-    oracleLib.fetchAsBuffer = [oracleLib.DB_TYPE_BLOB as number];
+    const oracleLib = this.oracle;
+    oracleLib.fetchAsString = [oracleLib.DB_TYPE_CLOB];
+    oracleLib.fetchAsBuffer = [oracleLib.DB_TYPE_BLOB];
     if (this.options.replication) {
       this.slaves = await Promise.all(
         this.options.replication.slaves.map((slave) => {
@@ -384,37 +385,34 @@ export class OracleDriver implements Driver {
     if (!parameters || !Object.keys(parameters).length)
       return [sql, escapedParameters];
 
-    sql = sql.replace(
-      /:(\.\.\.)?([A-Za-z0-9_.]+)/g,
-      (full, isArray: string, key: string): string => {
-        if (!Object.prototype.hasOwnProperty.call(parameters, key)) {
-          return full;
-        }
-
-        const value: unknown = parameters[key];
-
-        if (isArray) {
-          return (value as Array<unknown>)
-            .map((v: unknown) => {
-              escapedParameters.push(v);
-              return this.createParameter(key, escapedParameters.length - 1);
-            })
-            .join(', ');
-        }
-
-        if (typeof value === 'function') {
-          return (value as () => string)();
-        }
-
-        if (typeof value === 'boolean') {
-          return value ? '1' : '0';
-        }
-
-        escapedParameters.push(value);
-
-        return this.createParameter(key, escapedParameters.length - 1);
+    sql = replaceNamedParameters(sql, ({ full, isArray, key }): string => {
+      if (!Object.prototype.hasOwnProperty.call(parameters, key)) {
+        return full;
       }
-    ); // todo: make replace only in value statements, otherwise problems
+
+      const value: unknown = parameters[key];
+
+      if (isArray) {
+        return (value as Array<unknown>)
+          .map((v: unknown) => {
+            escapedParameters.push(v);
+            return this.createParameter(key, escapedParameters.length - 1);
+          })
+          .join(', ');
+      }
+
+      if (typeof value === 'function') {
+        return (value as () => string)();
+      }
+
+      if (typeof value === 'boolean') {
+        return value ? '1' : '0';
+      }
+
+      escapedParameters.push(value);
+
+      return this.createParameter(key, escapedParameters.length - 1);
+    }); // todo: make replace only in value statements, otherwise problems
     return [sql, escapedParameters];
   }
 
@@ -422,7 +420,17 @@ export class OracleDriver implements Driver {
    * Escapes a column name.
    */
   public escape(columnName: string): string {
-    return `"${columnName}"`;
+    if (
+      Array.from(columnName).some((char) => {
+        const code = char.charCodeAt(0);
+        return code <= 31 || code === 127;
+      })
+    ) {
+      throw new TypeORMError(
+        'SQL identifiers cannot contain control characters.'
+      );
+    }
+    return `"${columnName.replace(/"/g, '""')}"`;
   }
 
   /**

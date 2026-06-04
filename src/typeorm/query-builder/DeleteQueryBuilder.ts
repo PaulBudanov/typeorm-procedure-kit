@@ -1,11 +1,11 @@
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { ReturningStatementNotSupportedError } from '../error/ReturningStatementNotSupportedError.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 
-import { Brackets } from './Brackets.js';
+import type { Brackets } from './Brackets.js';
 import { QueryBuilder } from './QueryBuilder.js';
 import { DeleteResult } from './result/DeleteResult.js';
 import type { WhereExpressionBuilder } from './WhereExpressionBuilder.js';

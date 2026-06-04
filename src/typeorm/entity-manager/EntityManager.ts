@@ -1,9 +1,10 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { PickKeysByType } from '../common/PickKeysByType.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import { EntityNotFoundError } from '../error/EntityNotFoundError.js';
@@ -17,10 +18,10 @@ import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
 import type { FindOptionsWhere } from '../find-options/FindOptionsWhere.js';
 import { EntityPersistExecutor } from '../persistence/EntityPersistExecutor.js';
 import type { QueryDeepPartialEntity } from '../query-builder/QueryPartialEntity.js';
-import { DeleteResult } from '../query-builder/result/DeleteResult.js';
-import { InsertResult } from '../query-builder/result/InsertResult.js';
-import { UpdateResult } from '../query-builder/result/UpdateResult.js';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import type { DeleteResult } from '../query-builder/result/DeleteResult.js';
+import type { InsertResult } from '../query-builder/result/InsertResult.js';
+import type { UpdateResult } from '../query-builder/result/UpdateResult.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import { PlainObjectToDatabaseEntityTransformer } from '../query-builder/transformer/PlainObjectToDatabaseEntityTransformer.js';
 import { PlainObjectToNewEntityTransformer } from '../query-builder/transformer/PlainObjectToNewEntityTransformer.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
@@ -1210,7 +1211,7 @@ export class EntityManager {
     }
 
     if (!options.where) {
-      throw new Error(
+      throw new ServerError(
         `You must provide selection conditions in order to find a single row.`
       );
     }

@@ -4,7 +4,7 @@ import { DateUtils } from '../util/DateUtils.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
-import { Subject } from './Subject.js';
+import type { Subject } from './Subject.js';
 
 /**
  * Finds what columns are changed in the subject entities.

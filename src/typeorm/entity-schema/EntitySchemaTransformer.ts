@@ -16,11 +16,11 @@ import type { TableMetadataArgs } from '../metadata-args/TableMetadataArgs.js';
 import type { ColumnMode } from '../metadata-args/types/ColumnMode.js';
 import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
 
-import { EntitySchema } from './EntitySchema.js';
+import type { EntitySchema } from './EntitySchema.js';
 import type { EntitySchemaColumnOptions } from './EntitySchemaColumnOptions.js';
 import type { EntitySchemaEmbeddedColumnOptions } from './EntitySchemaEmbeddedColumnOptions.js';
 import { EntitySchemaEmbeddedError } from './EntitySchemaEmbeddedError.js';
-import { EntitySchemaOptions } from './EntitySchemaOptions.js';
+import type { EntitySchemaOptions } from './EntitySchemaOptions.js';
 import type { EntitySchemaRelationIdOptions } from './EntitySchemaRelationIdOptions.js';
 import type { EntitySchemaRelationOptions } from './EntitySchemaRelationOptions.js';
 

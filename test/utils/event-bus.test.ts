@@ -35,6 +35,19 @@ describe('EventBusService', (): void => {
     subscription.unsubscribe();
   });
 
+  it('awaits async listeners without breaking once listener semantics', async (): Promise<void> => {
+    const eventBus = EventBusService.getNewInstance();
+    const listener = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+    eventBus.registerOnce('changed', listener);
+
+    await eventBus.emitAsync('changed');
+    await eventBus.emitAsync('changed');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(eventBus.getListenerCount('changed')).toBe(0);
+  });
+
   it('removes listeners and updates max listeners', (): void => {
     const eventBus = EventBusService.getNewInstance(2);
     const listener = vi.fn<(data: string) => void>();

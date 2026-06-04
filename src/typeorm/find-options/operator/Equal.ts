@@ -1,5 +1,5 @@
 import { EqualOperator } from '../EqualOperator.js';
-import { FindOperator } from '../FindOperator.js';
+import type { FindOperator } from '../FindOperator.js';
 
 /**
  * Find Options Operator.

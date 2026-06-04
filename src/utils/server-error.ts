@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 
 import { DateTime } from 'luxon';
 
+import { safeStringify } from './safe-stringify.js';
+
 export class ServerError extends Error {
   public readonly errorId: string;
   public readonly timestamp: Date = DateTime.now().toLocal().toJSDate();
@@ -61,7 +63,7 @@ export class ServerError extends Error {
       errorObject.error instanceof Error
         ? errorObject.error.message
         : typeof errorObject.error === 'object'
-          ? JSON.stringify(errorObject.error)
+          ? safeStringify(errorObject.error)
           : String(errorObject.error);
     return new ServerError(
       errorObject.message ?? messageString,

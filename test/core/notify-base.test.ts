@@ -53,12 +53,11 @@ describe('NotifyBase', (): void => {
       }
     );
 
-    notifyBase.packageNotifyCallback({ event: 'CREATE', object: 'PKG' });
-    notifyBase.packageNotifyCallback([
+    await notifyBase.packageNotifyCallback({ event: 'CREATE', object: 'PKG' });
+    await notifyBase.packageNotifyCallback([
       { name: 'PKG' },
       { name: 'OTHER' },
     ] as never);
-    await Promise.resolve();
 
     expect(fetchProcedureListWithArguments).toHaveBeenCalledWith('pkg');
     expect(fetchProcedureListWithArguments).toHaveBeenCalledTimes(2);

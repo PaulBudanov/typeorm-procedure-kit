@@ -1,6 +1,6 @@
 import type { NamingStrategyInterface } from '../typeorm/index.js';
 import { DefaultNamingStrategy } from '../typeorm/naming-strategy/DefaultNamingStrategy.js';
-import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
+import type { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { ServerError } from '../utils/server-error.js';
 
 //TODO: Extend NamingStrategy Class.

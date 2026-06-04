@@ -4,7 +4,6 @@ import oracledb from 'oracledb';
 
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
-  INotifyOracleDefaultSettings,
   IOracleNotifyMsg,
   IOracleNotifyRestoreSettings,
   IOracleOptionsNotify,
@@ -16,7 +15,7 @@ import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseNotify } from '../abstract/database-notify.js';
 
-import { OracleConnection } from './oracle-connection.js';
+import type { OracleConnection } from './oracle-connection.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
 export class OracleNotify extends DatabaseNotify<
@@ -27,12 +26,10 @@ export class OracleNotify extends DatabaseNotify<
    * Creates an Oracle notification adapter for Continuous Query Notification.
    * @param oracleConnection - single-connection helper used by CQN subscriptions.
    * @param logger - logger used by notification operations.
-   * @param notifySettings - default CQN settings from database config.
    */
   public constructor(
     private readonly oracleConnection: OracleConnection,
-    protected readonly logger: ILoggerModule,
-    private readonly notifySettings: INotifyOracleDefaultSettings
+    protected readonly logger: ILoggerModule
   ) {
     super(logger);
   }
@@ -44,6 +41,11 @@ export class OracleNotify extends DatabaseNotify<
    * const notifySql = dataBase.getPackagesNotifySql(['PACKAGE_NAME_1', 'PACKAGE_NAME_2']);
    */
   public getPackagesNotifySql(packages: Array<string>): string {
+    if (packages.length === 0) {
+      throw new ServerError(
+        'At least one package is required to build Oracle metadata notification SQL'
+      );
+    }
     const packageConditions = packages
       .map(
         (pkg) =>
@@ -66,11 +68,18 @@ export class OracleNotify extends DatabaseNotify<
    * @param channelName - subscription name returned by listenNotify.
    */
   public override async unlistenNotify(channelName: string): Promise<void> {
-    this.cancelNotificationRestore(channelName);
+    await this.closeSubscription(channelName, true);
+  }
+
+  private async closeSubscription(
+    channelName: string,
+    cancelRestore: boolean
+  ): Promise<void> {
+    if (cancelRestore) this.cancelNotificationRestore(channelName);
     const connection = this.notificationPool.get(channelName);
     this.notificationPool.delete(channelName);
     this.stopConnectionHealthCheck(channelName);
-    this.clearNotificationRestoreState(channelName);
+    if (cancelRestore) this.clearNotificationRestoreState(channelName);
     if (!connection) {
       this.logger.warn(`No active subscription for channel: ${channelName}`);
       return;
@@ -113,6 +122,7 @@ export class OracleNotify extends DatabaseNotify<
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: IOracleOptionsNotify = {}
   ): Promise<string> {
+    this.assertCanRegisterNotification();
     if (Array.isArray(options.operations)) {
       if (options.operations.length >= 4)
         throw new ServerError(
@@ -183,22 +193,20 @@ export class OracleNotify extends DatabaseNotify<
       qos: settings.qos,
       timeout: settings.timeout,
       clientInitiated: settings.clientInitiated,
+      cqnPort: settings.cqnPort,
       maxRetries: settings.maxRetries,
       retryDelayMs: settings.retryDelayMs,
       retryAfterMaxDelayMs: settings.retryAfterMaxDelayMs,
     };
     const clientInitiated =
-      settings.clientInitiated ??
-      this.notifySettings.isNeedClientNotificationInit ??
-      false;
+      settings.clientInitiated === undefined ? true : settings.clientInitiated;
     const subscribeOptions = {
       sql,
       clientInitiated,
       timeout: settings.timeout ?? 60 * 60 * 12,
       operations: settings.operations ?? oracledb.CQN_OPCODE_ALL_OPS,
       qos: settings.qos ?? oracledb.SUBSCR_QOS_ROWIDS,
-      port:
-        clientInitiated === true ? undefined : this.notifySettings.notifyPort, // Listener port for CQN
+      port: clientInitiated === true ? undefined : settings.cqnPort,
       callback: (msg: oracledb.SubscriptionMessage): Promise<void> =>
         this.makeSubscriptionHandler(
           notifyCallback,
@@ -233,7 +241,9 @@ export class OracleNotify extends DatabaseNotify<
     options: TOracleNormilizeOptionsNotify
   ): Promise<string> {
     try {
+      this.assertCanRegisterNotification();
       await connection.subscribe(channelName, subscribeOptions);
+      this.assertCanRegisterNotification();
       this.notificationPool.set(channelName, connection);
       this.markNotificationActive(channelName);
       this.startConnectionHealthCheck({
@@ -359,10 +369,11 @@ export class OracleNotify extends DatabaseNotify<
     settings: IOracleNotifyRestoreSettings<T>,
     channelName: string
   ): Promise<void> {
-    const connection = await this.oracleConnection.createSingleConnection();
+    let connection: oracledb.Connection | undefined;
     try {
       try {
-        await this.unlistenNotify(channelName);
+        await this.closeSubscription(channelName, false);
+        if (this.isNotificationRestoreCancelled(channelName)) return;
       } catch {
         const newChannelName = randomUUID();
         this.logger.warn(
@@ -370,6 +381,8 @@ export class OracleNotify extends DatabaseNotify<
         );
         channelName = newChannelName;
       }
+      if (this.isNotificationRestoreCancelled(channelName)) return;
+      connection = await this.oracleConnection.createSingleConnection();
       await this.subscribe(
         connection,
         channelName,
@@ -384,9 +397,14 @@ export class OracleNotify extends DatabaseNotify<
         settings.notifyCallback,
         settings.options
       );
+      if (this.isNotificationRestoreCancelled(channelName)) {
+        await this.closeSubscription(channelName, false);
+        return;
+      }
     } catch (error: unknown) {
       this.stopConnectionHealthCheck(channelName);
-      await this.oracleConnection.closeSingleConnection(connection);
+      if (connection)
+        await this.oracleConnection.closeSingleConnection(connection);
       this.clearNotificationRestoreState(channelName);
       throw error;
     }

@@ -4,8 +4,8 @@ import { TypeORMError } from '../error/TypeORMError.js';
 import type { RelationCountMetadataArgs } from '../metadata-args/RelationCountMetadataArgs.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
-import { EntityMetadata } from './EntityMetadata.js';
-import { RelationMetadata } from './RelationMetadata.js';
+import type { EntityMetadata } from './EntityMetadata.js';
+import type { RelationMetadata } from './RelationMetadata.js';
 
 /**
  * Contains all information about entity's relation count.

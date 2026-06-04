@@ -1,11 +1,11 @@
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { ForeignKeyMetadata } from '../metadata/ForeignKeyMetadata.js';
 import { IndexMetadata } from '../metadata/IndexMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import type { JoinTableMetadataArgs } from '../metadata-args/JoinTableMetadataArgs.js';
 
 /**

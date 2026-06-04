@@ -27,7 +27,7 @@ export class TypeOrmProcedureKitNestService
    */
   public constructor(@Inject(DATABASE_CONFIG_TOKEN) config: IModuleConfig) {
     super(config);
-    this.settingsLoger = config.logger;
+    this.settingsLoger = config.logger.module;
   }
 
   /**

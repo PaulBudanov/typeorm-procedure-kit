@@ -1,7 +1,7 @@
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';

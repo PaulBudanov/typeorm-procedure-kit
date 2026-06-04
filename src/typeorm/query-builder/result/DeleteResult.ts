@@ -1,4 +1,4 @@
-import { QueryResult } from '../../query-runner/QueryResult.js';
+import type { QueryResult } from '../../query-runner/QueryResult.js';
 
 /**
  * Result object returned by DeleteQueryBuilder execution.

@@ -44,8 +44,7 @@ export interface Logger {
   logMigration(message: string, queryRunner?: QueryRunner): void;
 
   /**
-   * Perform logging using given logger, or by default to the console.
-   * Log has its own level and message.
+   * Performs generic TypeORM logging using the configured logger bridge.
    */
   log(
     level: 'log' | 'info' | 'warn',

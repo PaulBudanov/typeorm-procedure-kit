@@ -3,7 +3,6 @@ import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type {
   IProcedureArgumentBase,
-  IProcedureArgumentOracle,
   TDBMapStructure,
 } from '../types/procedure.types.js';
 import { AsyncUtils } from '../utils/async-utils.js';
@@ -130,9 +129,12 @@ export class ProcedureListBase {
     }
 
     const rawArguments = (
-      await this.executeBase.execute<
-        IProcedureArgumentOracle | IProcedureArgumentBase
-      >(this.databaseAdapter.generatePackageInfoSql(packageName))
+      await this.executeBase.execute<IProcedureArgumentBase>(
+        this.databaseAdapter.generatePackageInfoSql(
+          packageName,
+          this.packagesSettings.procedureMetadataSql
+        )
+      )
     ).map((item) =>
       Object.fromEntries(
         Object.entries(item).map(([key, value]) => [
@@ -153,9 +155,7 @@ export class ProcedureListBase {
     this.packagesWithProceduresList.set(
       packageName,
       this.databaseAdapter.sortArgumentsAlgorithm(
-        rawArguments as
-          | Array<IProcedureArgumentOracle>
-          | Array<IProcedureArgumentBase>,
+        rawArguments as Array<IProcedureArgumentBase>,
         Object.values(this.packagesSettings.procedureObjectList).map((item) =>
           item.toLowerCase()
         ) as Array<Lowercase<string>>,

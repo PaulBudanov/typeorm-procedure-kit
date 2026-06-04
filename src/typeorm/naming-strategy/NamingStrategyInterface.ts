@@ -1,5 +1,5 @@
-import { Table } from '../schema-builder/table/Table.js';
-import { View } from '../schema-builder/view/View.js';
+import type { Table } from '../schema-builder/table/Table.js';
+import type { View } from '../schema-builder/view/View.js';
 
 /**
  * Naming strategy defines how auto-generated names for such things like table name, or table column gonna be

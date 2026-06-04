@@ -1,4 +1,4 @@
-export { AbstractTypeormRepository } from './AbstractTypeormRepository.js';
+export { AbstractTypeormRepository } from './abstract-typeorm-repository.js';
 export type {
   IBuildBaseQueryContext,
   IEntityTargets,

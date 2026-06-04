@@ -3,10 +3,12 @@ import { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { DataSourceOptions } from '../typeorm/index.js';
+import { ProcedureKitLogger } from '../typeorm/logger/ProcedureKitLogger.js';
 import type {
   IRegisteredFetchHandlerOptions,
   TAdapterUtilsClassTypes,
 } from '../types/adapter.types.js';
+import type { IModuleLoggerConfig } from '../types/base.types.js';
 import type {
   IDatabaseCredentials,
   IEntityOptions,
@@ -17,18 +19,21 @@ import type {
 } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ICaseStrategyFactory } from '../types/strategy.types.js';
+import { normalizeQueryTimeoutMs } from '../utils/query-timeout.js';
 import { ServerError } from '../utils/server-error.js';
 
 export class DatabaseInitializerBase {
   public readonly caseSettings: ICaseStrategyFactory;
   private appDataSourceInstance: DataSource | null = null;
   private databaseAdapterInstance: TAdapterUtilsClassTypes | null = null;
+  private readonly logger: ILoggerModule;
   public constructor(
     public readonly dbConfig: TDbConfig,
-    private readonly logger: ILoggerModule,
+    private readonly loggerConfig: IModuleLoggerConfig,
     private readonly entity?: IEntityOptions,
     private readonly migration?: IMigrationOptions
   ) {
+    this.logger = loggerConfig.module;
     this.caseSettings = CaseStrategyFactory.caseStrategyFactory(
       this.dbConfig.outKeyTransformCase
     );
@@ -99,10 +104,13 @@ export class DatabaseInitializerBase {
     const options: DataSourceOptions = {
       ...(await this.configFactory()),
       synchronize: this.entity?.isNeedEntitySync,
-      logger: 'advanced-console',
-      logging: true,
+      logger: new ProcedureKitLogger(
+        this.logger,
+        this.loggerConfig.typeormLogLevels
+      ),
       poolSize: this.dbConfig.poolSize,
-      maxQueryExecutionTime: this.dbConfig.callTimeout,
+      maxQueryExecutionTime:
+        this.dbConfig.maxQueryExecutionTime ?? this.dbConfig.callTimeout,
       namingStrategy: this.caseSettings.strategy,
       isolateWhereStatements: true,
       invalidWhereValuesBehavior: {
@@ -206,12 +214,7 @@ export class DatabaseInitializerBase {
         return new OracleAdapter(
           this.appDataSource,
           this.logger,
-          fetchHandlerOptions,
-          {
-            notifyPort: this.dbConfig.cqnPort,
-            isNeedClientNotificationInit:
-              this.dbConfig.isNeedClientNotificationInit,
-          }
+          fetchHandlerOptions
         );
       }
     }
@@ -227,6 +230,7 @@ export class DatabaseInitializerBase {
     credentials: IDatabaseCredentials | undefined,
     driver: PostgresConnectionOptions['driver']
   ): PostgresConnectionOptions {
+    const queryTimeoutMs = normalizeQueryTimeoutMs(config.queryTimeoutMs);
     const defaultObject: PostgresConnectionOptions = {
       type: 'postgres',
       driver,
@@ -234,6 +238,9 @@ export class DatabaseInitializerBase {
       installExtensions: true,
       uuidExtension: 'uuid-ossp',
       applicationName: config.appName,
+      ...(queryTimeoutMs !== undefined
+        ? { statement_timeout: queryTimeoutMs }
+        : {}),
     };
     if (!credentials) return defaultObject;
     return {
@@ -257,6 +264,7 @@ export class DatabaseInitializerBase {
     credentials: IDatabaseCredentials | undefined,
     driver: OracleConnectionOptions['driver']
   ): OracleConnectionOptions {
+    const queryTimeoutMs = normalizeQueryTimeoutMs(config.queryTimeoutMs);
     const thickMode: OracleConnectionOptions['thickMode'] = config.libraryPath
       ? { libDir: config.libraryPath }
       : undefined;
@@ -265,6 +273,7 @@ export class DatabaseInitializerBase {
       driver,
       serviceName: config.master.database,
       thickMode,
+      ...(queryTimeoutMs !== undefined ? { queryTimeoutMs } : {}),
     };
     if (!credentials) return defaultObject;
     return {

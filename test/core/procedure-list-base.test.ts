@@ -13,7 +13,8 @@ describe('ProcedureListBase', (): void => {
   it('initializes package maps from database arguments', async (): Promise<void> => {
     const adapter = createAdapterMock({
       generatePackageInfoSql: vi.fn(
-        (_packageName: string): string => 'select args'
+        (_packageName: string, _procedureMetadataSql?: string): string =>
+          'select args'
       ),
       sortArgumentsAlgorithm: vi.fn(() => ({
         run: [
@@ -56,7 +57,63 @@ describe('ProcedureListBase', (): void => {
         { argumentName: 'p_id', argumentType: 'NUMBER', order: 1, mode: 'IN' },
       ],
     });
-    expect(adapter.generatePackageInfoSql).toHaveBeenCalledWith('pkg');
+    expect(adapter.generatePackageInfoSql).toHaveBeenCalledWith(
+      'pkg',
+      undefined
+    );
+  });
+
+  it('passes custom procedure metadata SQL to the adapter', async (): Promise<void> => {
+    const adapter = createAdapterMock({
+      generatePackageInfoSql: vi.fn(
+        (_packageName: string, procedureMetadataSql?: string): string =>
+          procedureMetadataSql ?? 'select args'
+      ),
+      sortArgumentsAlgorithm: vi.fn(() => ({
+        run: [
+          {
+            argumentName: 'p_id',
+            argumentType: 'NUMBER',
+            order: 1,
+            mode: 'IN',
+          },
+        ],
+      })),
+    });
+    const executeBase = {
+      execute: vi
+        .fn<(_sql: string) => Promise<Array<Record<string, unknown>>>>()
+        .mockResolvedValue([
+          {
+            procedure_name: 'run',
+            argument_name: 'p_id',
+            argument_type: 'NUMBER',
+            order: 1,
+            mode: 'IN',
+          },
+        ]),
+    };
+    const procedureList = new ProcedureListBase(
+      createLogger(),
+      adapter,
+      executeBase as never,
+      {
+        packages: ['pkg'],
+        procedureObjectList: { run: 'pkg.run' },
+        procedureMetadataSql:
+          'select * from custom_args where package_name = :PACKAGE_NAME',
+      }
+    );
+
+    await procedureList.initPackagesMap();
+
+    expect(adapter.generatePackageInfoSql).toHaveBeenCalledWith(
+      'pkg',
+      'select * from custom_args where package_name = :PACKAGE_NAME'
+    );
+    expect(executeBase.execute).toHaveBeenCalledWith(
+      'select * from custom_args where package_name = :PACKAGE_NAME'
+    );
   });
 
   it('does nothing when package settings are absent', async (): Promise<void> => {

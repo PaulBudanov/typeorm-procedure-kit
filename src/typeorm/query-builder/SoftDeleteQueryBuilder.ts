@@ -1,6 +1,6 @@
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { TypeORMError } from '../error/index.js';
 import { LimitOnUpdateNotSupportedError } from '../error/LimitOnUpdateNotSupportedError.js';
 import { MissingDeleteDateColumnError } from '../error/MissingDeleteDateColumnError.js';
@@ -10,7 +10,7 @@ import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 
-import { Brackets } from './Brackets.js';
+import type { Brackets } from './Brackets.js';
 import { QueryBuilder } from './QueryBuilder.js';
 import { UpdateResult } from './result/UpdateResult.js';
 import { ReturningResultsEntityUpdator } from './ReturningResultsEntityUpdator.js';

@@ -4,9 +4,9 @@ import {
   FindRelationsNotFoundError,
   EntityPropertyNotFoundError,
 } from '../error/index.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
-import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 import type { FindManyOptions } from './FindManyOptions.js';
 import type { FindOneOptions } from './FindOneOptions.js';

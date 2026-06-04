@@ -1,4 +1,4 @@
-import { EntitySchemaOptions } from './EntitySchemaOptions.js';
+import type { EntitySchemaOptions } from './EntitySchemaOptions.js';
 
 /**
  * Interface for entity metadata mappings stored inside "schemas" instead of models decorated by decorators.
