@@ -3,10 +3,12 @@ import { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { DataSourceOptions } from '../typeorm/index.js';
+import { ProcedureKitLogger } from '../typeorm/logger/ProcedureKitLogger.js';
 import type {
   IRegisteredFetchHandlerOptions,
   TAdapterUtilsClassTypes,
 } from '../types/adapter.types.js';
+import type { IModuleLoggerConfig } from '../types/base.types.js';
 import type {
   IDatabaseCredentials,
   IEntityOptions,
@@ -24,12 +26,14 @@ export class DatabaseInitializerBase {
   public readonly caseSettings: ICaseStrategyFactory;
   private appDataSourceInstance: DataSource | null = null;
   private databaseAdapterInstance: TAdapterUtilsClassTypes | null = null;
+  private readonly logger: ILoggerModule;
   public constructor(
     public readonly dbConfig: TDbConfig,
-    private readonly logger: ILoggerModule,
+    private readonly loggerConfig: IModuleLoggerConfig,
     private readonly entity?: IEntityOptions,
     private readonly migration?: IMigrationOptions
   ) {
+    this.logger = loggerConfig.module;
     this.caseSettings = CaseStrategyFactory.caseStrategyFactory(
       this.dbConfig.outKeyTransformCase
     );
@@ -100,8 +104,10 @@ export class DatabaseInitializerBase {
     const options: DataSourceOptions = {
       ...(await this.configFactory()),
       synchronize: this.entity?.isNeedEntitySync,
-      logger: 'advanced-console',
-      logging: false,
+      logger: new ProcedureKitLogger(
+        this.logger,
+        this.loggerConfig.typeormLogLevels
+      ),
       poolSize: this.dbConfig.poolSize,
       maxQueryExecutionTime:
         this.dbConfig.maxQueryExecutionTime ?? this.dbConfig.callTimeout,

@@ -18,7 +18,7 @@ import { EntityMetadataNotFoundError } from '../error/EntityMetadataNotFoundErro
 import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import type { Logger } from '../logger/Logger.js';
-import { LoggerFactory } from '../logger/LoggerFactory.js';
+import { ProcedureKitLogger } from '../logger/ProcedureKitLogger.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { EntityMetadataValidator } from '../metadata-builder/EntityMetadataValidator.js';
 import type { Migration } from '../migration/Migration.js';
@@ -141,10 +141,7 @@ export class DataSource {
   public constructor(options: DataSourceOptions) {
     registerQueryBuilders();
     this.options = options;
-    this.logger = new LoggerFactory().create(
-      this.options.logger,
-      this.options.logging
-    );
+    this.logger = this.options.logger ?? ProcedureKitLogger.createNoop();
     this.driver = new DriverFactory().create(this);
     this.manager = this.createEntityManager();
     this.namingStrategy = options.namingStrategy ?? new DefaultNamingStrategy();
@@ -180,12 +177,7 @@ export class DataSource {
   public setOptions(options: Partial<DataSourceOptions>): this {
     Object.assign(this.options, options);
 
-    if (options.logger || options.logging) {
-      this.logger = new LoggerFactory().create(
-        options.logger || this.options.logger,
-        options.logging || this.options.logging
-      );
-    }
+    if (options.logger) this.logger = options.logger;
 
     if (options.namingStrategy) {
       this.namingStrategy = options.namingStrategy;

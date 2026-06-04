@@ -1,26 +1,11 @@
-/* eslint-disable no-console */
-import { appendFileSync, existsSync } from 'fs';
+import { existsSync } from 'fs';
 import { extname, normalize, resolve } from 'path';
 
 import dotenv from 'dotenv';
 
-import type { TDbConfig } from '../../types/config.types.js';
-
 export { EventEmitter } from 'events';
 export { ReadStream } from 'fs';
 export { Readable, Writable } from 'stream';
-
-const ANSI_RESET = '\u001B[0m';
-const ANSI_GRAY = '\u001B[90m';
-const ANSI_RED = '\u001B[31m';
-const ANSI_YELLOW = '\u001B[33m';
-const ANSI_UNDERLINE = '\u001B[4m';
-const ANSI_BG_RED = '\u001B[41m';
-const ANSI_BLACK = '\u001B[30m';
-
-function colorize(value: unknown, ...codes: Array<string>): string {
-  return `${codes.join('')}${String(value)}${ANSI_RESET}`;
-}
 
 /**
  * Platform-specific tools.
@@ -132,65 +117,5 @@ export class PlatformTools {
    */
   public static getEnvVariable(name: string): string | undefined {
     return process.env[name];
-  }
-
-  /**
-   * Hook for SQL highlighting. Kept as a no-op to avoid runtime formatter dependencies.
-   */
-  public static highlightSql(sql: string): string {
-    return sql;
-  }
-
-  /**
-   * Hook for SQL formatting. Kept as a no-op to avoid runtime formatter dependencies.
-   */
-  public static formatSql(
-    sql: string,
-    _dataSourceType?: TDbConfig['type']
-  ): string {
-    return sql;
-  }
-
-  /**
-   * Logging functions needed by AdvancedConsoleLogger
-   */
-  public static logInfo(prefix: string, info: unknown): void {
-    console.log(colorize(prefix, ANSI_GRAY, ANSI_UNDERLINE), info);
-  }
-
-  public static logError(prefix: string, error: unknown): void {
-    console.log(colorize(prefix, ANSI_RED, ANSI_UNDERLINE), error);
-  }
-
-  public static logWarn(prefix: string, warning: unknown): void {
-    console.log(colorize(prefix, ANSI_YELLOW, ANSI_UNDERLINE), warning);
-  }
-
-  public static log(message: string): void {
-    console.log(colorize(message, ANSI_UNDERLINE));
-  }
-
-  public static info(info: unknown): string {
-    return colorize(info, ANSI_GRAY);
-  }
-
-  public static error(error: unknown): string {
-    return colorize(error, ANSI_RED);
-  }
-
-  public static warn(message: string): string {
-    return colorize(message, ANSI_YELLOW);
-  }
-
-  public static logCmdErr(prefix: string, err?: unknown): void {
-    console.log(colorize(prefix, ANSI_BLACK, ANSI_BG_RED));
-    if (err) console.error(err);
-  }
-
-  public static appendFileSync(
-    path: string,
-    data: string | NodeJS.ArrayBufferView
-  ): void {
-    appendFileSync(path, data as string);
   }
 }

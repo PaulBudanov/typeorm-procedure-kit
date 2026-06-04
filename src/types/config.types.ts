@@ -93,30 +93,10 @@ export interface IBaseConfig {
 interface IOracleBaseConfig extends IBaseConfig {
   type: 'oracle';
   packagesSettings?: IPackagesSettingsDefault;
+  libraryPath?: string | undefined;
 }
 
-/**
- * Oracle Thin mode.
- *
- * Does not require Oracle Instant Client.
- */
-export interface IOracleThinConfig extends IOracleBaseConfig {
-  libraryPath?: undefined;
-}
-
-/**
- * Oracle Thick mode.
- *
- * Requires the application/client to initialize Oracle Client before DB usage,
- * or to provide a valid library path for library-managed `initOracleClient`.
- *
- * CQN/client notifications are not initialized by this DB config.
- */
-export interface IOracleThickConfig extends IOracleBaseConfig {
-  libraryPath: string;
-}
-
-export type TOracleDbConfig = IOracleThinConfig | IOracleThickConfig;
+export type TOracleDbConfig = IOracleBaseConfig;
 
 interface IPostgresDbConfig extends IBaseConfig {
   type: 'postgres';

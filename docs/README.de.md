@@ -105,12 +105,10 @@ const logger: ILoggerModule = {
   error: console.error,
   log: console.log,
   warn: console.warn,
-  debug: console.debug,
-  verbose: console.debug,
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: { module: logger },
   config: {
     type: 'postgres',
     parseInt8AsBigInt: true,
@@ -228,14 +226,13 @@ const logger: ILoggerModule = {
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
   warn: (message, ...optionalParams) =>
     console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: {
+    module: logger,
+    typeormLogLevels: ['query', 'error', 'warn', 'migration'],
+  },
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
@@ -281,6 +278,9 @@ Gemeinsame Optionen:
 - `appName`: application name, der an unterstuetzte drivers uebergeben wird.
 - `maxQueryExecutionTime`: slow-query threshold fuer die underlying DataSource;
   langsame queries werden geloggt, aber nicht abgebrochen.
+- `logger.typeormLogLevels`: TypeORM log levels, die ueber `logger.module`
+  ausgegeben werden. Unterstuetzt werden `query`, `error`, `schema`, `info`,
+  `warn`, `migration` oder `all`.
 - `queryTimeoutMs`: optionaler positiver integer query timeout in Millisekunden.
   PostgreSQL gibt ihn als `statement_timeout` an den `pg` pool weiter, also als
   statement-level timeout. Oracle setzt ihn fuer jede erworbene physical
@@ -527,7 +527,7 @@ const config: IModuleConfig['config'] = {
 @Module({
   imports: [
     TypeOrmProcedureKitNestModule.forRoot({
-      logger: new Logger('TypeOrmProcedureKit'),
+      logger: { module: new Logger('TypeOrmProcedureKit') },
       config,
     }),
   ],
@@ -541,7 +541,7 @@ Async setup:
 TypeOrmProcedureKitNestModule.forRootAsync({
   isGlobal: true,
   useFactory: async (): Promise<IModuleConfig> => ({
-    logger: new Logger('TypeOrmProcedureKit'),
+    logger: { module: new Logger('TypeOrmProcedureKit') },
     config,
   }),
 });

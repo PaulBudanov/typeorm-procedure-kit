@@ -19,7 +19,7 @@ describe('TypeOrmProcedureKitNestService', (): void => {
         poolSize: 1,
         parseInt8AsBigInt: false,
       },
-      logger,
+      logger: { module: logger },
     });
     const destroy = vi.spyOn(service, 'destroy').mockResolvedValue(undefined);
 

@@ -24,6 +24,33 @@ export interface ISqlBindingsObjectReturn extends Pick<
   sqlString: string;
 }
 
+export interface IProcedureBindingLogItem {
+  name: string;
+  type: string;
+  mode: string;
+  value?: unknown;
+  isCursor?: boolean;
+}
+
+export interface IProcedureQueryLogContext {
+  kind: 'procedure';
+  packageName: string;
+  procedureName: string;
+  bindings: Array<IProcedureBindingLogItem>;
+}
+
+export interface ISqlBindingLogItem {
+  name: string;
+  value: unknown;
+}
+
+export interface ISqlQueryLogContext {
+  kind: 'sql';
+  bindings: Array<ISqlBindingLogItem>;
+}
+
+export type TQueryLogContext = IProcedureQueryLogContext | ISqlQueryLogContext;
+
 export type TFunction<T = unknown> = (...args: Array<unknown>) => T;
 
 export interface IEventBusService {

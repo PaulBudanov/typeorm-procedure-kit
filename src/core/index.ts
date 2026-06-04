@@ -7,6 +7,7 @@ import type {
   IExecutionOptions,
   TConnectionMode,
 } from '../types/config.types.js';
+import type { ILoggerModule } from '../types/logger.types.js';
 import type {
   ICreateNotify,
   IOracleOptionsNotify,
@@ -21,6 +22,8 @@ import type {
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
 import { procedureNameParser } from '../utils/procedure-name-parser.js';
+import { QueryLogContextBuilder } from '../utils/query-log-context-builder.js';
+import { QueryLogContextStorage } from '../utils/query-log-context.js';
 import { ServerError } from '../utils/server-error.js';
 
 import { ConnectionBase } from './connection-base.js';
@@ -32,6 +35,7 @@ import { SerializerBase } from './serializer-base.js';
 
 export class TypeOrmProcedureKit {
   private readonly databaseInitializerBase: DatabaseInitializerBase;
+  private readonly logger: ILoggerModule;
   private connectionBase: ConnectionBase | null = null;
   private executeBase: ExecuteBase | null = null;
   private notifyBase: NotifyBase | null = null;
@@ -45,6 +49,7 @@ export class TypeOrmProcedureKit {
    * @param settings - The settings object containing all the necessary configuration.
    */
   public constructor(private readonly settings: IModuleConfig) {
+    this.logger = this.settings.logger.module;
     this.databaseInitializerBase = new DatabaseInitializerBase(
       this.settings.config,
       this.settings.logger,
@@ -68,15 +73,15 @@ export class TypeOrmProcedureKit {
   private initMainClasses(): void {
     this.connectionBase = new ConnectionBase(
       this.databaseInitializerBase.appDataSource,
-      this.settings.logger
+      this.logger
     );
     this.executeBase = new ExecuteBase(
       this.connectionBase,
       this.databaseInitializerBase.databaseAdapter,
-      this.settings.logger
+      this.logger
     );
     this.procedureListBase = new ProcedureListBase(
-      this.settings.logger,
+      this.logger,
       this.databaseInitializerBase.databaseAdapter,
       this.executeBase,
       this.settings.config.packagesSettings
@@ -84,7 +89,7 @@ export class TypeOrmProcedureKit {
     this.notifyBase = new NotifyBase(
       this.databaseInitializerBase.databaseAdapter,
       this.procedureListBase,
-      this.settings.logger,
+      this.logger,
       this.settings.config.packagesSettings
     );
     this.serialzierBase = new SerializerBase(
@@ -194,20 +199,37 @@ export class TypeOrmProcedureKit {
       procedureListBase.packagesWithProceduresList,
       packages
     );
-    const { paramExecuteString, bindings, cursorsNames } =
-      this.databaseInitializerBase.databaseAdapter.makeBindings<U>(
-        packageName,
-        processName,
-        procedureListBase.packagesWithProceduresList.get(packageName),
-        params
-      );
-    return this.requireExecuteBase().execute<T>(
+    const procedureArguments =
+      procedureListBase.packagesWithProceduresList.get(packageName)?.[
+        processName
+      ];
+    const {
       paramExecuteString,
       bindings,
-      cursorsNames,
-      executionOptions
+      cursorsNames = [],
+    } = this.databaseInitializerBase.databaseAdapter.makeBindings<U>(
+      packageName,
+      processName,
+      procedureListBase.packagesWithProceduresList.get(packageName),
+      params
+    );
+    const logContext = QueryLogContextBuilder.createProcedureContext(
+      packageName,
+      processName,
+      procedureArguments,
+      bindings,
+      cursorsNames
+    );
+    return QueryLogContextStorage.run(logContext, () =>
+      this.requireExecuteBase().execute<T>(
+        paramExecuteString,
+        bindings,
+        cursorsNames,
+        executionOptions
+      )
     );
   }
+
   /**
    * Executes a raw SQL statement inside the same transaction flow as a procedure call.
    *
@@ -229,11 +251,14 @@ export class TypeOrmProcedureKit {
     this.assertNotDestroyed();
     const { sqlString, bindings } =
       this.databaseInitializerBase.databaseAdapter.makeSqlBindings(sql, params);
-    return this.requireExecuteBase().execute(
-      sqlString,
-      bindings,
-      [],
-      executionOptions
+    const logContext = QueryLogContextBuilder.createSqlContext(sql, params);
+    return QueryLogContextStorage.run(logContext, () =>
+      this.requireExecuteBase().execute(
+        sqlString,
+        bindings,
+        [],
+        executionOptions
+      )
     );
   }
   /**
@@ -362,7 +387,7 @@ export class TypeOrmProcedureKit {
   public async destroy(): Promise<void> {
     if (this.destroyPromise) return this.destroyPromise;
     if (this.isDestroyed) {
-      this.settings.logger.warn('TypeOrmProcedureKit already destroyed');
+      this.logger.warn('TypeOrmProcedureKit already destroyed');
       return;
     }
 
@@ -379,11 +404,11 @@ export class TypeOrmProcedureKit {
     try {
       if (this.notifyBase) {
         await this.notifyBase.destroy();
-        this.settings.logger.log('Notifications cleanup completed');
+        this.logger.log('Notifications cleanup completed');
       }
     } catch (error) {
       errors.push(error as Error);
-      this.settings.logger.error(
+      this.logger.error(
         `Notification cleanup error: ${(error as Error).message}`
       );
     }
@@ -391,11 +416,11 @@ export class TypeOrmProcedureKit {
     try {
       if (this.databaseInitializerBase.isDataSourceInitialized) {
         await this.databaseInitializerBase.appDataSource.destroy();
-        this.settings.logger.log('DataSource destroyed');
+        this.logger.log('DataSource destroyed');
       }
     } catch (error) {
       errors.push(error as Error);
-      this.settings.logger.error(
+      this.logger.error(
         `DataSource destroy error: ${(error as Error).message}`
       );
     }
@@ -411,7 +436,7 @@ export class TypeOrmProcedureKit {
     }
 
     this.isDestroyed = true;
-    this.settings.logger.log('TypeOrmProcedureKit shutdown completed');
+    this.logger.log('TypeOrmProcedureKit shutdown completed');
   }
 
   /**
@@ -423,13 +448,11 @@ export class TypeOrmProcedureKit {
   public registerShutdownHandlers(): void {
     this.assertNotDestroyed();
     const shutdownHandler = async (signal: string): Promise<void> => {
-      this.settings.logger.log(`Received ${signal}, initiating shutdown...`);
+      this.logger.log(`Received ${signal}, initiating shutdown...`);
       try {
         await this.destroy();
       } catch (error) {
-        this.settings.logger.error(
-          `Shutdown error: ${(error as Error).message}`
-        );
+        this.logger.error(`Shutdown error: ${(error as Error).message}`);
       }
     };
 

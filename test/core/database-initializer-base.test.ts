@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { DatabaseInitializerBase } from '../../src/core/database-initializer-base.js';
-import type { OracleConnectionOptions } from '../../src/typeorm/driver/oracle/OracleConnectionOptions.js';
-import type { PostgresConnectionOptions } from '../../src/typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type {
   IBaseConfig,
+  IModuleLoggerConfig,
   TOracleDbConfig,
   TPostgresDbConfig,
-} from '../../src/types/config.types.js';
+} from '../../src/index.js';
+import type { OracleConnectionOptions } from '../../src/typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { PostgresConnectionOptions } from '../../src/typeorm/driver/postgres/PostgresConnectionOptions.js';
+import type { DataSourceOptions } from '../../src/typeorm/index.js';
+import { ProcedureKitLogger } from '../../src/typeorm/logger/ProcedureKitLogger.js';
 import { createLogger } from '../support/helpers.js';
 
 type PostgresOptionsWithStatementTimeout = PostgresConnectionOptions & {
@@ -32,7 +35,9 @@ async function getMaxQueryExecutionTime(
     parseInt8AsBigInt: false,
     ...timeoutConfig,
   };
-  const initializer = new DatabaseInitializerBase(config, createLogger());
+  const initializer = new DatabaseInitializerBase(config, {
+    module: createLogger(),
+  });
 
   await (
     initializer as unknown as { initDataSource(): Promise<void> }
@@ -57,7 +62,9 @@ async function getPostgresConnectionOptions(
     parseInt8AsBigInt: false,
     ...configPatch,
   };
-  const initializer = new DatabaseInitializerBase(config, createLogger());
+  const initializer = new DatabaseInitializerBase(config, {
+    module: createLogger(),
+  });
 
   await (
     initializer as unknown as { initDataSource(): Promise<void> }
@@ -65,6 +72,33 @@ async function getPostgresConnectionOptions(
 
   return initializer.appDataSource
     .options as PostgresOptionsWithStatementTimeout;
+}
+
+async function getPostgresDataSourceOptions(
+  loggerPatch: Partial<IModuleLoggerConfig>
+): Promise<DataSourceOptions> {
+  const config: TPostgresDbConfig = {
+    type: 'postgres',
+    master: {
+      host: 'localhost',
+      port: 5432,
+      database: 'db',
+      username: 'user',
+      password: 'pass',
+    },
+    poolSize: 1,
+    parseInt8AsBigInt: false,
+  };
+  const initializer = new DatabaseInitializerBase(config, {
+    module: createLogger(),
+    ...loggerPatch,
+  });
+
+  await (
+    initializer as unknown as { initDataSource(): Promise<void> }
+  ).initDataSource();
+
+  return initializer.appDataSource.options;
 }
 
 async function getOracleConnectionOptions(
@@ -82,7 +116,9 @@ async function getOracleConnectionOptions(
     poolSize: 1,
     ...configPatch,
   };
-  const initializer = new DatabaseInitializerBase(config, createLogger());
+  const initializer = new DatabaseInitializerBase(config, {
+    module: createLogger(),
+  });
 
   await (
     initializer as unknown as { initDataSource(): Promise<void> }
@@ -105,6 +141,17 @@ describe('DatabaseInitializerBase slow-query threshold config', (): void => {
     await expect(getMaxQueryExecutionTime({ callTimeout: 100 })).resolves.toBe(
       100
     );
+  });
+});
+
+describe('DatabaseInitializerBase TypeORM logger config', (): void => {
+  it('uses the library TypeORM logger bridge without DataSource logging option', async (): Promise<void> => {
+    const options = await getPostgresDataSourceOptions({
+      typeormLogLevels: ['query', 'error', 'warn'],
+    });
+
+    expect(options.logger).toBeInstanceOf(ProcedureKitLogger);
+    expect('logging' in options).toBe(false);
   });
 });
 

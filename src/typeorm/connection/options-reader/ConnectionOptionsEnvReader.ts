@@ -1,5 +1,4 @@
 import type { DataSourceOptions } from '../../data-source/DataSourceOptions.js';
-import type { LoggerOptions } from '../../logger/LoggerOptions.js';
 import { PlatformTools } from '../../platform/PlatformTools.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 
@@ -66,16 +65,6 @@ export class ConnectionOptionsEnvReader {
       subscribers: this.stringToArray(
         PlatformTools.getEnvVariable('TYPEORM_SUBSCRIBERS')
       ),
-      logging: this.transformLogging(
-        PlatformTools.getEnvVariable('TYPEORM_LOGGING')
-      ),
-      logger: PlatformTools.getEnvVariable('TYPEORM_LOGGER') as
-        | 'advanced-console'
-        | 'simple-console'
-        | 'formatted-console'
-        | 'file'
-        | 'debug'
-        | undefined,
       entityPrefix: PlatformTools.getEnvVariable('TYPEORM_ENTITY_PREFIX'),
       maxQueryExecutionTime: this.stringToNumber(
         PlatformTools.getEnvVariable('TYPEORM_MAX_QUERY_EXECUTION_TIME')
@@ -94,22 +83,6 @@ export class ConnectionOptionsEnvReader {
   // -------------------------------------------------------------------------
   // Protected Methods
   // -------------------------------------------------------------------------
-
-  /**
-   * Transforms logging string into real logging value connection requires.
-   */
-  protected transformLogging(
-    logging: string | undefined
-  ): LoggerOptions | undefined {
-    if (!logging) return undefined;
-    if (logging === 'true' || logging === 'TRUE' || logging === '1')
-      return true;
-    if (logging === 'all') return 'all';
-
-    return this.stringToArray(logging) as Array<
-      'query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration'
-    >;
-  }
 
   /**
    * Transforms caching option into real caching value option requires.
