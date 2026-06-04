@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.3...v2.1.0) (2026-06-04)
+
+
+### Features
+
+* **logging:** route TypeORM and query logs through ProcedureKit logger, fix(typeorm) - circular dependency fix, fix(global) - security bugs ([f4235f7](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/f4235f7b7a4a89ec6ddcbbed3d1feb7086666af8))
+
 ## [2.0.3](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.2...v2.0.3) (2026-05-25)
 
 
