@@ -1,12 +1,13 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver, ReturningType } from '../driver/Driver.js';
-import { OracleDriver } from '../driver/oracle/OracleDriver.js';
+import type { OracleDriver } from '../driver/oracle/OracleDriver.js';
 import { EntityPropertyNotFoundError } from '../error/EntityPropertyNotFoundError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import { FindOperator } from '../find-options/FindOperator.js';
+import type { FindOperator } from '../find-options/FindOperator.js';
 import { In } from '../find-options/operator/In.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
@@ -14,11 +15,11 @@ import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { escapeRegExp } from '../util/escapeRegExp.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 
-import { Alias } from './Alias.js';
+import type { Alias } from './Alias.js';
 import { Brackets } from './Brackets.js';
 import type { DeleteQueryBuilder } from './DeleteQueryBuilder.js';
 import type { InsertQueryBuilder } from './InsertQueryBuilder.js';
-import { NotBrackets } from './NotBrackets.js';
+import type { NotBrackets } from './NotBrackets.js';
 import type { QueryBuilderCteOptions } from './QueryBuilderCte.js';
 import { QueryExpressionMap } from './QueryExpressionMap.js';
 import type { QueryDeepPartialEntity } from './QueryPartialEntity.js';
@@ -1329,7 +1330,7 @@ export abstract class QueryBuilder<Entity = unknown> {
         if (!joinAttr?.alias) {
           const fullRelationPath =
             root.length > 0 ? `${root.join('.')}.${part}` : part;
-          throw new Error(
+          throw new ServerError(
             `Cannot find alias for relation at ${fullRelationPath}`
           );
         }
@@ -1344,7 +1345,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     }
 
     if (!alias) {
-      throw new Error(`Cannot find alias for property ${propertyPath}`);
+      throw new ServerError(`Cannot find alias for property ${propertyPath}`);
     }
 
     // Remaining parts are combined back and used to find the actual property path
@@ -1428,7 +1429,7 @@ export abstract class QueryBuilder<Entity = unknown> {
           relation.relationType === 'one-to-many' ||
           relation.relationType === 'many-to-many'
         ) {
-          throw new Error(
+          throw new ServerError(
             `Cannot query across ${relation.relationType} for property ${path}`
           );
         }

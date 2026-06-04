@@ -14,6 +14,16 @@ export class EventBusService implements IEventBusService {
     this.eventEmitter.emit(event, data);
   }
 
+  public async emitAsync<T>(event: string | symbol, data?: T): Promise<void> {
+    const listeners = this.eventEmitter.rawListeners(event) as Array<
+      (data?: T) => unknown
+    >;
+    const results = listeners.map((listener) =>
+      listener.call(this.eventEmitter, data)
+    );
+    await Promise.all(results);
+  }
+
   public registerListener<T, U extends string | symbol>(
     event: string | symbol,
     callback: (data: T) => U | Promise<U> | void | Promise<void>

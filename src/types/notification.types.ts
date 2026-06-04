@@ -120,11 +120,28 @@ export interface IOracleOptionsNotify extends INotifyRetryOptions {
    * Oracle CQN subscription timeout in seconds.
    */
   timeout?: number;
+
   /**
    * Enables client-initiated CQN mode.
+   *
    */
   clientInitiated?: boolean;
+
+  /**
+   * Legacy server-initiated CQN callback port.
+   * Use only with `clientInitiated: false`.
+   */
+  cqnPort?: number | undefined;
 }
+
+export interface IRestoreState {
+  isCancelled: boolean;
+  isHealthCheckInProgress: boolean;
+  activeRestore?: Promise<void>;
+  cancelRetryDelay?: () => void;
+  healthCheckTimer?: NodeJS.Timeout;
+}
+
 export type TOracleNormilizeOptionsNotify = Omit<
   IOracleOptionsNotify,
   'operations'
@@ -158,9 +175,4 @@ export interface INotifyPackageCallbackOracle {
 export interface INotifyPackageCallbackPostgre {
   event?: string;
   object: string;
-}
-
-export interface INotifyOracleDefaultSettings {
-  notifyPort?: number;
-  isNeedClientNotificationInit?: boolean;
 }

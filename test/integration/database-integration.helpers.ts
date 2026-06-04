@@ -1,13 +1,14 @@
-import type {
-  IModuleConfig,
-  TOracleDbConfig,
-  TPostgresDbConfig,
+import {
+  ServerError,
+  type IModuleConfig,
+  type TOracleDbConfig,
+  type TPostgresDbConfig,
 } from '../../src/index.js';
 import { createLogger, type TestLogger } from '../support/helpers.js';
 
 interface IntegrationTestSettings<TConfig extends IModuleConfig['config']> {
   config: TConfig;
-  logger: TestLogger;
+  logger: { module: TestLogger };
 }
 
 function isIntegrationRequired(): boolean {
@@ -16,7 +17,7 @@ function isIntegrationRequired(): boolean {
 
 function handleMissingEnv(database: string): null {
   if (isIntegrationRequired()) {
-    throw new Error(`${database} integration test env is incomplete`);
+    throw new ServerError(`${database} integration test env is incomplete`);
   }
   return null;
 }
@@ -59,7 +60,7 @@ export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPo
     return handleMissingEnv('PostgreSQL');
 
   return {
-    logger: createLogger(),
+    logger: { module: createLogger() },
     config: {
       type: 'postgres',
       parseInt8AsBigInt: false,
@@ -101,7 +102,7 @@ export function createOracleIntegrationSettings(): IntegrationTestSettings<TOrac
     return handleMissingEnv('Oracle');
 
   return {
-    logger: createLogger(),
+    logger: { module: createLogger() },
     config: {
       type: 'oracle',
       poolSize: 2,

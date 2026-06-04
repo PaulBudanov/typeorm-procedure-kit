@@ -9,7 +9,7 @@ import type { Driver } from '../driver/Driver.js';
 import { DriverFactory } from '../driver/DriverFactory.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
-import { EntityManager } from '../entity-manager/EntityManager.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
 import { EntityManagerFactory } from '../entity-manager/EntityManagerFactory.js';
 import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { CannotConnectAlreadyConnectedError } from '../error/CannotConnectAlreadyConnectedError.js';
@@ -18,10 +18,10 @@ import { EntityMetadataNotFoundError } from '../error/EntityMetadataNotFoundErro
 import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import type { Logger } from '../logger/Logger.js';
-import { LoggerFactory } from '../logger/LoggerFactory.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
+import { ProcedureKitLogger } from '../logger/ProcedureKitLogger.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { EntityMetadataValidator } from '../metadata-builder/EntityMetadataValidator.js';
-import { Migration } from '../migration/Migration.js';
+import type { Migration } from '../migration/Migration.js';
 import { MigrationExecutor } from '../migration/MigrationExecutor.js';
 import type { MigrationInterface } from '../migration/MigrationInterface.js';
 import { DefaultNamingStrategy } from '../naming-strategy/DefaultNamingStrategy.js';
@@ -31,8 +31,8 @@ import { RelationIdLoader } from '../query-builder/RelationIdLoader.js';
 import { RelationLoader } from '../query-builder/RelationLoader.js';
 import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
-import { Repository } from '../repository/Repository.js';
-import { TreeRepository } from '../repository/TreeRepository.js';
+import type { Repository } from '../repository/Repository.js';
+import type { TreeRepository } from '../repository/TreeRepository.js';
 import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
@@ -141,10 +141,7 @@ export class DataSource {
   public constructor(options: DataSourceOptions) {
     registerQueryBuilders();
     this.options = options;
-    this.logger = new LoggerFactory().create(
-      this.options.logger,
-      this.options.logging
-    );
+    this.logger = this.options.logger ?? ProcedureKitLogger.createNoop();
     this.driver = new DriverFactory().create(this);
     this.manager = this.createEntityManager();
     this.namingStrategy = options.namingStrategy ?? new DefaultNamingStrategy();
@@ -180,12 +177,7 @@ export class DataSource {
   public setOptions(options: Partial<DataSourceOptions>): this {
     Object.assign(this.options, options);
 
-    if (options.logger || options.logging) {
-      this.logger = new LoggerFactory().create(
-        options.logger || this.options.logger,
-        options.logging || this.options.logging
-      );
-    }
+    if (options.logger) this.logger = options.logger;
 
     if (options.namingStrategy) {
       this.namingStrategy = options.namingStrategy;

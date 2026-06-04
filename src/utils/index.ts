@@ -12,6 +12,15 @@ export { TypeGuards } from './type-guards.js';
 
 // Timer
 export { QueryTimer } from './query-timer.js';
+export { QueryLogContextBuilder } from './query-log-context-builder.js';
+export { QueryLogContextStorage } from './query-log-context.js';
+
+// Query timeout validate
+
+export { normalizeQueryTimeoutMs } from './query-timeout.js';
+
+// Safe log serialization
+export { safeStringify } from './safe-stringify.js';
 
 // formatter utils
 export { DateFormatter } from './date-formatter.js';

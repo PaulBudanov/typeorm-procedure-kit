@@ -15,7 +15,6 @@ export type {
 // Procedures
 export type {
   IProcedureArgumentBase,
-  IProcedureArgumentOracle,
   TDBMapStructure,
   TProcedureArgumentList,
   TProcedurePayload,
@@ -48,11 +47,16 @@ export type {
 // Utility
 export type {
   IBindingsObjectReturn,
+  IProcedureBindingLogItem,
+  IProcedureQueryLogContext,
+  ISqlBindingLogItem,
+  ISqlQueryLogContext,
   ISqlBindingsObjectReturn,
   ISqlError,
   IEventBusService,
   ICollectionStrategy,
   TMapKey,
+  TQueryLogContext,
   TQueueType,
 } from './utility.types.js';
 
@@ -75,10 +79,14 @@ export type {
 } from './strategy.types.js';
 
 // Logger
-export type { ILoggerModule } from './logger.types.js';
+export type {
+  ILoggerModule,
+  TTypeOrmLoggerLevel,
+  TTypeOrmLoggerLevels,
+} from './logger.types.js';
 
 // Base
-export type { IModuleConfig } from './base.types.js';
+export type { IModuleConfig, IModuleLoggerConfig } from './base.types.js';
 
 // Nest Decorators
 export type {

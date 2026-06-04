@@ -105,12 +105,10 @@ const logger: ILoggerModule = {
   error: console.error,
   log: console.log,
   warn: console.warn,
-  debug: console.debug,
-  verbose: console.debug,
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: { module: logger },
   config: {
     type: 'postgres',
     parseInt8AsBigInt: true,
@@ -228,14 +226,13 @@ const logger: ILoggerModule = {
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
   warn: (message, ...optionalParams) =>
     console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: {
+    module: logger,
+    typeormLogLevels: ['query', 'error', 'warn', 'migration'],
+  },
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
@@ -249,7 +246,7 @@ const settings: IModuleConfig = {
     },
     poolSize: 10,
     appName: 'procedure-service',
-    callTimeout: 30_000,
+    maxQueryExecutionTime: 30_000,
     outKeyTransformCase: 'camelCase',
     isNeedRegisterDefaultSerializers: true,
     packagesSettings: {
@@ -279,7 +276,17 @@ Common options:
 - `slaves`: optional read replicas used by TypeORM replication.
 - `poolSize`: connection pool size.
 - `appName`: application name passed to supported drivers.
-- `callTimeout`: slow-query threshold passed to the underlying DataSource.
+- `maxQueryExecutionTime`: slow-query threshold passed to the underlying
+  DataSource; it logs slow queries without cancelling them.
+- `logger.typeormLogLevels`: TypeORM log levels routed through `logger.module`.
+  Supported values are `query`, `error`, `schema`, `info`, `warn`, `migration`,
+  or `all`.
+- `queryTimeoutMs`: optional positive integer query timeout in milliseconds.
+  PostgreSQL passes it to the `pg` pool as `statement_timeout`, a statement-level
+  timeout. Oracle applies it to each acquired physical connection as `oracledb`
+  `connection.callTimeout`; this limits each database round-trip, not the total
+  statement duration.
+- `callTimeout`: deprecated alias for `maxQueryExecutionTime`.
 - `outKeyTransformCase`: `camelCase`, `lowerCase`, or `snakeCase`; defaults to
   `camelCase`.
 - `isNeedRegisterDefaultSerializers`: registers default date/time serializers.
@@ -301,8 +308,8 @@ PostgreSQL options:
 Oracle options:
 
 - `libraryPath`: optional Oracle Client library directory for thick mode.
-- `cqnPort`: callback port for server-initiated Oracle CQN.
-- `isNeedClientNotificationInit`: default Oracle CQN client-initiated mode.
+- Oracle CQN options such as `clientInitiated` and legacy `cqnPort` are passed as
+  the second `makeNotify()` argument, not as database config.
 
 `packagesSettings.packages` contains real database package/schema names and
 should use lowercase values. `procedureObjectList` values must be real
@@ -369,8 +376,10 @@ execution, transaction, serializer, and error-handling flow as procedure calls.
 Execution options:
 
 - `mode`: `master` or `slave`, default `master`.
-- `optionsCommands`: SQL commands executed in the same transaction before the
-  main query.
+- `optionsCommands`: restricted setup commands executed in the same transaction
+  before the main query. Each item must be one safe command without comments or
+  separators. PostgreSQL accepts supported `SET`, `SET LOCAL`, and
+  `SET TRANSACTION` forms; Oracle accepts `ALTER SESSION SET name = value`.
 - `queryId`: custom id used in logs and wrapped database errors.
 
 ## Notifications
@@ -420,6 +429,8 @@ Oracle generates subscription names internally. When CQN reports changed
 ROWIDs, the adapter fetches changed rows and passes those rows to the callback.
 Oracle subscriptions are monitored and restored after CQN deregistration,
 shutdown events, connection errors, or silent connection loss.
+Use `clientInitiated: false` with legacy `cqnPort` only for server-initiated CQN
+setups that require a database callback port.
 
 ### Dynamic package metadata refresh
 
@@ -431,6 +442,21 @@ Dynamic refresh is enabled only when all of these are true:
 
 PostgreSQL listens on `db_object_event` by default unless `listenEventName` is
 configured. Oracle queries `SOLUTION_ROOT.DB_OBJECT_LOG` for package changes.
+
+`packagesSettings.procedureMetadataSql` and
+`packagesSettings.metadataNotificationSql` are trusted developer SQL config, not
+runtime SQL builders. Keep them static or assemble them only from reviewed
+constants; never build them from user input.
+
+`packagesSettings.procedureMetadataSql` can replace the default procedure
+metadata query for both databases. The SQL must contain `:PACKAGE_NAME` and
+must return columns compatible with `IProcedureArgumentBase` after snake_case to
+camelCase conversion: `procedure_name`, `argument_name`, `argument_type`,
+`order`, and `mode`.
+
+`packagesSettings.metadataNotificationSql` can replace the default metadata
+refresh subscription SQL. PostgreSQL expects a full `LISTEN ...` command. Oracle
+expects a full CQN `SELECT ...` query.
 
 ## Serializers
 
@@ -497,7 +523,7 @@ const config: IModuleConfig['config'] = {
 @Module({
   imports: [
     TypeOrmProcedureKitNestModule.forRoot({
-      logger: new Logger('TypeOrmProcedureKit'),
+      logger: { module: new Logger('TypeOrmProcedureKit') },
       config,
     }),
   ],
@@ -511,7 +537,7 @@ Async setup:
 TypeOrmProcedureKitNestModule.forRootAsync({
   isGlobal: true,
   useFactory: async (): Promise<IModuleConfig> => ({
-    logger: new Logger('TypeOrmProcedureKit'),
+    logger: { module: new Logger('TypeOrmProcedureKit') },
     config,
   }),
 });
@@ -539,6 +565,14 @@ The `typeorm-procedure-kit/typeorm` entry point exports decorators, DataSource,
 EntityManager, repositories, query builders, and related types. The runtime is
 based on a maintained TypeORM-compatible fork optimized for Oracle and
 PostgreSQL workflows.
+
+Use the documented entry points instead of deep imports into bundled TypeORM
+files. For SQL tagged templates, scalar values are parameterized automatically.
+`SqlTagUtils` no longer treats TypeORM-compatible raw function expressions as a
+raw SQL path, so callbacks returning SQL text are rejected. Migration path: use
+`unsafeRawSql()` only for reviewed trusted SQL fragments, `sqlIdentifier()` for
+dynamic identifiers, and `sqlParameterList()` for parameter lists. A callback
+returning a non-empty array remains parameter-list expansion, not raw SQL.
 
 Enhancements include:
 

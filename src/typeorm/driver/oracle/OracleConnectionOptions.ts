@@ -47,6 +47,13 @@ export interface OracleConnectionOptions
   readonly useUTC?: boolean;
 
   /**
+   * Millisecond timeout applied to each acquired physical connection as
+   * node-oracledb `connection.callTimeout`. This limits each database
+   * round-trip, not the total statement duration.
+   */
+  readonly queryTimeoutMs?: number;
+
+  /**
    * Replication setup.
    */
   readonly replication?: {

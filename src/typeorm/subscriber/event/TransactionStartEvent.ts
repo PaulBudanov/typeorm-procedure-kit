@@ -1,5 +1,5 @@
-import { DataSource } from '../../data-source/DataSource.js';
-import { EntityManager } from '../../entity-manager/EntityManager.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { EntityManager } from '../../entity-manager/EntityManager.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 /**

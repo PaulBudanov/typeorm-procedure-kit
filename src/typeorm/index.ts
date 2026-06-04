@@ -92,13 +92,8 @@ export * from './find-options/operator/Or.js';
 export * from './find-options/operator/Raw.js';
 export * from './find-options/OrderByCondition.js';
 export * from './globals.js';
-export * from './logger/AbstractLogger.js';
-export * from './logger/AdvancedConsoleLogger.js';
-export * from './logger/FileLogger.js';
-export * from './logger/FormattedConsoleLogger.js';
 export * from './logger/Logger.js';
-export * from './logger/LoggerOptions.js';
-export * from './logger/SimpleConsoleLogger.js';
+export * from './logger/ProcedureKitLogger.js';
 export * from './metadata/EntityMetadata.js';
 export * from './repository/AbstractRepository.js';
 export * from './repository/BaseEntity.js';
@@ -148,6 +143,11 @@ export { DeleteResult } from './query-builder/result/DeleteResult.js';
 export { InsertResult } from './query-builder/result/InsertResult.js';
 export { UpdateResult } from './query-builder/result/UpdateResult.js';
 export { SelectQueryBuilder } from './query-builder/SelectQueryBuilder.js';
+export {
+  sqlIdentifier,
+  sqlParameterList,
+  unsafeRawSql,
+} from './util/SqlTagUtils.js';
 export { UpdateQueryBuilder } from './query-builder/UpdateQueryBuilder.js';
 export type { WhereExpressionBuilder } from './query-builder/WhereExpressionBuilder.js';
 export { QueryResult } from './query-runner/QueryResult.js';

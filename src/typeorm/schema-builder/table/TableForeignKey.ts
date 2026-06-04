@@ -1,4 +1,4 @@
-import { ForeignKeyMetadata } from '../../metadata/ForeignKeyMetadata.js';
+import type { ForeignKeyMetadata } from '../../metadata/ForeignKeyMetadata.js';
 import type { TableForeignKeyOptions } from '../options/TableForeignKeyOptions.js';
 
 /**

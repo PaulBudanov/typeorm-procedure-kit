@@ -1,12 +1,23 @@
 import { DateTime } from 'luxon';
 
 import type { ILoggerModule } from '../types/logger.types.js';
-import type { IBindingsObjectReturn } from '../types/utility.types.js';
+import type {
+  IBindingsObjectReturn,
+  IProcedureBindingLogItem,
+  ISqlBindingLogItem,
+  TQueryLogContext,
+} from '../types/utility.types.js';
 
-import { ServerError } from './server-error.js';
+import { QueryLogContextStorage } from './query-log-context.js';
+import { safeStringify } from './safe-stringify.js';
+import type { ServerError } from './server-error.js';
 
 export class QueryTimer {
+  private static readonly sensitiveBindingName =
+    /password|passwd|login|pwd|secret|token|authorization|auth|cookie|credential|apikey|api_key|privatekey|private_key/i;
+
   private startTime: number;
+  private readonly logContext?: TQueryLogContext;
 
   /**
    * Constructor for QueryTimer class.
@@ -22,11 +33,10 @@ export class QueryTimer {
     private queryId: string,
     private bindings?: IBindingsObjectReturn['bindings']
   ) {
+    this.logContext = QueryLogContextStorage.getStore();
     this.startTime = DateTime.now().toLocal().toMillis();
 
-    this.logger.log(
-      `SQL request [${this.queryId}] started: ${this.truncateSql(this.sql, 100)}`
-    );
+    this.logger.log(this.formatStartMessage());
   }
 
   /**
@@ -44,7 +54,7 @@ export class QueryTimer {
     const rowCountInfo = rowCount != null ? ` with ${rowCount} rows` : '';
     const bindingsInfo = this.formatBindingsInfo();
 
-    const message = `SQL request [${this.queryId}] completed successfully in ${durationStr}${rowCountInfo}${bindingsInfo}`;
+    const message = `${this.formatRequestLabel()} completed successfully in ${durationStr}${rowCountInfo}${bindingsInfo}`;
 
     if (duration > 5000) {
       this.logger.warn(message);
@@ -64,7 +74,7 @@ export class QueryTimer {
 
     const bindingsInfo = this.formatBindingsInfo();
 
-    const errorMessage = `SQL request [${this.queryId}] failed in ${durationStr}: ${error.message}.${bindingsInfo}`;
+    const errorMessage = `${this.formatRequestLabel()} failed in ${durationStr}: ${error.message}.${bindingsInfo}`;
 
     this.logger.error(errorMessage, error.stack);
   }
@@ -76,11 +86,87 @@ export class QueryTimer {
   }
 
   private truncateSql(sql: string, maxLength: number): string {
-    return sql.length <= maxLength ? sql : `${sql.substring(0, maxLength)}...`;
+    const normalizedSql = this.normalizeWhitespace(sql);
+    return normalizedSql.length <= maxLength
+      ? normalizedSql
+      : `${normalizedSql.substring(0, maxLength)}...`;
   }
 
   private formatBindingsInfo(): string {
+    if (this.logContext?.kind === 'procedure') {
+      return this.formatProcedureBindingsInfo(this.logContext.bindings);
+    }
+    if (this.logContext?.kind === 'sql') {
+      return this.formatSqlBindingsInfo(this.logContext.bindings);
+    }
     if (!this.bindings?.length) return '';
-    return `\nBindings: ${JSON.stringify(this.bindings)} value(s)`;
+    return `; Bindings: ${safeStringify(this.bindings)} value(s)`;
+  }
+
+  private normalizeWhitespace(value: string): string {
+    return value.replace(/\s+/g, ' ').trim();
+  }
+
+  private formatStartMessage(): string {
+    if (this.logContext?.kind === 'procedure') {
+      return `${this.formatRequestLabel()} started${this.formatBindingsInfo()}`;
+    }
+    return `SQL request [${this.queryId}] started: ${this.truncateSql(this.sql, 100)}`;
+  }
+
+  private formatRequestLabel(): string {
+    if (this.logContext?.kind === 'procedure') {
+      return `Procedure call [${this.queryId}] ${this.logContext.packageName}.${this.logContext.procedureName}`;
+    }
+    return `SQL request [${this.queryId}]`;
+  }
+
+  private formatProcedureBindingsInfo(
+    bindings: Array<IProcedureBindingLogItem>
+  ): string {
+    if (!bindings.length) return '';
+    return `; Bindings: ${bindings
+      .map((binding) => this.formatProcedureBinding(binding))
+      .join(', ')}`;
+  }
+
+  private formatProcedureBinding(binding: IProcedureBindingLogItem): string {
+    const details = [binding.type, binding.mode]
+      .filter(Boolean)
+      .map((item) => this.normalizeWhitespace(item))
+      .join(' ');
+    const suffix = details ? ` (${details})` : '';
+    return `${binding.name}=${this.formatProcedureBindingValue(binding)}${suffix}`;
+  }
+
+  private formatProcedureBindingValue(
+    binding: IProcedureBindingLogItem
+  ): string {
+    if (binding.isCursor) return '<cursor>';
+    if (QueryTimer.sensitiveBindingName.test(binding.name)) {
+      return '[REDACTED]';
+    }
+    if (binding.value === undefined && /^OUT$/i.test(binding.mode)) {
+      return '<out>';
+    }
+    return safeStringify(binding.value);
+  }
+
+  private formatSqlBindingsInfo(bindings: Array<ISqlBindingLogItem>): string {
+    if (!bindings.length) return '';
+    return `; Bindings: ${bindings
+      .map((binding) => this.formatSqlBinding(binding))
+      .join(', ')}`;
+  }
+
+  private formatSqlBinding(binding: ISqlBindingLogItem): string {
+    return `${binding.name}=${this.formatSqlBindingValue(binding)}`;
+  }
+
+  private formatSqlBindingValue(binding: ISqlBindingLogItem): string {
+    if (QueryTimer.sensitiveBindingName.test(binding.name)) {
+      return '[REDACTED]';
+    }
+    return safeStringify(binding.value);
   }
 }

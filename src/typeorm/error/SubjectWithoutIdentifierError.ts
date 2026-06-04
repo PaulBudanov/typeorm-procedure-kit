@@ -1,4 +1,4 @@
-import { Subject } from '../persistence/Subject.js';
+import type { Subject } from '../persistence/Subject.js';
 
 import { TypeORMError } from './TypeORMError.js';
 

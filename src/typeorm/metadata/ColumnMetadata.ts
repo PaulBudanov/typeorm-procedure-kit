@@ -1,6 +1,6 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
 import type { VirtualColumnOptions } from '../decorator/options/VirtualColumnOptions.js';
 import type { ColumnType } from '../driver/types/ColumnTypes.js';
@@ -10,9 +10,9 @@ import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
-import { EmbeddedMetadata } from './EmbeddedMetadata.js';
-import { EntityMetadata } from './EntityMetadata.js';
-import { RelationMetadata } from './RelationMetadata.js';
+import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
+import type { EntityMetadata } from './EntityMetadata.js';
+import type { RelationMetadata } from './RelationMetadata.js';
 
 /**
  * This metadata contains all information about entity's column.

@@ -1,4 +1,4 @@
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 
 import { TypeORMError } from './TypeORMError.js';
 

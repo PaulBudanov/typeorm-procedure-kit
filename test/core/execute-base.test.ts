@@ -24,7 +24,7 @@ describe('ExecuteBase', (): void => {
 
     await expect(
       executeBase.execute('select 1', [1], [], {
-        optionsCommands: ['set role app'],
+        optionsCommands: ['SET LOCAL role = app'],
         queryId: 'query-1',
       })
     ).resolves.toEqual([{ id: 1 }]);
@@ -33,7 +33,7 @@ describe('ExecuteBase', (): void => {
     expect(adapter.execute).toHaveBeenCalledWith(
       'select 1',
       manager,
-      ['set role app'],
+      ['SET LOCAL role = app'],
       [1],
       []
     );

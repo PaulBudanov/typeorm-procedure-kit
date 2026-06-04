@@ -22,6 +22,7 @@ import type {
   TSetSerializer,
   TUnlistenNotify,
 } from '../../src/types/nest-decorator.types.js';
+import { ServerError } from '../../src/utils/server-error.js';
 
 interface IProcedureParams {
   id: number;
@@ -37,7 +38,7 @@ function getFactoryProvider(token: symbol): FactoryProvider<unknown> {
   );
 
   if (!provider || !('useFactory' in provider)) {
-    throw new Error(`Factory provider ${token.toString()} not found`);
+    throw new ServerError(`Factory provider ${token.toString()} not found`);
   }
 
   return provider as FactoryProvider<unknown>;
@@ -94,7 +95,7 @@ describe('core method Nest providers', (): void => {
         'pkg.proc',
         { id: 1 },
         {
-          optionsCommands: ['SET x = 1'],
+          optionsCommands: ['SET LOCAL x = 1'],
           mode: 'slave',
         }
       )
@@ -111,7 +112,7 @@ describe('core method Nest providers', (): void => {
         'SELECT :ID',
         { ID: 1 },
         {
-          optionsCommands: ['SET x = 1'],
+          optionsCommands: ['SET LOCAL x = 1'],
           mode: 'slave',
         }
       )
@@ -134,7 +135,7 @@ describe('core method Nest providers', (): void => {
       'pkg.proc',
       { id: 1 },
       {
-        optionsCommands: ['SET x = 1'],
+        optionsCommands: ['SET LOCAL x = 1'],
         mode: 'slave',
       }
     );
@@ -154,7 +155,7 @@ describe('core method Nest providers', (): void => {
       'SELECT :ID',
       { ID: 1 },
       {
-        optionsCommands: ['SET x = 1'],
+        optionsCommands: ['SET LOCAL x = 1'],
         mode: 'slave',
       }
     );

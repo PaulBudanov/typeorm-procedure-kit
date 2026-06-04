@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { ServerError } from '../../utils/server-error.js';
 import type { QueryResultCacheOptions } from '../cache/cache.types.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -23,20 +24,20 @@ import type { FindOptionsSelect } from '../find-options/FindOptionsSelect.js';
 import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
 import type { FindOptionsWhere } from '../find-options/FindOptionsWhere.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import { EntityMetadata } from '../metadata/EntityMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
-import { ReadStream } from '../platform/PlatformTools.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { ReadStream } from '../platform/PlatformTools.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
-import { Brackets } from './Brackets.js';
+import type { Brackets } from './Brackets.js';
 import { JoinAttribute } from './JoinAttribute.js';
 import { QueryBuilder } from './QueryBuilder.js';
-import { QueryExpressionMap } from './QueryExpressionMap.js';
+import type { QueryExpressionMap } from './QueryExpressionMap.js';
 import { RelationCountAttribute } from './relation-count/RelationCountAttribute.js';
 import { RelationCountLoader } from './relation-count/RelationCountLoader.js';
 import { RelationCountMetadataToAttributeTransformer } from './relation-count/RelationCountMetadataToAttributeTransformer.js';
@@ -4335,7 +4336,7 @@ export class SelectQueryBuilder<Entity = unknown>
                       .join(' AND ')
                   );
               } else {
-                throw new Error(
+                throw new ServerError(
                   `This relation isn't supported by given find operator`
                 );
               }
@@ -4365,7 +4366,7 @@ export class SelectQueryBuilder<Entity = unknown>
                   )
                 );
               } else {
-                throw new Error(
+                throw new ServerError(
                   `This relation isn't supported by given find operator`
                 );
               }

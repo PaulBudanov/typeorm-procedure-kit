@@ -1,11 +1,11 @@
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
-import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
-import { SelectQueryBuilder } from './SelectQueryBuilder.js';
+import type { SelectQueryBuilder } from './SelectQueryBuilder.js';
 
 /**
  * Loads relation ids for the given entities.

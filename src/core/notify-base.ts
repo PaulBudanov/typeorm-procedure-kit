@@ -12,7 +12,8 @@ import type { ProcedureListBase } from './procedure-list-base.js';
 
 export class NotifyBase {
   private queueManager = new QueueManager<string>('packageUpdateSet', 'set');
-  private queueCallback: ((data: { item: string }) => void) | null = null;
+  private queueCallback: ((data: { item: string }) => Promise<void>) | null =
+    null;
 
   /**
    * Creates the package notification coordinator.
@@ -33,12 +34,21 @@ export class NotifyBase {
     private readonly packagesSettings?: TDbConfig['packagesSettings']
   ) {
     // Subscribe to queue and get packages from it
-    this.queueCallback = (data: { item: string }): void => {
+    this.queueCallback = async (data: { item: string }): Promise<void> => {
       if (typeof data.item === 'string') {
-        void this.procedureListBase.fetchProcedureListWithArguments(
-          data.item.toLowerCase() as Lowercase<string>
-        );
-        this.queueManager.dequeue(data.item);
+        try {
+          await this.procedureListBase.fetchProcedureListWithArguments(
+            data.item.toLowerCase() as Lowercase<string>
+          );
+          this.queueManager.dequeue(data.item);
+        } catch (error) {
+          this.logger.error(
+            `Failed to refresh procedure metadata for package ${data.item}: ${
+              (error as Error).message
+            }`,
+            (error as Error).stack
+          );
+        }
       }
     };
     this.queueManager.subscribeToEnqueue(this.queueCallback);
@@ -86,26 +96,28 @@ export class NotifyBase {
    * }
    * @returns void
    */
-  public packageNotifyCallback(notifyData: TNotifyPackageCallback): void {
-    const processPackage = (packageNameRaw: string): void => {
+  public async packageNotifyCallback(
+    notifyData: TNotifyPackageCallback
+  ): Promise<void> {
+    const processPackage = async (packageNameRaw: string): Promise<void> => {
       const packageName = packageNameRaw.toLowerCase() as Lowercase<string>;
       if (
         this.packagesSettings &&
         this.packagesSettings.packages.includes(packageName)
       ) {
-        this.queueManager.enqueue(undefined, packageName);
+        await this.queueManager.enqueueAsync(undefined, packageName);
       }
     };
 
     if (Array.isArray(notifyData)) {
-      notifyData.forEach((item) => processPackage(item.name));
+      await Promise.all(notifyData.map((item) => processPackage(item.name)));
     } else {
       if (
         notifyData.event &&
         (notifyData.event.toUpperCase() === 'DROP' ||
           notifyData.event.toUpperCase() === 'CREATE')
       )
-        processPackage(notifyData.object);
+        await processPackage(notifyData.object);
     }
     return;
   }

@@ -1,4 +1,5 @@
 import type { TFunction } from '../../types/utility.types.js';
+import { safeStringify } from '../../utils/safe-stringify.js';
 import { type EntityTarget } from '../common/EntityTarget.js';
 import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
@@ -38,10 +39,6 @@ export class EntityNotFoundError extends TypeORMError {
   }
 
   private stringifyCriteria(criteria: unknown): string {
-    try {
-      return JSON.stringify(criteria, null, 4);
-    } catch {
-      return '' + criteria;
-    }
+    return safeStringify(criteria);
   }
 }

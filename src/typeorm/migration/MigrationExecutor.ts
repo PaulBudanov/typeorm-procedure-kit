@@ -1,5 +1,6 @@
+import { ServerError } from '../../utils/server-error.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import { DataSource } from '../data-source/DataSource.js';
+import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { Table } from '../schema-builder/table/Table.js';
@@ -422,7 +423,7 @@ export class MigrationExecutor {
 
     // if no migrations found in the database then nothing to revert
     if (!migrationToRevert)
-      throw new Error(
+      throw new ServerError(
         `No migration ${lastTimeExecutedMigration.name} was found in the source code. Make sure you have this migration in your codebase and its included in the connection options.`
       );
 
@@ -558,7 +559,7 @@ export class MigrationExecutor {
       const migrationClassName = migration.name ?? migration.constructor.name;
       const migrationTimestamp = parseInt(migrationClassName.substr(-13), 10);
       if (!migrationTimestamp || isNaN(migrationTimestamp)) {
-        throw new Error(
+        throw new ServerError(
           `${migrationClassName} migration name is wrong. Migration class name should have a JavaScript timestamp appended.`
         );
       }

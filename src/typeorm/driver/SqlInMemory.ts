@@ -1,4 +1,4 @@
-import { Query } from './Query.js';
+import type { Query } from './Query.js';
 
 /**
  * This class stores up and down queries needed for migrations functionality.

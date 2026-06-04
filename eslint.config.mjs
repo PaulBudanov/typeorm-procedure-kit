@@ -121,6 +121,9 @@ export default defineConfig(
       // Block `require()` in TypeScript
       '@typescript-eslint/no-require-imports': 'error',
 
+      // Prevent type-only references from becoming runtime ESM dependencies.
+      '@typescript-eslint/consistent-type-imports': 'error',
+
       // Disallows unused variables (but allows `_` as a prefix)
       '@typescript-eslint/no-unused-vars': [
         'error',

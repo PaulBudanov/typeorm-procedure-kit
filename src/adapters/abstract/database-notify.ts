@@ -4,9 +4,10 @@ import type {
   INotifyHealthCheckOptions,
   INotifyRestoreOptions,
   INotifyRetryOptions,
+  IRestoreState,
   TNotifyCallbackGeneric,
 } from '../../types/notification.types.js';
-import { AsyncUtils } from '../../utils/async-utils.js';
+import { ServerError } from '../../utils/server-error.js';
 
 export abstract class DatabaseNotify<
   T extends TConnectionTypes,
@@ -17,11 +18,11 @@ export abstract class DatabaseNotify<
   protected readonly RESTORE_RETRY_AFTER_MAX_DELAY_MS: number = 1000 * 60 * 30;
   protected readonly RESTORE_MAX_RETRIES: number = 5;
   protected readonly RESTORE_CURRENT_RETRY: number = 1;
+  protected readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
 
-  private readonly healthCheckTimers = new Map<string, NodeJS.Timeout>();
-  private readonly healthChecksInProgress = new Set<string>();
-  private readonly restoringNotifications = new Set<string>();
-  private readonly cancelledRestores = new Set<string>();
+  private readonly IRestoreStates = new Map<string, IRestoreState>();
+  private isDestroyed = false;
+  private destroyPromise?: Promise<void>;
   protected readonly notificationPool = new Map<string, T>();
   protected constructor(protected readonly logger: ILoggerModule) {}
 
@@ -38,36 +39,58 @@ export abstract class DatabaseNotify<
    * Active restore attempts are cancelled first, then all pooled connections
    * are unsubscribed and closed by the concrete adapter.
    */
-  public async destroy(): Promise<void> {
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.isDestroyed = true;
+    this.cancelRestoreRetryDelays();
+    this.destroyPromise = this.destroyNotifications();
+    return this.destroyPromise;
+  }
+
+  private async destroyNotifications(): Promise<void> {
+    this.stopAllConnectionHealthChecks();
+    const activeRestores = this.getActiveRestores();
     const channels = new Set([
       ...this.notificationPool.keys(),
-      ...this.restoringNotifications,
+      ...activeRestores.map(([channel]) => channel),
     ]);
     if (channels.size === 0) {
       this.logger.log('No active notifications to cleanup');
-      return;
     }
     channels.forEach((channel) => this.cancelNotificationRestore(channel));
 
-    const unsubscribePromises = Array.from(this.notificationPool.entries()).map(
-      async ([channel]) => {
-        try {
-          await this.unlistenNotify(channel);
-        } catch (error) {
-          this.logger.error(
-            `Error unsubscribing from channel ${channel}: ${
-              (error as Error).message
-            }`
-          );
-        }
-      }
+    await Promise.allSettled([
+      ...this.unsubscribeChannels(this.notificationPool.keys()),
+      ...activeRestores.map(([channel, restore]) =>
+        this.waitForActiveRestore(channel, restore)
+      ),
+    ]);
+
+    const remainingChannels = Array.from(this.notificationPool.keys());
+    remainingChannels.forEach((channel) =>
+      this.cancelNotificationRestore(channel)
     );
+    await Promise.allSettled(this.unsubscribeChannels(remainingChannels));
+
     this.notificationPool.clear();
-    this.restoringNotifications.clear();
-    this.healthChecksInProgress.clear();
-    this.healthCheckTimers.forEach((timer) => clearTimeout(timer));
-    await Promise.allSettled(unsubscribePromises);
+    this.IRestoreStates.clear();
     this.logger.log('DatabaseNotify shutdown completed');
+  }
+
+  private unsubscribeChannels(
+    channels: Iterable<string>
+  ): Array<Promise<void>> {
+    return Array.from(channels, async (channel) => {
+      try {
+        await this.unlistenNotify(channel);
+      } catch (error) {
+        this.logger.error(
+          `Error unsubscribing from channel ${channel}: ${
+            (error as Error).message
+          }`
+        );
+      }
+    });
   }
 
   /**
@@ -100,12 +123,13 @@ export abstract class DatabaseNotify<
   protected startConnectionHealthCheck(
     options: INotifyHealthCheckOptions<T>
   ): void {
+    if (this.isDestroyed) return;
     this.stopConnectionHealthCheck(options.channelName);
     const timer = setInterval(() => {
       void this.checkConnection(options);
     }, options.intervalMs ?? this.CONNECTION_HEALTH_CHECK_INTERVAL_MS);
     timer.unref();
-    this.healthCheckTimers.set(options.channelName, timer);
+    this.getOrCreateIRestoreState(options.channelName).healthCheckTimer = timer;
   }
 
   /**
@@ -113,10 +137,11 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected stopConnectionHealthCheck(channelName: string): void {
-    const timer = this.healthCheckTimers.get(channelName);
-    if (!timer) return;
-    clearInterval(timer);
-    this.healthCheckTimers.delete(channelName);
+    const state = this.IRestoreStates.get(channelName);
+    if (!state?.healthCheckTimer) return;
+    clearInterval(state.healthCheckTimer);
+    delete state.healthCheckTimer;
+    this.deleteIRestoreStateIfIdle(channelName, state);
   }
 
   /**
@@ -126,8 +151,21 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected markNotificationActive(channelName: string): void {
-    if (this.restoringNotifications.has(channelName)) return;
-    this.cancelledRestores.delete(channelName);
+    if (this.isDestroyed) {
+      this.cancelNotificationRestore(channelName);
+      return;
+    }
+    const state = this.IRestoreStates.get(channelName);
+    if (!state) return;
+    if (state.activeRestore) return;
+    state.isCancelled = false;
+    this.deleteIRestoreStateIfIdle(channelName, state);
+  }
+
+  protected assertCanRegisterNotification(): void {
+    if (this.isDestroyed) {
+      throw new ServerError('Database notification adapter is shutting down');
+    }
   }
 
   /**
@@ -136,7 +174,15 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected cancelNotificationRestore(channelName: string): void {
-    this.cancelledRestores.add(channelName);
+    this.getOrCreateIRestoreState(channelName).isCancelled = true;
+    this.cancelRestoreRetryDelay(channelName);
+  }
+
+  protected isNotificationRestoreCancelled(channelName: string): boolean {
+    return (
+      this.isDestroyed ||
+      this.IRestoreStates.get(channelName)?.isCancelled === true
+    );
   }
 
   /**
@@ -144,9 +190,11 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected clearNotificationRestoreState(channelName: string): void {
-    this.cancelledRestores.delete(channelName);
-    this.restoringNotifications.delete(channelName);
-    this.healthChecksInProgress.delete(channelName);
+    const state = this.IRestoreStates.get(channelName);
+    if (!state) return;
+    state.isHealthCheckInProgress = false;
+    if (!this.isDestroyed && !state.activeRestore) state.isCancelled = false;
+    this.deleteIRestoreStateIfIdle(channelName, state);
   }
 
   /**
@@ -154,36 +202,47 @@ export abstract class DatabaseNotify<
    * Concrete adapters provide the restore callback and adapter-specific state.
    * @param options - restore callback, settings, and retry options.
    */
-  protected async restoreNotification<TSettings>(
+  protected restoreNotification<TSettings>(
     options: INotifyRestoreOptions<TSettings>
   ): Promise<void> {
-    if (this.cancelledRestores.has(options.channelName)) return;
-    if (this.restoringNotifications.has(options.channelName)) return;
-    this.restoringNotifications.add(options.channelName);
-    try {
-      await this.restoreNotificationWithRetry(options);
-    } finally {
-      this.restoringNotifications.delete(options.channelName);
-    }
+    if (this.isNotificationRestoreCancelled(options.channelName))
+      return Promise.resolve();
+    const state = this.getOrCreateIRestoreState(options.channelName);
+    if (state.activeRestore) return state.activeRestore;
+    const restorePromise = Promise.resolve()
+      .then(() => this.restoreNotificationWithRetry(options))
+      .finally(() => {
+        if (state.activeRestore === restorePromise) {
+          delete state.activeRestore;
+          if (!this.isDestroyed) state.isCancelled = false;
+          this.deleteIRestoreStateIfIdle(options.channelName, state);
+        }
+      });
+    state.activeRestore = restorePromise;
+    return restorePromise;
   }
 
   private async checkConnection(
     options: INotifyHealthCheckOptions<T>
   ): Promise<void> {
     const { channelName, connection } = options;
+    const state = this.IRestoreStates.get(channelName);
     if (
+      this.isDestroyed ||
       this.notificationPool.get(channelName) !== connection ||
-      this.healthChecksInProgress.has(channelName)
+      state?.isHealthCheckInProgress === true
     )
       return;
-    this.healthChecksInProgress.add(channelName);
+    const activeState = this.getOrCreateIRestoreState(channelName);
+    activeState.isHealthCheckInProgress = true;
     try {
       const isHealthy = await options.isHealthy(connection);
-      if (isHealthy) return;
+      if (this.isDestroyed || isHealthy) return;
       if (this.notificationPool.get(channelName) !== connection) return;
       await options.restore();
     } finally {
-      this.healthChecksInProgress.delete(channelName);
+      activeState.isHealthCheckInProgress = false;
+      this.deleteIRestoreStateIfIdle(channelName, activeState);
     }
   }
 
@@ -202,10 +261,13 @@ export abstract class DatabaseNotify<
     let currentRetry = options.currentRetry ?? this.RESTORE_CURRENT_RETRY;
 
     while (currentRetry <= maxRetries) {
+      if (this.isNotificationRestoreCancelled(options.channelName)) return;
       try {
         await options.restore(options.settings);
+        if (this.isNotificationRestoreCancelled(options.channelName)) return;
         break;
       } catch (error: unknown) {
+        if (this.isNotificationRestoreCancelled(options.channelName)) return;
         this.logger.error(
           `Attempt ${currentRetry}/${maxRetries} failed to restore ${
             options.channelName
@@ -218,7 +280,11 @@ export abstract class DatabaseNotify<
               options.channelName
             }. Scheduling recovery in ${retryAfterMaxDelayMs / 1000} seconds.`
           );
-          await AsyncUtils.delay(retryAfterMaxDelayMs);
+          await this.waitForRestoreRetryDelay(
+            options.channelName,
+            retryAfterMaxDelayMs
+          );
+          if (this.isNotificationRestoreCancelled(options.channelName)) return;
           currentRetry = this.RESTORE_CURRENT_RETRY;
           continue;
         }
@@ -227,10 +293,107 @@ export abstract class DatabaseNotify<
             currentRetry + 1
           }/${maxRetries})`
         );
-        await AsyncUtils.delay(retryDelayMs);
+        await this.waitForRestoreRetryDelay(options.channelName, retryDelayMs);
+        if (this.isNotificationRestoreCancelled(options.channelName)) return;
         currentRetry += 1;
       }
     }
     return;
+  }
+
+  private waitForRestoreRetryDelay(
+    channelName: string,
+    delayMs: number
+  ): Promise<void> {
+    if (this.isDestroyed) return Promise.resolve();
+    const state = this.getOrCreateIRestoreState(channelName);
+    return new Promise((resolve) => {
+      const complete = (): void => {
+        clearTimeout(timer);
+        if (state.cancelRetryDelay === complete) {
+          delete state.cancelRetryDelay;
+        }
+        this.deleteIRestoreStateIfIdle(channelName, state);
+        resolve();
+      };
+      const timer = setTimeout(complete, delayMs);
+      timer.unref();
+      state.cancelRetryDelay = complete;
+    });
+  }
+
+  private cancelRestoreRetryDelay(channelName: string): void {
+    this.IRestoreStates.get(channelName)?.cancelRetryDelay?.();
+  }
+
+  private cancelRestoreRetryDelays(): void {
+    this.IRestoreStates.forEach((state) => state.cancelRetryDelay?.());
+  }
+
+  private getActiveRestores(): Array<[string, Promise<void>]> {
+    const activeRestores: Array<[string, Promise<void>]> = [];
+    this.IRestoreStates.forEach((state, channelName) => {
+      if (state.activeRestore)
+        activeRestores.push([channelName, state.activeRestore]);
+    });
+    return activeRestores;
+  }
+
+  private waitForActiveRestore(
+    channelName: string,
+    restore: Promise<void>
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      let isSettled = false;
+      const timer: NodeJS.Timeout = setTimeout(() => {
+        this.logger.warn(
+          `Timed out waiting ${this.DESTROY_RESTORE_WAIT_TIMEOUT_MS}ms for notification restore ${channelName} during shutdown; continuing cleanup`
+        );
+        complete();
+      }, this.DESTROY_RESTORE_WAIT_TIMEOUT_MS);
+      const complete = (): void => {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      timer.unref();
+      void restore.then(complete, complete);
+    });
+  }
+
+  private stopAllConnectionHealthChecks(): void {
+    this.IRestoreStates.forEach((state, channelName) => {
+      if (!state.healthCheckTimer) return;
+      clearInterval(state.healthCheckTimer);
+      delete state.healthCheckTimer;
+      this.deleteIRestoreStateIfIdle(channelName, state);
+    });
+  }
+
+  private getOrCreateIRestoreState(channelName: string): IRestoreState {
+    const existingState = this.IRestoreStates.get(channelName);
+    if (existingState) return existingState;
+    const state: IRestoreState = {
+      isCancelled: false,
+      isHealthCheckInProgress: false,
+    };
+    this.IRestoreStates.set(channelName, state);
+    return state;
+  }
+
+  private deleteIRestoreStateIfIdle(
+    channelName: string,
+    state: IRestoreState
+  ): void {
+    if (
+      state.isCancelled ||
+      state.isHealthCheckInProgress ||
+      state.activeRestore ||
+      state.cancelRetryDelay ||
+      state.healthCheckTimer
+    )
+      return;
+    this.IRestoreStates.delete(channelName);
   }
 }

@@ -3,10 +3,10 @@ import { TypeORMError } from '../error/TypeORMError.js';
 import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
-import { ColumnMetadata } from './ColumnMetadata.js';
+import type { ColumnMetadata } from './ColumnMetadata.js';
 import { resolveColumnPath } from './ColumnPathResolver.js';
-import { EmbeddedMetadata } from './EmbeddedMetadata.js';
-import { EntityMetadata } from './EntityMetadata.js';
+import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
+import type { EntityMetadata } from './EntityMetadata.js';
 
 /**
  * Index metadata contains all information about table's index.

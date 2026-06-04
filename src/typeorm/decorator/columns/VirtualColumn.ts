@@ -1,4 +1,5 @@
 import type { TFunction } from '../../../types/utility.types.js';
+import { ServerError } from '../../../utils/server-error.js';
 import type { ColumnType } from '../../driver/types/ColumnTypes.js';
 import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError.js';
 import { getMetadataArgsStorage } from '../../globals.js';
@@ -36,7 +37,9 @@ export function VirtualColumn(
     }
 
     if (!options?.query) {
-      throw new Error('Column options must be defined for calculated columns.');
+      throw new ServerError(
+        'Column options must be defined for calculated columns.'
+      );
     }
 
     // if type is not given explicitly then try to guess it
