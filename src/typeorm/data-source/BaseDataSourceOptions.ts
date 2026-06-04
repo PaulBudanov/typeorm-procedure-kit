@@ -5,7 +5,6 @@ import type { MixedList } from '../common/MixedList.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import type { Logger } from '../logger/Logger.js';
-import type { LoggerOptions } from '../logger/LoggerOptions.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
 /**
@@ -68,19 +67,9 @@ export interface BaseDataSourceOptions {
   readonly namingStrategy?: NamingStrategyInterface;
 
   /**
-   * Logging options.
-   */
-  readonly logging?: LoggerOptions;
-
-  /**
    * Logger instance used to log queries and events in the ORM.
    */
-  readonly logger?:
-    | 'advanced-console'
-    | 'simple-console'
-    | 'formatted-console'
-    | 'file'
-    | Logger;
+  readonly logger?: Logger;
 
   /**
    * Maximum number of milliseconds query should be executed before logger log a warning.

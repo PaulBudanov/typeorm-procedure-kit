@@ -8,7 +8,7 @@ import { createLogger, type TestLogger } from '../support/helpers.js';
 
 interface IntegrationTestSettings<TConfig extends IModuleConfig['config']> {
   config: TConfig;
-  logger: TestLogger;
+  logger: { module: TestLogger };
 }
 
 function isIntegrationRequired(): boolean {
@@ -60,7 +60,7 @@ export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPo
     return handleMissingEnv('PostgreSQL');
 
   return {
-    logger: createLogger(),
+    logger: { module: createLogger() },
     config: {
       type: 'postgres',
       parseInt8AsBigInt: false,
@@ -102,7 +102,7 @@ export function createOracleIntegrationSettings(): IntegrationTestSettings<TOrac
     return handleMissingEnv('Oracle');
 
   return {
-    logger: createLogger(),
+    logger: { module: createLogger() },
     config: {
       type: 'oracle',
       poolSize: 2,

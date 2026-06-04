@@ -23,7 +23,7 @@ const config = {
     poolSize: 1,
     parseInt8AsBigInt: false,
   },
-  logger: createLogger(),
+  logger: { module: createLogger() },
 } as const;
 
 describe('TypeOrmProcedureKitNestModule', (): void => {

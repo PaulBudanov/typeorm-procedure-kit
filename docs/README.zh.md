@@ -100,12 +100,10 @@ const logger: ILoggerModule = {
   error: console.error,
   log: console.log,
   warn: console.warn,
-  debug: console.debug,
-  verbose: console.debug,
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: { module: logger },
   config: {
     type: 'postgres',
     parseInt8AsBigInt: true,
@@ -222,14 +220,13 @@ const logger: ILoggerModule = {
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
   warn: (message, ...optionalParams) =>
     console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: {
+    module: logger,
+    typeormLogLevels: ['query', 'error', 'warn', 'migration'],
+  },
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
@@ -274,6 +271,8 @@ const settings: IModuleConfig = {
 - `poolSize`：连接池大小。
 - `appName`：传递给受支持驱动的应用名称。
 - `maxQueryExecutionTime`：传递给底层 DataSource 的慢查询阈值；记录慢查询但不会取消。
+- `logger.typeormLogLevels`：通过 `logger.module` 输出的 TypeORM 日志级别。
+  支持 `query`、`error`、`schema`、`info`、`warn`、`migration` 或 `all`。
 - `queryTimeoutMs`：可选的正整数 query timeout（毫秒）。PostgreSQL 会把它作为
   `statement_timeout` 传给 `pg` pool，这是 statement-level timeout。Oracle 会在每次
   获取 physical connection 后把它设置为 `oracledb` `connection.callTimeout`；它限制
@@ -505,7 +504,7 @@ const config: IModuleConfig['config'] = {
 @Module({
   imports: [
     TypeOrmProcedureKitNestModule.forRoot({
-      logger: new Logger('TypeOrmProcedureKit'),
+      logger: { module: new Logger('TypeOrmProcedureKit') },
       config,
     }),
   ],
@@ -519,7 +518,7 @@ export class AppModule {}
 TypeOrmProcedureKitNestModule.forRootAsync({
   isGlobal: true,
   useFactory: async (): Promise<IModuleConfig> => ({
-    logger: new Logger('TypeOrmProcedureKit'),
+    logger: { module: new Logger('TypeOrmProcedureKit') },
     config,
   }),
 });

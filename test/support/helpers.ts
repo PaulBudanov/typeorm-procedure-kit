@@ -12,8 +12,6 @@ export interface TestLogger extends ILoggerModule {
   error: LoggerMock;
   log: LoggerMock;
   warn: LoggerMock;
-  debug: LoggerMock;
-  verbose: LoggerMock;
 }
 
 export function createLogger(): TestLogger {
@@ -22,10 +20,6 @@ export function createLogger(): TestLogger {
       vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
     log: vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
     warn: vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
-    debug:
-      vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
-    verbose:
-      vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
   } as TestLogger;
 }
 

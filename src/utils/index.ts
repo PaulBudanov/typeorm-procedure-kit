@@ -12,6 +12,8 @@ export { TypeGuards } from './type-guards.js';
 
 // Timer
 export { QueryTimer } from './query-timer.js';
+export { QueryLogContextBuilder } from './query-log-context-builder.js';
+export { QueryLogContextStorage } from './query-log-context.js';
 
 // Query timeout validate
 

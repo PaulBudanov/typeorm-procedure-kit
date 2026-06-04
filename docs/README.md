@@ -105,12 +105,10 @@ const logger: ILoggerModule = {
   error: console.error,
   log: console.log,
   warn: console.warn,
-  debug: console.debug,
-  verbose: console.debug,
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: { module: logger },
   config: {
     type: 'postgres',
     parseInt8AsBigInt: true,
@@ -228,14 +226,13 @@ const logger: ILoggerModule = {
   log: (message, ...optionalParams) => console.log(message, ...optionalParams),
   warn: (message, ...optionalParams) =>
     console.warn(message, ...optionalParams),
-  debug: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
-  verbose: (message, ...optionalParams) =>
-    console.debug(message, ...optionalParams),
 };
 
 const settings: IModuleConfig = {
-  logger,
+  logger: {
+    module: logger,
+    typeormLogLevels: ['query', 'error', 'warn', 'migration'],
+  },
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
@@ -281,6 +278,9 @@ Common options:
 - `appName`: application name passed to supported drivers.
 - `maxQueryExecutionTime`: slow-query threshold passed to the underlying
   DataSource; it logs slow queries without cancelling them.
+- `logger.typeormLogLevels`: TypeORM log levels routed through `logger.module`.
+  Supported values are `query`, `error`, `schema`, `info`, `warn`, `migration`,
+  or `all`.
 - `queryTimeoutMs`: optional positive integer query timeout in milliseconds.
   PostgreSQL passes it to the `pg` pool as `statement_timeout`, a statement-level
   timeout. Oracle applies it to each acquired physical connection as `oracledb`
@@ -523,7 +523,7 @@ const config: IModuleConfig['config'] = {
 @Module({
   imports: [
     TypeOrmProcedureKitNestModule.forRoot({
-      logger: new Logger('TypeOrmProcedureKit'),
+      logger: { module: new Logger('TypeOrmProcedureKit') },
       config,
     }),
   ],
@@ -537,7 +537,7 @@ Async setup:
 TypeOrmProcedureKitNestModule.forRootAsync({
   isGlobal: true,
   useFactory: async (): Promise<IModuleConfig> => ({
-    logger: new Logger('TypeOrmProcedureKit'),
+    logger: { module: new Logger('TypeOrmProcedureKit') },
     config,
   }),
 });

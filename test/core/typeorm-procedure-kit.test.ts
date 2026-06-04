@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { TypeOrmProcedureKit } from '../../src/core/index.js';
+import { QueryLogContextStorage } from '../../src/utils/query-log-context.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
@@ -20,7 +21,7 @@ function createKit(): TypeOrmProcedureKit {
       poolSize: 1,
       parseInt8AsBigInt: false,
     },
-    logger: createLogger(),
+    logger: { module: createLogger() },
   });
 }
 
@@ -65,7 +66,7 @@ describe('TypeOrmProcedureKit', (): void => {
         poolSize: 1,
         parseInt8AsBigInt: false,
       },
-      logger: createLogger(),
+      logger: { module: createLogger() },
       isRegisterShutdownHandlers: true,
     });
 
@@ -96,6 +97,150 @@ describe('TypeOrmProcedureKit', (): void => {
 
     resolveNotificationsDestroy();
     await destroyPromise;
+  });
+
+  it('passes procedure metadata to execution logging context', async (): Promise<void> => {
+    const kit = new TypeOrmProcedureKit({
+      config: {
+        type: 'postgres',
+        master: {
+          host: 'localhost',
+          port: 5432,
+          database: 'db',
+          username: 'user',
+          password: 'pass',
+        },
+        poolSize: 1,
+        parseInt8AsBigInt: false,
+        packagesSettings: {
+          packages: ['pkg'],
+          procedureObjectList: { run: 'pkg.run' },
+        },
+      },
+      logger: { module: createLogger() },
+    });
+    const bindings = [{ val: 7 }, {}];
+    let capturedContext = QueryLogContextStorage.getStore();
+    const execute = vi.fn().mockImplementation((): Promise<Array<unknown>> => {
+      capturedContext = QueryLogContextStorage.getStore();
+      return Promise.resolve([]);
+    });
+    const makeBindings = vi.fn(() => ({
+      paramExecuteString: 'BEGIN PKG.RUN (:p_id,:out_cursor); END;',
+      bindings,
+      cursorsNames: ['out_cursor'],
+    }));
+
+    Object.assign(kit as unknown as Record<string, unknown>, {
+      databaseInitializerBase: {
+        databaseAdapter: {
+          makeBindings,
+        },
+      },
+      procedureListBase: {
+        packagesWithProceduresList: new Map([
+          [
+            'pkg',
+            {
+              run: [
+                {
+                  argumentName: 'p_id',
+                  argumentType: 'NUMBER',
+                  order: 1,
+                  mode: 'IN',
+                },
+                {
+                  argumentName: 'out_cursor',
+                  argumentType: 'REF CURSOR',
+                  order: 2,
+                  mode: 'OUT',
+                },
+              ],
+            },
+          ],
+        ]),
+      },
+      executeBase: {
+        execute,
+      },
+    });
+
+    await kit.call('pkg.run', { id: 7 });
+
+    expect(execute).toHaveBeenCalledWith(
+      'BEGIN PKG.RUN (:p_id,:out_cursor); END;',
+      bindings,
+      ['out_cursor'],
+      undefined
+    );
+    expect(capturedContext).toEqual({
+      kind: 'procedure',
+      packageName: 'pkg',
+      procedureName: 'run',
+      bindings: [
+        {
+          name: 'p_id',
+          type: 'NUMBER',
+          mode: 'IN',
+          value: 7,
+          isCursor: false,
+        },
+        {
+          name: 'out_cursor',
+          type: 'REF CURSOR',
+          mode: 'OUT',
+          value: undefined,
+          isCursor: true,
+        },
+      ],
+    });
+  });
+
+  it('passes SQL transaction bindings to execution logging context', async (): Promise<void> => {
+    const kit = createKit();
+    const bindings = [7, 'secret-password'];
+    let capturedContext = QueryLogContextStorage.getStore();
+    const execute = vi.fn().mockImplementation((): Promise<Array<unknown>> => {
+      capturedContext = QueryLogContextStorage.getStore();
+      return Promise.resolve([]);
+    });
+    const makeSqlBindings = vi.fn(() => ({
+      sqlString: 'select * from users where id = $1 and password = $2',
+      bindings,
+    }));
+
+    Object.assign(kit as unknown as Record<string, unknown>, {
+      databaseInitializerBase: {
+        databaseAdapter: {
+          makeSqlBindings,
+        },
+      },
+      executeBase: {
+        execute,
+      },
+    });
+
+    await kit.callSqlTransaction(
+      'select * from users where id = :ID and password = :PASSWORD',
+      {
+        id: 7,
+        password: 'secret-password',
+      }
+    );
+
+    expect(execute).toHaveBeenCalledWith(
+      'select * from users where id = $1 and password = $2',
+      bindings,
+      [],
+      undefined
+    );
+    expect(capturedContext).toEqual({
+      kind: 'sql',
+      bindings: [
+        { name: 'ID', value: 7 },
+        { name: 'PASSWORD', value: 'secret-password' },
+      ],
+    });
   });
 
   it('keeps successful destroy terminal for future calls', async (): Promise<void> => {
@@ -246,7 +391,7 @@ describe('TypeOrmProcedureKit', (): void => {
           metadataNotificationSql: 'LISTEN "package_updates"',
         },
       },
-      logger: createLogger(),
+      logger: { module: createLogger() },
     });
     const getPackagesNotifySql = vi.fn((): string => 'LISTEN "fallback"');
     const createNotification = vi
