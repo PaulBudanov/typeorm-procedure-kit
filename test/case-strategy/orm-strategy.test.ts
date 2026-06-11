@@ -30,6 +30,21 @@ describe('OrmStrategy', (): void => {
     );
   });
 
+  it('does not reuse cached generated names for explicit custom names', (): void => {
+    const strategy = new OrmStrategy(
+      Symbol('orm-columns'),
+      (value: string): string => value.toUpperCase(),
+      new DatabaseNamingCache<string>()
+    );
+
+    expect(strategy.columnName('patientId', undefined as never, [])).toBe(
+      'PATIENTID'
+    );
+    expect(strategy.columnName('patientId', 'PATIENT_ID', [])).toBe(
+      'PATIENT_ID'
+    );
+  });
+
   it('transforms raw aliases with the configured ORM case utility', (): void => {
     const strategy = new OrmStrategy(
       Symbol('orm-columns'),

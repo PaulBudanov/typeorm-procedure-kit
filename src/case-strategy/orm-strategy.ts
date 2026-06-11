@@ -9,7 +9,7 @@ export class OrmStrategy
   implements NamingStrategyInterface
 {
   private databaseNamingCache: DatabaseNamingCache<string>;
-
+  private readonly COLUMN_NAME_CACHE_KEY_SEPARATOR = '\x1f';
   /**
    * Constructor for the OrmStrategy class.
    * @param {symbol} columnNameCacheKey - Symbol to identify the cache key for the column name transformation.
@@ -49,10 +49,20 @@ export class OrmStrategy
     if (typeof columnName !== 'string')
       throw new ServerError('Column name must be a string');
     const name = this.stringTransformUtility(columnName);
-    if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, name))
-      return this.databaseNamingCache.cacheGet(this.columnNameCacheKey, name)!;
+    let cacheName = `${name}${this.COLUMN_NAME_CACHE_KEY_SEPARATOR}${
+      customName ?? ''
+    }`;
+    if (embeddedPrefixes.length)
+      cacheName += `${this.COLUMN_NAME_CACHE_KEY_SEPARATOR}${embeddedPrefixes.join(
+        this.COLUMN_NAME_CACHE_KEY_SEPARATOR
+      )}`;
+    if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, cacheName))
+      return this.databaseNamingCache.cacheGet(
+        this.columnNameCacheKey,
+        cacheName
+      )!;
     const data = super.columnName(name, customName, embeddedPrefixes);
-    this.databaseNamingCache.cacheSet(this.columnNameCacheKey, name, data);
+    this.databaseNamingCache.cacheSet(this.columnNameCacheKey, cacheName, data);
     return data;
   }
 
