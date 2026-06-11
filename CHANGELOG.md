@@ -1,3 +1,10 @@
+## [2.1.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.1.0...v2.1.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* **case-strategy:** include custom column names in ORM naming cache ([e304cdf](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/e304cdf4a09f8ac9f45ba11e96bb7f275ed8bfc4))
+
 # [2.1.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.0.3...v2.1.0) (2026-06-04)
 
 
