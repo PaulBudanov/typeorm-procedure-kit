@@ -552,12 +552,13 @@ damit das module global wird. Der Nest service initialisiert die database in
 `onModuleInit()` und ruft `destroy()` beim application shutdown auf.
 
 Der NestJS entry point exportiert auch decorators fuer injection einzelner
-methods:
+methods und lazy DataSource-Zugriff:
 
 | Decorator                       | Delegiert an                               |
 | ------------------------------- | ------------------------------------------ |
 | `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`               |
 | `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()` |
+| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`     |
 | `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`         |
 | `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`     |
 | `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`      |

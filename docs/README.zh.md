@@ -528,12 +528,13 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 Nest service 会在 `onModuleInit()` 中初始化数据库，并在应用关闭期间调用
 `destroy()`。
 
-NestJS 入口还导出用于注入单个方法的装饰器：
+NestJS 入口还导出用于注入单个方法和 lazy DataSource access 的装饰器：
 
 | 装饰器                          | 委托给                                     |
 | ------------------------------- | ------------------------------------------ |
 | `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`               |
 | `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()` |
+| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`     |
 | `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`         |
 | `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`     |
 | `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`      |

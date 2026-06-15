@@ -7,6 +7,7 @@ export type {
   TCallSql,
   TDeleteAllSerializers,
   TDeleteSerializer,
+  TGetDataSource,
   TMakeNotify,
   TSetSerializer,
   TUnlistenNotify,

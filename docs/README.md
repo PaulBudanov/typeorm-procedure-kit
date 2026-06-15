@@ -547,12 +547,14 @@ For synchronous setup, pass `true` as the second `forRoot()` argument to make
 the module global. The Nest service initializes the database during
 `onModuleInit()` and calls `destroy()` during application shutdown.
 
-The NestJS entry point also exports decorators for injecting individual methods:
+The NestJS entry point also exports decorators for injecting individual methods
+and lazy DataSource access:
 
 | Decorator                       | Delegates to                                 |
 | ------------------------------- | -------------------------------------------- |
 | `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`                 |
 | `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()`   |
+| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`       |
 | `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`           |
 | `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`       |
 | `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`        |

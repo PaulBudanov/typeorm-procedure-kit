@@ -6,6 +6,7 @@ import {
   CALL_SQL,
   DELETE_ALL_SERIALIZERS,
   DELETE_SERIALIZER,
+  GET_DATA_SOURCE,
   MAKE_NOTIFY,
   SET_SERIALIZER,
   TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
@@ -18,6 +19,7 @@ import type {
   TCallSql,
   TDeleteAllSerializers,
   TDeleteSerializer,
+  TGetDataSource,
   TMakeNotify,
   TSetSerializer,
   TUnlistenNotify,
@@ -49,6 +51,7 @@ describe('core method Nest providers', (): void => {
     expect(TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS).toEqual([
       CALL_PROCEDURE,
       CALL_SQL,
+      GET_DATA_SOURCE,
       MAKE_NOTIFY,
       UNLISTEN_NOTIFY,
       SET_SERIALIZER,
@@ -58,9 +61,16 @@ describe('core method Nest providers', (): void => {
   });
 
   it('delegates injected functions to TypeOrmProcedureKitNestService methods', async (): Promise<void> => {
+    const dataSource = { isInitialized: true } as ReturnType<TGetDataSource>;
+    const dataSourceGetter = vi.fn<() => ReturnType<TGetDataSource>>(
+      () => dataSource
+    );
     const service = {
       call: vi.fn().mockResolvedValue([{ id: 1 }]),
       callSqlTransaction: vi.fn().mockResolvedValue([{ value: 1 }]),
+      get dataSource(): ReturnType<TGetDataSource> {
+        return dataSourceGetter();
+      },
       makeNotify: vi.fn().mockResolvedValue('channel'),
       unlistenNotify: vi.fn().mockResolvedValue(undefined),
       setSerializer: vi.fn(),
@@ -74,6 +84,9 @@ describe('core method Nest providers', (): void => {
     const callSql = getFactoryProvider(CALL_SQL).useFactory(
       service
     ) as TCallSql;
+    const getDataSource = getFactoryProvider(GET_DATA_SOURCE).useFactory(
+      service
+    ) as TGetDataSource;
     const makeNotify = getFactoryProvider(MAKE_NOTIFY).useFactory(
       service
     ) as TMakeNotify;
@@ -121,6 +134,7 @@ describe('core method Nest providers', (): void => {
       makeNotify({ sql: 'LISTEN channel', notifyCallback: vi.fn() })
     ).resolves.toBe('channel');
     await expect(unlistenNotify('channel')).resolves.toBeUndefined();
+    expect(getDataSource()).toBe(dataSource);
 
     const serializer = {
       serializerType: 'DATE',
@@ -163,6 +177,7 @@ describe('core method Nest providers', (): void => {
       expect.objectContaining({ sql: 'LISTEN channel' }),
       undefined
     );
+    expect(dataSourceGetter).toHaveBeenCalledOnce();
     expect(service.unlistenNotify).toHaveBeenCalledWith('channel');
     expect(service.setSerializer).toHaveBeenCalledWith(serializer);
     expect(service.deleteSerializer).toHaveBeenCalledWith({

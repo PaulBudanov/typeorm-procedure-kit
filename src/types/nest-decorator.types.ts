@@ -1,3 +1,5 @@
+import type { DataSource } from '../typeorm/data-source/DataSource.js';
+
 import type { IExecutionOptions } from './config.types.js';
 import type {
   ICreateNotify,
@@ -23,6 +25,8 @@ export type TCallSql = <T>(
   params?: Record<string, unknown>,
   executionOptions?: IExecutionOptions
 ) => Promise<Array<T>>;
+
+export type TGetDataSource = () => DataSource;
 
 export type TMakeNotify = <T>(
   options: ICreateNotify<T>,

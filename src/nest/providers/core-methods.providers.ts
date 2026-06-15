@@ -6,6 +6,7 @@ import type {
   TCallSql,
   TDeleteAllSerializers,
   TDeleteSerializer,
+  TGetDataSource,
   TMakeNotify,
   TSetSerializer,
   TUnlistenNotify,
@@ -23,6 +24,7 @@ import {
   CALL_SQL,
   DELETE_ALL_SERIALIZERS,
   DELETE_SERIALIZER,
+  GET_DATA_SOURCE,
   MAKE_NOTIFY,
   SET_SERIALIZER,
   UNLISTEN_NOTIFY,
@@ -51,6 +53,13 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
         executionOptions?: IExecutionOptions
       ): Promise<Array<T>> =>
         service.callSqlTransaction<T>(sql, params, executionOptions);
+    },
+    inject: [TypeOrmProcedureKitNestService],
+  },
+  {
+    provide: GET_DATA_SOURCE,
+    useFactory: (service: TypeOrmProcedureKitNestService): TGetDataSource => {
+      return (): ReturnType<TGetDataSource> => service.dataSource;
     },
     inject: [TypeOrmProcedureKitNestService],
   },

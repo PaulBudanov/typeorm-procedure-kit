@@ -553,12 +553,13 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 `onModuleInit()` и вызывает `destroy()` при application shutdown.
 
 NestJS entry point также экспортирует decorators для injection отдельных
-methods:
+methods и lazy-доступа к DataSource:
 
 | Decorator                       | Делегирует в                               |
 | ------------------------------- | ------------------------------------------ |
 | `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`               |
 | `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()` |
+| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`     |
 | `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`         |
 | `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`     |
 | `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`      |

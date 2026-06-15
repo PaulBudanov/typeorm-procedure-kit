@@ -1,5 +1,5 @@
 const DEFAULT_REDACT_KEYS =
-  /password|passwd|pwd|secret|token|authorization|auth|cookie|credential|apikey|api_key|privatekey|private_key/i;
+  /password|passwd|pwd|pass|secret|token|authorization|auth|cookie|credential|apikey|api_key|privatekey|private_key/i;
 
 interface ISafeStringifyOptions {
   maxArrayLength?: number;
