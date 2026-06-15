@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.1.1...v2.2.0) (2026-06-15)
+
+
+### Features
+
+* **nest:** add lazy DataSource injection decorator ([9c36e51](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/9c36e5195a566ce8d235d7943ec9796cc070d166))
+
 ## [2.1.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.1.0...v2.1.1) (2026-06-11)
 
 
