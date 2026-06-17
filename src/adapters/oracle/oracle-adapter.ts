@@ -268,9 +268,12 @@ export class OracleAdapter extends DatabaseAdapter<
     for (const [index] of cursorsNames.entries()) {
       const resultSet = executeResult.result[index];
       if (!resultSet) continue;
-      const stream = resultSet.toQueryStream();
-      cursorResults.push(...(await this.handleQueryStream<T>(stream)));
-      await resultSet.close();
+      try {
+        const stream = resultSet.toQueryStream();
+        cursorResults.push(...(await this.handleQueryStream<T>(stream)));
+      } finally {
+        await resultSet.close();
+      }
     }
     return cursorResults;
   }

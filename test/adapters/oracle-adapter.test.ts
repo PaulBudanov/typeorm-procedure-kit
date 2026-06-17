@@ -173,7 +173,7 @@ describe('OracleAdapter', (): void => {
     const events: Array<string> = [];
     const createResultSet = (
       cursorName: string
-    ): { toQueryStream: () => Readable } => {
+    ): { toQueryStream: () => Readable; close: () => Promise<void> } => {
       return {
         toQueryStream: (): Readable => {
           return Readable.from(
@@ -187,6 +187,9 @@ describe('OracleAdapter', (): void => {
               events.push(`${cursorName}:end`);
             })()
           );
+        },
+        close: async (): Promise<void> => {
+          events.push(`${cursorName}:close`);
         },
       };
     };
@@ -218,8 +221,10 @@ describe('OracleAdapter', (): void => {
     expect(events).toEqual([
       'first:start',
       'first:end',
+      'first:close',
       'second:start',
       'second:end',
+      'second:close',
     ]);
   });
 });
