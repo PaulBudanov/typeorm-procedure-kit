@@ -123,15 +123,13 @@ export abstract class DatabaseAdapter<
           this.logger
         );
       }
-      const result = await manager.query<Array<T | oracledb.ResultSet<T>>>(
-        sql,
-        bindings
-      );
+      const result = await manager.query<
+        | Array<T | oracledb.ResultSet<T>>
+        | Record<string, T | oracledb.ResultSet<T>>
+      >(sql, bindings);
       const isCursorResult =
-        Array.isArray(result) &&
-        result.length > 0 &&
-        typeof result[0] === 'object' &&
         result !== null &&
+        typeof result === 'object' &&
         cursorsNames.length > 0;
       if (isCursorResult) {
         return this.fetchAllCursors<T>(cursorsNames, { result, manager });
@@ -179,6 +177,7 @@ export abstract class DatabaseAdapter<
     procedures: TProcedureArgumentList | undefined,
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn;
+
   //TODO: Add in the future support for another out bindings
   /**
    * Reads all output cursors returned by a procedure call.
@@ -190,7 +189,9 @@ export abstract class DatabaseAdapter<
   protected abstract fetchAllCursors<T>(
     cursorNames: Array<string>,
     executeResult: {
-      result?: Array<oracledb.ResultSet<T> | T>;
+      result?:
+        | Array<oracledb.ResultSet<T> | T>
+        | Record<string, oracledb.ResultSet<T> | T>;
       manager?: EntityManager;
     }
   ): Promise<Array<T>>;

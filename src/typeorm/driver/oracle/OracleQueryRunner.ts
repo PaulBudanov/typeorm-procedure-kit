@@ -32,6 +32,8 @@ import type { ReplicationMode } from '../types/ReplicationMode.js';
 
 import type { OracleDriver } from './OracleDriver.js';
 
+type OracleQueryParameters = Array<unknown> | oracledb.BindParameters;
+
 /**
  * Runs queries on a single oracle database connection.
  */
@@ -115,6 +117,19 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       typeof obj === 'object' &&
       prop in obj &&
       Array.isArray((obj as Record<string, unknown>)[prop])
+    );
+  }
+
+  /**
+   * Checks if a property exists and contains a non-null object value.
+   */
+  private hasObjectProperty(obj: unknown, prop: string): boolean {
+    return (
+      obj != null &&
+      typeof obj === 'object' &&
+      prop in obj &&
+      (obj as Record<string, unknown>)[prop] != null &&
+      typeof (obj as Record<string, unknown>)[prop] === 'object'
     );
   }
 
@@ -283,9 +298,31 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
   public async query(
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: OracleQueryParameters,
     useStructuredResult?: boolean
   ): Promise<unknown> {
+    if (useStructuredResult) {
+      return this.executeQuery(query, parameters, true);
+    }
+    return this.executeQuery(query, parameters);
+  }
+
+  private async executeQuery(
+    query: string,
+    parameters: OracleQueryParameters | undefined,
+    useStructuredResult: true
+  ): Promise<QueryResult>;
+
+  private async executeQuery<T = unknown>(
+    query: string,
+    parameters?: OracleQueryParameters
+  ): Promise<T>;
+
+  private async executeQuery<T = unknown>(
+    query: string,
+    parameters?: OracleQueryParameters,
+    useStructuredResult?: boolean
+  ): Promise<QueryResult | T> {
     if (this.isReleased) throw new QueryRunnerAlreadyReleasedError();
 
     await this.connect();
@@ -344,7 +381,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
 
       // Type guard for Oracle execute result
       const hasRows = this.hasArrayProperty(raw, 'rows');
-      const hasOutBinds = this.hasArrayProperty(raw, 'outBinds');
+      const hasOutBinds = this.hasObjectProperty(raw, 'outBinds');
       const hasImplicitResults = this.hasArrayProperty(raw, 'implicitResults');
       const hasRowsAffected = this.hasNumberProperty(raw, 'rowsAffected');
 
@@ -364,7 +401,10 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       }
 
       if (hasOutBinds) {
-        result.records = rawRecord.outBinds as Array<unknown>;
+        const outBinds = rawRecord.outBinds;
+        result.records = Array.isArray(outBinds)
+          ? (outBinds as Array<unknown>)
+          : Object.values(outBinds as Record<string, unknown>);
       }
 
       if (hasImplicitResults) {
@@ -378,7 +418,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       if (useStructuredResult) {
         return result;
       } else {
-        return result.raw;
+        return result.raw as T;
       }
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));

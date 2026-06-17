@@ -26,7 +26,7 @@ export class QueryLogContextBuilder {
         procedureArguments?.map((argument, index) =>
           this.createProcedureBindingLogItem(
             argument,
-            bindings[index],
+            this.getProcedureBinding(bindings, argument.argumentName, index),
             cursorsNames
           )
         ) ?? [],
@@ -83,5 +83,14 @@ export class QueryLogContextBuilder {
       return (binding as { val?: unknown }).val;
     }
     return binding;
+  }
+
+  private static getProcedureBinding(
+    bindings: IBindingsObjectReturn['bindings'],
+    argumentName: string,
+    index: number
+  ): unknown {
+    if (Array.isArray(bindings)) return bindings[index];
+    return bindings[argumentName];
   }
 }

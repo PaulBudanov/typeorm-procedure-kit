@@ -20,6 +20,7 @@ import type { View } from '../schema-builder/view/View.js';
 import type { Broadcaster } from '../subscriber/Broadcaster.js';
 
 import type { QueryResult } from './QueryResult.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 
 /**
  * Runs queries on a single database connection.
@@ -122,14 +123,17 @@ export interface QueryRunner {
    */
   query(
     query: string,
-    parameters: Array<unknown> | undefined,
+    parameters: QueryParameterValues | undefined,
     useStructuredResult: true
   ): Promise<QueryResult>;
 
   /**
    * Executes a given SQL query and returns raw database results.
    */
-  query<T = unknown>(query: string, parameters?: Array<unknown>): Promise<T>;
+  query<T = unknown>(
+    query: string,
+    parameters?: QueryParameterValues
+  ): Promise<T>;
 
   /**
    * Tagged template function that executes raw SQL query and returns raw database results.

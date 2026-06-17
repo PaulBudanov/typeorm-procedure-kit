@@ -6,6 +6,7 @@ import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { PickKeysByType } from '../common/PickKeysByType.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import { EntityNotFoundError } from '../error/EntityNotFoundError.js';
 import { NoNeedToReleaseEntityManagerError } from '../error/NoNeedToReleaseEntityManagerError.js';
@@ -163,7 +164,7 @@ export class EntityManager {
    */
   public async query<T = unknown>(
     query: string,
-    parameters?: Array<unknown>
+    parameters?: QueryParameterValues
   ): Promise<T> {
     return this.connection.query(query, parameters, this.queryRunner);
   }

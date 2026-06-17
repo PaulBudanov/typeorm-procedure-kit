@@ -119,7 +119,10 @@ describe('TypeOrmProcedureKit', (): void => {
       },
       logger: { module: createLogger() },
     });
-    const bindings = [{ val: 7 }, {}];
+    const bindings = {
+      p_id: { val: 7 },
+      out_cursor: {},
+    };
     let capturedContext = QueryLogContextStorage.getStore();
     const execute = vi.fn().mockImplementation((): Promise<Array<unknown>> => {
       capturedContext = QueryLogContextStorage.getStore();

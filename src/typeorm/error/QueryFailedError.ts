@@ -1,4 +1,5 @@
 import { safeStringify } from '../../utils/safe-stringify.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import { TypeORMError } from './TypeORMError.js';
@@ -8,12 +9,12 @@ import { TypeORMError } from './TypeORMError.js';
  */
 export class QueryFailedError<T extends Error = Error> extends TypeORMError {
   public readonly query!: string;
-  public readonly parameters!: Array<unknown> | undefined;
+  public readonly parameters!: QueryParameterValues | undefined;
   public readonly driverError!: T;
 
   public constructor(
     query: string,
-    parameters: Array<unknown> | undefined,
+    parameters: QueryParameterValues | undefined,
     driverError: T
   ) {
     super(

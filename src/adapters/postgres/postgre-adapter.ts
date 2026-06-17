@@ -152,6 +152,7 @@ export class PostgreAdapter extends DatabaseAdapter<
         if (Array.isArray(payload)) {
           value = payload[index] ?? null;
         } else if (payload && typeof payload === 'object' && payload !== null) {
+          // TODO: In future fix types for payload.
           value =
             (payload as Record<string, unknown>)[normalizedName] ??
             (payload as Record<string, unknown>)[item.argumentName] ??

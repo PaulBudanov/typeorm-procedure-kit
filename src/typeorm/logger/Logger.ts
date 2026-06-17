@@ -1,3 +1,4 @@
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
@@ -9,7 +10,7 @@ export interface Logger {
    */
   logQuery(
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     queryRunner?: QueryRunner
   ): void;
 
@@ -19,7 +20,7 @@ export interface Logger {
   logQueryError(
     error: string | Error,
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     queryRunner?: QueryRunner
   ): void;
 
@@ -29,7 +30,7 @@ export interface Logger {
   logQuerySlow(
     time: number,
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     queryRunner?: QueryRunner
   ): void;
 
@@ -73,7 +74,7 @@ export interface LogMessage {
   prefix?: string;
   message: string | number;
   format?: LogMessageFormat;
-  parameters?: Array<unknown>;
+  parameters?: QueryParameterValues;
   additionalInfo?: Record<string, unknown>;
 }
 

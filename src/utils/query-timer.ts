@@ -99,8 +99,15 @@ export class QueryTimer {
     if (this.logContext?.kind === 'sql') {
       return this.formatSqlBindingsInfo(this.logContext.bindings);
     }
-    if (!this.bindings?.length) return '';
+    if (!this.hasBindings()) return '';
     return `; Bindings: ${safeStringify(this.bindings)} value(s)`;
+  }
+
+  private hasBindings(): boolean {
+    if (!this.bindings) return false;
+    return Array.isArray(this.bindings)
+      ? this.bindings.length > 0
+      : Object.keys(this.bindings).length > 0;
   }
 
   private normalizeWhitespace(value: string): string {
