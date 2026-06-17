@@ -8,6 +8,7 @@ import { ConnectionMetadataBuilder } from '../connection/ConnectionMetadataBuild
 import type { Driver } from '../driver/Driver.js';
 import { DriverFactory } from '../driver/DriverFactory.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import type { EntityManager } from '../entity-manager/EntityManager.js';
 import { EntityManagerFactory } from '../entity-manager/EntityManagerFactory.js';
@@ -39,7 +40,6 @@ import { ObjectUtils } from '../util/ObjectUtils.js';
 import { buildSqlTag } from '../util/SqlTagUtils.js';
 
 import type { DataSourceOptions } from './DataSourceOptions.js';
-import type { QueryParameterValues } from '../driver/QueryParameters.js';
 
 registerQueryBuilders();
 

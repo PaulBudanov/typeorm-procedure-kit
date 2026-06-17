@@ -156,8 +156,8 @@ describe('OracleAdapter', (): void => {
       connection: { options: { type: 'oracle' } },
       queryRunner: {
         connect: vi.fn(),
-        query: vi.fn().mockResolvedValue([]),
       },
+      query: vi.fn().mockResolvedValue([]),
       transaction: vi.fn(
         async (execute: (transactionManager: unknown) => Promise<unknown>) => {
           return execute(manager);
@@ -174,7 +174,7 @@ describe('OracleAdapter', (): void => {
     );
 
     expect(manager.queryRunner.connect).not.toHaveBeenCalled();
-    expect(manager.queryRunner.query).toHaveBeenCalledWith(
+    expect(manager.query).toHaveBeenCalledWith(
       'begin pkg.run(:p_id); end;',
       bindings
     );
@@ -211,13 +211,11 @@ describe('OracleAdapter', (): void => {
     };
     const manager = {
       connection: { options: { type: 'oracle' } },
-      queryRunner: {
-        query: vi.fn().mockResolvedValue({
-          status: 1,
-          first: createResultSet('first'),
-          second: createResultSet('second'),
-        }),
-      },
+      query: vi.fn().mockResolvedValue({
+        status: 1,
+        first: createResultSet('first'),
+        second: createResultSet('second'),
+      }),
       transaction: vi.fn(
         async (execute: (transactionManager: unknown) => Promise<unknown>) => {
           return execute(manager);
@@ -271,13 +269,11 @@ describe('OracleAdapter', (): void => {
     };
     const manager = {
       connection: { options: { type: 'oracle' } },
-      queryRunner: {
-        query: vi.fn().mockResolvedValue({
-          first: createResultSet('first'),
-          second: createResultSet('second', { failStream: true }),
-          third: createResultSet('third'),
-        }),
-      },
+      query: vi.fn().mockResolvedValue({
+        first: createResultSet('first'),
+        second: createResultSet('second', { failStream: true }),
+        third: createResultSet('third'),
+      }),
       transaction: vi.fn(
         async (execute: (transactionManager: unknown) => Promise<unknown>) => {
           return execute(manager);
