@@ -6,6 +6,7 @@
     "outDir": "./dist/cjs",
     "tsBuildInfoFile": "./dist/tsconfig.cjs.tsbuildinfo",
     "verbatimModuleSyntax": false,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "ignoreDeprecations": "6.0"
   }
 }
