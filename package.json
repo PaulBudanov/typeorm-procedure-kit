@@ -1,6 +1,6 @@
 {
   "name": "typeorm-procedure-kit",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Enterprise TypeORM toolkit for Oracle and PostgreSQL with strongly-typed repositories, stored procedures, multi-database entity inheritance, raw SQL orchestration, notifications, and an enhanced bundled TypeORM runtime",
   "type": "module",
   "main": "./dist/cjs/index.js",
@@ -150,7 +150,7 @@
     "@types/lodash": "^4.17.24",
     "@types/luxon": "^3.7.1",
     "@types/node": "^25.2.0",
-    "@types/oracledb": "^6.10.1",
+    "@types/oracledb": "^7.0.1",
     "@types/pg": "^8.16.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

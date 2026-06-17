@@ -1,3 +1,13 @@
+## [2.2.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.0...v2.2.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* **oracle:** add close cursor after read result set ([5b76a1a](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/5b76a1aafc43f48c6acb13f2b9067157d6c6e172))
+* **oracle:** close result sets after cursor stream drain ([eaca2a8](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/eaca2a897de7d463d7173a720593106fdf9a3b88))
+* **test:** change tests object structure ([471d2a4](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/471d2a4a637b19f22152383329165b7781d0e174))
+* **typeorm/oracle:** share query method for raw sql, use for oracle object bindings instead of array, use in cursor fetch method cursor name instead of index. ([8ecde11](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/8ecde114a8b01b017892c38c7fa3fad0526a398c))
+
 # [2.2.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.1.1...v2.2.0) (2026-06-15)
 
 
