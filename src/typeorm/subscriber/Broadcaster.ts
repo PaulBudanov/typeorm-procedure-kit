@@ -1,5 +1,6 @@
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
@@ -10,10 +11,13 @@ import { BroadcasterResult } from './BroadcasterResult.js';
 import type { EntitySubscriberInterface } from './EntitySubscriberInterface.js';
 
 interface BroadcasterEvents {
-  BeforeQuery: (query: string, parameters: Array<unknown> | undefined) => void;
+  BeforeQuery: (
+    query: string,
+    parameters: QueryParameterValues | undefined
+  ) => void;
   AfterQuery: (
     query: string,
-    parameters: Array<unknown> | undefined,
+    parameters: QueryParameterValues | undefined,
     success: boolean,
     executionTime: number | undefined,
     rawResults: unknown | undefined,
@@ -447,7 +451,7 @@ export class Broadcaster {
   public broadcastAfterQueryEvent(
     result: BroadcasterResult,
     query: string,
-    parameters: undefined | Array<unknown>,
+    parameters: undefined | QueryParameterValues,
     success: boolean,
     executionTime: undefined | number,
     rawResults: undefined | unknown,

@@ -39,6 +39,7 @@ import { ObjectUtils } from '../util/ObjectUtils.js';
 import { buildSqlTag } from '../util/SqlTagUtils.js';
 
 import type { DataSourceOptions } from './DataSourceOptions.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 
 registerQueryBuilders();
 
@@ -424,13 +425,13 @@ export class DataSource {
    */
   public async query<T = unknown>(
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     queryRunner?: QueryRunner
   ): Promise<T> {
-    if (queryRunner && queryRunner.isReleased)
+    if (queryRunner?.isReleased)
       throw new QueryRunnerProviderAlreadyReleasedError();
 
-    const usedQueryRunner = queryRunner || this.createQueryRunner();
+    const usedQueryRunner = queryRunner ?? this.createQueryRunner();
 
     try {
       return await usedQueryRunner.query(query, parameters); // await is needed here because we are using finally

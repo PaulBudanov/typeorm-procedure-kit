@@ -84,7 +84,11 @@ describe('OracleAdapter', (): void => {
       'BEGIN PKG.RUN (:p_id,:p_names,:out_cursor); END;'
     );
     expect(result.cursorsNames).toEqual(['out_cursor']);
-    expect(result.bindings).toMatchObject([{ val: 7 }, { val: 'a,b' }, {}]);
+    expect(result.bindings).toMatchObject({
+      p_id: { val: 7 },
+      p_names: { val: 'a,b' },
+      out_cursor: {},
+    });
   });
 
   it('rejects missing procedures, scalar payloads, and unsafe bind names', (): void => {
@@ -147,12 +151,13 @@ describe('OracleAdapter', (): void => {
 
   it('does not obtain the Oracle physical connection from adapter runtime', async (): Promise<void> => {
     const adapter = createOracleAdapter();
+    const bindings = { p_id: { val: 1 } };
     const manager = {
       connection: { options: { type: 'oracle' } },
       queryRunner: {
         connect: vi.fn(),
+        query: vi.fn().mockResolvedValue([]),
       },
-      query: vi.fn().mockResolvedValue([]),
       transaction: vi.fn(
         async (execute: (transactionManager: unknown) => Promise<unknown>) => {
           return execute(manager);
@@ -160,10 +165,19 @@ describe('OracleAdapter', (): void => {
       ),
     };
 
-    await adapter.execute('select 1 from dual', manager as never, [], [], []);
+    await adapter.execute(
+      'begin pkg.run(:p_id); end;',
+      manager as never,
+      [],
+      bindings,
+      []
+    );
 
     expect(manager.queryRunner.connect).not.toHaveBeenCalled();
-    expect(manager.query).toHaveBeenCalledWith('select 1 from dual', []);
+    expect(manager.queryRunner.query).toHaveBeenCalledWith(
+      'begin pkg.run(:p_id); end;',
+      bindings
+    );
   });
 
   it('drains Oracle cursor streams sequentially on the shared connection', async (): Promise<void> => {
@@ -189,18 +203,21 @@ describe('OracleAdapter', (): void => {
           );
         },
         close: async (): Promise<void> => {
-          events.push(`${cursorName}:close`);
+          throw new Error(
+            `ResultSet.close must not be called after streaming ${cursorName}`
+          );
         },
       };
     };
     const manager = {
       connection: { options: { type: 'oracle' } },
-      query: vi
-        .fn()
-        .mockResolvedValue([
-          createResultSet('first'),
-          createResultSet('second'),
-        ]),
+      queryRunner: {
+        query: vi.fn().mockResolvedValue({
+          status: 1,
+          first: createResultSet('first'),
+          second: createResultSet('second'),
+        }),
+      },
       transaction: vi.fn(
         async (execute: (transactionManager: unknown) => Promise<unknown>) => {
           return execute(manager);
@@ -221,10 +238,68 @@ describe('OracleAdapter', (): void => {
     expect(events).toEqual([
       'first:start',
       'first:end',
-      'first:close',
       'second:start',
       'second:end',
+    ]);
+  });
+
+  it('closes unstreamed Oracle result sets after cursor stream setup errors', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const events: Array<string> = [];
+    const createResultSet = (
+      cursorName: string,
+      options: { failStream?: boolean } = {}
+    ): { toQueryStream: () => Readable; close: () => Promise<void> } => {
+      return {
+        toQueryStream: (): Readable => {
+          if (options.failStream) {
+            events.push(`${cursorName}:stream-error`);
+            throw new Error(`${cursorName} stream failed`);
+          }
+          return Readable.from(
+            (async function* (): AsyncGenerator<{ cursorName: string }> {
+              events.push(`${cursorName}:start`);
+              yield { cursorName };
+              events.push(`${cursorName}:end`);
+            })()
+          );
+        },
+        close: async (): Promise<void> => {
+          events.push(`${cursorName}:close`);
+        },
+      };
+    };
+    const manager = {
+      connection: { options: { type: 'oracle' } },
+      queryRunner: {
+        query: vi.fn().mockResolvedValue({
+          first: createResultSet('first'),
+          second: createResultSet('second', { failStream: true }),
+          third: createResultSet('third'),
+        }),
+      },
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) => {
+          return execute(manager);
+        }
+      ),
+    };
+
+    await expect(
+      adapter.execute<{ cursorName: string }>(
+        'begin pkg.run(:first, :second, :third); end;',
+        manager as never,
+        [],
+        [],
+        ['first', 'second', 'third']
+      )
+    ).rejects.toThrow('second stream failed');
+    expect(events).toEqual([
+      'first:start',
+      'first:end',
+      'second:stream-error',
       'second:close',
+      'third:close',
     ]);
   });
 });

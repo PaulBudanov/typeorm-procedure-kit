@@ -1,4 +1,5 @@
 import type { DataSource } from '../../data-source/DataSource.js';
+import type { QueryParameterValues } from '../../driver/QueryParameters.js';
 import type { EntityManager } from '../../entity-manager/EntityManager.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
@@ -31,7 +32,7 @@ export interface QueryEvent {
   /**
    * Parameters used in the query.
    */
-  parameters?: Array<unknown>;
+  parameters?: QueryParameterValues;
 }
 
 export type BeforeQueryEvent = QueryEvent;

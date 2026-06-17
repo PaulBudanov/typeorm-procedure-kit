@@ -4,6 +4,7 @@ import type {
   TTypeOrmLoggerLevels,
 } from '../../types/logger.types.js';
 import { safeStringify } from '../../utils/safe-stringify.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 import type { Logger } from './Logger.js';
@@ -30,7 +31,7 @@ export class ProcedureKitLogger implements Logger {
 
   public logQuery(
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     _queryRunner?: QueryRunner
   ): void {
     if (!this.isEnabled('query')) return;
@@ -42,7 +43,7 @@ export class ProcedureKitLogger implements Logger {
   public logQueryError(
     error: string | Error,
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     _queryRunner?: QueryRunner
   ): void {
     if (!this.isEnabled('error')) return;
@@ -60,7 +61,7 @@ export class ProcedureKitLogger implements Logger {
   public logQuerySlow(
     time: number,
     query: string,
-    parameters?: Array<unknown>,
+    parameters?: QueryParameterValues,
     _queryRunner?: QueryRunner
   ): void {
     if (!this.isEnabled('warn')) return;
@@ -102,8 +103,14 @@ export class ProcedureKitLogger implements Logger {
     return this.normalizeWhitespace(sql);
   }
 
-  private formatParameters(parameters?: Array<unknown>): string {
-    if (!parameters?.length) return '';
+  private formatParameters(parameters?: QueryParameterValues): string {
+    if (
+      !parameters ||
+      (Array.isArray(parameters)
+        ? parameters.length === 0
+        : Object.keys(parameters).length === 0)
+    )
+      return '';
     return `; Bindings: ${safeStringify(parameters)}`;
   }
 

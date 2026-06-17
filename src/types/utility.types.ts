@@ -8,19 +8,19 @@ interface IProcedureOutBinding {
   name: string;
   type: 'cursor' | 'scalar' | 'lob' | 'object' | 'array';
 }
+export type TProcedureBindings = Array<unknown> | Record<string, unknown>;
+
 //TODO: Add in the future support for another out bindings, at now added new object keys for this.
 export interface IBindingsObjectReturn {
   paramExecuteString: string;
-  bindings: Array<unknown>;
+  bindings: TProcedureBindings;
   cursorsNames?: Array<string>;
   outNames?: Array<string>;
   outBindings?: Array<IProcedureOutBinding>;
 }
 
-export interface ISqlBindingsObjectReturn extends Pick<
-  IBindingsObjectReturn,
-  'bindings'
-> {
+export interface ISqlBindingsObjectReturn {
+  bindings: Array<unknown>;
   sqlString: string;
 }
 

@@ -91,7 +91,7 @@ export class OracleAdapter extends DatabaseAdapter<
     }
     const functionParams = procedures[processName];
     const processBindings = (payload?: U): IBindingsObjectReturn => {
-      const bindings: Array<oracledb.BindParameter> = [];
+      const bindings: Record<string, oracledb.BindParameter> = {};
       const cursorsNames: Array<string> = [];
       const paramInputArray: Array<string> = [];
 
@@ -103,10 +103,10 @@ export class OracleAdapter extends DatabaseAdapter<
           const dataType = item.argumentType.toUpperCase();
           if (!this.isValidDataType(dataType))
             throw new ServerError(`Invalid data type: ${dataType}`);
-          bindings.push({
+          bindings[item.argumentName] = {
             dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
             type: this.TYPE_MAPPING[dataType],
-          });
+          };
           return;
         }
         if (typeof payload === 'string' || typeof payload === 'number')
@@ -130,21 +130,21 @@ export class OracleAdapter extends DatabaseAdapter<
           const dataType = item.argumentType.toUpperCase();
           if (!this.isValidDataType(dataType))
             throw new ServerError(`Invalid data type: ${dataType}`);
-          bindings.push({
+          bindings[item.argumentName] = {
             dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
             type: this.TYPE_MAPPING[dataType],
             val: value.length > 1 ? value.join(',') : value.toString(),
-          });
+          };
           return;
         }
         const dataType = item.argumentType.toUpperCase();
         if (!this.isValidDataType(dataType))
           throw new ServerError(`Invalid data type: ${dataType}`);
-        bindings.push({
+        bindings[item.argumentName] = {
           dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
           type: this.TYPE_MAPPING[dataType],
           val: value,
-        });
+        };
       });
       const paramExecuteString = `BEGIN ${SqlIdentifier.formatOracleQualifiedIdentifier(
         [packageName, processName]
@@ -192,6 +192,40 @@ export class OracleAdapter extends DatabaseAdapter<
    */
   private isValidDataType(key: string): key is keyof typeof this.TYPE_MAPPING {
     return key in this.TYPE_MAPPING;
+  }
+
+  private isResultSet<T>(value: unknown): value is oracledb.ResultSet<T> {
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      'toQueryStream' in value &&
+      typeof value.toQueryStream === 'function'
+    );
+  }
+
+  private getResultSets<T>(
+    values: Iterable<unknown>
+  ): Set<oracledb.ResultSet<T>> {
+    const resultSets = new Set<oracledb.ResultSet<T>>();
+    for (const value of values) {
+      if (this.isResultSet<T>(value)) resultSets.add(value);
+    }
+    return resultSets;
+  }
+
+  private async closePendingResultSets<T>(
+    resultSets: ReadonlySet<oracledb.ResultSet<T>>
+  ): Promise<void> {
+    if (resultSets.size === 0) return;
+
+    for (const resultSet of resultSets) {
+      try {
+        await resultSet.close();
+      } catch (reason: unknown) {
+        const error = reason instanceof Error ? reason.message : String(reason);
+        this.logger.warn(`Failed to close Oracle result set: ${error}`);
+      }
+    }
   }
 
   /**
@@ -262,18 +296,35 @@ export class OracleAdapter extends DatabaseAdapter<
    */
   protected override async fetchAllCursors<T>(
     cursorsNames: Array<string>,
-    executeResult: { result: Array<oracledb.ResultSet<T>> }
+    executeResult: {
+      result?:
+        | Array<oracledb.ResultSet<T>>
+        | Record<string, oracledb.ResultSet<T>>;
+    }
   ): Promise<Array<T>> {
     const cursorResults: Array<T> = [];
-    for (const [index] of cursorsNames.entries()) {
-      const resultSet = executeResult.result[index];
-      if (!resultSet) continue;
-      try {
-        const stream = resultSet.toQueryStream();
-        cursorResults.push(...(await this.handleQueryStream<T>(stream)));
-      } finally {
-        await resultSet.close();
+    const pendingResultSets = this.getResultSets<T>(
+      executeResult.result ? Object.values(executeResult.result) : []
+    );
+    try {
+      if (!executeResult.result || Array.isArray(executeResult.result)) {
+        throw new ServerError(
+          'Oracle cursor out binds must be returned by name'
+        );
       }
+      for (const cursorName of cursorsNames) {
+        const resultSet = executeResult.result[cursorName];
+        if (!this.isResultSet<T>(resultSet)) {
+          throw new ServerError(
+            `Oracle cursor "${cursorName}" was not returned`
+          );
+        }
+        const stream = resultSet.toQueryStream();
+        pendingResultSets.delete(resultSet);
+        cursorResults.push(...(await this.handleQueryStream<T>(stream)));
+      }
+    } finally {
+      await this.closePendingResultSets<T>(pendingResultSets);
     }
     return cursorResults;
   }
