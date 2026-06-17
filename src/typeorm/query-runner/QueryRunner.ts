@@ -4,6 +4,7 @@ import type { PoolClient } from 'pg';
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { SqlInMemory } from '../driver/SqlInMemory.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
@@ -20,7 +21,6 @@ import type { View } from '../schema-builder/view/View.js';
 import type { Broadcaster } from '../subscriber/Broadcaster.js';
 
 import type { QueryResult } from './QueryResult.js';
-import type { QueryParameterValues } from '../driver/QueryParameters.js';
 
 /**
  * Runs queries on a single database connection.
