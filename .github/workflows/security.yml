@@ -54,7 +54,11 @@ jobs:
       - name: Run npm audit
         run: |
           mkdir -p reports/security
-          npm audit --audit-level=high --json > reports/security/npm-audit.json
+          set +e
+          npm audit --audit-level=high --json | tee reports/security/npm-audit.json
+          audit_exit_code=${PIPESTATUS[0]}
+          set -e
+          exit "$audit_exit_code"
 
       - name: Upload npm audit report
         if: always()
