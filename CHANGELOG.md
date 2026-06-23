@@ -1,3 +1,11 @@
+## [2.2.2](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.1...v2.2.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* add generic type for isNull operator. ([#21](https://github.com/PaulBudanov/typeorm-procedure-kit/issues/21)) ([d25a97a](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/d25a97adbee45d591183cacf7ef1f186867e9f53))
+* **ci:** audit production dependencies only ([0a8889a](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/0a8889aac70d8f2f707df41105ec54eef22605f9))
+
 ## [2.2.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.0...v2.2.1) (2026-06-17)
 
 
