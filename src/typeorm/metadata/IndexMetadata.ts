@@ -180,7 +180,7 @@ export class IndexMetadata {
 
     // if columns already an array of string then simply return it
     if (this.givenColumnNames) {
-      let columnPropertyPaths: Array<string> = [];
+      let columnPropertyPaths: Array<string>;
       if (Array.isArray(this.givenColumnNames)) {
         columnPropertyPaths = this.givenColumnNames.map((columnName) => {
           if (this.embeddedMetadata)

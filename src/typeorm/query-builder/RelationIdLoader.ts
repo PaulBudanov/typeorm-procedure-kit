@@ -272,7 +272,7 @@ export class RelationIdLoader {
     });
 
     // add conditions for the given entities
-    let condition1 = '';
+    let condition1: string;
     if (columns.length === 1) {
       const values = entities.map((entity) =>
         columns[0]!.referencedColumn!.getEntityValue(entity)
@@ -481,7 +481,7 @@ export class RelationIdLoader {
     });
 
     // add condition for entities
-    let condition = '';
+    let condition: string;
     if (relation.entityMetadata.primaryColumns.length === 1) {
       const values = entities.map((entity) =>
         relation.entityMetadata.primaryColumns[0]!.getEntityValue(entity)
@@ -594,7 +594,7 @@ export class RelationIdLoader {
     });
 
     // add condition for entities
-    let condition = '';
+    let condition: string;
     if (relation.joinColumns.length === 1) {
       const values = entities.map((entity) =>
         relation.joinColumns[0]!.referencedColumn!.getEntityValue(entity)

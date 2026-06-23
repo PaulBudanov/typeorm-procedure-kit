@@ -820,7 +820,7 @@ export class PostgresDriver implements Driver {
         const unparsedArrayString = value as string;
 
         value = [];
-        let cube: RegExpExecArray | null = null;
+        let cube: RegExpExecArray | null;
         // Iterate through all regexp matches for cubes/null in array
         while ((cube = regexp.exec(unparsedArrayString)) !== null) {
           if (cube[1] !== undefined) {

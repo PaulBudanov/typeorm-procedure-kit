@@ -2175,7 +2175,7 @@ export class SelectQueryBuilder<Entity = unknown>
         });
       }
     } else {
-      let subQuery = '';
+      let subQuery: string;
       if (typeof entityOrProperty === 'function') {
         const subQueryBuilder: SelectQueryBuilder<ObjectLiteral> = (
           entityOrProperty as TFunction
@@ -2449,8 +2449,8 @@ export class SelectQueryBuilder<Entity = unknown>
         const junctionTableName = relation.junctionEntityMetadata!.tablePath;
 
         const junctionAlias = joinAttr.junctionAlias;
-        let junctionCondition = '',
-          destinationCondition = '';
+        let junctionCondition: string;
+        let destinationCondition: string;
 
         if (relation.isOwning) {
           junctionCondition = relation.joinColumns
@@ -3265,8 +3265,8 @@ export class SelectQueryBuilder<Entity = unknown>
       new RelationCountMetadataToAttributeTransformer(this.expressionMap);
     relationCountMetadataTransformer.transform();
 
-    let rawResults: Array<unknown> = [],
-      entities: Array<unknown> = [];
+    let rawResults: Array<unknown>;
+    let entities: Array<unknown> = [];
 
     // for pagination enabled (e.g. skip and take) its much more complicated - its a special process
     // where we make two queries to find the data we need
@@ -3337,7 +3337,7 @@ export class SelectQueryBuilder<Entity = unknown>
         .getRawMany();
 
       if (rawResults.length > 0) {
-        let condition = '';
+        let condition: string;
         const parameters: ObjectLiteral = {};
         if (metadata.hasMultiplePrimaryKeys) {
           condition = rawResults

@@ -55,7 +55,7 @@ export class OrmUtils {
     criteriaOrProperty?: ((item: T) => unknown) | K
   ): Array<T> {
     return array.reduce((uniqueArray, item) => {
-      let found = false;
+      let found: boolean;
       if (typeof criteriaOrProperty === 'function') {
         const itemValue = criteriaOrProperty(item);
         found = uniqueArray.some(

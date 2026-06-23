@@ -519,7 +519,7 @@ export class UpdateQueryBuilder<Entity extends ObjectLiteral>
             } else {
               const paramName = this.createParameter(value);
 
-              let expression = null;
+              let expression: string;
               if (
                 DriverUtils.isPostgresFamily(this.connection.driver) &&
                 (this.driver.spatialTypes as Array<string>).indexOf(
