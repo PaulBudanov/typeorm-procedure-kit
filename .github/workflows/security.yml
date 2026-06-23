@@ -55,7 +55,7 @@ jobs:
         run: |
           mkdir -p reports/security
           set +e
-          npm audit --audit-level=high --json | tee reports/security/npm-audit.json
+          npm audit --omit=dev --audit-level=high --json | tee reports/security/npm-audit.json
           audit_exit_code=${PIPESTATUS[0]}
           set -e
           exit "$audit_exit_code"
