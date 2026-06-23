@@ -11,26 +11,24 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-master
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  actions: read
   checks: read
+  contents: read
   statuses: read
 
 jobs:
-  release:
-    name: Build and publish
+  prepare:
+    name: Prepare release artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 50
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    permissions:
-      checks: read
-      contents: write
-      issues: write
-      pull-requests: write
-      statuses: read
-      id-token: write
+    outputs:
+      ready: ${{ steps.final-target.outputs.ready }}
+      sha: ${{ steps.checked-commit.outputs.sha }}
     steps:
       - name: Resolve checked commit
         id: checked-commit
@@ -43,13 +41,13 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: master
 
-      - name: Ensure master still points to the checked commit
+      - name: Ensure master points to the checked commit
         id: release-target
         shell: bash
         run: |
@@ -104,7 +102,7 @@ jobs:
               )"
 
               case "$check_state" in
-                completed/success|completed/skipped|completed/neutral)
+                completed/success)
                   ;;
                 *)
                   blocking_checks="${blocking_checks}${required_check}: ${check_state}"$'\n'
@@ -127,28 +125,114 @@ jobs:
             sleep 30
           done
 
-      - name: Setup Node.js
+      - name: Confirm release target is still current
+        id: final-target
         if: steps.release-target.outputs.ready == 'true'
-        uses: actions/setup-node@v6
+        shell: bash
+        run: |
+          git fetch --no-tags origin refs/heads/master
+          current_sha="$(git rev-parse FETCH_HEAD)"
+          checked_sha="${{ steps.checked-commit.outputs.sha }}"
+
+          if [ "$current_sha" != "$checked_sha" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping release because master moved to $current_sha while checks were running for $checked_sha."
+            exit 0
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.final-target.outputs.ready == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
+          cache: npm
 
-      - name: Install dependencies
-        if: steps.release-target.outputs.ready == 'true'
-        run: npm install --package-lock=false
+      - name: Install dependencies from lockfile
+        if: steps.final-target.outputs.ready == 'true'
+        run: npm ci --no-audit --no-fund
 
       - name: Build
-        if: steps.release-target.outputs.ready == 'true'
+        if: steps.final-target.outputs.ready == 'true'
         run: npm run build
 
       - name: Prepare npm README
-        if: steps.release-target.outputs.ready == 'true'
+        if: steps.final-target.outputs.ready == 'true'
+        run: cp docs/README.md README.md
+
+      - name: Verify package contents
+        if: steps.final-target.outputs.ready == 'true'
+        run: npm pack --dry-run --ignore-scripts
+
+      - name: Upload release artifact
+        if: steps.final-target.outputs.ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-build-${{ steps.checked-commit.outputs.sha }}
+          path: |
+            dist
+            README.md
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
+    environment: npm-publish
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install release tooling from lockfile
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: true
+        run: npm ci --no-audit --no-fund
+
+      - name: Download verified build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-build-${{ needs.prepare.outputs.sha }}
+          path: .
+
+      - name: Ensure master still points to the verified commit
+        id: publish-target
+        shell: bash
         run: |
-          cp docs/README.md README.md
+          git fetch --no-tags origin refs/heads/master
+          current_sha="$(git rev-parse FETCH_HEAD)"
+          checked_sha="${{ needs.prepare.outputs.sha }}"
+
+          if [ "$current_sha" != "$checked_sha" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping release because master moved to $current_sha after preparing $checked_sha."
+            exit 0
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
-        if: steps.release-target.outputs.ready == 'true'
+        if: steps.publish-target.outputs.ready == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           NPM_CONFIG_IGNORE_SCRIPTS: true
         run: npm run semantic-release

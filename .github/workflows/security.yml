@@ -23,15 +23,15 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
         with:
           languages: javascript-typescript
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
         with:
           category: /language:javascript-typescript
 
@@ -41,31 +41,41 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
+          cache: npm
 
-      - name: Generate audit lockfile
-        run: npm install --package-lock-only --ignore-scripts
+      - name: Validate committed lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Run npm audit
+      - name: Audit production dependencies
         run: |
           mkdir -p reports/security
           set +e
-          npm audit --omit=dev --audit-level=high --json | tee reports/security/npm-audit.json
+          npm audit --omit=dev --audit-level=high --json | tee reports/security/npm-audit-production.json
+          audit_exit_code=${PIPESTATUS[0]}
+          set -e
+          exit "$audit_exit_code"
+
+      - name: Audit complete build dependency graph
+        if: always()
+        run: |
+          set +e
+          npm audit --audit-level=critical --json | tee reports/security/npm-audit-build.json
           audit_exit_code=${PIPESTATUS[0]}
           set -e
           exit "$audit_exit_code"
 
       - name: Upload npm audit report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: npm-audit-report
-          path: reports/security/npm-audit.json
+          path: reports/security/npm-audit-*.json
           if-no-files-found: ignore
 
   dependency-review:
@@ -78,9 +88,13 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v5
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
-          fail-on-severity: high
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, development, unknown
+          show-openssf-scorecard: true
+          warn-on-openssf-scorecard-level: 3
+          show-patched-versions: true

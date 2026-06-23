@@ -1,0 +1,6 @@
+# Supply-chain controls require explicit review from the repository owner.
+/.github/workflows/ @PaulBudanov
+/.github/dependabot.yml @PaulBudanov
+/.releaserc.json @PaulBudanov
+/package.json @PaulBudanov
+/package-lock.json @PaulBudanov
