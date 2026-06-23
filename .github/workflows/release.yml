@@ -5,13 +5,13 @@ on:
     workflows:
       - Tests
     branches:
-      - master
+      - release
     types:
       - completed
   workflow_dispatch:
 
 concurrency:
-  group: release-master
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
     name: Prepare release artifact
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     outputs:
       ready: ${{ steps.final-target.outputs.ready }}
       sha: ${{ steps.checked-commit.outputs.sha }}
@@ -37,6 +37,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           else
+            if [ "${{ github.ref_name }}" != "release" ]; then
+              echo "Manual releases must be dispatched from the release branch."
+              exit 1
+            fi
             echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -45,9 +49,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: master
+          ref: release
 
-      - name: Ensure master points to the checked commit
+      - name: Ensure release points to the checked commit
         id: release-target
         shell: bash
         run: |
@@ -56,7 +60,7 @@ jobs:
 
           if [ "$current_sha" != "$checked_sha" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release because master moved to $current_sha after checks completed for $checked_sha."
+            echo "Skipping release because release moved to $current_sha after checks completed for $checked_sha."
             exit 0
           fi
 
@@ -130,13 +134,13 @@ jobs:
         if: steps.release-target.outputs.ready == 'true'
         shell: bash
         run: |
-          git fetch --no-tags origin refs/heads/master
+          git fetch --no-tags origin refs/heads/release
           current_sha="$(git rev-parse FETCH_HEAD)"
           checked_sha="${{ steps.checked-commit.outputs.sha }}"
 
           if [ "$current_sha" != "$checked_sha" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release because master moved to $current_sha while checks were running for $checked_sha."
+            echo "Skipping release because release moved to $current_sha while checks were running for $checked_sha."
             exit 0
           fi
 
@@ -184,7 +188,7 @@ jobs:
     if: needs.prepare.outputs.ready == 'true'
     environment: npm-publish
     permissions:
-      actions: read
+      actions: write
       contents: write
       discussions: write
       issues: write
@@ -215,25 +219,87 @@ jobs:
           name: release-build-${{ needs.prepare.outputs.sha }}
           path: .
 
-      - name: Ensure master still points to the verified commit
+      - name: Ensure release still points to the verified commit
         id: publish-target
         shell: bash
         run: |
-          git fetch --no-tags origin refs/heads/master
+          git fetch --no-tags origin refs/heads/release
           current_sha="$(git rev-parse FETCH_HEAD)"
           checked_sha="${{ needs.prepare.outputs.sha }}"
 
           if [ "$current_sha" != "$checked_sha" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release because master moved to $current_sha after preparing $checked_sha."
+            echo "Skipping release because release moved to $current_sha after preparing $checked_sha."
             exit 0
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
+        id: semantic-release
         if: steps.publish-target.outputs.ready == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NPM_CONFIG_IGNORE_SCRIPTS: true
-        run: npm run semantic-release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          checked_sha="${{ needs.prepare.outputs.sha }}"
+          npm run semantic-release
+
+          git fetch --no-tags origin refs/heads/release
+          release_sha="$(git rev-parse FETCH_HEAD)"
+
+          if [ "$release_sha" = "$checked_sha" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_parent_sha="$(git rev-parse "$release_sha^")"
+          if [ "$release_parent_sha" != "$checked_sha" ]; then
+            echo "release moved unexpectedly from $checked_sha to $release_sha"
+            exit 1
+          fi
+
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Open release metadata sync PR
+        if: steps.semantic-release.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_SHA: ${{ steps.semantic-release.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(git show "$RELEASE_SHA:package.json" | jq -r .version)"
+          existing_pr="$(
+            gh pr list \
+              --repo "$REPOSITORY" \
+              --base master \
+              --head release \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [ -z "$existing_pr" ]; then
+            gh pr create \
+              --repo "$REPOSITORY" \
+              --base master \
+              --head release \
+              --title "chore(release): sync v$version metadata to master" \
+              --body "Sync the package version and changelog generated by semantic-release for v$version back to master. Merge this PR with **Create a merge commit** to preserve shared branch history."
+          else
+            echo "Release metadata sync PR #$existing_pr is already open; its head was updated to $RELEASE_SHA."
+          fi
+
+          gh workflow run tests.yml --repo "$REPOSITORY" --ref release
+          gh workflow run security.yml \
+            --repo "$REPOSITORY" \
+            --ref release \
+            -f dependency_review_base=master \
+            -f dependency_review_head=release

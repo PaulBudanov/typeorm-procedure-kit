@@ -4,10 +4,21 @@ on:
   pull_request:
     branches:
       - master
+      - release
   push:
     branches:
       - master
+      - release
   workflow_dispatch:
+    inputs:
+      dependency_review_base:
+        description: Optional base ref for a manually dispatched dependency review
+        required: false
+        type: string
+      dependency_review_head:
+        description: Optional head ref for a manually dispatched dependency review
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -80,7 +91,7 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.dependency_review_base != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -93,6 +104,8 @@ jobs:
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
+          base-ref: ${{ inputs.dependency_review_base || github.event.pull_request.base.sha }}
+          head-ref: ${{ inputs.dependency_review_head || github.event.pull_request.head.sha }}
           fail-on-severity: moderate
           fail-on-scopes: runtime, development, unknown
           show-openssf-scorecard: true
