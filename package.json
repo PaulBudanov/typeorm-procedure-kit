@@ -117,7 +117,7 @@
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^11.1.18",
-    "oracledb": "^7.0.0",
+    "oracledb": "^6.0.0 || ^7.0.0",
     "pg": "^8.5.1",
     "pg-query-stream": "^4.12.0"
   },
@@ -150,7 +150,7 @@
     "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/lodash": "^4.17.24",
     "@types/luxon": "^3.7.1",
-    "@types/node": "^25.2.0",
+    "@types/node": "^26.0.0",
     "@types/oracledb": "^7.0.1",
     "@types/pg": "^8.16.0",
     "eslint": "^10.5.0",
