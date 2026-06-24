@@ -1,13 +1,9 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows:
-      - Tests
+  push:
     branches:
       - release
-    types:
-      - completed
   workflow_dispatch:
 
 concurrency:
@@ -25,7 +21,7 @@ jobs:
     name: Prepare release artifact
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     outputs:
       ready: ${{ steps.final-target.outputs.ready }}
       sha: ${{ steps.checked-commit.outputs.sha }}
@@ -34,18 +30,17 @@ jobs:
         id: checked-commit
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          else
-            if [ "${{ github.ref_name }}" != "release" ]; then
-              echo "Manual releases must be dispatched from the release branch."
-              exit 1
-            fi
-            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.ref_name }}" != "release" ]; then
+            echo "Manual releases must be dispatched from the release branch."
+            exit 1
           fi
 
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -60,7 +55,7 @@ jobs:
 
           if [ "$current_sha" != "$checked_sha" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release because release moved to $current_sha after checks completed for $checked_sha."
+            echo "Skipping release because release moved to $current_sha after workflow started for $checked_sha."
             exit 0
           fi
 
@@ -196,7 +191,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout verified commit
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
