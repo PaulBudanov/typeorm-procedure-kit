@@ -2577,28 +2577,28 @@ export class SelectQueryBuilder<Entity = unknown>
           ) {
             const criteriaParts = columnName.split('.');
             const aliasName = criteriaParts[0]!;
-            const propertyPath = criteriaParts.slice(1).join('.');
+            const propertyPathOrName = criteriaParts.slice(1).join('.');
             const alias = this.expressionMap.aliases.find(
               (alias) => alias.name === aliasName
             );
             if (alias) {
               const column =
-                alias.metadata.findColumnWithPropertyPath(propertyPath);
+                alias.metadata.findColumnWithPropertyPath(propertyPathOrName);
               if (column) {
-                const databaseName = column.databaseName as string;
+                const databaseName = column?.databaseName ?? propertyPathOrName;
                 const orderAlias = DriverUtils.buildAlias(
                   this.connection.driver,
                   undefined,
                   aliasName,
                   databaseName
                 ) as string;
-                const orderValueNonNull = orderValue as string;
+                const orderValueNonNull = orderValue;
                 return this.escape(orderAlias, true) + ' ' + orderValueNonNull;
               }
             }
           }
 
-          const orderValueNonNull = orderValue as string;
+          const orderValueNonNull = orderValue;
           return columnName + ' ' + orderValueNonNull;
         })
         .join(', ')
@@ -2881,7 +2881,7 @@ export class SelectQueryBuilder<Entity = unknown>
       return (
         'COUNT(DISTINCT(' +
         primaryColumns
-          .map((c) => `${distinctAlias}.${this.escape(c.databaseName)}`)
+          .map((c) => `${distinctAlias}.${this.escape(c.databaseName, true)}`)
           .join(', ') +
         '))'
       );
@@ -2897,7 +2897,7 @@ export class SelectQueryBuilder<Entity = unknown>
     return (
       `COUNT(DISTINCT(` +
       primaryColumns
-        .map((c) => `${distinctAlias}.${this.escape(c.databaseName)}`)
+        .map((c) => `${distinctAlias}.${(this.escape(c.databaseName), true)}`)
         .join(" || '|;|' || ") +
       '))'
     );
@@ -3291,9 +3291,13 @@ export class SelectQueryBuilder<Entity = unknown>
             undefined,
             mainAliasName,
             primaryColumn.databaseName
-          )
+          ),
+          true
         );
-        if (!orderBys[columnAlias])
+        if (
+          !orderBys[columnAlias] &&
+          !orderBys[`${distinctAlias}.${columnAlias}`]
+        )
           // make sure we aren't overriding user-defined order in inverse direction
           orderBys[columnAlias] = 'ASC';
 
@@ -3527,12 +3531,13 @@ export class SelectQueryBuilder<Entity = unknown>
         if (orderCriteria.indexOf('.') !== -1) {
           const criteriaParts = orderCriteria.split('.');
           const aliasName = criteriaParts[0]!;
-          const propertyPath = criteriaParts.slice(1).join('.');
+          const propertyPathOrName = criteriaParts.slice(1).join('.');
           const alias = this.expressionMap.findAliasByName(aliasName);
           const column =
-            alias.metadata!.findColumnWithPropertyPath(propertyPath);
-          const parentAliasNonNull = parentAlias!;
-          const databaseNameNonNull = column!.databaseName! as string;
+            alias.metadata!.findColumnWithPropertyPath(propertyPathOrName);
+          const parentAliasNonNull = parentAlias;
+          const databaseNameNonNull =
+            column?.databaseName ?? propertyPathOrName;
           const builtAlias = DriverUtils.buildAlias(
             this.connection.driver,
             undefined,
@@ -3571,11 +3576,12 @@ export class SelectQueryBuilder<Entity = unknown>
       if (orderCriteria.indexOf('.') !== -1) {
         const criteriaParts = orderCriteria.split('.');
         const aliasName = criteriaParts[0]!;
-        const propertyPath = criteriaParts.slice(1).join('.');
+        const propertyPathOrName = criteriaParts.slice(1).join('.');
         const alias = this.expressionMap.findAliasByName(aliasName);
-        const column = alias.metadata!.findColumnWithPropertyPath(propertyPath);
+        const column =
+          alias.metadata!.findColumnWithPropertyPath(propertyPathOrName);
         const parentAliasNonNull = parentAlias!;
-        const databaseNameNonNull = column!.databaseName! as string;
+        const databaseNameNonNull = column?.databaseName ?? propertyPathOrName;
         const builtAlias = DriverUtils.buildAlias(
           this.connection.driver,
           undefined,

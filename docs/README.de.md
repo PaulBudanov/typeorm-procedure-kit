@@ -53,15 +53,15 @@ ergaenzt:
 
 ## Vergleich mit upstream TypeORM
 
-| Faehigkeit                            | TypeORM        | typeorm-procedure-kit |
-| ------------------------------------- | -------------- | --------------------- |
-| Stored procedure metadata             | Teilweise/manuell | Eingebaut          |
-| Oracle + PostgreSQL enterprise support | Begrenzt      | Fokussiert            |
-| Strenge repository typing             | Teilweise      | Erweitert             |
-| Multi-database entity inheritance      | Nein           | Ja                    |
-| LISTEN/NOTIFY + Oracle CQN             | Nein           | Ja                    |
-| Runtime metadata refresh               | Nein           | Ja                    |
-| Database-specific repositories         | Manuell        | Eingebaut             |
+| Faehigkeit                             | TypeORM           | typeorm-procedure-kit |
+| -------------------------------------- | ----------------- | --------------------- |
+| Stored procedure metadata              | Teilweise/manuell | Eingebaut             |
+| Oracle + PostgreSQL enterprise support | Begrenzt          | Fokussiert            |
+| Strenge repository typing              | Teilweise         | Erweitert             |
+| Multi-database entity inheritance      | Nein              | Ja                    |
+| LISTEN/NOTIFY + Oracle CQN             | Nein              | Ja                    |
+| Runtime metadata refresh               | Nein              | Ja                    |
+| Database-specific repositories         | Manuell           | Eingebaut             |
 
 ## Anforderungen
 
@@ -163,10 +163,10 @@ import {
 } from 'typeorm-procedure-kit/typeorm-extend';
 ```
 
-| Import path                            | Verwendung                                                                     |
-| -------------------------------------- | ------------------------------------------------------------------------------ |
-| `typeorm-procedure-kit`                | `TypeOrmProcedureKit`, public types, constants, utilities                      |
-| `typeorm-procedure-kit/nestjs`         | NestJS module, service, method injection decorators                            |
+| Import path                            | Verwendung                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| `typeorm-procedure-kit`                | `TypeOrmProcedureKit`, public types, constants, utilities                       |
+| `typeorm-procedure-kit/nestjs`         | NestJS module, service, method injection decorators                             |
 | `typeorm-procedure-kit/typeorm`        | Bundled TypeORM-compatible decorators, DataSource, repositories, query builders |
 | `typeorm-procedure-kit/typeorm-extend` | Entity metadata extension decorators und database-specific repository helpers   |
 
@@ -202,16 +202,16 @@ Runtime um Oracle/PostgreSQL-fokussierte Workflows und strengere Typisierung.
 
 ## API-Uebersicht
 
-| Aufgabe                              | API                                                |
-| ------------------------------------ | -------------------------------------------------- |
-| Datenbankzugriff initialisieren      | `new TypeOrmProcedureKit(settings)`, `initDatabase()` |
-| Stored procedure aufrufen            | `db.call<T>(name, params, options?)`               |
-| Raw SQL transaction ausfuehren       | `db.callSqlTransaction<T>(sql, params?, options?)` |
-| Notifications abonnieren             | `db.makeNotify<T>(options, oracleOptions?)`        |
-| Notifications abbestellen            | `db.unlistenNotify(channel)`                       |
+| Aufgabe                              | API                                                                        |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| Datenbankzugriff initialisieren      | `new TypeOrmProcedureKit(settings)`, `initDatabase()`                      |
+| Stored procedure aufrufen            | `db.call<T>(name, params, options?)`                                       |
+| Raw SQL transaction ausfuehren       | `db.callSqlTransaction<T>(sql, params?, options?)`                         |
+| Notifications abonnieren             | `db.makeNotify<T>(options, oracleOptions?)`                                |
+| Notifications abbestellen            | `db.unlistenNotify(channel)`                                               |
 | Serializers registrieren             | `db.setSerializer()`, `db.deleteSerializer()`, `db.deleteAllSerializers()` |
-| DataSource oder EntityManager nutzen | `db.dataSource`, `db.getEntityManager()`           |
-| Graceful shutdown                    | `db.destroy()`, `db.registerShutdownHandlers()`    |
+| DataSource oder EntityManager nutzen | `db.dataSource`, `db.getEntityManager()`                                   |
+| Graceful shutdown                    | `db.destroy()`, `db.registerShutdownHandlers()`                            |
 
 ## Konfiguration
 
@@ -554,15 +554,15 @@ damit das module global wird. Der Nest service initialisiert die database in
 Der NestJS entry point exportiert auch decorators fuer injection einzelner
 methods und lazy DataSource-Zugriff:
 
-| Decorator                       | Delegiert an                               |
-| ------------------------------- | ------------------------------------------ |
-| `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`               |
-| `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()` |
-| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`     |
-| `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`         |
-| `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`     |
-| `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`      |
-| `@InjectDeleteSerializer()`     | `TypeOrmProcedureKit.deleteSerializer()`   |
+| Decorator                       | Delegiert an                                 |
+| ------------------------------- | -------------------------------------------- |
+| `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`                 |
+| `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()`   |
+| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`       |
+| `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`           |
+| `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`       |
+| `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`        |
+| `@InjectDeleteSerializer()`     | `TypeOrmProcedureKit.deleteSerializer()`     |
 | `@InjectDeleteAllSerializers()` | `TypeOrmProcedureKit.deleteAllSerializers()` |
 
 ## Gebuendelte TypeORM-kompatible API
@@ -587,8 +587,9 @@ Enhancements include:
 - generic-aware entity metadata an mehr Stellen;
 - `FindOptionsWhere`, `DeepPartial` und `QueryPartialEntity` types aligned with
   the entity shape exported by this package;
-- `EntityMetadata.databasePropertiesMap`, das database column names nach
-  explicit `@Column({ name })` options und naming strategy rules bereitstellt;
+- `EntityMetadata.propertiesMap` fuer TypeORM property paths inklusive
+  relations, und `EntityMetadata.databasePropertiesMap` fuer database column
+  names nach explicit `@Column({ name })` options und naming strategy rules;
 - `isQuotingDisabled: true` bei der Initialisierung der kit DataSource, sodass
   query builders identifiers standardmaessig nicht quoten. Quoting kann mit
   `enableEscaping()` oder `escape(name, true)` aktiviert werden.
@@ -657,18 +658,30 @@ class UserRepository extends AbstractTypeormRepository<
   }
 
   public findById(id: number): Promise<UserBase | null> {
-    const { alias, builder, property } = this.buildBaseQueryContext('u');
+    const { alias, builder, propertyPaths } = this.buildBaseQueryContext('u');
 
-    return builder
-      .where(`${alias}.${property.id} = :id`, { id })
-      .getOne();
+    return builder.where(`${alias}.${propertyPaths.id} = :id`, { id }).getOne();
   }
 }
 ```
 
-Das `property` object ist `EntityMetadata.databasePropertiesMap`, daher nutzen
-manual SQL fragments database column names nach Anwendung der naming strategy
-rules.
+Das `propertyPaths` object ist eine relation-aware TypeORM property path map aus
+entity metadata. Verwenden Sie es fuer QueryBuilder property expressions wie
+`where`, `leftJoin`, `orderBy`, `take` und `skip`; relation fields sind per dot
+access verfuegbar, zum Beispiel liefert
+`propertyPaths.additionalMessage.isDeleted` den Wert
+`additionalMessage.isDeleted`.
+
+Das `property` object ist eine database column path map, compatible with
+`EntityMetadata.databasePropertiesMap`. Verwenden Sie es nur fuer raw SQL
+fragments, die echte database column names brauchen; relation fields sind per dot
+access fuer joined aliases verfuegbar, zum Beispiel liefert
+`property.additionalMessage.isDeleted` den Wert `IS_DELETED`.
+
+Migration note: Dies ist ein breaking repository API behavior change fuer Code,
+der QueryBuilder property paths in `property` oder database column names in
+`databaseProperty` erwartet hat. Verschieben Sie QueryBuilder usages auf
+`propertyPaths` und raw SQL column usages auf `property`.
 
 ## Zugriff auf EntityManager und DataSource
 

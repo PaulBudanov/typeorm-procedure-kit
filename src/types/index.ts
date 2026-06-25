@@ -104,8 +104,12 @@ export type {
 export type {
   IBuildBaseQueryContext,
   IEntityTargets,
+  IRepositoryPropertyMapRecord,
+  IRepositoryPropertyPathsMapRecord,
   IRepositoryContext,
   TEntityTargetFactory,
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,
+  TRepositoryPropertyMap,
+  TRepositoryPropertyPathsMap,
 } from './typeorm-extend.types.js';

@@ -582,8 +582,9 @@ Enhancements include:
 - generic-aware entity metadata in more places;
 - `FindOptionsWhere`, `DeepPartial`, and `QueryPartialEntity` types aligned
   with the entity shape exported by this package;
-- `EntityMetadata.databasePropertiesMap`, which exposes database column names
-  after explicit `@Column({ name })` options and naming strategy rules;
+- `EntityMetadata.propertiesMap` for TypeORM property paths, including
+  relations, and `EntityMetadata.databasePropertiesMap` for database column
+  names after explicit `@Column({ name })` options and naming strategy rules;
 - `isQuotingDisabled: true` during kit DataSource initialization, so query
   builders keep identifiers unquoted by default. You can opt into quoting with
   `enableEscaping()` or `escape(name, true)`.
@@ -652,15 +653,29 @@ class UserRepository extends AbstractTypeormRepository<
   }
 
   public findById(id: number): Promise<UserBase | null> {
-    const { alias, builder, property } = this.buildBaseQueryContext('u');
+    const { alias, builder, propertyPaths } = this.buildBaseQueryContext('u');
 
-    return builder.where(`${alias}.${property.id} = :id`, { id }).getOne();
+    return builder.where(`${alias}.${propertyPaths.id} = :id`, { id }).getOne();
   }
 }
 ```
 
-The `property` object is `EntityMetadata.databasePropertiesMap`, so manual SQL
-fragments use database column names after naming strategy rules are applied.
+`propertyPaths` is a relation-aware TypeORM property path map built from entity
+metadata. Use it for QueryBuilder property expressions such as `where`,
+`leftJoin`, `orderBy`, `take`, and `skip`; relation fields are available through
+dot access, for example `propertyPaths.additionalMessage.isDeleted` resolves to
+`additionalMessage.isDeleted`.
+
+`property` is a database column path map compatible with
+`EntityMetadata.databasePropertiesMap`. Use it only for raw SQL fragments that
+need real database column names; relation fields are available through dot
+access for joined aliases, for example `property.additionalMessage.isDeleted`
+resolves to `IS_DELETED`.
+
+Migration note: this is a breaking repository API behavior change for code that
+expected QueryBuilder property paths in `property` or database column names in
+`databaseProperty`. Move QueryBuilder usages to `propertyPaths` and raw SQL
+column usages to `property`.
 
 ## EntityManager and DataSource access
 
