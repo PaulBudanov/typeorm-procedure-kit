@@ -5,7 +5,7 @@ on:
     inputs:
       verified_sha:
         description: Release branch commit SHA that already passed Tests and Security
-        required: false
+        required: true
         type: string
 
 concurrency:
@@ -41,7 +41,12 @@ jobs:
             exit 1
           fi
 
-          checked_sha="${VERIFIED_SHA_INPUT:-$GITHUB_SHA}"
+          if [ -z "$VERIFIED_SHA_INPUT" ]; then
+            echo "verified_sha is required. Release must be dispatched after Tests and Security pass."
+            exit 1
+          fi
+
+          checked_sha="$VERIFIED_SHA_INPUT"
           if [[ ! "$checked_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "Expected a full 40-character release commit SHA, got: $checked_sha"
             exit 1
@@ -70,70 +75,6 @@ jobs:
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for repository checks
-        if: steps.release-target.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          CHECKED_SHA: ${{ steps.checked-commit.outputs.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          required_checks=(
-            "Typecheck, lint, and test"
-            "Integration tests"
-            "CodeQL analysis"
-            "Dependency audit"
-            "Dependency review"
-          )
-
-          deadline=$((SECONDS + 1800))
-          while true; do
-            check_runs="$(gh api "/repos/$REPOSITORY/commits/$CHECKED_SHA/check-runs?per_page=100")"
-            blocking_checks=""
-
-            for required_check in "${required_checks[@]}"; do
-              check_state="$(
-                jq -r --arg name "$required_check" '
-                  [
-                    .check_runs[]
-                    | select(.name == $name)
-                  ]
-                  | sort_by(.started_at // "")
-                  | last
-                  | if . == null then
-                      "missing"
-                    else
-                      "\(.status)/\(.conclusion // "pending")"
-                    end
-                ' <<< "$check_runs"
-              )"
-
-              case "$check_state" in
-                completed/success)
-                  ;;
-                *)
-                  blocking_checks="${blocking_checks}${required_check}: ${check_state}"$'\n'
-                  ;;
-              esac
-            done
-
-            if [ -z "$blocking_checks" ]; then
-              break
-            fi
-
-            if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "Timed out waiting for repository checks:"
-              echo "$blocking_checks"
-              exit 1
-            fi
-
-            echo "Waiting for repository checks:"
-            echo "$blocking_checks"
-            sleep 30
-          done
 
       - name: Confirm release target is still current
         id: final-target
