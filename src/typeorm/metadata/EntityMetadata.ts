@@ -16,6 +16,7 @@ import { shorten } from '../util/StringUtils.js';
 
 import type { CheckMetadata } from './CheckMetadata.js';
 import type { ColumnMetadata } from './ColumnMetadata.js';
+import { resolveColumnPath } from './ColumnPathResolver.js';
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import type { EntityListenerMetadata } from './EntityListenerMetadata.js';
 import type { ExclusionMetadata } from './ExclusionMetadata.js';
@@ -781,6 +782,24 @@ export class EntityMetadata<Entity = ObjectLiteral> {
     if (relation && relation.joinColumns) return relation.joinColumns;
 
     return [];
+  }
+
+  /**
+   * Finds column with either TypeORM property path or database column path/name.
+   */
+  public findColumnWithPropertyOrDatabasePath(
+    path: string
+  ): ColumnMetadata | undefined {
+    return resolveColumnPath(this, path, 'propertyOrDatabasePath')[0];
+  }
+
+  /**
+   * Finds columns with either TypeORM property path or database column path/name.
+   */
+  public findColumnsWithPropertyOrDatabasePath(
+    path: string
+  ): Array<ColumnMetadata> {
+    return resolveColumnPath(this, path, 'propertyOrDatabasePath');
   }
 
   /**

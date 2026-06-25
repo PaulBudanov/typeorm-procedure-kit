@@ -766,6 +766,7 @@ export abstract class QueryBuilder<Entity = unknown> {
       // * Relation Property Path to first join column key
       // * Relation Property Path + Column Path
       // * Column Database Name
+      // * Column Database Path
       // * Column Property Name
       // * Column Property Path
 
@@ -781,16 +782,26 @@ export abstract class QueryBuilder<Entity = unknown> {
           ...relation.inverseJoinColumns,
         ];
         for (const joinColumn of allColumns) {
-          const propertyKey = `${relation.propertyPath}.${
-            joinColumn.referencedColumn!.propertyPath
-          }`;
-          replacements[replaceAliasNamePrefix][propertyKey] =
-            joinColumn.databaseName;
+          const referencedColumn = joinColumn.referencedColumn!;
+          replacements[replaceAliasNamePrefix][
+            `${relation.propertyPath}.${referencedColumn.propertyPath}`
+          ] = joinColumn.databaseName;
+          replacements[replaceAliasNamePrefix][
+            `${relation.propertyPath}.${referencedColumn.databasePath}`
+          ] = joinColumn.databaseName;
+          replacements[replaceAliasNamePrefix][
+            `${relation.propertyPath}.${referencedColumn.databaseName}`
+          ] = joinColumn.databaseName;
         }
       }
 
       for (const column of alias.metadata.columns) {
         replacements[replaceAliasNamePrefix][column.databaseName] =
+          column.databaseName;
+      }
+
+      for (const column of alias.metadata.columns) {
+        replacements[replaceAliasNamePrefix][column.databasePath] =
           column.databaseName;
       }
 
@@ -1033,7 +1044,7 @@ export abstract class QueryBuilder<Entity = unknown> {
       (this.expressionMap.returning as Array<string>).forEach((columnName) => {
         if (this.expressionMap.mainAlias!.hasMetadata) {
           columns.push(
-            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyPath(
+            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
               columnName
             )
           );

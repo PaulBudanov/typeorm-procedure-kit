@@ -104,8 +104,6 @@ export type {
 export type {
   IBuildBaseQueryContext,
   IEntityTargets,
-  IRepositoryPropertyMapRecord,
-  IRepositoryPropertyPathsMapRecord,
   IRepositoryContext,
   TEntityTargetFactory,
   TExtendPrimaryGeneratedColumnOptions,

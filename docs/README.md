@@ -276,6 +276,8 @@ Common options:
 - `slaves`: optional read replicas used by TypeORM replication.
 - `poolSize`: connection pool size.
 - `appName`: application name passed to supported drivers.
+- `sessionTimeZone`: optional database session time zone passed to supported
+  drivers, for example `UTC`, `Europe/Moscow`, or `+03:00`.
 - `maxQueryExecutionTime`: slow-query threshold passed to the underlying
   DataSource; it logs slow queries without cancelling them.
 - `logger.typeormLogLevels`: TypeORM log levels routed through `logger.module`.

@@ -17,6 +17,15 @@ type PostgresOptionsWithStatementTimeout = PostgresConnectionOptions & {
   statement_timeout?: false | number;
 };
 
+function restoreEnvValue(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
+
 async function getMaxQueryExecutionTime(
   timeoutConfig: Partial<
     Pick<IBaseConfig, 'callTimeout' | 'maxQueryExecutionTime'>
@@ -152,6 +161,71 @@ describe('DatabaseInitializerBase TypeORM logger config', (): void => {
 
     expect(options.logger).toBeInstanceOf(ProcedureKitLogger);
     expect('logging' in options).toBe(false);
+  });
+});
+
+describe('DatabaseInitializerBase session time zone config', (): void => {
+  it('passes sessionTimeZone to PostgreSQL connection options', async (): Promise<void> => {
+    const previousPgTz = process.env.PGTZ;
+
+    try {
+      const options = await getPostgresConnectionOptions({
+        sessionTimeZone: 'Europe/Moscow',
+        slaves: [
+          {
+            host: 'localhost',
+            port: 5432,
+            database: 'slave_db',
+            username: 'user',
+            password: 'pass',
+          },
+        ],
+      });
+
+      expect(options.sessionTimeZone).toBe('Europe/Moscow');
+      expect(
+        (options.replication?.master as PostgresConnectionOptions)
+          .sessionTimeZone
+      ).toBe('Europe/Moscow');
+      expect(
+        (options.replication?.slaves[0] as PostgresConnectionOptions)
+          .sessionTimeZone
+      ).toBe('Europe/Moscow');
+      expect(process.env.PGTZ).toBe('Europe/Moscow');
+    } finally {
+      restoreEnvValue('PGTZ', previousPgTz);
+    }
+  });
+
+  it('passes sessionTimeZone to Oracle connection options', async (): Promise<void> => {
+    const previousOraSdtz = process.env.ORA_SDTZ;
+
+    try {
+      const options = await getOracleConnectionOptions({
+        sessionTimeZone: '+03:00',
+        slaves: [
+          {
+            host: 'localhost',
+            port: 1521,
+            database: 'slave_db',
+            username: 'user',
+            password: 'pass',
+          },
+        ],
+      });
+
+      expect(options.sessionTimeZone).toBe('+03:00');
+      expect(
+        (options.replication?.master as OracleConnectionOptions).sessionTimeZone
+      ).toBe('+03:00');
+      expect(
+        (options.replication?.slaves[0] as OracleConnectionOptions)
+          .sessionTimeZone
+      ).toBe('+03:00');
+      expect(process.env.ORA_SDTZ).toBe('+03:00');
+    } finally {
+      restoreEnvValue('ORA_SDTZ', previousOraSdtz);
+    }
   });
 });
 

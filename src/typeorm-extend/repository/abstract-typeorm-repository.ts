@@ -1,17 +1,17 @@
 import type { EntityTarget } from '../../typeorm/common/EntityTarget.js';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
+import type { ColumnMetadata } from '../../typeorm/metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../../typeorm/metadata/EntityMetadata.js';
 import type { Repository } from '../../typeorm/repository/Repository.js';
 import type {
   IBuildBaseQueryContext,
   IEntityTargets,
-  IRepositoryPropertyMapRecord,
-  IRepositoryPropertyPathsMapRecord,
   IRepositoryContext,
   TRepositoryPropertyMap,
   TRepositoryPropertyPathsMap,
   TEntityTargetFactory,
+  IRepositoryPropertyMapRecord,
 } from '../../types/typeorm-extend.types.js';
 
 /**
@@ -25,6 +25,16 @@ export abstract class AbstractTypeormRepository<
   TEntity,
   TEntityTarget extends EntityTarget<TEntity>,
 > {
+  private static readonly propertyPathsMapCache = new WeakMap<
+    object,
+    IRepositoryPropertyMapRecord
+  >();
+
+  private static readonly propertyMapCache = new WeakMap<
+    object,
+    IRepositoryPropertyMapRecord
+  >();
+
   private entityTarget: TEntityTarget | null = null;
 
   /**
@@ -77,8 +87,10 @@ export abstract class AbstractTypeormRepository<
     const repository = this.getRepository(manager);
 
     return {
-      propertyPaths: this.buildPropertyPathsMap<TEntity>(repository.metadata),
-      property: this.buildPropertyMap<TEntity>(repository.metadata),
+      propertyPaths: this.getPropertyPathsMap<TEntity, TEntity>(
+        repository.metadata
+      ),
+      property: this.getPropertyMap<TEntity, TEntity>(repository.metadata),
       repository,
     };
   }
@@ -102,81 +114,98 @@ export abstract class AbstractTypeormRepository<
     };
   }
 
-  private buildPropertyPathsMap<TMapEntity, TMetadataEntity = TMapEntity>(
-    metadata: EntityMetadata<TMetadataEntity>,
-    pathPrefix = '',
-    visitedMetadatas: ReadonlySet<object> = new Set()
+  private getPropertyPathsMap<TMapEntity, TMetadataEntity>(
+    metadata: EntityMetadata<TMetadataEntity>
   ): TRepositoryPropertyPathsMap<TMapEntity> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const map: TRepositoryPropertyPathsMap<TMapEntity> = Object.create(
-      Object.prototype
-    );
+    let map = AbstractTypeormRepository.propertyPathsMapCache.get(metadata);
+    if (!map) {
+      map = this.buildRepositoryPropertyMap(metadata, {
+        includeRelationPath: true,
+        pathPrefix: '',
+        getColumnValue: (column, pathPrefix) =>
+          this.joinPropertyPath(pathPrefix, column.propertyPath),
+      });
+      AbstractTypeormRepository.propertyPathsMapCache.set(metadata, map);
+    }
+
+    return map as TRepositoryPropertyPathsMap<TMapEntity>;
+  }
+
+  private getPropertyMap<TMapEntity, TMetadataEntity>(
+    metadata: EntityMetadata<TMetadataEntity>
+  ): TRepositoryPropertyMap<TMapEntity> {
+    let map = AbstractTypeormRepository.propertyMapCache.get(metadata);
+    if (!map) {
+      map = this.buildRepositoryPropertyMap(metadata, {
+        includeRelationPath: false,
+        pathPrefix: '',
+        getColumnValue: (column) =>
+          column.isVirtual && column.relationMetadata
+            ? undefined
+            : column.databasePath,
+      });
+      AbstractTypeormRepository.propertyMapCache.set(metadata, map);
+    }
+
+    return map as TRepositoryPropertyMap<TMapEntity>;
+  }
+
+  private buildRepositoryPropertyMap<TMetadataEntity>(
+    metadata: EntityMetadata<TMetadataEntity>,
+    options: {
+      readonly includeRelationPath: boolean;
+      readonly pathPrefix: string;
+      readonly getColumnValue: (
+        column: ColumnMetadata,
+        pathPrefix: string
+      ) => string | undefined;
+    },
+    visitedMetadatas: ReadonlySet<object> = new Set()
+  ): IRepositoryPropertyMapRecord {
+    const map: IRepositoryPropertyMapRecord = {};
     const nextVisitedMetadatas = new Set(visitedMetadatas);
     nextVisitedMetadatas.add(metadata);
 
-    metadata.columns.forEach((column) => {
-      this.setPropertyPathsMapValue(
-        map,
-        column.propertyPath,
-        this.joinPropertyPath(pathPrefix, column.propertyPath)
-      );
-    });
-    metadata.relations.forEach((relation) => {
+    for (const column of metadata.columns) {
+      const columnValue = options.getColumnValue(column, options.pathPrefix);
+      if (columnValue !== undefined) {
+        this.setMapValue(map, column.propertyPath, columnValue);
+      }
+    }
+
+    for (const relation of metadata.relations) {
       const relationPath = this.joinPropertyPath(
-        pathPrefix,
+        options.pathPrefix,
         relation.propertyPath
       );
 
       if (visitedMetadatas.has(relation.inverseEntityMetadata)) {
-        this.setPropertyPathsMapValue(map, relation.propertyPath, relationPath);
-        return;
+        if (options.includeRelationPath) {
+          this.setMapValue(map, relation.propertyPath, relationPath);
+        }
+        continue;
       }
 
-      const relationMap = this.buildPropertyPathsMap(
-        relation.inverseEntityMetadata,
-        relationPath,
-        nextVisitedMetadatas
-      );
-      const relationSlot = this.getOrCreatePropertyPathsMapRecord(
+      const relationSlot = this.getOrCreateMapRecord(
         map,
         relation.propertyPath
       );
-      relationSlot.$path = relationPath;
-      this.mergePropertyPathsMap(relationSlot, relationMap);
-    });
+      if (options.includeRelationPath) {
+        relationSlot.$path = relationPath;
+      }
 
-    return map;
-  }
-
-  private buildPropertyMap<TMapEntity, TMetadataEntity = TMapEntity>(
-    metadata: EntityMetadata<TMetadataEntity>,
-    visitedMetadatas: ReadonlySet<object> = new Set()
-  ): TRepositoryPropertyMap<TMapEntity> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const map: TRepositoryPropertyMap<TMapEntity> = Object.create(
-      Object.prototype
-    );
-    const nextVisitedMetadatas = new Set(visitedMetadatas);
-    nextVisitedMetadatas.add(metadata);
-
-    metadata.columns.forEach((column) => {
-      if (column.isVirtual && column.relationMetadata) return;
-
-      this.setPropertyMapValue(map, column.propertyPath, column.databasePath);
-    });
-    metadata.relations.forEach((relation) => {
-      if (visitedMetadatas.has(relation.inverseEntityMetadata)) return;
-
-      const relationMap = this.buildPropertyMap(
-        relation.inverseEntityMetadata,
-        nextVisitedMetadatas
+      this.mergeMap(
+        relationSlot,
+        this.buildRepositoryPropertyMap(
+          relation.inverseEntityMetadata,
+          {
+            ...options,
+            pathPrefix: options.includeRelationPath ? relationPath : '',
+          },
+          nextVisitedMetadatas
+        )
       );
-      const relationSlot = this.getOrCreatePropertyMapRecord(
-        map,
-        relation.propertyPath
-      );
-      this.mergePropertyMap(relationSlot, relationMap);
-    });
+    }
 
     return map;
   }
@@ -187,73 +216,29 @@ export abstract class AbstractTypeormRepository<
     return `${pathPrefix}.${propertyPath}`;
   }
 
-  private getOrCreatePropertyPathsMapRecord(
-    map: IRepositoryPropertyPathsMapRecord,
-    propertyPath: string
-  ): IRepositoryPropertyPathsMapRecord {
-    const pathSegments = propertyPath.split('.');
-    let currentMap = map;
-
-    pathSegments.forEach((pathSegment) => {
-      const existingValue = currentMap[pathSegment];
-
-      if (this.isPropertyPathsMapRecord(existingValue)) {
-        currentMap = existingValue;
-        return;
-      }
-
-      const nextMap: IRepositoryPropertyPathsMapRecord = {};
-      currentMap[pathSegment] = nextMap;
-      currentMap = nextMap;
-    });
-
-    return currentMap;
-  }
-
-  private setPropertyPathsMapValue(
-    map: IRepositoryPropertyPathsMapRecord,
-    propertyPath: string,
-    value: string
-  ): void {
-    const pathSegments = propertyPath.split('.');
-    const leafProperty = pathSegments.pop();
-    if (leafProperty === undefined) return;
-
-    let currentMap = map;
-    pathSegments.forEach((pathSegment) => {
-      currentMap = this.getOrCreatePropertyPathsMapRecord(
-        currentMap,
-        pathSegment
-      );
-    });
-
-    currentMap[leafProperty] = value;
-  }
-
-  private getOrCreatePropertyMapRecord(
+  private getOrCreateMapRecord(
     map: IRepositoryPropertyMapRecord,
     propertyPath: string
   ): IRepositoryPropertyMapRecord {
-    const pathSegments = propertyPath.split('.');
     let currentMap = map;
 
-    pathSegments.forEach((pathSegment) => {
+    for (const pathSegment of propertyPath.split('.')) {
       const existingValue = currentMap[pathSegment];
 
-      if (this.isPropertyMapRecord(existingValue)) {
+      if (this.isMapRecord(existingValue)) {
         currentMap = existingValue;
-        return;
+        continue;
       }
 
       const nextMap: IRepositoryPropertyMapRecord = {};
       currentMap[pathSegment] = nextMap;
       currentMap = nextMap;
-    });
+    }
 
     return currentMap;
   }
 
-  private setPropertyMapValue(
+  private setMapValue(
     map: IRepositoryPropertyMapRecord,
     propertyPath: string,
     value: string
@@ -263,67 +248,30 @@ export abstract class AbstractTypeormRepository<
     if (leafProperty === undefined) return;
 
     let currentMap = map;
-    pathSegments.forEach((pathSegment) => {
-      const existingValue = currentMap[pathSegment];
-
-      if (this.isPropertyMapRecord(existingValue)) {
-        currentMap = existingValue;
-        return;
-      }
-
-      const nextMap: IRepositoryPropertyMapRecord = {};
-      currentMap[pathSegment] = nextMap;
-      currentMap = nextMap;
-    });
+    for (const pathSegment of pathSegments) {
+      currentMap = this.getOrCreateMapRecord(currentMap, pathSegment);
+    }
 
     currentMap[leafProperty] = value;
   }
 
-  private mergePropertyPathsMap(
-    targetMap: IRepositoryPropertyPathsMapRecord,
-    sourceMap: IRepositoryPropertyPathsMapRecord
-  ): void {
-    Object.entries(sourceMap).forEach(([propertyName, sourceValue]) => {
-      const targetValue = targetMap[propertyName];
-
-      if (
-        this.isPropertyPathsMapRecord(targetValue) &&
-        this.isPropertyPathsMapRecord(sourceValue)
-      ) {
-        this.mergePropertyPathsMap(targetValue, sourceValue);
-        return;
-      }
-
-      targetMap[propertyName] = sourceValue;
-    });
-  }
-
-  private mergePropertyMap(
+  private mergeMap(
     targetMap: IRepositoryPropertyMapRecord,
     sourceMap: IRepositoryPropertyMapRecord
   ): void {
-    Object.entries(sourceMap).forEach(([propertyName, sourceValue]) => {
+    for (const [propertyName, sourceValue] of Object.entries(sourceMap)) {
       const targetValue = targetMap[propertyName];
 
-      if (
-        this.isPropertyMapRecord(targetValue) &&
-        this.isPropertyMapRecord(sourceValue)
-      ) {
-        this.mergePropertyMap(targetValue, sourceValue);
-        return;
+      if (this.isMapRecord(targetValue) && this.isMapRecord(sourceValue)) {
+        this.mergeMap(targetValue, sourceValue);
+        continue;
       }
 
       targetMap[propertyName] = sourceValue;
-    });
+    }
   }
 
-  private isPropertyPathsMapRecord(
-    value: string | IRepositoryPropertyPathsMapRecord | undefined
-  ): value is IRepositoryPropertyPathsMapRecord {
-    return typeof value === 'object' && value !== null;
-  }
-
-  private isPropertyMapRecord(
+  private isMapRecord(
     value: string | IRepositoryPropertyMapRecord | undefined
   ): value is IRepositoryPropertyMapRecord {
     return typeof value === 'object' && value !== null;

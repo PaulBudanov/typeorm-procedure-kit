@@ -272,8 +272,9 @@ export class OracleDriver implements Driver {
     this.connection = connection;
     this.options = connection.options as OracleConnectionOptions;
 
-    if (this.options.useUTC === true) {
-      process.env.ORA_SDTZ = 'UTC';
+    const sessionTimeZone = this.options.sessionTimeZone?.trim();
+    if (sessionTimeZone) {
+      process.env.ORA_SDTZ = sessionTimeZone;
     }
     // load oracle package
     this.loadDependencies();

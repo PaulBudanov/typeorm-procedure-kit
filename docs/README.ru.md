@@ -276,6 +276,8 @@ const settings: IModuleConfig = {
 - `slaves`: optional read replicas для TypeORM replication.
 - `poolSize`: размер connection pool.
 - `appName`: application name, передаваемый поддерживаемым drivers.
+- `sessionTimeZone`: optional database session time zone, передаваемый
+  поддерживаемым drivers, например `UTC`, `Europe/Moscow` или `+03:00`.
 - `maxQueryExecutionTime`: slow-query threshold для underlying DataSource;
   логирует медленные запросы, не отменяя их.
 - `logger.typeormLogLevels`: уровни логирования TypeORM, которые идут через

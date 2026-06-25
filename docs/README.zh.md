@@ -270,6 +270,8 @@ const settings: IModuleConfig = {
 - `slaves`：TypeORM replication 使用的可选只读副本。
 - `poolSize`：连接池大小。
 - `appName`：传递给受支持驱动的应用名称。
+- `sessionTimeZone`：传递给受支持驱动的可选数据库会话时区，例如
+  `UTC`、`Europe/Moscow` 或 `+03:00`。
 - `maxQueryExecutionTime`：传递给底层 DataSource 的慢查询阈值；记录慢查询但不会取消。
 - `logger.typeormLogLevels`：通过 `logger.module` 输出的 TypeORM 日志级别。
   支持 `query`、`error`、`schema`、`info`、`warn`、`migration` 或 `all`。

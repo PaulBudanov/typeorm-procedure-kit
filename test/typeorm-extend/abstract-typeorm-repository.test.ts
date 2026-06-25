@@ -232,12 +232,12 @@ describe('AbstractTypeormRepository', (): void => {
     const { alias, builder, property, propertyPaths } =
       repository.exposeBaseQueryContext('message');
 
-    expect(() =>
-      builder
-        .leftJoin(`${alias}.${propertyPaths.additionalMessage.$path}`, 'am')
-        .orderBy(`am.${property.additionalMessage.isDeleted}`, 'DESC')
-        .take(10)
-        .getQuery()
-    ).not.toThrow();
+    const query = builder
+      .leftJoin(`${alias}.${propertyPaths.additionalMessage.$path}`, 'am')
+      .orderBy(`am.${property.additionalMessage.isDeleted}`, 'DESC')
+      .take(10)
+      .getQuery();
+
+    expect(query).toContain('ORDER BY "am".IS_DELETED DESC');
   });
 });

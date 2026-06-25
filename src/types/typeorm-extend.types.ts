@@ -15,7 +15,7 @@ type TRepositoryPropertyMapScalar =
   | Uint8Array
   | ((...args: Array<unknown>) => unknown);
 
-export interface IRepositoryPropertyPathsMapRecord {
+interface IRepositoryPropertyPathsMapRecord {
   [propertyName: string]:
     | string
     | IRepositoryPropertyPathsMapRecord
@@ -23,11 +23,7 @@ export interface IRepositoryPropertyPathsMapRecord {
   $path?: string;
 }
 
-export interface IRepositoryPropertyMapRecord {
-  [propertyName: string]: string | IRepositoryPropertyMapRecord | undefined;
-}
-
-export interface IRepositoryPropertyPathsMapNode extends IRepositoryPropertyPathsMapRecord {
+interface IRepositoryPropertyPathsMapNode extends IRepositoryPropertyPathsMapRecord {
   $path: string;
 }
 
@@ -107,3 +103,8 @@ export type TPrimaryGeneratedColumnOverrideDescriptor =
       strategy?: 'uuid';
       options?: PrimaryGeneratedColumnUUIDOptions;
     };
+
+export interface IRepositoryPropertyMapRecord {
+  [propertyName: string]: string | IRepositoryPropertyMapRecord | undefined;
+  $path?: string;
+}

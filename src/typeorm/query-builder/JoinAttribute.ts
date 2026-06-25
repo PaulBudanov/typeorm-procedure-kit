@@ -95,7 +95,11 @@ export class JoinAttribute {
             this.metadata &&
             !!this.metadata.columns.find(
               (column) =>
-                select.selection === this.alias.name + '.' + column.propertyPath
+                select.selection ===
+                  this.alias.name + '.' + column.propertyPath ||
+                select.selection ===
+                  this.alias.name + '.' + column.databaseName ||
+                select.selection === this.alias.name + '.' + column.databasePath
             )
           )
             return true;

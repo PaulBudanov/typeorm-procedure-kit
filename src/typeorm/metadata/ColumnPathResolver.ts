@@ -1,33 +1,37 @@
 import type { ColumnMetadata } from './ColumnMetadata.js';
 import type { EntityMetadata } from './EntityMetadata.js';
 
-export type ColumnPathResolutionMode = 'propertyPath' | 'databasePath';
+export type ColumnPathResolutionMode =
+  | 'propertyPath'
+  | 'databasePath'
+  | 'propertyOrDatabasePath';
 
-export function resolveColumnPath(
-  entityMetadata: EntityMetadata,
+export function resolveColumnPath<Entity>(
+  entityMetadata: EntityMetadata<Entity>,
   path: string,
   mode: ColumnPathResolutionMode = 'propertyPath'
 ): Array<ColumnMetadata> {
-  if (mode === 'databasePath') {
-    const columnWithSameName = entityMetadata.columns.find(
+  const propertyColumn = entityMetadata.columns.find(
+    (column) => column.propertyPath === path
+  );
+  if (mode !== 'databasePath' && propertyColumn) return [propertyColumn];
+
+  const relationWithSameName = entityMetadata.relations.find(
+    (relation) =>
+      relation.isWithJoinColumn &&
+      (relation.propertyPath === path || relation.propertyName === path)
+  );
+
+  if (mode !== 'databasePath' && relationWithSameName) {
+    return relationWithSameName.joinColumns as Array<ColumnMetadata>;
+  }
+
+  if (mode !== 'propertyPath') {
+    const databaseColumn = entityMetadata.columns.find(
       (column) => column.databasePath === path || column.databaseName === path
     );
 
-    return columnWithSameName ? [columnWithSameName] : [];
-  }
-
-  const columnWithSameName = entityMetadata.columns.find(
-    (column) => column.propertyPath === path
-  );
-  if (columnWithSameName) {
-    return [columnWithSameName];
-  }
-
-  const relationWithSameName = entityMetadata.relations.find(
-    (relation) => relation.isWithJoinColumn && relation.propertyName === path
-  );
-  if (relationWithSameName) {
-    return relationWithSameName.joinColumns as Array<ColumnMetadata>;
+    if (databaseColumn) return [databaseColumn];
   }
 
   return [];

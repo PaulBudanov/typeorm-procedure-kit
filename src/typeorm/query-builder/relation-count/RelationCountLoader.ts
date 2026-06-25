@@ -159,26 +159,32 @@ export class RelationCountLoader {
             relationCountAttr.relation.junctionEntityMetadata!.tableName;
 
           const condition =
-            junctionAlias +
-            '.' +
-            firstJunctionColumn.propertyName +
+            this.escapeAliasColumn(
+              junctionAlias,
+              firstJunctionColumn.databaseName
+            ) +
             ' IN (' +
             referenceColumnValues.map((vals) =>
               isNaN(vals as number) ? "'" + vals + "'" : vals
             ) +
             ')' +
             ' AND ' +
-            junctionAlias +
-            '.' +
-            secondJunctionColumn.propertyName +
+            this.escapeAliasColumn(
+              junctionAlias,
+              secondJunctionColumn.databaseName
+            ) +
             ' = ' +
-            inverseSideTableAlias +
-            '.' +
-            inverseJoinColumnName;
+            this.escapeAliasColumn(
+              inverseSideTableAlias,
+              inverseJoinColumnName
+            );
 
           const qb = this.connection.createQueryBuilder(this.queryRunner);
           qb.select(
-            junctionAlias + '.' + firstJunctionColumn.propertyName,
+            this.escapeAliasColumn(
+              junctionAlias,
+              firstJunctionColumn.databaseName
+            ),
             'parentId'
           )
             .addSelect(
@@ -191,7 +197,12 @@ export class RelationCountLoader {
             )
             .from(inverseSideTableName, inverseSideTableAlias)
             .innerJoin(junctionTableName, junctionAlias, condition)
-            .addGroupBy(junctionAlias + '.' + firstJunctionColumn.propertyName);
+            .addGroupBy(
+              this.escapeAliasColumn(
+                junctionAlias,
+                firstJunctionColumn.databaseName
+              )
+            );
 
           // apply condition (custom query builder factory)
           if (relationCountAttr.queryBuilderFactory)
@@ -209,5 +220,11 @@ export class RelationCountLoader {
     );
 
     return Promise.all(promises);
+  }
+
+  private escapeAliasColumn(alias: string, columnName: string): string {
+    const { driver } = this.connection;
+
+    return `${driver.escape(alias)}.${driver.escape(columnName)}`;
   }
 }

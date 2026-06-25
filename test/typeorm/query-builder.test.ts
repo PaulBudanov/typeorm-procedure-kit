@@ -17,12 +17,91 @@ class ManEntity implements ObjectLiteral {
   public text!: string | null;
 }
 
+class AdditionalMessageEntity implements ObjectLiteral {
+  [key: string]: unknown;
+
+  public uuid4!: string;
+  public isDeleted!: boolean;
+}
+
+class MessageEntity implements ObjectLiteral {
+  [key: string]: unknown;
+
+  public uuid4!: string;
+  public isDeleted!: boolean;
+  public additionalMessage!: AdditionalMessageEntity | null;
+  public additionalMessagesUuid!: string;
+}
+
+class EmbeddedProfile {
+  public firstName!: string;
+}
+
+class EmployeeEntity implements ObjectLiteral {
+  [key: string]: unknown;
+
+  public keyId!: number;
+  public profile!: EmbeddedProfile;
+}
+
 async function buildMetadata(dataSource: DataSource): Promise<void> {
   await (
     dataSource as unknown as {
       buildMetadatas(): Promise<void>;
     }
   ).buildMetadatas();
+}
+
+function createMessageEntitySchemas(): Array<EntitySchema> {
+  return [
+    new EntitySchema<AdditionalMessageEntity>({
+      target: AdditionalMessageEntity as unknown as TFunction,
+      name: 'AdditionalMessageEntity',
+      tableName: 'ADDITIONAL_MESSAGE',
+      columns: {
+        uuid4: {
+          type: 'uuid',
+          primary: true,
+          name: 'UUID4',
+        },
+        isDeleted: {
+          type: 'integer',
+          name: 'IS_DELETED',
+        },
+      },
+    }),
+    new EntitySchema<MessageEntity>({
+      target: MessageEntity as unknown as TFunction,
+      name: 'MessageEntity',
+      tableName: 'MESSAGE',
+      columns: {
+        uuid4: {
+          type: 'uuid',
+          primary: true,
+          name: 'UUID4',
+        },
+        isDeleted: {
+          type: 'integer',
+          name: 'IS_DELETED',
+        },
+        additionalMessagesUuid: {
+          type: 'uuid',
+          name: 'ADDITIONAL_MESSAGES_UUID',
+        },
+      },
+      relations: {
+        additionalMessage: {
+          type: 'many-to-one',
+          target: 'AdditionalMessageEntity',
+          joinColumn: {
+            name: 'ADDITIONAL_MESSAGES_UUID',
+            referencedColumn: 'uuid4',
+          },
+          nullable: true,
+        },
+      },
+    }),
+  ];
 }
 
 describe('QueryBuilder', (): void => {
@@ -220,5 +299,151 @@ describe('QueryBuilder', (): void => {
 
     expect(query).toContain('"m".lock_status = :isLocked');
     expect(query).not.toContain('"m".lockStatus');
+  });
+
+  it('selects and normalizes raw results through embedded database paths', async (): Promise<void> => {
+    const profileSchema = new EntitySchema<EmbeddedProfile>({
+      name: 'EmbeddedProfile',
+      columns: {
+        firstName: {
+          type: 'text',
+          name: 'FIRST_NAME',
+        },
+      },
+    });
+    const dataSource = new DataSource({
+      type: 'postgres',
+      entities: [
+        new EntitySchema<EmployeeEntity>({
+          target: EmployeeEntity as unknown as TFunction,
+          name: 'EmployeeEntity',
+          tableName: 'EMPLOYEE',
+          columns: {
+            keyId: {
+              type: 'integer',
+              primary: true,
+              name: 'KEYID',
+            },
+          },
+          embeddeds: {
+            profile: {
+              schema: profileSchema,
+              prefix: 'PROFILE_',
+            },
+          },
+        }),
+      ],
+    });
+    await buildMetadata(dataSource);
+
+    const column = dataSource
+      .getMetadata(EmployeeEntity)
+      .findColumnWithPropertyPathStrict('profile.firstName')!;
+    const builder = dataSource
+      .createQueryBuilder(EmployeeEntity, 'e')
+      .select([`e.${column.databasePath}`]);
+    const query = builder.getQuery();
+
+    expect(query).toContain(`"e".${column.databaseName}`);
+
+    const normalizedRawResults = (
+      builder as unknown as {
+        normalizeRawResultsToEntityProperties(
+          rawResults: Array<unknown>
+        ): Array<ObjectLiteral>;
+      }
+    ).normalizeRawResultsToEntityProperties([
+      {
+        [`e_${column.databaseName}`]: 'Ada',
+      },
+    ]);
+
+    expect(normalizedRawResults[0]).toEqual({
+      'profile.firstName': 'Ada',
+    });
+  });
+
+  it('orders joined aliases through database column names', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'postgres',
+      entities: createMessageEntitySchemas(),
+    });
+    await buildMetadata(dataSource);
+
+    const query = dataSource
+      .createQueryBuilder(MessageEntity, 'message')
+      .leftJoin('message.additionalMessage', 'am')
+      .orderBy('am.IS_DELETED', 'DESC')
+      .getQuery();
+
+    expect(query).toContain('ORDER BY "am".IS_DELETED DESC');
+  });
+
+  it('does not emit true as a count distinct column for joined fallback drivers', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'oracle',
+      entities: createMessageEntitySchemas(),
+    });
+    await buildMetadata(dataSource);
+
+    const builder = dataSource
+      .createQueryBuilder(MessageEntity, 'message')
+      .leftJoin('message.additionalMessage', 'am');
+    const countExpression = (
+      builder as unknown as {
+        computeCountExpression(): string;
+      }
+    ).computeCountExpression();
+
+    expect(countExpression).not.toContain('.true');
+    expect(countExpression).toContain('"message".UUID4');
+  });
+
+  it('resolves returning and insert column lists through database column names', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'postgres',
+      entities: [
+        new EntitySchema<ManEntity>({
+          target: ManEntity as unknown as TFunction,
+          name: 'ManEntity',
+          tableName: 'MAN',
+          schema: 'SOLUTION_MED',
+          columns: {
+            keyId: {
+              type: 'integer',
+              primary: true,
+              name: 'KEYID',
+            },
+            lockStatus: {
+              type: 'integer',
+              nullable: true,
+              name: 'LOCK_STATUS',
+            },
+            status: {
+              type: 'integer',
+              name: 'STATUS',
+            },
+          },
+        }),
+      ],
+    });
+    await buildMetadata(dataSource);
+
+    const insertQuery = dataSource
+      .createQueryBuilder()
+      .insert()
+      .into(ManEntity, ['KEYID', 'LOCK_STATUS'])
+      .values({ keyId: 1, lockStatus: 0 })
+      .getQuery();
+    const updateQuery = dataSource
+      .createQueryBuilder()
+      .update(ManEntity)
+      .set({ status: 1 })
+      .returning(['KEYID', 'LOCK_STATUS'])
+      .where('KEYID = :id', { id: 1 })
+      .getQuery();
+
+    expect(insertQuery).toContain('(KEYID, LOCK_STATUS)');
+    expect(updateQuery).toContain('RETURNING KEYID, LOCK_STATUS');
   });
 });
