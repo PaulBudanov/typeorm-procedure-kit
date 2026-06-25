@@ -1,10 +1,12 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - release
   workflow_dispatch:
+    inputs:
+      verified_sha:
+        description: Release branch commit SHA that already passed Tests and Security
+        required: false
+        type: string
 
 concurrency:
   group: release
@@ -21,23 +23,31 @@ jobs:
     name: Prepare release artifact
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     outputs:
       ready: ${{ steps.final-target.outputs.ready }}
       sha: ${{ steps.checked-commit.outputs.sha }}
     steps:
       - name: Resolve checked commit
         id: checked-commit
+        env:
+          VERIFIED_SHA_INPUT: ${{ inputs.verified_sha }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.ref_name }}" != "release" ]; then
+          if [ "${{ github.ref_name }}" != "release" ]; then
             echo "Manual releases must be dispatched from the release branch."
             exit 1
           fi
 
-          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          checked_sha="${VERIFIED_SHA_INPUT:-$GITHUB_SHA}"
+          if [[ ! "$checked_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "Expected a full 40-character release commit SHA, got: $checked_sha"
+            exit 1
+          fi
+
+          echo "sha=$checked_sha" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -76,6 +86,7 @@ jobs:
             "Integration tests"
             "CodeQL analysis"
             "Dependency audit"
+            "Dependency review"
           )
 
           deadline=$((SECONDS + 1800))
@@ -195,7 +206,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ needs.prepare.outputs.sha }}
+          ref: release
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -293,8 +304,3 @@ jobs:
           fi
 
           gh workflow run tests.yml --repo "$REPOSITORY" --ref release
-          gh workflow run security.yml \
-            --repo "$REPOSITORY" \
-            --ref release \
-            -f dependency_review_base=master \
-            -f dependency_review_head=release

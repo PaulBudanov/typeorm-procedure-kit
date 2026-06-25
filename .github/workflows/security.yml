@@ -5,7 +5,11 @@ on:
     branches:
       - master
       - release
-  push:
+  workflow_run:
+    workflows:
+      - Tests
+    types:
+      - completed
     branches:
       - master
       - release
@@ -26,6 +30,7 @@ permissions:
 jobs:
   codeql:
     name: CodeQL analysis
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -35,6 +40,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
@@ -48,11 +55,14 @@ jobs:
 
   dependency-audit:
     name: Dependency audit
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -91,7 +101,14 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request' || inputs.dependency_review_base != ''
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.dependency_review_base != '') ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'release'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -100,14 +117,50 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
-          base-ref: ${{ inputs.dependency_review_base || github.event.pull_request.base.sha }}
-          head-ref: ${{ inputs.dependency_review_head || github.event.pull_request.head.sha }}
+          base-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.dependency_review_base || 'master' }}
+          head-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.dependency_review_head || github.event.workflow_run.head_sha || github.sha }}
           fail-on-severity: moderate
           fail-on-scopes: runtime, development, unknown
           show-openssf-scorecard: true
           warn-on-openssf-scorecard-level: 3
           show-patched-versions: true
+
+  dispatch-release:
+    name: Dispatch release
+    needs:
+      - codeql
+      - dependency-audit
+      - dependency-review
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'release' &&
+      needs.codeql.result == 'success' &&
+      needs.dependency-audit.result == 'success' &&
+      needs.dependency-review.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh workflow run release.yml \
+            --repo "$REPOSITORY" \
+            --ref release \
+            -f verified_sha="$VERIFIED_SHA"
