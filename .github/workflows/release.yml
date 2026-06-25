@@ -208,6 +208,14 @@ jobs:
           persist-credentials: false
           ref: release
 
+      - name: Attach release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git checkout -B release origin/release
+          git branch --set-upstream-to=origin/release release
+
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -252,6 +260,21 @@ jobs:
           set -euo pipefail
 
           checked_sha="${{ needs.prepare.outputs.sha }}"
+          current_branch="$(git branch --show-current)"
+
+          if [ "${GITHUB_REF_NAME:-}" != "release" ] || [ "${GITHUB_REF:-}" != "refs/heads/release" ]; then
+            echo "Release workflow must run with GitHub ref refs/heads/release."
+            echo "GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME:-}"
+            echo "GITHUB_REF=${GITHUB_REF:-}"
+            echo "GITHUB_REF_NAME=${GITHUB_REF_NAME:-}"
+            exit 1
+          fi
+
+          if [ "$current_branch" != "release" ]; then
+            echo "Expected local branch release, got: $current_branch"
+            exit 1
+          fi
+
           npm run semantic-release
 
           git fetch --no-tags origin refs/heads/release
