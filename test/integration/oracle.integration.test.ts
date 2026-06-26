@@ -89,6 +89,7 @@ function createOracleQueryBuilderDataSource(
 ): DataSource {
   return createQueryBuilderIntegrationDataSource({
     type: 'oracle',
+    driver: oracledb,
     host: integrationSettings.config.master.host,
     port: integrationSettings.config.master.port,
     username: integrationSettings.config.master.username,

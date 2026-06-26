@@ -84,6 +84,7 @@ function createPostgresQueryBuilderDataSource(
 ): DataSource {
   return createQueryBuilderIntegrationDataSource({
     type: 'postgres',
+    driver: pg,
     host: integrationSettings.config.master.host,
     port: integrationSettings.config.master.port,
     database: integrationSettings.config.master.database,
