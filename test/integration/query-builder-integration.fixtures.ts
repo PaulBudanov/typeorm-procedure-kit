@@ -1,7 +1,11 @@
+import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js';
+import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serializer.js';
+import { CaseStrategyFactory } from '../../src/case-strategy/case-strategy-factory.js';
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
 import type { DataSourceOptions } from '../../src/typeorm/data-source/DataSourceOptions.js';
 import { EntitySchema } from '../../src/typeorm/entity-schema/EntitySchema.js';
 import type { ObjectLiteral } from '../../src/typeorm/index.js';
+import type { ILoggerModule } from '../../src/types/logger.types.js';
 import type { TFunction } from '../../src/types/utility.types.js';
 
 export const queryBuilderTables = {
@@ -10,6 +14,12 @@ export const queryBuilderTables = {
   audit: 'TPK_IT_QB_AUDIT',
   auditLog: 'TPK_IT_QB_AUDIT_LOG',
 } as const;
+
+const queryBuilderLogger: ILoggerModule = {
+  error: (): void => undefined,
+  log: (): void => undefined,
+  warn: (): void => undefined,
+};
 
 export class IntegrationMessageEntity implements ObjectLiteral {
   [key: string]: unknown;
@@ -168,10 +178,25 @@ export function createQueryBuilderIntegrationSchemas(): Array<EntitySchema> {
 export function createQueryBuilderIntegrationDataSource(
   options: DataSourceOptions
 ): DataSource {
+  const { strategy } = CaseStrategyFactory.caseStrategyFactory('lowerCase');
+
+  if (options.type === 'postgres') {
+    new PostgreSerializer(queryBuilderLogger, {
+      caseStrategy: strategy,
+      isNeedRegisterDefaultSerializers: false,
+    }).registerFetchHandlerHook();
+  } else {
+    new OracleSerializer(queryBuilderLogger, {
+      caseStrategy: strategy,
+      isNeedRegisterDefaultSerializers: false,
+    }).registerFetchHandlerHook();
+  }
+
   return new DataSource({
     ...options,
     entities: createQueryBuilderIntegrationSchemas(),
     isQuotingDisabled: true,
+    namingStrategy: strategy,
     synchronize: false,
   } as DataSourceOptions);
 }
