@@ -33,6 +33,25 @@ class MessageEntity implements ObjectLiteral {
   public additionalMessagesUuid!: string;
 }
 
+class MessageAuditEntity implements ObjectLiteral {
+  [key: string]: unknown;
+
+  public id!: number;
+  public messageUuid!: string;
+  public createdAt!: Date;
+}
+
+class OrderEntity implements ObjectLiteral {
+  [key: string]: unknown;
+
+  public tenantId!: string;
+  public orderNo!: number;
+  public status!: string;
+  public messageUuid!: string;
+  public createdAt!: Date;
+  public message!: MessageEntity | null;
+}
+
 class EmbeddedProfile {
   public firstName!: string;
 }
@@ -44,12 +63,30 @@ class EmployeeEntity implements ObjectLiteral {
   public profile!: EmbeddedProfile;
 }
 
+class AuditLogEntity implements ObjectLiteral {
+  [key: string]: unknown;
+
+  public id!: number;
+  public status!: string;
+  public deletedAt!: Date | null;
+  public updatedAt!: Date;
+  public version!: number;
+}
+
 async function buildMetadata(dataSource: DataSource): Promise<void> {
   await (
     dataSource as unknown as {
       buildMetadatas(): Promise<void>;
     }
   ).buildMetadatas();
+}
+
+function computeCountExpression(builder: unknown): string {
+  return (
+    builder as {
+      computeCountExpression(): string;
+    }
+  ).computeCountExpression();
 }
 
 function createMessageEntitySchemas(): Array<EntitySchema> {
@@ -102,6 +139,107 @@ function createMessageEntitySchemas(): Array<EntitySchema> {
       },
     }),
   ];
+}
+
+function createOrderEntitySchemas(): Array<EntitySchema> {
+  return [
+    ...createMessageEntitySchemas(),
+    new EntitySchema<MessageAuditEntity>({
+      target: MessageAuditEntity as unknown as TFunction,
+      name: 'MessageAuditEntity',
+      tableName: 'MESSAGE_AUDIT',
+      columns: {
+        id: {
+          type: 'integer',
+          primary: true,
+          name: 'ID',
+        },
+        messageUuid: {
+          type: 'uuid',
+          name: 'MESSAGE_UUID',
+        },
+        createdAt: {
+          type: 'timestamp',
+          name: 'CREATED_AT',
+        },
+      },
+    }),
+    new EntitySchema<OrderEntity>({
+      target: OrderEntity as unknown as TFunction,
+      name: 'OrderEntity',
+      tableName: 'ORDER_HEADER',
+      columns: {
+        tenantId: {
+          type: 'varchar',
+          primary: true,
+          name: 'TENANT_ID',
+        },
+        orderNo: {
+          type: 'integer',
+          primary: true,
+          name: 'ORDER_NO',
+        },
+        status: {
+          type: 'varchar',
+          name: 'ORDER_STATUS',
+        },
+        messageUuid: {
+          type: 'uuid',
+          name: 'MESSAGE_UUID',
+        },
+        createdAt: {
+          type: 'timestamp',
+          name: 'CREATED_AT',
+        },
+      },
+      relations: {
+        message: {
+          type: 'many-to-one',
+          target: 'MessageEntity',
+          joinColumn: {
+            name: 'MESSAGE_UUID',
+            referencedColumn: 'uuid4',
+          },
+          nullable: true,
+        },
+      },
+    }),
+  ];
+}
+
+function createAuditLogEntitySchema(): EntitySchema {
+  return new EntitySchema<AuditLogEntity>({
+    target: AuditLogEntity as unknown as TFunction,
+    name: 'AuditLogEntity',
+    tableName: 'AUDIT_LOG',
+    columns: {
+      id: {
+        type: 'integer',
+        primary: true,
+        name: 'ID',
+      },
+      status: {
+        type: 'varchar',
+        name: 'STATUS',
+      },
+      deletedAt: {
+        type: 'timestamp',
+        name: 'DELETED_AT',
+        deleteDate: true,
+        nullable: true,
+      },
+      updatedAt: {
+        type: 'timestamp',
+        name: 'UPDATED_AT',
+        updateDate: true,
+      },
+      version: {
+        type: 'integer',
+        name: 'ROW_VERSION',
+        version: true,
+      },
+    },
+  });
 }
 
 describe('QueryBuilder', (): void => {
@@ -389,14 +527,127 @@ describe('QueryBuilder', (): void => {
     const builder = dataSource
       .createQueryBuilder(MessageEntity, 'message')
       .leftJoin('message.additionalMessage', 'am');
-    const countExpression = (
-      builder as unknown as {
-        computeCountExpression(): string;
-      }
-    ).computeCountExpression();
+    const countExpression = computeCountExpression(builder);
 
     expect(countExpression).not.toContain('.true');
     expect(countExpression).toBe('COUNT(DISTINCT("message".UUID4))');
+  });
+
+  it('builds postgres count distinct with composite primary columns', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'postgres',
+      entities: createOrderEntitySchemas(),
+    });
+    await buildMetadata(dataSource);
+
+    const builder = dataSource
+      .createQueryBuilder(OrderEntity, 'ord')
+      .innerJoin('ord.message', 'message');
+    const countExpression = computeCountExpression(builder);
+
+    expect(countExpression).toBe(
+      'COUNT(DISTINCT("ord".TENANT_ID, "ord".ORDER_NO))'
+    );
+    expect(countExpression).not.toContain('"TENANT_ID"');
+    expect(countExpression).not.toContain('"ORDER_NO"');
+  });
+
+  it('builds fallback count distinct with composite primary columns', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'oracle',
+      entities: createOrderEntitySchemas(),
+    });
+    await buildMetadata(dataSource);
+
+    const builder = dataSource
+      .createQueryBuilder(OrderEntity, 'ord')
+      .innerJoin('ord.message', 'message');
+    const countExpression = computeCountExpression(builder);
+
+    expect(countExpression).toBe(
+      'COUNT(DISTINCT("ord".TENANT_ID || \'|;|\' || "ord".ORDER_NO))'
+    );
+    expect(countExpression).not.toContain('"TENANT_ID"');
+    expect(countExpression).not.toContain('"ORDER_NO"');
+  });
+
+  it('replaces database column names across a complex select query', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'oracle',
+      entities: createOrderEntitySchemas(),
+    });
+    await buildMetadata(dataSource);
+
+    const builder = dataSource
+      .createQueryBuilder(OrderEntity, 'ord')
+      .select('ord.TENANT_ID', 'tenant_alias')
+      .addSelect('ord.ORDER_NO', 'order_alias')
+      .addSelect('message.UUID4', 'message_uuid_alias')
+      .addSelect((subQuery) => {
+        return subQuery
+          .select('COUNT(am.UUID4)')
+          .from(AdditionalMessageEntity, 'am')
+          .where('am.IS_DELETED = :subDeleted');
+      }, 'active_message_count')
+      .innerJoin('ord.message', 'message')
+      .leftJoin('message.additionalMessage', 'am')
+      .leftJoin(
+        (subQuery) => {
+          return subQuery
+            .select('log.MESSAGE_UUID', 'log_message_uuid')
+            .addSelect('MAX(log.CREATED_AT)', 'last_seen_at')
+            .from(MessageAuditEntity, 'log')
+            .groupBy('log.MESSAGE_UUID');
+        },
+        'message_log',
+        'message_log.log_message_uuid = message.UUID4'
+      )
+      .where('ord.ORDER_STATUS = :status')
+      .andWhere('message.IS_DELETED = :messageDeleted')
+      .groupBy('ord.TENANT_ID')
+      .addGroupBy('ord.ORDER_NO')
+      .addGroupBy('message.UUID4')
+      .having('COUNT(am.UUID4) > :minMessages')
+      .orderBy('ord.CREATED_AT', 'DESC')
+      .addOrderBy('message.UUID4', 'ASC')
+      .offset(10)
+      .limit(25);
+    const query = builder.getQuery();
+    const countExpression = computeCountExpression(builder);
+
+    expect(query).toContain('"ord".TENANT_ID AS "tenant_alias"');
+    expect(query).toContain('"ord".ORDER_NO AS "order_alias"');
+    expect(query).toContain('"message".UUID4 AS "message_uuid_alias"');
+    expect(query).toContain(
+      '(SELECT COUNT("am".UUID4) FROM ADDITIONAL_MESSAGE "am" WHERE "am".IS_DELETED = :subDeleted) AS "active_message_count"'
+    );
+    expect(query).toContain('FROM ORDER_HEADER "ord"');
+    expect(query).toContain(
+      'INNER JOIN MESSAGE "message" ON "message".UUID4="ord".MESSAGE_UUID'
+    );
+    expect(query).toContain(
+      'LEFT JOIN ADDITIONAL_MESSAGE "am" ON "am".UUID4="message".ADDITIONAL_MESSAGES_UUID'
+    );
+    expect(query).toContain(
+      '(SELECT "log".MESSAGE_UUID AS "log_message_uuid", MAX("log".CREATED_AT) AS "last_seen_at" FROM MESSAGE_AUDIT "log" GROUP BY "log".MESSAGE_UUID) "message_log" ON message_log.log_message_uuid = "message".UUID4'
+    );
+    expect(query).toContain('WHERE "ord".ORDER_STATUS = :status');
+    expect(query).toContain('AND "message".IS_DELETED = :messageDeleted');
+    expect(query).toContain(
+      'GROUP BY "ord".TENANT_ID, "ord".ORDER_NO, "message".UUID4'
+    );
+    expect(query).toContain('HAVING COUNT("am".UUID4) > :minMessages');
+    expect(query).toContain(
+      'ORDER BY "ord".CREATED_AT DESC, "message".UUID4 ASC'
+    );
+    expect(query).toContain('OFFSET 10 ROWS FETCH NEXT 25 ROWS ONLY');
+    expect(query).not.toContain('"ord"."TENANT_ID"');
+    expect(query).not.toContain('"message"."UUID4"');
+    expect(countExpression).toBe(
+      'COUNT(DISTINCT("ord".TENANT_ID || \'|;|\' || "ord".ORDER_NO))'
+    );
+    expect(countExpression).not.toContain('tenant_alias');
+    expect(countExpression).not.toContain('order_alias');
   });
 
   it('resolves returning and insert column lists through database column names', async (): Promise<void> => {
@@ -445,5 +696,58 @@ describe('QueryBuilder', (): void => {
 
     expect(insertQuery).toContain('(KEYID, LOCK_STATUS)');
     expect(updateQuery).toContain('RETURNING KEYID, LOCK_STATUS');
+  });
+
+  it('uses database column names across insert, update, delete, and soft-delete queries', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'postgres',
+      entities: [createAuditLogEntitySchema()],
+    });
+    await buildMetadata(dataSource);
+
+    const insertQuery = dataSource
+      .createQueryBuilder()
+      .insert()
+      .into(AuditLogEntity, ['ID', 'STATUS'])
+      .values({ id: 1, status: 'ready' })
+      .getQuery();
+    const updateQuery = dataSource
+      .createQueryBuilder()
+      .update(AuditLogEntity)
+      .set({ status: 'done' })
+      .where('ID = :id')
+      .returning(['STATUS', 'UPDATED_AT'])
+      .getQuery();
+    const deleteQuery = dataSource
+      .createQueryBuilder()
+      .delete()
+      .from(AuditLogEntity)
+      .where('STATUS = :status')
+      .returning(['ID'])
+      .getQuery();
+    const softDeleteQuery = dataSource
+      .createQueryBuilder()
+      .softDelete()
+      .from(AuditLogEntity)
+      .where('STATUS = :status')
+      .returning(['ID', 'DELETED_AT'])
+      .getQuery();
+
+    expect(insertQuery).toContain('INSERT INTO AUDIT_LOG(ID, STATUS)');
+    expect(updateQuery).toContain('UPDATE AUDIT_LOG SET STATUS = :orm_param_0');
+    expect(updateQuery).toContain('ROW_VERSION = ROW_VERSION + 1');
+    expect(updateQuery).toContain('UPDATED_AT = CURRENT_TIMESTAMP');
+    expect(updateQuery).toContain('WHERE ID = :id');
+    expect(updateQuery).toContain('RETURNING STATUS, UPDATED_AT');
+    expect(deleteQuery).toBe(
+      'DELETE FROM AUDIT_LOG WHERE STATUS = :status RETURNING ID'
+    );
+    expect(softDeleteQuery).toContain(
+      'UPDATE AUDIT_LOG SET DELETED_AT = CURRENT_TIMESTAMP'
+    );
+    expect(softDeleteQuery).toContain('ROW_VERSION = ROW_VERSION + 1');
+    expect(softDeleteQuery).toContain('UPDATED_AT = CURRENT_TIMESTAMP');
+    expect(softDeleteQuery).toContain('WHERE STATUS = :status');
+    expect(softDeleteQuery).toContain('RETURNING ID, DELETED_AT');
   });
 });
