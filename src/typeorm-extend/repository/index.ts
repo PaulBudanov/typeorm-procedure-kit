@@ -4,4 +4,6 @@ export type {
   IEntityTargets,
   IRepositoryContext,
   TEntityTargetFactory,
+  TRepositoryPropertyMap,
+  TRepositoryPropertyPathsMap,
 } from '../../types/typeorm-extend.types.js';

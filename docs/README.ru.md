@@ -53,15 +53,15 @@ database-specific entity variants.
 
 ## Сравнение с upstream TypeORM
 
-| Возможность                          | TypeORM        | typeorm-procedure-kit |
-| ------------------------------------ | -------------- | --------------------- |
-| Метаданные stored procedures         | Частично/вручную | Встроено            |
-| Enterprise support для Oracle + PostgreSQL | Ограничено | Сфокусированная поддержка |
-| Строгая типизация repositories       | Частично       | Расширена             |
-| Multi-database entity inheritance    | Нет            | Да                    |
-| LISTEN/NOTIFY + Oracle CQN           | Нет            | Да                    |
-| Runtime metadata refresh             | Нет            | Да                    |
-| Database-specific repositories       | Вручную        | Встроено              |
+| Возможность                                | TypeORM          | typeorm-procedure-kit     |
+| ------------------------------------------ | ---------------- | ------------------------- |
+| Метаданные stored procedures               | Частично/вручную | Встроено                  |
+| Enterprise support для Oracle + PostgreSQL | Ограничено       | Сфокусированная поддержка |
+| Строгая типизация repositories             | Частично         | Расширена                 |
+| Multi-database entity inheritance          | Нет              | Да                        |
+| LISTEN/NOTIFY + Oracle CQN                 | Нет              | Да                        |
+| Runtime metadata refresh                   | Нет              | Да                        |
+| Database-specific repositories             | Вручную          | Встроено                  |
 
 ## Требования
 
@@ -202,16 +202,16 @@ Oracle/PostgreSQL-focused workflows и более строгой типизац�
 
 ## Карта API
 
-| Задача                                | API                                                |
-| ------------------------------------- | -------------------------------------------------- |
-| Инициализация доступа к базе          | `new TypeOrmProcedureKit(settings)`, `initDatabase()` |
-| Вызов stored procedure                | `db.call<T>(name, params, options?)`               |
-| Выполнение raw SQL transaction        | `db.callSqlTransaction<T>(sql, params?, options?)` |
-| Подписка на notifications             | `db.makeNotify<T>(options, oracleOptions?)`        |
-| Отписка от notifications              | `db.unlistenNotify(channel)`                       |
+| Задача                                | API                                                                        |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| Инициализация доступа к базе          | `new TypeOrmProcedureKit(settings)`, `initDatabase()`                      |
+| Вызов stored procedure                | `db.call<T>(name, params, options?)`                                       |
+| Выполнение raw SQL transaction        | `db.callSqlTransaction<T>(sql, params?, options?)`                         |
+| Подписка на notifications             | `db.makeNotify<T>(options, oracleOptions?)`                                |
+| Отписка от notifications              | `db.unlistenNotify(channel)`                                               |
 | Регистрация serializers               | `db.setSerializer()`, `db.deleteSerializer()`, `db.deleteAllSerializers()` |
-| Доступ к DataSource или EntityManager | `db.dataSource`, `db.getEntityManager()`           |
-| Graceful shutdown                     | `db.destroy()`, `db.registerShutdownHandlers()`    |
+| Доступ к DataSource или EntityManager | `db.dataSource`, `db.getEntityManager()`                                   |
+| Graceful shutdown                     | `db.destroy()`, `db.registerShutdownHandlers()`                            |
 
 ## Конфигурация
 
@@ -276,6 +276,8 @@ const settings: IModuleConfig = {
 - `slaves`: optional read replicas для TypeORM replication.
 - `poolSize`: размер connection pool.
 - `appName`: application name, передаваемый поддерживаемым drivers.
+- `sessionTimeZone`: optional database session time zone, передаваемый
+  поддерживаемым drivers, например `UTC`, `Europe/Moscow` или `+03:00`.
 - `maxQueryExecutionTime`: slow-query threshold для underlying DataSource;
   логирует медленные запросы, не отменяя их.
 - `logger.typeormLogLevels`: уровни логирования TypeORM, которые идут через
@@ -555,15 +557,15 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 NestJS entry point также экспортирует decorators для injection отдельных
 methods и lazy-доступа к DataSource:
 
-| Decorator                       | Делегирует в                               |
-| ------------------------------- | ------------------------------------------ |
-| `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`               |
-| `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()` |
-| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`     |
-| `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`         |
-| `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`     |
-| `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`      |
-| `@InjectDeleteSerializer()`     | `TypeOrmProcedureKit.deleteSerializer()`   |
+| Decorator                       | Делегирует в                                 |
+| ------------------------------- | -------------------------------------------- |
+| `@InjectCallProcedure()`        | `TypeOrmProcedureKit.call()`                 |
+| `@InjectCallSql()`              | `TypeOrmProcedureKit.callSqlTransaction()`   |
+| `@InjectGetDataSource()`        | `() => TypeOrmProcedureKit.dataSource`       |
+| `@InjectMakeNotify()`           | `TypeOrmProcedureKit.makeNotify()`           |
+| `@InjectUnlistenNotify()`       | `TypeOrmProcedureKit.unlistenNotify()`       |
+| `@InjectSetSerializer()`        | `TypeOrmProcedureKit.setSerializer()`        |
+| `@InjectDeleteSerializer()`     | `TypeOrmProcedureKit.deleteSerializer()`     |
 | `@InjectDeleteAllSerializers()` | `TypeOrmProcedureKit.deleteAllSerializers()` |
 
 ## Встроенный TypeORM-compatible API
@@ -588,8 +590,9 @@ Enhancements include:
 - generic-aware entity metadata в большем числе мест;
 - типы `FindOptionsWhere`, `DeepPartial` и `QueryPartialEntity`, aligned with
   entity shape, exported by this package;
-- `EntityMetadata.databasePropertiesMap`, который exposes database column names
-  после explicit `@Column({ name })` options и naming strategy rules;
+- `EntityMetadata.propertiesMap` для TypeORM property paths, включая relations,
+  и `EntityMetadata.databasePropertiesMap` для database column names после
+  explicit `@Column({ name })` options и naming strategy rules;
 - `isQuotingDisabled: true` при инициализации kit DataSource, поэтому query
   builders по умолчанию не quote identifiers. Можно включить quoting через
   `enableEscaping()` или `escape(name, true)`.
@@ -658,18 +661,29 @@ class UserRepository extends AbstractTypeormRepository<
   }
 
   public findById(id: number): Promise<UserBase | null> {
-    const { alias, builder, property } = this.buildBaseQueryContext('u');
+    const { alias, builder, propertyPaths } = this.buildBaseQueryContext('u');
 
-    return builder
-      .where(`${alias}.${property.id} = :id`, { id })
-      .getOne();
+    return builder.where(`${alias}.${propertyPaths.id} = :id`, { id }).getOne();
   }
 }
 ```
 
-`property` object это `EntityMetadata.databasePropertiesMap`, поэтому manual
-SQL fragments используют database column names после применения naming strategy
-rules.
+`propertyPaths` object это relation-aware TypeORM property path map, построенный
+из entity metadata. Используйте его для QueryBuilder property expressions:
+`where`, `leftJoin`, `orderBy`, `take` и `skip`; relation fields доступны через
+dot access, например `propertyPaths.additionalMessage.isDeleted` возвращает
+`additionalMessage.isDeleted`.
+
+`property` object это database column path map, compatible with
+`EntityMetadata.databasePropertiesMap`. Используйте его только для raw SQL
+fragments, где нужны реальные database column names; relation fields доступны
+через dot access для joined aliases, например
+`property.additionalMessage.isDeleted` возвращает `IS_DELETED`.
+
+Migration note: это breaking repository API behavior change для кода, который
+ожидал QueryBuilder property paths в `property` или database column names в
+`databaseProperty`. QueryBuilder usages нужно перенести на `propertyPaths`, а
+raw SQL column usages на `property`.
 
 ## Доступ к EntityManager и DataSource
 

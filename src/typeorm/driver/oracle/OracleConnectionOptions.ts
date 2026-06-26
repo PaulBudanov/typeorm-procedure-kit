@@ -42,9 +42,9 @@ export interface OracleConnectionOptions
   readonly thickMode?: boolean | OracleThickModeOptions;
 
   /**
-   * A boolean determining whether to pass time values in UTC or local time. (default: false).
+   * Database session time zone passed to node-oracledb through `ORA_SDTZ`.
    */
-  readonly useUTC?: boolean;
+  readonly sessionTimeZone?: string;
 
   /**
    * Millisecond timeout applied to each acquired physical connection as

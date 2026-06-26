@@ -2,7 +2,6 @@ import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { DataSourceOptions } from '../typeorm/data-source/DataSourceOptions.js';
 import type { PrimaryGeneratedColumnNumericOptions } from '../typeorm/decorator/options/PrimaryGeneratedColumnNumericOptions.js';
 import type { PrimaryGeneratedColumnUUIDOptions } from '../typeorm/decorator/options/PrimaryGeneratedColumnUUIDOptions.js';
-import type { EntityDatabasePropertiesMap } from '../typeorm/metadata/types/EntityPropertiesMap.js';
 import type { SelectQueryBuilder } from '../typeorm/query-builder/SelectQueryBuilder.js';
 import type { Repository } from '../typeorm/repository/Repository.js';
 
@@ -10,8 +9,62 @@ export type IEntityTargets<TEntityTarget> = Readonly<
   Record<DataSourceOptions['type'], TEntityTarget>
 >;
 
+type TRepositoryPropertyMapScalar =
+  | Date
+  | RegExp
+  | Uint8Array
+  | ((...args: Array<unknown>) => unknown);
+
+interface IRepositoryPropertyPathsMapRecord {
+  [propertyName: string]:
+    | string
+    | IRepositoryPropertyPathsMapRecord
+    | undefined;
+  $path?: string;
+}
+
+interface IRepositoryPropertyPathsMapNode extends IRepositoryPropertyPathsMapRecord {
+  $path: string;
+}
+
+type TRepositoryPropertyPathsValueMap<TValue> =
+  NonNullable<Awaited<TValue>> extends TRepositoryPropertyMapScalar
+    ? string
+    : NonNullable<Awaited<TValue>> extends ReadonlyArray<infer Item>
+      ? TRepositoryPropertyPathsMap<Item> & IRepositoryPropertyPathsMapNode
+      : NonNullable<Awaited<TValue>> extends object
+        ? TRepositoryPropertyPathsMap<NonNullable<Awaited<TValue>>> &
+            IRepositoryPropertyPathsMapNode
+        : string;
+
+type TRepositoryPropertyValueMap<TValue> =
+  NonNullable<Awaited<TValue>> extends TRepositoryPropertyMapScalar
+    ? string
+    : NonNullable<Awaited<TValue>> extends ReadonlyArray<infer Item>
+      ? TRepositoryPropertyMap<Item>
+      : NonNullable<Awaited<TValue>> extends object
+        ? TRepositoryPropertyMap<NonNullable<Awaited<TValue>>>
+        : string;
+
+export type TRepositoryPropertyPathsMap<TEntity> = string extends keyof TEntity
+  ? IRepositoryPropertyPathsMapRecord
+  : IRepositoryPropertyPathsMapRecord & {
+      [Property in keyof TEntity & string]: TRepositoryPropertyPathsValueMap<
+        TEntity[Property]
+      >;
+    };
+
+export type TRepositoryPropertyMap<TEntity> = string extends keyof TEntity
+  ? IRepositoryPropertyMapRecord
+  : IRepositoryPropertyMapRecord & {
+      [Property in keyof TEntity & string]: TRepositoryPropertyValueMap<
+        TEntity[Property]
+      >;
+    };
+
 export interface IRepositoryContext<TEntity> {
-  readonly property: EntityDatabasePropertiesMap<TEntity>;
+  readonly propertyPaths: TRepositoryPropertyPathsMap<TEntity>;
+  readonly property: TRepositoryPropertyMap<TEntity>;
   readonly repository: Repository<TEntity>;
 }
 
@@ -50,3 +103,8 @@ export type TPrimaryGeneratedColumnOverrideDescriptor =
       strategy?: 'uuid';
       options?: PrimaryGeneratedColumnUUIDOptions;
     };
+
+export interface IRepositoryPropertyMapRecord {
+  [propertyName: string]: string | IRepositoryPropertyMapRecord | undefined;
+  $path?: string;
+}

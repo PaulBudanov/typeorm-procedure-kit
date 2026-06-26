@@ -261,7 +261,7 @@ export class RelationIdLoader {
                 relationIdAttr.parentAlias,
                 referencedColumn.databaseName
               );
-              map[joinColumn.propertyPath] = entityRecord[alias];
+              map[joinColumn.databaseName] = entityRecord[alias];
               return map;
             }, {} as ObjectLiteral);
           });
@@ -290,7 +290,11 @@ export class RelationIdLoader {
                   }
                   duplicateParts.push(duplicatePart);
                   parameterParts[parameterName] = parameterValue;
-                  return junctionAlias + '.' + key + ' = :' + parameterName;
+                  return (
+                    this.escapeAliasColumn(junctionAlias, key) +
+                    ' = :' +
+                    parameterName
+                  );
                 })
                 .filter((s): s is string => s !== '')
                 .join(' AND ');
@@ -312,13 +316,12 @@ export class RelationIdLoader {
                 return '';
               }
               return (
-                junctionAlias +
-                '.' +
-                joinColumn.propertyPath +
+                this.escapeAliasColumn(junctionAlias, joinColumn.databaseName) +
                 ' = ' +
-                inverseSideTableAlias +
-                '.' +
-                referencedColumn.propertyPath
+                this.escapeAliasColumn(
+                  inverseSideTableAlias,
+                  referencedColumn.databaseName
+                )
               );
             })
             .filter((s): s is string => s !== '')
@@ -335,17 +338,23 @@ export class RelationIdLoader {
           const qb = this.connection.createQueryBuilder(this.queryRunner);
 
           inverseJoinColumns.forEach((joinColumn) => {
-            qb.addSelect(
-              junctionAlias + '.' + joinColumn.propertyPath,
+            const selection = this.escapeAliasColumn(
+              junctionAlias,
               joinColumn.databaseName
-            ).addOrderBy(junctionAlias + '.' + joinColumn.propertyPath);
+            );
+            qb.addSelect(selection, joinColumn.databaseName).addOrderBy(
+              selection
+            );
           });
 
           joinColumns.forEach((joinColumn) => {
-            qb.addSelect(
-              junctionAlias + '.' + joinColumn.propertyPath,
+            const selection = this.escapeAliasColumn(
+              junctionAlias,
               joinColumn.databaseName
-            ).addOrderBy(junctionAlias + '.' + joinColumn.propertyPath);
+            );
+            qb.addSelect(selection, joinColumn.databaseName).addOrderBy(
+              selection
+            );
           });
 
           qb.from(inverseSideTableName, inverseSideTableAlias)
@@ -375,6 +384,12 @@ export class RelationIdLoader {
     );
 
     return Promise.all(promises);
+  }
+
+  private escapeAliasColumn(alias: string, columnName: string): string {
+    const { driver } = this.connection;
+
+    return `${driver.escape(alias)}.${driver.escape(columnName)}`;
   }
 
   // -------------------------------------------------------------------------

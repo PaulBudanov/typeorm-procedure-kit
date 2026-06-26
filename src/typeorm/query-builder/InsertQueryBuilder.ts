@@ -122,7 +122,7 @@ export class InsertQueryBuilder<
       ) {
         for (const columnPath of this.expressionMap.returning) {
           returningColumns.push(
-            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyPath(
+            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
               columnPath
             )
           );
@@ -607,13 +607,21 @@ export class InsertQueryBuilder<
   protected getInsertedColumns(): Array<ColumnMetadata> {
     if (!this.expressionMap.mainAlias!.hasMetadata) return [];
 
-    return this.expressionMap.mainAlias!.metadata.columns.filter((column) => {
-      // if user specified list of columns he wants to insert to, then we filter only them
-      if (this.expressionMap.insertColumns.length)
-        return (
-          this.expressionMap.insertColumns.indexOf(column.propertyPath) !== -1
-        );
+    const metadata = this.expressionMap.mainAlias!.metadata;
+    if (this.expressionMap.insertColumns.length) {
+      const insertedColumns = new Set<ColumnMetadata>();
+      for (const columnPath of this.expressionMap.insertColumns) {
+        for (const column of metadata.findColumnsWithPropertyOrDatabasePath(
+          columnPath
+        )) {
+          insertedColumns.add(column);
+        }
+      }
 
+      return metadata.columns.filter((column) => insertedColumns.has(column));
+    }
+
+    return metadata.columns.filter((column) => {
       // skip columns the user doesn't want included by default
       if (!column.isInsert) {
         return false;

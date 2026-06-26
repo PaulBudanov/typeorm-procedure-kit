@@ -35,9 +35,9 @@ export interface PostgresConnectionOptions
   readonly nativeDriver?: unknown;
 
   /**
-   * A boolean determining whether to pass time values in UTC or local time. (default: false).
+   * Database session time zone passed to the pg driver through `PGTZ`.
    */
-  readonly useUTC?: boolean;
+  readonly sessionTimeZone?: string;
 
   /**
    * Replication setup.

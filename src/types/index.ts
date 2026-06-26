@@ -108,4 +108,6 @@ export type {
   TEntityTargetFactory,
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,
+  TRepositoryPropertyMap,
+  TRepositoryPropertyPathsMap,
 } from './typeorm-extend.types.js';

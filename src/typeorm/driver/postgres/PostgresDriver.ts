@@ -320,8 +320,9 @@ export class PostgresDriver implements Driver {
     this.connection = connection;
     this.options = connection.options as PostgresConnectionOptions;
     this.isReplicated = this.options.replication ? true : false;
-    if (this.options.useUTC) {
-      process.env.PGTZ = 'UTC';
+    const sessionTimeZone = this.options.sessionTimeZone?.trim();
+    if (sessionTimeZone) {
+      process.env.PGTZ = sessionTimeZone;
     }
     // load postgres package
     this.loadDependencies();
@@ -676,7 +677,6 @@ export class PostgresDriver implements Driver {
     } else if (columnMetadata.type === 'time') {
       return DateUtils.mixedDateToTimeString(value as string | Date);
     } else if (
-      (columnMetadata.type as string) === 'datetime' ||
       columnMetadata.type === Date ||
       columnMetadata.type === 'timestamp' ||
       columnMetadata.type === 'timestamp with time zone' ||

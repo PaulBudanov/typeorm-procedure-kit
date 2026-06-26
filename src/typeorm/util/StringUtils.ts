@@ -114,13 +114,13 @@ interface IHashOptions {
 }
 
 /**
- * Returns a SHA-1 hex digest for internal IDs/aliases (not for cryptographic security)
+ * Returns a SHA-256 hex digest for internal IDs/aliases.
  *
  * @param input String to be hashed.
  * @param options.length Optionally, shorten the output to desired length.
  */
 export function hash(input: string, options: IHashOptions = {}): string {
-  const hash = createHash('sha1');
+  const hash = createHash('sha256');
   hash.update(input, 'utf8');
   const hashedInput = hash.digest('hex');
   if (options.length && options.length > 0) {

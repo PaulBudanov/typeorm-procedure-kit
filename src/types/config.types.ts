@@ -62,6 +62,11 @@ export interface IBaseConfig {
    */
   appName?: string;
   /**
+   * Database session time zone passed to the underlying driver when supported.
+   * Examples: `UTC`, `Europe/Moscow`, `+03:00`.
+   */
+  sessionTimeZone?: string;
+  /**
    * Slow-query threshold passed to TypeORM as `maxQueryExecutionTime`.
    * Queries that exceed this duration are logged but are not cancelled.
    */
