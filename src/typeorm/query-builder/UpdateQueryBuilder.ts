@@ -101,7 +101,7 @@ export class UpdateQueryBuilder<Entity extends ObjectLiteral>
       ) {
         for (const columnPath of this.expressionMap.returning) {
           returningColumns.push(
-            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyPath(
+            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
               columnPath
             )
           );

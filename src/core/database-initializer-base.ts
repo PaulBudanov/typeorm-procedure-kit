@@ -238,6 +238,7 @@ export class DatabaseInitializerBase {
       installExtensions: true,
       uuidExtension: 'uuid-ossp',
       applicationName: config.appName,
+      sessionTimeZone: config.sessionTimeZone,
       ...(queryTimeoutMs !== undefined
         ? { statement_timeout: queryTimeoutMs }
         : {}),
@@ -273,6 +274,7 @@ export class DatabaseInitializerBase {
       driver,
       serviceName: config.master.database,
       thickMode,
+      sessionTimeZone: config.sessionTimeZone,
       ...(queryTimeoutMs !== undefined ? { queryTimeoutMs } : {}),
     };
     if (!credentials) return defaultObject;

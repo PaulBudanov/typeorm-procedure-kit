@@ -2158,7 +2158,6 @@ export class SelectQueryBuilder<Entity = unknown>
           ? ` ${joinAttribute.condition} AND ${conditionDeleteColumn}`
           : `${conditionDeleteColumn}`;
       }
-      // todo: find and set metadata right there?
       joinAttribute.alias = this.expressionMap.createAlias({
         type: 'join',
         name: aliasName,
@@ -2577,29 +2576,26 @@ export class SelectQueryBuilder<Entity = unknown>
           ) {
             const criteriaParts = columnName.split('.');
             const aliasName = criteriaParts[0]!;
-            const propertyPath = criteriaParts.slice(1).join('.');
+            const columnPath = criteriaParts.slice(1).join('.');
             const alias = this.expressionMap.aliases.find(
               (alias) => alias.name === aliasName
             );
-            if (alias) {
+            if (alias?.hasMetadata) {
               const column =
-                alias.metadata.findColumnWithPropertyPath(propertyPath);
+                alias.metadata.findColumnWithPropertyOrDatabasePath(columnPath);
               if (column) {
-                const databaseName = column.databaseName as string;
                 const orderAlias = DriverUtils.buildAlias(
                   this.connection.driver,
                   undefined,
                   aliasName,
-                  databaseName
+                  column.databaseName
                 ) as string;
-                const orderValueNonNull = orderValue as string;
-                return this.escape(orderAlias, true) + ' ' + orderValueNonNull;
+                return this.escape(orderAlias, true) + ' ' + orderValue;
               }
             }
           }
 
-          const orderValueNonNull = orderValue as string;
-          return columnName + ' ' + orderValueNonNull;
+          return columnName + ' ' + orderValue;
         })
         .join(', ')
     );
@@ -3291,9 +3287,13 @@ export class SelectQueryBuilder<Entity = unknown>
             undefined,
             mainAliasName,
             primaryColumn.databaseName
-          )
+          ),
+          true
         );
-        if (!orderBys[columnAlias])
+        if (
+          !orderBys[columnAlias] &&
+          !orderBys[`${distinctAlias}.${columnAlias}`]
+        )
           // make sure we aren't overriding user-defined order in inverse direction
           orderBys[columnAlias] = 'ASC';
 
@@ -3527,22 +3527,24 @@ export class SelectQueryBuilder<Entity = unknown>
         if (orderCriteria.indexOf('.') !== -1) {
           const criteriaParts = orderCriteria.split('.');
           const aliasName = criteriaParts[0]!;
-          const propertyPath = criteriaParts.slice(1).join('.');
+          const columnPath = criteriaParts.slice(1).join('.');
           const alias = this.expressionMap.findAliasByName(aliasName);
+          if (!alias.hasMetadata) return '';
+
           const column =
-            alias.metadata!.findColumnWithPropertyPath(propertyPath);
-          const parentAliasNonNull = parentAlias!;
-          const databaseNameNonNull = column!.databaseName! as string;
+            alias.metadata.findColumnWithPropertyOrDatabasePath(columnPath);
+          if (!column) {
+            throw new EntityPropertyNotFoundError(columnPath, alias.metadata);
+          }
+
           const builtAlias = DriverUtils.buildAlias(
             this.connection.driver,
             undefined,
             aliasName,
-            databaseNameNonNull
+            column.databaseName
           ) as string;
           return (
-            this.escape(parentAliasNonNull, true) +
-            '.' +
-            this.escape(builtAlias, true)
+            this.escape(parentAlias, true) + '.' + this.escape(builtAlias, true)
           );
         } else {
           if (
@@ -3552,12 +3554,8 @@ export class SelectQueryBuilder<Entity = unknown>
                 select.aliasName === orderCriteria
             )
           ) {
-            const parentAliasNonNull = parentAlias!;
-            const orderCriteriaNonNull = orderCriteria! as string;
             return (
-              this.escape(parentAliasNonNull, true) +
-              '.' +
-              this.escape(orderCriteriaNonNull)
+              this.escape(parentAlias, true) + '.' + this.escape(orderCriteria)
             );
           }
 
@@ -3571,21 +3569,24 @@ export class SelectQueryBuilder<Entity = unknown>
       if (orderCriteria.indexOf('.') !== -1) {
         const criteriaParts = orderCriteria.split('.');
         const aliasName = criteriaParts[0]!;
-        const propertyPath = criteriaParts.slice(1).join('.');
+        const columnPath = criteriaParts.slice(1).join('.');
         const alias = this.expressionMap.findAliasByName(aliasName);
-        const column = alias.metadata!.findColumnWithPropertyPath(propertyPath);
-        const parentAliasNonNull = parentAlias!;
-        const databaseNameNonNull = column!.databaseName! as string;
+        if (!alias.hasMetadata) return;
+
+        const column =
+          alias.metadata.findColumnWithPropertyOrDatabasePath(columnPath);
+        if (!column) {
+          throw new EntityPropertyNotFoundError(columnPath, alias.metadata);
+        }
+
         const builtAlias = DriverUtils.buildAlias(
           this.connection.driver,
           undefined,
           aliasName,
-          databaseNameNonNull
+          column.databaseName
         ) as string;
         orderByObject[
-          this.escape(parentAliasNonNull, true) +
-            '.' +
-            this.escape(builtAlias, true)
+          this.escape(parentAlias, true) + '.' + this.escape(builtAlias, true)
         ] = orderBys[orderCriteria];
       } else {
         if (

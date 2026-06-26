@@ -258,13 +258,17 @@ export class RelationLoader {
     const mainAlias = qb.expressionMap.mainAlias!.name;
     const joinAlias = relation.junctionEntityMetadata!.tableName;
     const joinColumnConditions = relation.joinColumns.map((joinColumn) => {
-      return `${joinAlias}.${joinColumn.propertyName} IN (:...${joinColumn.propertyName})`;
+      return `${this.escapeAliasColumn(joinAlias, joinColumn.databaseName)} IN (:...${joinColumn.propertyName})`;
     });
     const inverseJoinColumnConditions = relation.inverseJoinColumns.map(
       (inverseJoinColumn) => {
-        return `${joinAlias}.${inverseJoinColumn.propertyName}=${mainAlias}.${
-          inverseJoinColumn.referencedColumn!.propertyName
-        }`;
+        return `${this.escapeAliasColumn(
+          joinAlias,
+          inverseJoinColumn.databaseName
+        )}=${this.escapeAliasColumn(
+          mainAlias,
+          inverseJoinColumn.referencedColumn!.databaseName
+        )}`;
       }
     );
 
@@ -313,14 +317,21 @@ export class RelationLoader {
     const joinAlias = relation.junctionEntityMetadata!.tableName;
     const joinColumnConditions = relation.inverseRelation!.joinColumns.map(
       (joinColumn) => {
-        return `${joinAlias}.${
-          joinColumn.propertyName
-        } = ${mainAlias}.${joinColumn.referencedColumn!.propertyName}`;
+        return `${this.escapeAliasColumn(
+          joinAlias,
+          joinColumn.databaseName
+        )} = ${this.escapeAliasColumn(
+          mainAlias,
+          joinColumn.referencedColumn!.databaseName
+        )}`;
       }
     );
     const inverseJoinColumnConditions =
       relation.inverseRelation!.inverseJoinColumns.map((inverseJoinColumn) => {
-        return `${joinAlias}.${inverseJoinColumn.propertyName} IN (:...${inverseJoinColumn.propertyName})`;
+        return `${this.escapeAliasColumn(
+          joinAlias,
+          inverseJoinColumn.databaseName
+        )} IN (:...${inverseJoinColumn.propertyName})`;
       });
     const parameters = relation.inverseRelation!.inverseJoinColumns.reduce(
       (parameters, joinColumn) => {
@@ -345,6 +356,12 @@ export class RelationLoader {
     );
 
     return qb.getMany() as Promise<Array<ObjectLiteral>>;
+  }
+
+  private escapeAliasColumn(alias: string, columnName: string): string {
+    const { driver } = this.connection;
+
+    return `${driver.escape(alias, true)}.${driver.escape(columnName)}`;
   }
 
   /**
