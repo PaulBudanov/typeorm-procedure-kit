@@ -2877,7 +2877,7 @@ export class SelectQueryBuilder<Entity = unknown>
       return (
         'COUNT(DISTINCT(' +
         primaryColumns
-          .map((c) => `${distinctAlias}.${this.escape(c.databaseName, true)}`)
+          .map((c) => `${distinctAlias}.${this.escape(c.databaseName)}`)
           .join(', ') +
         '))'
       );
@@ -2893,7 +2893,7 @@ export class SelectQueryBuilder<Entity = unknown>
     return (
       `COUNT(DISTINCT(` +
       primaryColumns
-        .map((c) => `${distinctAlias}.${this.escape(c.databaseName, true)}`)
+        .map((c) => `${distinctAlias}.${this.escape(c.databaseName)}`)
         .join(" || '|;|' || ") +
       '))'
     );

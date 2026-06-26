@@ -396,7 +396,7 @@ describe('QueryBuilder', (): void => {
     ).computeCountExpression();
 
     expect(countExpression).not.toContain('.true');
-    expect(countExpression).toContain('"message".UUID4');
+    expect(countExpression).toBe('COUNT(DISTINCT("message".UUID4))');
   });
 
   it('resolves returning and insert column lists through database column names', async (): Promise<void> => {
