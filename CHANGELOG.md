@@ -1,3 +1,20 @@
+# [2.3.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.2...v2.3.0) (2026-06-26)
+
+
+### Bug Fixes
+
+* **ci:** create and use github app for release ([666ce63](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/666ce63b89ca0d0dc79d465267f50eedeace6d47))
+* **ci:** prevent release from waiting on missing security checks ([31c8d89](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/31c8d8960cdf50d4c8e07c1545bf9e39a2462a53))
+* **dependency:** change oracledb peer dependency version ([fe60dcf](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/fe60dcfc5b614f757b7dc4115cfb05d1492d06dc))
+* **query-builder:** avoid forced quoting in count distinct columns ([f6ea9fc](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/f6ea9fc202e216b147c83ef2b22eded8ad42d9cb))
+* **security:** use sha256 for internal alias hashing ([b248b9c](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/b248b9cb638d3ed881a66971d2c2cca02d2b8aad))
+* **typeorm-extend:** add check for unsafe property names ([32c6258](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/32c6258e3d0f070f1b7bc817f194c4baa2795300))
+
+
+### Features
+
+* **typeorm:** support session time zones and database column paths ([feabb8d](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/feabb8de7a4def945e30ae0847f9a4ad408396d2))
+
 ## [2.2.2](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.1...v2.2.2) (2026-06-23)
 
 
