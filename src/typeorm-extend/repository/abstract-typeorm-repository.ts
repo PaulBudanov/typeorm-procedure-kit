@@ -223,6 +223,7 @@ export abstract class AbstractTypeormRepository<
     let currentMap = map;
 
     for (const pathSegment of propertyPath.split('.')) {
+      if (this.isUnsafePropertyName(pathSegment)) continue;
       const existingValue = currentMap[pathSegment];
 
       if (this.isMapRecord(existingValue)) {
@@ -245,7 +246,8 @@ export abstract class AbstractTypeormRepository<
   ): void {
     const pathSegments = propertyPath.split('.');
     const leafProperty = pathSegments.pop();
-    if (leafProperty === undefined) return;
+    if (leafProperty === undefined || this.isUnsafePropertyName(leafProperty))
+      return;
 
     let currentMap = map;
     for (const pathSegment of pathSegments) {
@@ -260,6 +262,7 @@ export abstract class AbstractTypeormRepository<
     sourceMap: IRepositoryPropertyMapRecord
   ): void {
     for (const [propertyName, sourceValue] of Object.entries(sourceMap)) {
+      if (this.isUnsafePropertyName(propertyName)) continue;
       const targetValue = targetMap[propertyName];
 
       if (this.isMapRecord(targetValue) && this.isMapRecord(sourceValue)) {
@@ -269,6 +272,14 @@ export abstract class AbstractTypeormRepository<
 
       targetMap[propertyName] = sourceValue;
     }
+  }
+
+  private isUnsafePropertyName(propertyName: string): boolean {
+    return (
+      propertyName === '__proto__' ||
+      propertyName === 'constructor' ||
+      propertyName === 'prototype'
+    );
   }
 
   private isMapRecord(
