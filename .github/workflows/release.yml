@@ -135,19 +135,28 @@ jobs:
     if: needs.prepare.outputs.ready == 'true'
     environment: npm-publish
     permissions:
-      actions: write
-      contents: write
-      discussions: write
-      issues: write
-      pull-requests: write
+      actions: read
+      contents: read
       id-token: write
     steps:
+      - name: Generate release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-discussions: write
+          permission-issues: write
+          permission-pull-requests: write
+
       - name: Checkout verified commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: release
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Attach release branch
         shell: bash
@@ -156,6 +165,19 @@ jobs:
 
           git checkout -B release origin/release
           git branch --set-upstream-to=origin/release release
+
+      - name: Configure release app git auth
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          git config --global user.name "${APP_SLUG}[bot]"
+          git config --global user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          gh auth setup-git
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -194,7 +216,8 @@ jobs:
         id: semantic-release
         if: steps.publish-target.outputs.ready == 'true'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NPM_CONFIG_IGNORE_SCRIPTS: true
         shell: bash
         run: |
@@ -238,7 +261,7 @@ jobs:
       - name: Open release metadata sync PR
         if: steps.semantic-release.outputs.released == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
           RELEASE_SHA: ${{ steps.semantic-release.outputs.sha }}
         shell: bash
@@ -266,5 +289,3 @@ jobs:
           else
             echo "Release metadata sync PR #$existing_pr is already open; its head was updated to $RELEASE_SHA."
           fi
-
-          gh workflow run tests.yml --repo "$REPOSITORY" --ref release
