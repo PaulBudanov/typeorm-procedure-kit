@@ -1,13 +1,5 @@
 name: Release
 
-on:
-  workflow_dispatch:
-    inputs:
-      verified_sha:
-        description: Release branch commit SHA that already passed Tests and Security
-        required: true
-        type: string
-
 concurrency:
   group: release
   cancel-in-progress: false
