@@ -6,51 +6,34 @@ on:
       - release
   workflow_dispatch:
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
-permissions:
-  actions: read
-  checks: read
-  contents: read
-  statuses: read
-
 jobs:
   prepare:
     name: Prepare release artifact
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    if: github.event_name == 'workflow_dispatch'
     outputs:
       ready: ${{ steps.final-target.outputs.ready }}
       sha: ${{ steps.checked-commit.outputs.sha }}
     steps:
       - name: Setup Node.js
-        if: steps.final-target.outputs.ready == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Install dependencies from lockfile
-        if: steps.final-target.outputs.ready == 'true'
         run: npm ci --no-audit --no-fund
 
       - name: Build
-        if: steps.final-target.outputs.ready == 'true'
         run: npm run build
 
       - name: Prepare npm README
-        if: steps.final-target.outputs.ready == 'true'
         run: cp docs/README.md README.md
 
       - name: Verify package contents
-        if: steps.final-target.outputs.ready == 'true'
         run: npm pack --dry-run --ignore-scripts
 
       - name: Upload release artifact
-        if: steps.final-target.outputs.ready == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-build-${{ steps.checked-commit.outputs.sha }}
