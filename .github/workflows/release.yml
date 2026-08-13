@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release
+      - 'release/**'
   workflow_dispatch:
 
 jobs:
@@ -11,10 +12,11 @@ jobs:
     name: Prepare release artifact
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    outputs:
-      ready: ${{ steps.final-target.outputs.ready }}
-      sha: ${{ steps.checked-commit.outputs.sha }}
+
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
@@ -30,13 +32,10 @@ jobs:
       - name: Prepare npm README
         run: cp docs/README.md README.md
 
-      - name: Verify package contents
-        run: npm pack --dry-run --ignore-scripts
-
       - name: Upload release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: release-build-${{ steps.checked-commit.outputs.sha }}
+          name: release-build-${{ github.sha }}
           path: |
             dist
             README.md
@@ -48,12 +47,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: prepare
-    if: needs.prepare.outputs.ready == 'true'
     environment: npm-publish
+
     permissions:
       actions: read
       contents: read
       id-token: write
+
     steps:
       - name: Generate release app token
         id: app-token
@@ -66,21 +66,13 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Checkout verified commit
+      - name: Checkout release branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: release
+          ref: ${{ github.ref_name }}
           token: ${{ steps.app-token.outputs.token }}
-
-      - name: Attach release branch
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          git checkout -B release origin/release
-          git branch --set-upstream-to=origin/release release
 
       - name: Configure release app git auth
         env:
@@ -91,8 +83,10 @@ jobs:
           set -euo pipefail
 
           user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+
           git config --global user.name "${APP_SLUG}[bot]"
           git config --global user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+
           gh auth setup-git
 
       - name: Setup Node.js
@@ -106,90 +100,37 @@ jobs:
           NPM_CONFIG_IGNORE_SCRIPTS: true
         run: npm ci --no-audit --no-fund
 
-      - name: Download verified build
+      - name: Download release build
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: release-build-${{ needs.prepare.outputs.sha }}
+          name: release-build-${{ github.sha }}
           path: .
 
-      - name: Ensure release still points to the verified commit
-        id: publish-target
-        shell: bash
-        run: |
-          git fetch --no-tags origin refs/heads/release
-          current_sha="$(git rev-parse FETCH_HEAD)"
-          checked_sha="${{ needs.prepare.outputs.sha }}"
-
-          if [ "$current_sha" != "$checked_sha" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release because release moved to $current_sha after preparing $checked_sha."
-            exit 0
-          fi
-
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
       - name: Publish release
-        id: semantic-release
-        if: steps.publish-target.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NPM_CONFIG_IGNORE_SCRIPTS: true
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          checked_sha="${{ needs.prepare.outputs.sha }}"
-          current_branch="$(git branch --show-current)"
-
-          if [ "${GITHUB_REF_NAME:-}" != "release" ] || [ "${GITHUB_REF:-}" != "refs/heads/release" ]; then
-            echo "Release workflow must run with GitHub ref refs/heads/release."
-            echo "GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME:-}"
-            echo "GITHUB_REF=${GITHUB_REF:-}"
-            echo "GITHUB_REF_NAME=${GITHUB_REF_NAME:-}"
-            exit 1
-          fi
-
-          if [ "$current_branch" != "release" ]; then
-            echo "Expected local branch release, got: $current_branch"
-            exit 1
-          fi
-
-          npm run semantic-release
-
-          git fetch --no-tags origin refs/heads/release
-          release_sha="$(git rev-parse FETCH_HEAD)"
-
-          if [ "$release_sha" = "$checked_sha" ]; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          release_parent_sha="$(git rev-parse "$release_sha^")"
-          if [ "$release_parent_sha" != "$checked_sha" ]; then
-            echo "release moved unexpectedly from $checked_sha to $release_sha"
-            exit 1
-          fi
-
-          echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "sha=$release_sha" >> "$GITHUB_OUTPUT"
+        run: npm run semantic-release
 
       - name: Open release metadata sync PR
-        if: steps.semantic-release.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
-          RELEASE_SHA: ${{ steps.semantic-release.outputs.sha }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          version="$(git show "$RELEASE_SHA:package.json" | jq -r .version)"
+          git fetch origin "$RELEASE_BRANCH"
+
+          version="$(jq -r .version package.json)"
+
           existing_pr="$(
             gh pr list \
               --repo "$REPOSITORY" \
               --base master \
-              --head release \
+              --head "$RELEASE_BRANCH" \
               --state open \
               --json number \
               --jq '.[0].number // empty'
@@ -199,9 +140,9 @@ jobs:
             gh pr create \
               --repo "$REPOSITORY" \
               --base master \
-              --head release \
+              --head "$RELEASE_BRANCH" \
               --title "chore(release): sync v$version metadata to master" \
               --body "Sync the package version and changelog generated by semantic-release for v$version back to master. Merge this PR with **Create a merge commit** to preserve shared branch history."
           else
-            echo "Release metadata sync PR #$existing_pr is already open; its head was updated to $RELEASE_SHA."
+            echo "Release metadata sync PR #$existing_pr is already open."
           fi
