@@ -38,6 +38,17 @@ describe('DatabaseErrorHandler', (): void => {
     );
   });
 
+  it.each([
+    { errorCode: 500, errorText: 'error fields' },
+    { errCode: 500, errText: 'err fields' },
+  ])('supports camelCase error fields: %o', (responseData): void => {
+    expect((): void => {
+      DatabaseErrorHandler.checkForDatabaseError(responseData);
+    }).toThrow(
+      `Database error: ${responseData.errorText ?? responseData.errText}`
+    );
+  });
+
   it('recursively checks arrays', (): void => {
     expect((): void => {
       DatabaseErrorHandler.checkForDatabaseError([
