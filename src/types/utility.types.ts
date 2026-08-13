@@ -1,8 +1,12 @@
 export interface ISqlError {
   error_code?: number;
   err_code?: number;
+  errorCode?: number;
+  errCode?: number;
   err_text?: string;
   error_text?: string;
+  errorText?: string;
+  errText?: string;
 }
 interface IProcedureOutBinding {
   name: string;

@@ -32,8 +32,16 @@ export abstract class DatabaseErrorHandler {
     }
 
     const errorData = responseData as ISqlError;
-    const errorCode = errorData.error_code ?? errorData.err_code;
-    const errorText = errorData.error_text ?? errorData.err_text;
+    const errorCode =
+      errorData.error_code ??
+      errorData.err_code ??
+      errorData.errorCode ??
+      errorData.errCode;
+    const errorText =
+      errorData.error_text ??
+      errorData.err_text ??
+      errorData.errorText ??
+      errorData.errText;
 
     if (errorCode && errorCode !== 0) {
       const errorMessage = errorText
