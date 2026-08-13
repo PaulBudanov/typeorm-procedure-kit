@@ -66,7 +66,7 @@ describe('core method Nest providers', (): void => {
       () => dataSource
     );
     const service = {
-      call: vi.fn().mockResolvedValue([{ id: 1 }]),
+      call: vi.fn().mockResolvedValue({ rows: [{ id: 1 }], outBinds: {} }),
       callSqlTransaction: vi.fn().mockResolvedValue([{ value: 1 }]),
       get dataSource(): ReturnType<TGetDataSource> {
         return dataSourceGetter();
@@ -112,14 +112,14 @@ describe('core method Nest providers', (): void => {
           mode: 'slave',
         }
       )
-    ).resolves.toEqual([{ id: 1 }]);
+    ).resolves.toEqual({ rows: [{ id: 1 }], outBinds: {} });
     const typedParams: IProcedureParams = { id: 1 };
     await expect(
       callProcedure<{ id: number }>('pkg.proc', typedParams)
-    ).resolves.toEqual([{ id: 1 }]);
+    ).resolves.toEqual({ rows: [{ id: 1 }], outBinds: {} });
     await expect(
       callProcedure<{ id: number }, IProcedureParams>('pkg.proc', typedParams)
-    ).resolves.toEqual([{ id: 1 }]);
+    ).resolves.toEqual({ rows: [{ id: 1 }], outBinds: {} });
     await expect(
       callSql<{ value: number }>(
         'SELECT :ID',

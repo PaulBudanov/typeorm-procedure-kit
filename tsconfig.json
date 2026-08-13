@@ -40,7 +40,7 @@
     "incremental": true,
     "declarationMap": true,
     "sourceMap": true,
-    "inlineSources": false,
+    "inlineSources": true,
     "tsBuildInfoFile": "./dist/tsbuildinfo.json",
 
     // Декораторы

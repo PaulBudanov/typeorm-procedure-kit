@@ -2,7 +2,40 @@ import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OracleNotify } from '../../src/adapters/oracle/oracle-notify.js';
+import type {
+  IOracleNotifyMsg,
+  TOracleNormilizeOptionsNotify,
+} from '../../src/types/notification.types.js';
 import { createLogger } from '../support/helpers.js';
+
+function invokeSubscriptionChange(
+  notify: OracleNotify,
+  client: oracledb.Connection,
+  notifyCallback: (
+    rows: Array<Record<string, unknown>>
+  ) => void | Promise<void>,
+  msg: IOracleNotifyMsg
+): Promise<void> {
+  const notifyWithHandler = notify as unknown as {
+    makeSubscriptionHandler: (
+      callback: (rows: Array<Record<string, unknown>>) => void | Promise<void>,
+      connection: oracledb.Connection,
+      channelName: string,
+      options: Omit<oracledb.SubscribeOptions, 'callback'>,
+      restoreOptions: TOracleNormilizeOptionsNotify,
+      message: IOracleNotifyMsg
+    ) => Promise<void>;
+  };
+
+  return notifyWithHandler.makeSubscriptionHandler(
+    notifyCallback,
+    client,
+    'test-channel',
+    { sql: 'SELECT 1 FROM DUAL' },
+    {},
+    msg
+  );
+}
 
 describe('OracleNotify', (): void => {
   it('builds package notification SQL with validated package names', (): void => {
@@ -17,6 +50,87 @@ describe('OracleNotify', (): void => {
     expect((): void => {
       notify.getPackagesNotifySql(['pkg;drop']);
     }).toThrow('Unsafe SQL identifier');
+  });
+
+  it('processes every affected CQN table and deduplicates table ROWIDs', async (): Promise<void> => {
+    const execute = vi
+      .fn<(sql: string) => Promise<{ rows: Array<Record<string, unknown>> }>>()
+      .mockImplementation(async (sql) => ({
+        rows: [{ source: sql.includes('TABLE_A') ? 'a' : 'b' }],
+      }));
+    const callback = vi.fn<(rows: Array<Record<string, unknown>>) => void>();
+    const notify = new OracleNotify({} as never, createLogger());
+
+    await invokeSubscriptionChange(
+      notify,
+      { execute } as unknown as oracledb.Connection,
+      callback,
+      {
+        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+        tables: [
+          {
+            name: 'APP.TABLE_A',
+            rows: [{ rowid: 'AAA' }],
+          },
+        ],
+        queries: [
+          {
+            tables: [
+              {
+                name: 'APP.TABLE_A',
+                rows: [{ rowid: 'AAA' }, { rowid: 'AAA' }],
+              },
+            ],
+          },
+          {
+            tables: [
+              {
+                name: 'APP.TABLE_B',
+                rows: [{ rowid: 'BBB' }],
+              },
+            ],
+          },
+        ],
+      } as IOracleNotifyMsg
+    );
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute.mock.calls[0]?.[0]).toBe(
+      "SELECT * FROM APP.TABLE_A WHERE rowid IN ('AAA')"
+    );
+    expect(execute.mock.calls[1]?.[0]).toBe(
+      "SELECT * FROM APP.TABLE_B WHERE rowid IN ('BBB')"
+    );
+    expect(callback).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses one full-table refresh for deduplicated rowless CQN events', async (): Promise<void> => {
+    const execute = vi
+      .fn<(sql: string) => Promise<{ rows: Array<Record<string, unknown>> }>>()
+      .mockResolvedValue({ rows: [{ id: 1 }] });
+    const callback = vi.fn<(rows: Array<Record<string, unknown>>) => void>();
+    const notify = new OracleNotify({} as never, createLogger());
+
+    await invokeSubscriptionChange(
+      notify,
+      { execute } as unknown as oracledb.Connection,
+      callback,
+      {
+        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+        tables: [
+          { name: 'APP.PACKAGE_LOG' },
+          {
+            name: 'APP.PACKAGE_LOG',
+            rows: [{ rowid: 'AAA' }],
+          },
+        ],
+      } as IOracleNotifyMsg
+    );
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute.mock.calls[0]?.[0]).toBe('SELECT * FROM APP.PACKAGE_LOG');
+    expect(execute.mock.calls[0]?.[0]).not.toContain('IN ()');
+    expect(callback).toHaveBeenCalledOnce();
   });
 
   it('unsubscribes a channel and closes its connection', async (): Promise<void> => {

@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import type { Pool, PoolClient } from 'pg';
+import type { CustomTypesConfig, FieldDef, Pool, PoolClient } from 'pg';
 
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { DataSource } from '../../data-source/DataSource.js';
@@ -23,6 +23,7 @@ import { OrmUtils } from '../../util/OrmUtils.js';
 import { VersionUtils } from '../../util/VersionUtils.js';
 import type { Driver } from '../Driver.js';
 import { DriverUtils } from '../DriverUtils.js';
+import { normalizeSessionTimeZone } from '../SessionTimeZone.js';
 import type { ColumnType } from '../types/ColumnTypes.js';
 import type { CteCapabilities } from '../types/CteCapabilities.js';
 import type { DataTypeDefaults } from '../types/DataTypeDefaults.js';
@@ -33,6 +34,77 @@ import type { UpsertType } from '../types/UpsertType.js';
 import type { PostgresConnectionCredentialsOptions } from './PostgresConnectionCredentialsOptions.js';
 import type { PostgresConnectionOptions } from './PostgresConnectionOptions.js';
 import { PostgresQueryRunner } from './PostgresQueryRunner.js';
+
+interface IMutableCustomTypesConfig extends CustomTypesConfig {
+  setTypeParser(oid: number, parseFn: (value: string) => unknown): void;
+}
+
+interface IPostgresTypeRegistry {
+  builtins: {
+    INT4: number;
+    INT8: number;
+  };
+  getTypeParser(oid: number): (value: string) => unknown;
+}
+
+interface IPostgresWithTypeOverrides {
+  TypeOverrides: new () => unknown;
+}
+
+function hasMutableTypeParsers(
+  value: unknown
+): value is IMutableCustomTypesConfig {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'setTypeParser' in value &&
+    typeof value.setTypeParser === 'function'
+  );
+}
+
+function hasTypeOverridesConstructor(
+  value: unknown
+): value is IPostgresWithTypeOverrides {
+  if (
+    (typeof value !== 'object' && typeof value !== 'function') ||
+    value === null ||
+    !('TypeOverrides' in value) ||
+    typeof value.TypeOverrides !== 'function'
+  )
+    return false;
+
+  try {
+    Reflect.construct(Object, [], value.TypeOverrides);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isPostgresTypeRegistry(
+  value: unknown
+): value is IPostgresTypeRegistry {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('builtins' in value) ||
+    typeof value.builtins !== 'object' ||
+    value.builtins === null ||
+    !('getTypeParser' in value) ||
+    typeof value.getTypeParser !== 'function'
+  )
+    return false;
+
+  return (
+    'INT4' in value.builtins &&
+    typeof value.builtins.INT4 === 'number' &&
+    'INT8' in value.builtins &&
+    typeof value.builtins.INT8 === 'number'
+  );
+}
+
+const POSTGRES_INT8_ARRAY_OID = 1016;
+const POSTGRES_INT4_ARRAY_OID = 1007;
 
 /**
  * Organizes communication with PostgreSQL DBMS.
@@ -76,6 +148,15 @@ export class PostgresDriver implements Driver {
    * Connection options.
    */
   public options!: PostgresConnectionOptions;
+
+  /** Validated session time zone applied through the connection startup packet. */
+  public readonly sessionTimeZone?: string;
+
+  private typeOverrides?: CustomTypesConfig;
+  private resultRowTransformer?: (
+    rows: Array<unknown>,
+    fields: Array<FieldDef>
+  ) => Array<unknown>;
 
   /**
    * Version of Postgres. Requires a SQL query to the DB, so it is set on the first
@@ -320,10 +401,9 @@ export class PostgresDriver implements Driver {
     this.connection = connection;
     this.options = connection.options as PostgresConnectionOptions;
     this.isReplicated = this.options.replication ? true : false;
-    const sessionTimeZone = this.options.sessionTimeZone?.trim();
-    if (sessionTimeZone) {
-      process.env.PGTZ = sessionTimeZone;
-    }
+    this.sessionTimeZone = normalizeSessionTimeZone(
+      this.options.sessionTimeZone
+    );
     // load postgres package
     this.loadDependencies();
 
@@ -383,6 +463,63 @@ export class PostgresDriver implements Driver {
     if (!this.schema) {
       this.schema = this.searchSchema;
     }
+  }
+
+  public configureResultHandling(
+    typeOverrides: CustomTypesConfig,
+    rowTransformer: (
+      rows: Array<unknown>,
+      fields: Array<FieldDef>
+    ) => Array<unknown>
+  ): void {
+    this.typeOverrides = typeOverrides;
+    this.resultRowTransformer = rowTransformer;
+  }
+
+  /** Applies parseInt8 to this driver's pools without mutating pg globals. */
+  private configureInt8Parsing(parseInt8: boolean | undefined): void {
+    if (parseInt8 !== true) return;
+
+    if (!this.typeOverrides) {
+      if (!hasTypeOverridesConstructor(this.postgres))
+        throw new TypeORMError(
+          'PostgreSQL driver does not expose the TypeOverrides capability'
+        );
+      const typeOverrides: unknown = new this.postgres.TypeOverrides();
+      if (!hasMutableTypeParsers(typeOverrides))
+        throw new TypeORMError(
+          'PostgreSQL TypeOverrides does not support setTypeParser'
+        );
+      this.typeOverrides = typeOverrides;
+    }
+
+    const typeOverrides = this.typeOverrides;
+    if (!hasMutableTypeParsers(typeOverrides))
+      throw new TypeORMError(
+        'Configured PostgreSQL type overrides do not support setTypeParser'
+      );
+
+    const typeRegistry: unknown = this.postgres.types;
+    if (!isPostgresTypeRegistry(typeRegistry))
+      throw new TypeORMError(
+        'PostgreSQL driver does not expose the expected type parser registry'
+      );
+
+    typeOverrides.setTypeParser(
+      typeRegistry.builtins.INT8,
+      typeRegistry.getTypeParser(typeRegistry.builtins.INT4)
+    );
+    typeOverrides.setTypeParser(
+      POSTGRES_INT8_ARRAY_OID,
+      typeRegistry.getTypeParser(POSTGRES_INT4_ARRAY_OID)
+    );
+  }
+
+  public transformResultRows(
+    rows: Array<unknown>,
+    fields: Array<FieldDef>
+  ): Array<unknown> {
+    return this.resultRowTransformer?.(rows, fields) ?? rows;
   }
 
   /**
@@ -1413,6 +1550,7 @@ export class PostgresDriver implements Driver {
   ): Promise<pg.Pool> {
     const { logger } = this.connection;
     credentials = Object.assign({}, credentials);
+    this.configureInt8Parsing(options.parseInt8);
 
     // build connection options for the driver
     // See: https://github.com/brianc/node-postgres/tree/master/packages/pg-pool#create
@@ -1430,24 +1568,11 @@ export class PostgresDriver implements Driver {
         statement_timeout: options.statement_timeout,
         application_name:
           options.applicationName ?? credentials.applicationName,
+        options: `-c timezone=${this.sessionTimeZone}`,
+        types: this.typeOverrides,
         max: options.poolSize,
       }
     );
-
-    if (options.parseInt8 !== undefined) {
-      if (
-        this.postgres?.defaults &&
-        Object.getOwnPropertyDescriptor(this.postgres.defaults, 'parseInt8')
-          ?.set
-      ) {
-        this.postgres.defaults.parseInt8 = options.parseInt8;
-      } else {
-        logger.log(
-          'warn',
-          'Attempted to set parseInt8 option, but the postgres driver does not support setting defaults.parseInt8. This option will be ignored.'
-        );
-      }
-    }
 
     // create a connection pool
     const pool = new this.postgres.Pool(connectionOptions as pg.PoolConfig);

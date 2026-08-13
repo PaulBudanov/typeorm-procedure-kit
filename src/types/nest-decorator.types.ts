@@ -10,15 +10,17 @@ import type {
   TProcedurePayloadInput,
 } from './procedure.types.js';
 import type { ISetSerializer } from './serializer.types.js';
+import type { IProcedureResult } from './utility.types.js';
 
 export type TCallProcedure = <
-  T,
-  U extends TProcedurePayload = TProcedurePayload,
+  TRow,
+  TPayload extends TProcedurePayload = TProcedurePayload,
+  TOut extends Record<string, unknown> = Record<string, unknown>,
 >(
   executeString: string,
-  params?: TProcedurePayloadInput<U>,
+  params?: TProcedurePayloadInput<TPayload>,
   executionOptions?: IExecutionOptions
-) => Promise<Array<T>>;
+) => Promise<IProcedureResult<TRow, TOut>>;
 
 export type TCallSql = <T>(
   sql: string,

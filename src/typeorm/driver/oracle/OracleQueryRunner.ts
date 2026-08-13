@@ -1,3 +1,5 @@
+import type { Readable } from 'stream';
+
 import type oracledb from 'oracledb';
 
 import { normalizeQueryTimeoutMs } from '../../../utils/query-timeout.js';
@@ -7,7 +9,6 @@ import { QueryFailedError } from '../../error/QueryFailedError.js';
 import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
 import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import type { ReadStream } from '../../platform/PlatformTools.js';
 import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';
 import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
 import { QueryResult } from '../../query-runner/QueryResult.js';
@@ -346,6 +347,9 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
       const executionOptions = {
         autoCommit: !this.isTransactionActive,
         outFormat: oracleLib['OUT_FORMAT_OBJECT'] as number,
+        ...(this.driver.getFetchTypeHandler()
+          ? { fetchTypeHandler: this.driver.getFetchTypeHandler() }
+          : {}),
       };
 
       const raw = await oracleConnection.execute(
@@ -452,7 +456,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     parameters: Array<unknown> = [],
     onEnd?: () => void,
     onError?: (err: Error) => void
-  ): Promise<ReadStream> {
+  ): Promise<Readable> {
     if (this.isReleased) {
       throw new QueryRunnerAlreadyReleasedError();
     }
@@ -487,7 +491,7 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
         stream.on('error', onError);
       }
 
-      return stream as ReadStream;
+      return stream;
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.driver.connection.logger.logQueryError(

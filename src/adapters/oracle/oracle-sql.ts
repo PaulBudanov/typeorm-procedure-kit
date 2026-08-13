@@ -5,7 +5,8 @@ export abstract class OracleSqlCommand {
       a.ARGUMENT_NAME AS "argument_name",
       a.POSITION AS "order",
       a.DATA_TYPE AS "argument_type",
-      a.IN_OUT AS "mode"
+      a.IN_OUT AS "mode",
+      a.DATA_LENGTH AS "size"
     FROM ALL_ARGUMENTS a
     WHERE a.PACKAGE_NAME = :PACKAGE_NAME
   `;

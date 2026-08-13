@@ -56,6 +56,21 @@ export class DatabaseInitializerBase {
   }
 
   /**
+   * Drops resources that were already closed by an initialization rollback.
+   * A later initialization must build a fresh adapter because notification
+   * implementations are terminal after `destroyNotifications()`.
+   */
+  public resetAfterFailedInitialization(): void {
+    if (this.isDataSourceInitialized) {
+      throw new ServerError(
+        'Cannot reset DatabaseInitializerBase while DataSource is initialized'
+      );
+    }
+    this.appDataSourceInstance = null;
+    this.databaseAdapterInstance = null;
+  }
+
+  /**
    * Initializes the data source with the provided configuration
    * and runs the database migrations if they are available and synchronization is needed
    * @returns {Promise<void>} - promise that resolves when the data source is initialized

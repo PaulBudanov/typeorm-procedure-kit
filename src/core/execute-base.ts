@@ -4,7 +4,11 @@ import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { IExecutionOptions } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
-import type { IBindingsObjectReturn } from '../types/utility.types.js';
+import type {
+  IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
+} from '../types/utility.types.js';
 import { DatabaseErrorHandler } from '../utils/database-error-handler.js';
 import { QueryTimer } from '../utils/query-timer.js';
 import { ServerError } from '../utils/server-error.js';
@@ -59,6 +63,61 @@ export class ExecuteBase {
         );
       DatabaseErrorHandler.checkForDatabaseError(result, queryId, this.logger);
       queryTimer.success(result.length);
+      return result;
+    } catch (error: unknown) {
+      const serverError = ServerError.ENSURE_SERVER_ERROR({
+        error,
+        errorId: queryId,
+      });
+      queryTimer.error(serverError);
+      throw serverError;
+    } finally {
+      await this.connectionBase.releaseEntityManager(client);
+    }
+  }
+
+  /**
+   * Executes a stored procedure and returns cursor rows together with all
+   * scalar and cursor output bindings.
+   */
+  public async executeProcedure<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
+    sql: string,
+    bindings: IBindingsObjectReturn['bindings'] = [],
+    cursorsNames: Array<string> = [],
+    outBindings: Array<IProcedureOutBinding> = [],
+    executionOptions: IExecutionOptions = {}
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    const {
+      mode = 'master',
+      optionsCommands = [],
+      queryId = randomUUID(),
+    } = executionOptions;
+    const queryTimer = new QueryTimer(sql, this.logger, queryId, bindings);
+    const client: EntityManager =
+      await this.connectionBase.getEntityManager(mode);
+    try {
+      const result = await this.databaseAdapter.executeProcedure<TRow, TOut>(
+        sql,
+        client,
+        optionsCommands,
+        bindings,
+        cursorsNames,
+        outBindings
+      );
+      DatabaseErrorHandler.checkForDatabaseError(
+        result.rows,
+        queryId,
+        this.logger
+      );
+      DatabaseErrorHandler.checkForDatabaseError(
+        result.outBinds,
+        queryId,
+        this.logger
+      );
+      queryTimer.success(result.rows.length);
       return result;
     } catch (error: unknown) {
       const serverError = ServerError.ENSURE_SERVER_ERROR({

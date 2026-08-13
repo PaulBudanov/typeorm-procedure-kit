@@ -1,4 +1,6 @@
-import type { PoolClient } from 'pg';
+import { Transform, type Readable } from 'stream';
+
+import type { FieldDef, PoolClient } from 'pg';
 import type QueryStreamType from 'pg-query-stream';
 
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
@@ -6,7 +8,6 @@ import { QueryFailedError } from '../../error/QueryFailedError.js';
 import { QueryRunnerAlreadyReleasedError } from '../../error/QueryRunnerAlreadyReleasedError.js';
 import { TransactionNotStartedError } from '../../error/TransactionNotStartedError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import type { ReadStream } from '../../platform/PlatformTools.js';
 import { PlatformTools } from '../../platform/PlatformTools.js';
 import { BaseQueryRunner } from '../../query-runner/BaseQueryRunner.js';
 import { QueryResult } from '../../query-runner/QueryResult.js';
@@ -127,6 +128,47 @@ export class PostgresQueryRunner
       prop in obj &&
       typeof (obj as Record<string, unknown>)[prop] === 'number'
     );
+  }
+
+  private isFieldDef(value: unknown): value is FieldDef {
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      'name' in value &&
+      typeof value.name === 'string' &&
+      'dataTypeID' in value &&
+      typeof value.dataTypeID === 'number'
+    );
+  }
+
+  /**
+   * pg-query-stream exposes result metadata through a private `_result`
+   * property. Treat it as an optional capability so a package update cannot
+   * turn one malformed internal value into a stream-wide type assertion.
+   */
+  private getQueryStreamFields(queryStream: unknown): Array<FieldDef> {
+    if (
+      queryStream === null ||
+      typeof queryStream !== 'object' ||
+      !('_result' in queryStream)
+    ) {
+      return [];
+    }
+    const result = queryStream._result;
+    if (
+      result === null ||
+      typeof result !== 'object' ||
+      !('fields' in result) ||
+      !Array.isArray(result.fields) ||
+      !result.fields.every((field) => this.isFieldDef(field))
+    ) {
+      return [];
+    }
+    return result.fields;
+  }
+
+  private normalizeStreamError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
   }
 
   // -------------------------------------------------------------------------
@@ -350,6 +392,15 @@ export class PostgresQueryRunner
         query,
         parameters
       )) as unknown;
+      if (this.hasArrayProperty(raw, 'rows')) {
+        const rawRecord = raw as Record<string, unknown>;
+        rawRecord.rows = this.driver.transformResultRows(
+          rawRecord.rows as Array<unknown>,
+          Array.isArray(rawRecord.fields)
+            ? (rawRecord.fields as Array<FieldDef>)
+            : []
+        );
+      }
       // log slow queries if maxQueryExecution time is set
       const maxQueryExecutionTime = this.driver.options.maxQueryExecutionTime;
       const queryEndTime = Date.now();
@@ -446,7 +497,7 @@ export class PostgresQueryRunner
     parameters: Array<unknown> = [],
     onEnd?: () => void,
     onError?: (err: Error) => void
-  ): Promise<ReadStream> {
+  ): Promise<Readable> {
     if (this.isReleased) {
       throw new QueryRunnerAlreadyReleasedError();
     }
@@ -462,17 +513,56 @@ export class PostgresQueryRunner
     const QueryStream = (await PlatformTools.load(
       'pg-query-stream'
     )) as typeof QueryStreamType;
-    const stream = databaseConnection!.query(
-      new QueryStream(query, parameters)
-    );
-    if (onEnd) {
-      stream.on('end', onEnd);
-    }
-    if (onError) {
-      stream.on('error', onError);
-    }
+    const queryStream = new QueryStream(query, parameters);
+    const sourceStream = databaseConnection!.query(queryStream) as Readable;
+    let finalizeStream: (error?: Error) => void = (): void => undefined;
+    const transformStream = new Transform({
+      objectMode: true,
+      transform: (row: unknown, _encoding, callback): void => {
+        try {
+          const fields = this.getQueryStreamFields(queryStream);
+          callback(null, this.driver.transformResultRows([row], fields)[0]);
+        } catch (error) {
+          callback(this.normalizeStreamError(error));
+        }
+      },
+      destroy: (error, callback): void => {
+        sourceStream.unpipe(transformStream);
+        if (!sourceStream.destroyed && !sourceStream.readableEnded) {
+          sourceStream.destroy(error ?? undefined);
+        }
+        finalizeStream(error ?? undefined);
+        callback(error);
+      },
+    });
 
-    return stream as unknown as ReadStream;
+    let isFinalized = false;
+    finalizeStream = (error?: Error): void => {
+      if (isFinalized) return;
+      isFinalized = true;
+      sourceStream.unpipe(transformStream);
+      try {
+        if (error) onError?.(error);
+        else onEnd?.();
+      } catch (callbackError: unknown) {
+        const normalizedError = this.normalizeStreamError(callbackError);
+        if (!transformStream.destroyed) {
+          transformStream.destroy(normalizedError);
+        }
+      }
+    };
+
+    sourceStream.once('error', (error: unknown) => {
+      transformStream.destroy(this.normalizeStreamError(error));
+    });
+    sourceStream.pipe(transformStream);
+    transformStream.once('end', () => finalizeStream());
+    transformStream.once('error', (error: unknown) =>
+      finalizeStream(this.normalizeStreamError(error))
+    );
+    transformStream.once('close', () => finalizeStream());
+
+    return transformStream;
   }
 
   /**

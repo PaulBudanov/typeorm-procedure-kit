@@ -67,6 +67,53 @@ describe('ExecuteBase', (): void => {
     expect(connectionBase.getEntityManager).toHaveBeenCalledWith('slave');
   });
 
+  it('returns the procedure result envelope and releases the manager', async (): Promise<void> => {
+    const manager = {};
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const procedureResult = {
+      rows: [{ id: 1 }],
+      outBinds: { outCursor: [{ id: 1 }], status: 2 },
+    };
+    const adapter = createAdapterMock({
+      executeProcedure: vi.fn().mockResolvedValue(procedureResult),
+    });
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      adapter,
+      createLogger()
+    );
+    const outBindings = [
+      {
+        name: 'out_cursor',
+        type: 'cursor' as const,
+        databaseType: 'REF CURSOR',
+      },
+      { name: 'status', type: 'scalar' as const, databaseType: 'NUMBER' },
+    ];
+
+    await expect(
+      executeBase.executeProcedure(
+        'begin pkg.run(:out_cursor, :status); end;',
+        {},
+        ['out_cursor'],
+        outBindings,
+        { queryId: 'procedure-1' }
+      )
+    ).resolves.toEqual(procedureResult);
+    expect(adapter.executeProcedure).toHaveBeenCalledWith(
+      'begin pkg.run(:out_cursor, :status); end;',
+      manager,
+      [],
+      {},
+      ['out_cursor'],
+      outBindings
+    );
+    expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
+  });
+
   it('wraps adapter errors as ServerError and still releases manager', async (): Promise<void> => {
     const manager = {};
     const connectionBase = {

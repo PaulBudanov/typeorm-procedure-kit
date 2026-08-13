@@ -34,9 +34,7 @@ export interface PostgresConnectionOptions
    */
   readonly nativeDriver?: unknown;
 
-  /**
-   * Database session time zone passed to the pg driver through `PGTZ`.
-   */
+  /** Database session time zone configured for every pooled connection. */
   readonly sessionTimeZone?: string;
 
   /**

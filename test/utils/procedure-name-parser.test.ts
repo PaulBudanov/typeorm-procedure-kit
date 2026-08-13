@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TDBMapStructure } from '../../src/types/procedure.types.js';
-import { procedureNameParser } from '../../src/utils/procedure-name-parser.js';
+import { ProcedureNameParser } from '../../src/utils/procedure-name-parser.js';
 import { ServerError } from '../../src/utils/server-error.js';
 
 describe('procedureNameParser', (): void => {
+  const procedureNameParser = new ProcedureNameParser();
   const procedures: TDBMapStructure = new Map([
     ['pkg', { run: [] }],
     ['other', { refresh: [] }],
@@ -52,5 +53,23 @@ describe('procedureNameParser', (): void => {
     expect(procedureNameParser.extractProcedureName(' RUN ')).toBe('run');
     expect(procedureNameParser.normalize(' RUN ')).toBe('run');
     expect(procedureNameParser.formatDisplayName('pkg', 'run')).toBe('pkg.run');
+  });
+
+  it('keeps parser caches isolated between kit instances', (): void => {
+    const firstParser = new ProcedureNameParser();
+    const secondParser = new ProcedureNameParser();
+    const firstSnapshot = new Map([['pkg' as Lowercase<string>, { run: [] }]]);
+    const secondSnapshot = new Map([
+      ['other' as Lowercase<string>, { run: [] }],
+    ]);
+
+    expect(firstParser.parse('run', firstSnapshot, ['pkg'])).toEqual({
+      packageName: 'pkg',
+      processName: 'run',
+    });
+    expect(secondParser.parse('run', secondSnapshot, ['other'])).toEqual({
+      packageName: 'other',
+      processName: 'run',
+    });
   });
 });

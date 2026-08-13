@@ -1,3 +1,5 @@
+import type { Readable } from 'stream';
+
 import type oracledb from 'oracledb';
 import type { PoolClient } from 'pg';
 
@@ -9,7 +11,6 @@ import type { SqlInMemory } from '../driver/SqlInMemory.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
 import type { EntityManager } from '../entity-manager/EntityManager.js';
-import type { ReadStream } from '../platform/PlatformTools.js';
 import type { Table } from '../schema-builder/table/Table.js';
 import type { TableCheck } from '../schema-builder/table/TableCheck.js';
 import type { TableColumn } from '../schema-builder/table/TableColumn.js';
@@ -155,7 +156,7 @@ export interface QueryRunner {
     parameters?: Array<unknown>,
     onEnd?: TFunction,
     onError?: TFunction
-  ): Promise<ReadStream>;
+  ): Promise<Readable>;
 
   /**
    * Returns all available database names including system databases.

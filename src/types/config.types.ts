@@ -85,7 +85,8 @@ export interface IBaseConfig {
    */
   callTimeout?: number;
   /**
-   * Registers built-in DATE, TIMESTAMP, and TIMESTAMP_TZ serializers during initialization.
+   * Opt-in registration for the built-in DATE, TIMESTAMP, TIMESTAMP_TZ, and
+   * TIMESTAMP_LTZ serializers. Defaults to false.
    */
   isNeedRegisterDefaultSerializers?: boolean;
   /**

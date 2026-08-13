@@ -39,15 +39,24 @@ export type {
 
 // Serializer
 export type {
+  ISerializerContext,
   ISerializerValues,
   ISerialzerValues,
   ISetSerializer,
+  ISerializerNativeValueMap,
+  TSerializerInput,
+  TSerializerNativeValue,
+  TSerializerStrategy,
+  TSerializerType,
+  TTemporalSerializerType,
 } from './serializer.types.js';
 
 // Utility
 export type {
   IBindingsObjectReturn,
   IProcedureBindingLogItem,
+  IProcedureOutBinding,
+  IProcedureResult,
   IProcedureQueryLogContext,
   ISqlBindingLogItem,
   ISqlQueryLogContext,

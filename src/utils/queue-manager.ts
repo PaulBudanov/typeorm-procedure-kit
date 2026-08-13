@@ -33,32 +33,44 @@ export class QueueManager<TQueueItem> {
     }
   }
 
-  public enqueue(key: string | number | undefined, item: TQueueItem): void {
-    this.addItem(key, item);
+  public enqueue(key: string | number | undefined, item: TQueueItem): boolean {
+    const isNewItem = this.addItem(key, item);
+    if (!isNewItem) return false;
+
     this._eventBusService.emit(`${this.queueName}:enqueue`, { key, item });
+    return true;
   }
 
   public async enqueueAsync(
     key: string | number | undefined,
     item: TQueueItem
-  ): Promise<void> {
-    this.addItem(key, item);
+  ): Promise<boolean> {
+    const isNewItem = this.addItem(key, item);
+    if (!isNewItem) return false;
+
     await this._eventBusService.emitAsync(`${this.queueName}:enqueue`, {
       key,
       item,
     });
+    return true;
   }
 
-  private addItem(key: string | number | undefined, item: TQueueItem): void {
+  private addItem(key: string | number | undefined, item: TQueueItem): boolean {
     if (this.queue instanceof Array) {
       this.queue.push(item);
+      return true;
     } else if (this.queue instanceof Map) {
       if (key === undefined) {
         throw new ReferenceError('Key is required for Map collection');
       }
+      const isNewItem =
+        !this.queue.has(key) || !Object.is(this.queue.get(key), item);
       this.queue.set(key, item);
+      return isNewItem;
     } else {
+      const previousSize = this.queue.size;
       this.queue.add(item);
+      return this.queue.size > previousSize;
     }
   }
 

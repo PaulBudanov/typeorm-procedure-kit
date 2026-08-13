@@ -17,6 +17,7 @@ export class OracleSerializer extends DatabaseSerializer {
     JSON: oracledb.DB_TYPE_JSON,
     TIMESTAMP: oracledb.DB_TYPE_TIMESTAMP,
     TIMESTAMP_TZ: oracledb.DB_TYPE_TIMESTAMP_TZ,
+    TIMESTAMP_LTZ: oracledb.DB_TYPE_TIMESTAMP_LTZ,
     XML: oracledb.DB_TYPE_XMLTYPE,
   };
   private OBJECT_DB_TYPE_HANDLER_CAST: TOracleObjectDbTypeHandlerCast =
@@ -30,7 +31,13 @@ export class OracleSerializer extends DatabaseSerializer {
   public override registerFetchHandlerHook(): void {
     if (this.options.isNeedRegisterDefaultSerializers)
       this.registerDefaultSerializers();
-    oracledb.fetchTypeHandler = (metaData): FetchTypeResponse | undefined => {
+  }
+
+  /** Creates an instance-scoped handler for an Oracle execute call. */
+  public createFetchTypeHandler(): (
+    metaData: oracledb.Metadata<unknown>
+  ) => FetchTypeResponse | undefined {
+    return (metaData): FetchTypeResponse | undefined => {
       if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
         metaData.name = this.options.caseStrategy.transformColumnName(
           metaData.name
@@ -43,35 +50,14 @@ export class OracleSerializer extends DatabaseSerializer {
         const serializeKey = this.OBJECT_DB_TYPE_HANDLER_CAST.get(
           metaData.dbType
         )!;
-        const serializer = this.TYPE_SERIALIZER_MAP.get(serializeKey);
-        if (!serializer) return { type: metaData.dbType };
-        const converter = (value: unknown): unknown => {
-          if (value === null || value === undefined) return null;
-          switch (typeof value) {
-            case 'string':
-              return serializer.strategy(value);
-            case 'number':
-              return serializer.strategy(value.toString());
-            case 'boolean':
-              return serializer.strategy(String(value));
-            case 'object':
-              return serializer.strategy(
-                value instanceof ArrayBuffer || value instanceof Buffer
-                  ? value instanceof Buffer
-                    ? value
-                    : Buffer.from(value as ArrayBuffer)
-                  : JSON.stringify(value)
-              );
-            case 'bigint':
-              return serializer.strategy(value.toString());
-            case 'symbol':
-              return serializer.strategy(value.toString());
-            default:
-              throw new ServerError(
-                `Unsupported type: ${typeof value} for ${metaData.name}`
-              );
-          }
-        };
+        if (!this.hasSerializer(serializeKey)) return { type: metaData.dbType };
+        const converter = (value: unknown): unknown =>
+          this.serializeValue(serializeKey, value, {
+            source: 'fetch',
+            database: 'oracle',
+            name: metaData.name,
+            databaseType: metaData.dbType!.columnTypeName,
+          });
         return {
           type: metaData.dbType,
           converter: converter,
@@ -79,7 +65,6 @@ export class OracleSerializer extends DatabaseSerializer {
       }
       return;
     };
-    return;
   }
 
   /**
@@ -91,11 +76,11 @@ export class OracleSerializer extends DatabaseSerializer {
    * @throws Error - If the serializer type is unknown.
    */
   public override setSerializer(options: ISetSerializer): void {
-    if (this.TYPE_SERIALIZER_MAP.has(options.serializerType)) {
+    if (this.hasSerializer(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
       );
-      this.TYPE_SERIALIZER_MAP.delete(options.serializerType);
+      this.unregisterSerializer(options.serializerType);
     }
     const dbTypeClass = this.OBJECT_TYPE_CAST[options.serializerType];
     if (!dbTypeClass)
@@ -108,9 +93,7 @@ export class OracleSerializer extends DatabaseSerializer {
       );
       this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
     }
-    this.TYPE_SERIALIZER_MAP.set(options.serializerType, {
-      strategy: options.strategy,
-    });
+    this.registerSerializer(options);
     this.OBJECT_DB_TYPE_HANDLER_CAST.set(dbTypeClass, options.serializerType);
     this.logger.log(
       `Serializer with type ${options.serializerType} and dbType ${dbTypeClass.columnTypeName} set successfully`
@@ -125,8 +108,8 @@ export class OracleSerializer extends DatabaseSerializer {
   public override deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
-    if (this.TYPE_SERIALIZER_MAP.has(serializerType.serializerType))
-      this.TYPE_SERIALIZER_MAP.delete(serializerType.serializerType);
+    if (this.hasSerializer(serializerType.serializerType))
+      this.unregisterSerializer(serializerType.serializerType);
     const dbTypeClass = this.OBJECT_TYPE_CAST[serializerType.serializerType];
     if (this.OBJECT_DB_TYPE_HANDLER_CAST.has(dbTypeClass))
       this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
@@ -139,7 +122,7 @@ export class OracleSerializer extends DatabaseSerializer {
    * but don't want to keep the old ones.
    */
   public override deleteAllSerializers(): void {
-    this.TYPE_SERIALIZER_MAP.clear();
+    this.clearSerializerRegistry();
     this.OBJECT_DB_TYPE_HANDLER_CAST.clear();
     return;
   }

@@ -24,10 +24,10 @@ Serializer und eine erweiterte, gebuendelte TypeORM-kompatible Runtime.
 
 ## Uebersetzungen
 
-- [English](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.md)
-- [Русский](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.ru.md)
-- [Deutsch](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.de.md)
-- [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.zh.md)
+- [English](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.md)
+- [Русский](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.ru.md)
+- [Deutsch](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.de.md)
+- [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.zh.md)
 
 ---
 
@@ -70,7 +70,7 @@ ergaenzt:
 - PostgreSQL driver: `pg`
 - Oracle driver: `oracledb`
 - Optionale PostgreSQL streaming dependency: `pg-query-stream`
-- Optionale NestJS peer dependencies: `@nestjs/common` und `@nestjs/core`
+- Optionale NestJS peer dependency: `@nestjs/common` Version 10 oder 11
 
 ## Installation
 
@@ -134,11 +134,10 @@ const db = new TypeOrmProcedureKit(settings);
 await db.initDatabase();
 
 try {
-  const invoices = await db.call<{ invoiceId: number }>(
-    'billing.find_invoices',
-    { customerId: 42 }
-  );
-  console.log(invoices);
+  const result = await db.call<{ invoiceId: number }>('billing.find_invoices', {
+    customerId: 42,
+  });
+  console.log(result.rows, result.outBinds);
 } finally {
   await db.destroy();
 }
@@ -199,6 +198,19 @@ Danach schrittweise erweiterte Funktionen einsetzen:
 
 Das Paket erhaelt eine TypeORM-kompatible Developer Experience und erweitert die
 Runtime um Oracle/PostgreSQL-fokussierte Workflows und strengere Typisierung.
+
+## Upgrade auf v3
+
+Lesen Sie vor dem Upgrade den
+[v3-Migrationsleitfaden](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/MIGRATION_V3.md).
+Die wichtigsten breaking changes sind:
+
+- `call()` liefert `{ rows, outBinds }` statt nur eines row arrays;
+- serializer strategies erhalten `{ serializerType, value, context }`;
+- die default temporal serializers sind opt-in und verwenden neue, explizite
+  Formate einschliesslich `TIMESTAMP_LTZ`;
+- `sessionTimeZone` ist validiert und hat den default `UTC`;
+- `@nestjs/core` ist kein peer dependency dieses Pakets mehr.
 
 ## API-Uebersicht
 
@@ -276,9 +288,11 @@ Gemeinsame Optionen:
 - `slaves`: optionale read replicas fuer TypeORM replication.
 - `poolSize`: Groesse des connection pool.
 - `appName`: application name, der an unterstuetzte drivers uebergeben wird.
-- `sessionTimeZone`: optionale database session time zone, die an
-  unterstuetzte drivers uebergeben wird, z. B. `UTC`, `Europe/Moscow` oder
-  `+03:00`.
+- `sessionTimeZone`: validierte database session time zone, z. B. `UTC`,
+  `Europe/Moscow` oder `+03:00`; default ist `UTC`. PostgreSQL setzt sie in den
+  startup options jeder pool connection. Oracle setzt sie im session callback,
+  wenn eine physical connection erstellt wird. Wiederverwendete connections
+  behalten diesen Zustand, solange application SQL ihn nicht aendert.
 - `maxQueryExecutionTime`: slow-query threshold fuer die underlying DataSource;
   langsame queries werden geloggt, aber nicht abgebrochen.
 - `logger.typeormLogLevels`: TypeORM log levels, die ueber `logger.module`
@@ -348,10 +362,13 @@ Funktion beider Datenbanken von diesem Paket gewrapped wird.
 ## Gespeicherte Prozeduren
 
 ```ts
-await db.call('billing.create_invoice', {
+const result = await db.call('billing.create_invoice', {
   customerId: 42,
   amount: 1000,
 });
+
+console.log(result.rows);
+console.log(result.outBinds);
 ```
 
 Procedure metadata wird waehrend `initDatabase()` aus den konfigurierten
@@ -361,6 +378,11 @@ werden.
 
 Procedure payloads koennen objects, arrays, `null` oder `undefined` sein. Scalar
 strings und numbers werden zur Laufzeit abgelehnt.
+
+`rows` enthaelt alle REF-CURSOR rows in metadata order. `outBinds` behaelt jeden
+Cursor und jeden scalar `OUT`/`INOUT` value unter dem mit
+`outKeyTransformCase` transformierten key. Eine scalar-only procedure liefert
+`rows: []`. `callSqlTransaction()` liefert weiterhin direkt sein row array.
 
 ## Raw SQL Transactions
 
@@ -385,7 +407,9 @@ Execution options:
   transaction vor dem main query ausgefuehrt werden. Jeder Eintrag muss genau
   einen sicheren command ohne comments oder separators enthalten. PostgreSQL
   akzeptiert unterstuetzte `SET`, `SET LOCAL` und `SET TRANSACTION` forms;
-  Oracle akzeptiert `ALTER SESSION SET name = value`.
+  Oracle akzeptiert `ALTER SESSION SET name = value` ausser `TIME_ZONE`.
+  Verwenden Sie fuer Oracle time zones `sessionTimeZone`, weil ein per-call
+  `ALTER SESSION SET TIME_ZONE` Zustand in den pool leaken wuerde.
 - `queryId`: custom id fuer logs und wrapped database errors.
 
 ## Benachrichtigungen
@@ -459,7 +483,9 @@ geprueften Konstanten zusammen; bauen Sie sie nicht aus user input.
 query fuer beide databases ersetzen. Die SQL muss `:PACKAGE_NAME` enthalten und
 muss Spalten liefern, die nach snake_case to camelCase conversion zu
 `IProcedureArgumentBase` passen: `procedure_name`, `argument_name`,
-`argument_type`, `order` und `mode`.
+`argument_type`, `order`, `mode` und optional `size`. Modes werden als `IN`,
+`OUT` oder `INOUT`/`IN/OUT` validiert; `order` und `size` muessen gueltige
+integer values sein.
 
 `packagesSettings.metadataNotificationSql` kann die default SQL fuer metadata
 refresh subscriptions ersetzen. PostgreSQL erwartet einen vollstaendigen
@@ -478,18 +504,26 @@ const settings = {
 };
 ```
 
-Built-in serializers formatieren:
+Default serializers werden nur bei `isNeedRegisterDefaultSerializers: true`
+registriert. Ihre v3-Formate sind:
 
-- `DATE` als `yyyy-MM-dd`
-- `TIMESTAMP` als `yyyy-MM-dd HH:mm:ss Z`
-- `TIMESTAMP_TZ` als `yyyy-MM-dd HH:mm:ss Z`
+- `DATE` als `yyyy-MM-dd HH:mm:ss` mit seconds precision;
+- `TIMESTAMP` als `yyyy-MM-dd HH:mm:ss.SSS` mit milliseconds precision;
+- `TIMESTAMP_TZ` als UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`;
+- `TIMESTAMP_LTZ` als UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`.
+
+Temporal strategies akzeptieren native `Date` values oder strikte SQL/ISO
+strings. Zoned strings muessen `Z` oder einen numeric offset enthalten.
 
 Custom serializers registrieren und entfernen:
 
 ```ts
 db.setSerializer({
   serializerType: 'JSON',
-  strategy: (value) => JSON.parse(value.toString()),
+  strategy: ({ serializerType, value, context }) => {
+    console.log(serializerType, context?.source, context?.databaseType);
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  },
 });
 
 const serializers = db.serializerReadOnlyMapping;
@@ -498,13 +532,16 @@ db.deleteSerializer({ serializerType: 'JSON' });
 db.deleteAllSerializers();
 ```
 
-Supported serializer keys sind `DATE`, `TIMESTAMP`, `TIMESTAMP_TZ`, `BOOLEAN`,
-`CHAR`, `VARCHAR`, `JSON`, `BINARY` und `XML`.
+Jede strategy erhaelt `{ serializerType, value, context? }`. Nullish database
+values umgehen custom code und werden als `null` normalisiert. Supported keys
+sind `DATE`, `TIMESTAMP`, `TIMESTAMP_TZ`, `TIMESTAMP_LTZ`, `BOOLEAN`, `CHAR`,
+`VARCHAR`, `JSON`, `BINARY` und `XML`.
 
-Runtime side effects:
+Runtime scope:
 
-- der PostgreSQL serializer ueberschreibt global `pg.Result.prototype.parseRow`;
-- der Oracle serializer setzt global `oracledb.fetchTypeHandler`;
+- PostgreSQL type parsers werden an jeden package-created pool gebunden;
+- Oracle fetch handlers werden an den DataSource execution path der Instanz
+  gebunden; REF-CURSOR rows werden anhand ihrer ResultSet metadata transformiert;
 - der Oracle adapter setzt `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
 ## NestJS Integration
@@ -574,6 +611,10 @@ Der entry point `typeorm-procedure-kit/typeorm` exportiert decorators,
 DataSource, EntityManager, repositories, query builders und related types. Die
 runtime basiert auf einem maintained TypeORM-compatible fork, optimiert fuer
 Oracle- und PostgreSQL-workflows.
+
+Baseline, lokale patch families und den verpflichtenden upstream sync process
+beschreibt die
+[fork provenance and synchronization policy](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/TYPEORM_FORK.md).
 
 Verwenden Sie die dokumentierten entry points statt deep imports in interne
 bundled-TypeORM-Dateien. In SQL tagged templates werden scalar values automatisch
@@ -732,8 +773,10 @@ signal handlers automatisch zu registrieren, oder rufen Sie
   uebergeben Sie keinen scalar payload an `call()`.
 - `Unsafe SQL identifier for ...`: procedure, cursor oder notification channel
   names muessen dem supported identifier pattern entsprechen.
-- Database result objects mit nonzero `error_code` oder `err_code` werden in
-  `ServerError` umgewandelt.
+- Nur ein top-level procedure error envelope mit einem nonzero code key
+  (`error_code`/`err_code` oder `errorCode`/`errCode`) und einem text key
+  (`error_text`/`err_text` oder `errorText`/`errText`) wird in `ServerError`
+  umgewandelt; business rows und nested objects werden nicht rekursiv gescannt.
 
 ## License
 

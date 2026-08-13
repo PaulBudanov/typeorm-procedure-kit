@@ -45,110 +45,116 @@ export class DbQueryResultCache implements QueryResultCache {
   }
 
   public async synchronize(queryRunner?: QueryRunner): Promise<void> {
-    queryRunner = this.getQueryRunner(queryRunner);
-    const tableExist = await queryRunner.hasTable(this.queryResultCacheTable);
-    if (tableExist) return;
+    await this.withQueryRunner(queryRunner, async (activeQueryRunner) => {
+      const tableExist = await activeQueryRunner.hasTable(
+        this.queryResultCacheTable
+      );
+      if (tableExist) return;
 
-    await queryRunner.createTable(
-      new Table({
-        database: this.queryResultCacheDatabase,
-        schema: this.queryResultCacheSchema,
-        name: this.queryResultCacheTable,
-        columns: [
-          {
-            name: 'id',
-            isPrimary: true,
-            isNullable: false,
-            type: this.driver.normalizeType({
-              type: this.driver.mappedDataTypes.cacheId,
-            }),
-            generationStrategy: 'increment',
-            isGenerated: true,
-          },
-          {
-            name: 'identifier',
-            type: this.driver.normalizeType({
-              type: this.driver.mappedDataTypes.cacheIdentifier,
-            }),
-            isNullable: true,
-          },
-          {
-            name: 'time',
-            type: this.driver.normalizeType({
-              type: this.driver.mappedDataTypes.cacheTime,
-            }),
-            isPrimary: false,
-            isNullable: false,
-          },
-          {
-            name: 'duration',
-            type: this.driver.normalizeType({
-              type: this.driver.mappedDataTypes.cacheDuration,
-            }),
-            isPrimary: false,
-            isNullable: false,
-          },
-          {
-            name: 'query',
-            type: this.driver.normalizeType({
-              type: this.driver.mappedDataTypes.cacheQuery,
-            }),
-            isPrimary: false,
-            isNullable: false,
-          },
-          {
-            name: 'result',
-            type: this.driver.normalizeType({
-              type: this.driver.mappedDataTypes.cacheResult,
-            }),
-            isNullable: false,
-          },
-        ],
-      })
-    );
+      await activeQueryRunner.createTable(
+        new Table({
+          database: this.queryResultCacheDatabase,
+          schema: this.queryResultCacheSchema,
+          name: this.queryResultCacheTable,
+          columns: [
+            {
+              name: 'id',
+              isPrimary: true,
+              isNullable: false,
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.cacheId,
+              }),
+              generationStrategy: 'increment',
+              isGenerated: true,
+            },
+            {
+              name: 'identifier',
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.cacheIdentifier,
+              }),
+              isNullable: true,
+            },
+            {
+              name: 'time',
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.cacheTime,
+              }),
+              isPrimary: false,
+              isNullable: false,
+            },
+            {
+              name: 'duration',
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.cacheDuration,
+              }),
+              isPrimary: false,
+              isNullable: false,
+            },
+            {
+              name: 'query',
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.cacheQuery,
+              }),
+              isPrimary: false,
+              isNullable: false,
+            },
+            {
+              name: 'result',
+              type: this.driver.normalizeType({
+                type: this.driver.mappedDataTypes.cacheResult,
+              }),
+              isNullable: false,
+            },
+          ],
+        })
+      );
+    });
   }
 
-  public getFromCache(
+  public async getFromCache(
     options: QueryResultCacheOptions,
     queryRunner?: QueryRunner
   ): Promise<QueryResultCacheOptions | undefined> {
-    queryRunner = this.getQueryRunner(queryRunner);
-    const qb = this.connection
-      .createQueryBuilder(queryRunner)
-      .select()
-      .from(this.queryResultCacheTable, 'cache');
+    return this.withQueryRunner(queryRunner, async (activeQueryRunner) => {
+      const qb = this.connection
+        .createQueryBuilder(activeQueryRunner)
+        .select()
+        .from(this.queryResultCacheTable, 'cache');
 
-    if (options.identifier) {
-      return qb
-        .where(`${qb.escape('cache')}.${qb.escape('identifier')} = :identifier`)
-        .setParameters({
-          identifier: options.identifier,
-        })
-        .cache(false)
-        .getRawOne();
-    } else if (options.query) {
-      if (this.driver.options.type === 'oracle') {
+      if (options.identifier) {
         return qb
           .where(
-            `dbms_lob.compare(${qb.escape('cache')}.${qb.escape(
-              'query'
-            )}, :query) = 0`,
-            { query: options.query }
+            `${qb.escape('cache')}.${qb.escape('identifier')} = :identifier`
           )
+          .setParameters({
+            identifier: options.identifier,
+          })
+          .cache(false)
+          .getRawOne();
+      } else if (options.query) {
+        if (this.driver.options.type === 'oracle') {
+          return qb
+            .where(
+              `dbms_lob.compare(${qb.escape('cache')}.${qb.escape(
+                'query'
+              )}, :query) = 0`,
+              { query: options.query }
+            )
+            .cache(false)
+            .getRawOne();
+        }
+
+        return qb
+          .where(`${qb.escape('cache')}.${qb.escape('query')} = :query`)
+          .setParameters({
+            query: options.query,
+          })
           .cache(false)
           .getRawOne();
       }
 
-      return qb
-        .where(`${qb.escape('cache')}.${qb.escape('query')} = :query`)
-        .setParameters({
-          query: options.query,
-        })
-        .cache(false)
-        .getRawOne();
-    }
-
-    return Promise.resolve(undefined);
+      return undefined;
+    });
   }
 
   public isExpired(savedCache: QueryResultCacheOptions): boolean {
@@ -170,56 +176,48 @@ export class DbQueryResultCache implements QueryResultCache {
     savedCache: QueryResultCacheOptions | undefined,
     queryRunner?: QueryRunner
   ): Promise<void> {
-    const shouldCreateQueryRunner =
-      !queryRunner || queryRunner?.getReplicationMode() === 'slave';
+    await this.withQueryRunner(queryRunner, async (activeQueryRunner) => {
+      if (savedCache && savedCache.identifier) {
+        const qb = activeQueryRunner.manager
+          .createQueryBuilder()
+          .update(this.queryResultCacheTable)
+          .set(options);
 
-    if (shouldCreateQueryRunner) {
-      queryRunner = this.connection.createQueryRunner('slave');
-    }
-    if (savedCache && savedCache.identifier) {
-      // if exist then update
-      const qb = queryRunner!.manager
-        .createQueryBuilder()
-        .update(this.queryResultCacheTable)
-        .set(options);
-
-      qb.where(`${qb.escape('identifier')} = :condition`, {
-        condition: options.identifier,
-      });
-      await qb.execute();
-    } else if (savedCache && savedCache.query) {
-      const qb = queryRunner!.manager
-        .createQueryBuilder()
-        .update(this.queryResultCacheTable)
-        .set(options);
-
-      if (this.driver.options.type === 'oracle') {
-        qb.where(`dbms_lob.compare("query", :condition) = 0`, {
-          condition: options.query,
+        qb.where(`${qb.escape('identifier')} = :condition`, {
+          condition: options.identifier,
         });
+        await qb.execute();
+      } else if (savedCache && savedCache.query) {
+        const qb = activeQueryRunner.manager
+          .createQueryBuilder()
+          .update(this.queryResultCacheTable)
+          .set(options);
+
+        if (this.driver.options.type === 'oracle') {
+          qb.where(`dbms_lob.compare("query", :condition) = 0`, {
+            condition: options.query,
+          });
+        } else {
+          qb.where(`${qb.escape('query')} = :condition`, {
+            condition: options.query,
+          });
+        }
+
+        await qb.execute();
       } else {
-        qb.where(`${qb.escape('query')} = :condition`, {
-          condition: options.query,
-        });
+        await activeQueryRunner.manager
+          .createQueryBuilder()
+          .insert()
+          .into(this.queryResultCacheTable)
+          .values(options)
+          .execute();
       }
-
-      await qb.execute();
-    } else {
-      await queryRunner!.manager
-        .createQueryBuilder()
-        .insert()
-        .into(this.queryResultCacheTable)
-        .values(options)
-        .execute();
-    }
-    if (shouldCreateQueryRunner) {
-      await queryRunner!.release();
-    }
+    });
   }
 
-  public async clearCacheTable(queryRunner: QueryRunner): Promise<void> {
-    return this.getQueryRunner(queryRunner).clearTable(
-      this.queryResultCacheTable
+  public async clearCacheTable(queryRunner?: QueryRunner): Promise<void> {
+    await this.withQueryRunner(queryRunner, (activeQueryRunner) =>
+      activeQueryRunner.clearTable(this.queryResultCacheTable)
     );
   }
 
@@ -227,26 +225,69 @@ export class DbQueryResultCache implements QueryResultCache {
     identifiers: Array<string>,
     queryRunner?: QueryRunner
   ): Promise<void> {
-    const _queryRunner: QueryRunner = queryRunner ?? this.getQueryRunner();
-    await Promise.all(
-      identifiers.map((identifier) => {
-        const qb = _queryRunner.manager.createQueryBuilder();
-        return qb
-          .delete()
-          .from(this.queryResultCacheTable)
-          .where(`${qb.escape('identifier')} = :identifier`, {
-            identifier,
-          })
-          .execute();
-      })
-    );
-
-    if (!queryRunner) {
-      await _queryRunner.release();
-    }
+    await this.withQueryRunner(queryRunner, async (activeQueryRunner) => {
+      await Promise.all(
+        identifiers.map((identifier) => {
+          const qb = activeQueryRunner.manager.createQueryBuilder();
+          return qb
+            .delete()
+            .from(this.queryResultCacheTable)
+            .where(`${qb.escape('identifier')} = :identifier`, {
+              identifier,
+            })
+            .execute();
+        })
+      );
+    });
   }
-  private getQueryRunner(queryRunner?: QueryRunner): QueryRunner {
-    if (queryRunner) return queryRunner;
-    return this.connection.createQueryRunner();
+
+  private async withQueryRunner<T>(
+    queryRunner: QueryRunner | undefined,
+    operation: (queryRunner: QueryRunner) => Promise<T>
+  ): Promise<T> {
+    const isOwnedQueryRunner = !queryRunner;
+    const activeQueryRunner =
+      queryRunner ?? this.connection.createQueryRunner('master');
+    let operationResult:
+      | { status: 'fulfilled'; value: T }
+      | { status: 'rejected'; reason: unknown };
+
+    try {
+      operationResult = {
+        status: 'fulfilled',
+        value: await operation(activeQueryRunner),
+      };
+    } catch (error) {
+      operationResult = { status: 'rejected', reason: error };
+    }
+
+    if (!isOwnedQueryRunner) {
+      if (operationResult.status === 'rejected') throw operationResult.reason;
+      return operationResult.value;
+    }
+
+    let releaseResult:
+      | { status: 'fulfilled' }
+      | { status: 'rejected'; reason: unknown };
+    try {
+      await activeQueryRunner.release();
+      releaseResult = { status: 'fulfilled' };
+    } catch (error) {
+      releaseResult = { status: 'rejected', reason: error };
+    }
+
+    if (operationResult.status === 'rejected') {
+      if (releaseResult.status === 'rejected') {
+        throw new AggregateError(
+          [operationResult.reason, releaseResult.reason],
+          'Cache operation and query runner release both failed',
+          { cause: operationResult.reason }
+        );
+      }
+      throw operationResult.reason;
+    }
+
+    if (releaseResult.status === 'rejected') throw releaseResult.reason;
+    return operationResult.value;
   }
 }

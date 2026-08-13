@@ -11,12 +11,15 @@ interface IntegrationTestSettings<TConfig extends IModuleConfig['config']> {
   logger: { module: TestLogger };
 }
 
-function isIntegrationRequired(): boolean {
-  return process.env.RUN_INTEGRATION_TESTS === '1';
+function isIntegrationRequired(database: string): boolean {
+  return (
+    process.env.RUN_INTEGRATION_TESTS === '1' ||
+    (database === 'Oracle' && process.env.ORACLE_INTEGRATION === '1')
+  );
 }
 
 function handleMissingEnv(database: string): null {
-  if (isIntegrationRequired()) {
+  if (isIntegrationRequired(database)) {
     throw new ServerError(`${database} integration test env is incomplete`);
   }
   return null;
@@ -97,6 +100,7 @@ export function createOracleIntegrationSettings(): IntegrationTestSettings<TOrac
   const database = process.env.ORACLE_DATABASE;
   const username = process.env.ORACLE_USERNAME;
   const password = process.env.ORACLE_PASSWORD;
+  const libraryPath = process.env.ORACLE_CLIENT_LIB_DIR;
 
   if (!host || !port || !database || !username || !password)
     return handleMissingEnv('Oracle');
@@ -107,6 +111,7 @@ export function createOracleIntegrationSettings(): IntegrationTestSettings<TOrac
       type: 'oracle',
       poolSize: 2,
       outKeyTransformCase: 'lowerCase',
+      ...(libraryPath ? { libraryPath } : {}),
       master: {
         host,
         port: Number(port),

@@ -1,3 +1,5 @@
+import type { Readable } from 'stream';
+
 import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
 import type { QueryResultCacheOptions } from '../cache/cache.types.js';
@@ -27,7 +29,6 @@ import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-import type { ReadStream } from '../platform/PlatformTools.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
@@ -2018,7 +2019,7 @@ export class SelectQueryBuilder<Entity = unknown>
   /**
    * Executes built SQL query and returns raw data stream.
    */
-  public async stream(): Promise<ReadStream> {
+  public async stream(): Promise<Readable> {
     this.expressionMap.queryEntity = false;
     const [sql, parameters] = this.getQueryAndParameters();
     const queryRunner = this.obtainQueryRunner();

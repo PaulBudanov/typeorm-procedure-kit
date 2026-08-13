@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { PostgreAdapter } from '../../src/adapters/postgres/postgre-adapter.js';
 import { ServerError } from '../../src/utils/server-error.js';
@@ -124,6 +124,14 @@ describe('PostgreAdapter', (): void => {
       paramExecuteString: 'CALL "pkg"."run"($1,$2,$3)',
       bindings: [7, 'a,b', 'out_cursor'],
       cursorsNames: ['out_cursor'],
+      outNames: ['out_cursor'],
+      outBindings: [
+        {
+          name: 'out_cursor',
+          type: 'cursor',
+          databaseType: 'refcursor',
+        },
+      ],
     });
   });
 
@@ -131,7 +139,12 @@ describe('PostgreAdapter', (): void => {
     const adapter = createPostgreAdapter();
     const procedures = {
       run: [
-        { argumentName: 'p_id', argumentType: 'int', order: 1, mode: 'IN' },
+        {
+          argumentName: 'p_id',
+          argumentType: 'int',
+          order: 1,
+          mode: 'IN' as const,
+        },
       ],
     };
 
@@ -144,6 +157,44 @@ describe('PostgreAdapter', (): void => {
     expect((): void => {
       adapter.makeBindings('pkg', 'missing', procedures);
     }).toThrow(ServerError);
+  });
+
+  it('preserves PostgreSQL scalar and cursor out binds in metadata order', async (): Promise<void> => {
+    const adapter = createPostgreAdapter();
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_status: 2, out_cursor: 'out_cursor' }])
+      .mockResolvedValueOnce([{ id: 1 }, { id: 2 }])
+      .mockResolvedValueOnce([]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure<{ id: number }>(
+        'CALL "pkg"."run"($1,$2)',
+        manager as never,
+        [],
+        [null, 'out_cursor'],
+        ['out_cursor'],
+        [
+          { name: 'out_status', type: 'scalar', databaseType: 'integer' },
+          { name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' },
+        ]
+      )
+    ).resolves.toEqual({
+      rows: [{ id: 1 }, { id: 2 }],
+      outBinds: {
+        out_status: 2,
+        out_cursor: [{ id: 1 }, { id: 2 }],
+      },
+    });
+    expect(query).toHaveBeenNthCalledWith(2, 'FETCH ALL IN "out_cursor"');
+    expect(query).toHaveBeenNthCalledWith(3, 'CLOSE "out_cursor"');
   });
 
   it('creates SQL bindings for uppercase named parameters', (): void => {

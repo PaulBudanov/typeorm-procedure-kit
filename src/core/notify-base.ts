@@ -10,10 +10,22 @@ import { QueueManager } from '../utils/queue-manager.js';
 
 import type { ProcedureListBase } from './procedure-list-base.js';
 
+interface IPackageRefreshState {
+  requestedGeneration: number;
+  completedGeneration: number;
+  promise: Promise<void>;
+}
+
 export class NotifyBase {
   private queueManager = new QueueManager<string>('packageUpdateSet', 'set');
   private queueCallback: ((data: { item: string }) => Promise<void>) | null =
     null;
+  private readonly refreshStates = new Map<
+    Lowercase<string>,
+    IPackageRefreshState
+  >();
+  private destroyPromise: Promise<void> | null = null;
+  private isDestroyed = false;
 
   /**
    * Creates the package notification coordinator.
@@ -37,10 +49,9 @@ export class NotifyBase {
     this.queueCallback = async (data: { item: string }): Promise<void> => {
       if (typeof data.item === 'string') {
         try {
-          await this.procedureListBase.fetchProcedureListWithArguments(
+          await this.refreshPackage(
             data.item.toLowerCase() as Lowercase<string>
           );
-          this.queueManager.dequeue(data.item);
         } catch (error) {
           this.logger.error(
             `Failed to refresh procedure metadata for package ${data.item}: ${
@@ -48,6 +59,8 @@ export class NotifyBase {
             }`,
             (error as Error).stack
           );
+        } finally {
+          this.queueManager.dequeue(data.item);
         }
       }
     };
@@ -58,15 +71,78 @@ export class NotifyBase {
    * Gracefully shuts down all notification subscriptions and queue manager
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
-  public async destroy(): Promise<void> {
-    // Destroy notification subscriptions through database adapter
-    await this.databaseAdapter.destroyNotifications();
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.isDestroyed = true;
+    this.destroyPromise = this.destroyInternal();
+    return this.destroyPromise;
+  }
 
-    // Clear queue manager
+  private async destroyInternal(): Promise<void> {
+    if (this.queueCallback) {
+      this.queueManager.unsubscribeFromEnqueue(this.queueCallback);
+      this.queueCallback = null;
+    }
     this.queueManager.clear();
     this.logger.log('QueueManager cleared');
 
+    await Promise.allSettled(
+      Array.from(this.refreshStates.values(), ({ promise }) => promise)
+    );
+    await this.databaseAdapter.destroyNotifications();
     this.logger.log('NotifyBase shutdown completed');
+  }
+
+  private refreshPackage(packageName: Lowercase<string>): Promise<void> {
+    const existingState = this.refreshStates.get(packageName);
+    if (existingState) {
+      existingState.requestedGeneration += 1;
+      return existingState.promise;
+    }
+
+    const refreshState: IPackageRefreshState = {
+      requestedGeneration: 1,
+      completedGeneration: 0,
+      promise: Promise.resolve(),
+    };
+    this.refreshStates.set(packageName, refreshState);
+    refreshState.promise = Promise.resolve().then(() =>
+      this.runRefreshLoop(packageName, refreshState)
+    );
+    return refreshState.promise;
+  }
+
+  private async runRefreshLoop(
+    packageName: Lowercase<string>,
+    refreshState: IPackageRefreshState
+  ): Promise<void> {
+    try {
+      while (
+        !this.isDestroyed &&
+        refreshState.completedGeneration < refreshState.requestedGeneration
+      ) {
+        const requestedGeneration = refreshState.requestedGeneration;
+        try {
+          await this.procedureListBase.fetchProcedureListWithArguments(
+            packageName
+          );
+        } catch (error) {
+          refreshState.completedGeneration = requestedGeneration;
+          if (
+            this.isDestroyed ||
+            refreshState.requestedGeneration === requestedGeneration
+          ) {
+            throw error;
+          }
+          continue;
+        }
+        refreshState.completedGeneration = requestedGeneration;
+      }
+    } finally {
+      if (this.refreshStates.get(packageName) === refreshState) {
+        this.refreshStates.delete(packageName);
+      }
+    }
   }
 
   /**
@@ -99,13 +175,19 @@ export class NotifyBase {
   public async packageNotifyCallback(
     notifyData: TNotifyPackageCallback
   ): Promise<void> {
+    if (this.isDestroyed) return;
+
     const processPackage = async (packageNameRaw: string): Promise<void> => {
       const packageName = packageNameRaw.toLowerCase() as Lowercase<string>;
       if (
         this.packagesSettings &&
         this.packagesSettings.packages.includes(packageName)
       ) {
-        await this.queueManager.enqueueAsync(undefined, packageName);
+        const wasEnqueued = await this.queueManager.enqueueAsync(
+          undefined,
+          packageName
+        );
+        if (!wasEnqueued) await this.refreshPackage(packageName);
       }
     };
 

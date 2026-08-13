@@ -1,14 +1,34 @@
 export interface ISqlError {
   error_code?: number;
   err_code?: number;
+  errorCode?: number;
+  errCode?: number;
   err_text?: string;
   error_text?: string;
+  errText?: string;
+  errorText?: string;
 }
-interface IProcedureOutBinding {
+export interface IProcedureOutBinding {
   name: string;
   type: 'cursor' | 'scalar' | 'lob' | 'object' | 'array';
+  databaseType?: string;
 }
 export type TProcedureBindings = Array<unknown> | Record<string, unknown>;
+
+/**
+ * Result of a stored procedure call.
+ *
+ * Cursor rows are exposed both as a metadata-ordered flattened `rows` array and
+ * under their transformed output-bind name in `outBinds`. Scalar OUT and IN/OUT
+ * values are preserved only in `outBinds`.
+ */
+export interface IProcedureResult<
+  TRow,
+  TOut extends Record<string, unknown> = Record<string, unknown>,
+> {
+  rows: Array<TRow>;
+  outBinds: TOut;
+}
 
 //TODO: Add in the future support for another out bindings, at now added new object keys for this.
 export interface IBindingsObjectReturn {

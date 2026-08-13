@@ -23,10 +23,10 @@
 
 ## 翻译
 
-- [英语](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.md)
-- [俄语](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.ru.md)
-- [德语](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.de.md)
-- [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.zh.md)
+- [英语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.md)
+- [俄语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.ru.md)
+- [德语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.de.md)
+- [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.zh.md)
 
 ---
 
@@ -66,7 +66,7 @@ TypeORM 很适合以 CRUD 为主的应用，但企业级数据库系统通常还
 - PostgreSQL 驱动：`pg`
 - Oracle 驱动：`oracledb`
 - 可选的 PostgreSQL 流式查询依赖：`pg-query-stream`
-- 可选的 NestJS 对等依赖：`@nestjs/common` 和 `@nestjs/core`
+- 可选的 NestJS 对等依赖：`@nestjs/common` 版本 10 或 11
 
 ## 安装
 
@@ -129,11 +129,10 @@ const db = new TypeOrmProcedureKit(settings);
 await db.initDatabase();
 
 try {
-  const invoices = await db.call<{ invoiceId: number }>(
-    'billing.find_invoices',
-    { customerId: 42 }
-  );
-  console.log(invoices);
+  const result = await db.call<{ invoiceId: number }>('billing.find_invoices', {
+    customerId: 42,
+  });
+  console.log(result.rows, result.outBinds);
 } finally {
   await db.destroy();
 }
@@ -193,6 +192,18 @@ import { Entity, Column } from 'typeorm-procedure-kit/typeorm';
 
 该包保留 TypeORM 兼容的开发体验，同时以 Oracle/PostgreSQL-focused workflows
 和更严格的类型支持扩展运行时。
+
+## 升级到 v3
+
+升级前请阅读
+[v3 迁移指南](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/MIGRATION_V3.md)。
+主要 breaking changes：
+
+- `call()` 返回 `{ rows, outBinds }`，而不是只返回 row array；
+- serializer strategy 接收 `{ serializerType, value, context }`；
+- 默认 temporal serializers 仍为 opt-in，并使用包含 `TIMESTAMP_LTZ` 的新格式；
+- `sessionTimeZone` 会经过验证，默认值为 `UTC`；
+- 本包不再要求 `@nestjs/core` peer dependency。
 
 ## API 映射
 
@@ -270,8 +281,11 @@ const settings: IModuleConfig = {
 - `slaves`：TypeORM replication 使用的可选只读副本。
 - `poolSize`：连接池大小。
 - `appName`：传递给受支持驱动的应用名称。
-- `sessionTimeZone`：传递给受支持驱动的可选数据库会话时区，例如
-  `UTC`、`Europe/Moscow` 或 `+03:00`。
+- `sessionTimeZone`：经过验证的数据库会话时区，例如 `UTC`、
+  `Europe/Moscow` 或 `+03:00`；默认值为 `UTC`。PostgreSQL 会在每个 pool
+  connection 的 startup options 中设置该值。Oracle 会在创建 physical
+  connection 时通过 session callback 设置；复用的 connection 会保留该状态，
+  除非 application SQL 主动修改它。
 - `maxQueryExecutionTime`：传递给底层 DataSource 的慢查询阈值；记录慢查询但不会取消。
 - `logger.typeormLogLevels`：通过 `logger.module` 输出的 TypeORM 日志级别。
   支持 `query`、`error`、`schema`、`info`、`warn`、`migration` 或 `all`。
@@ -334,10 +348,13 @@ package 或 schema 时，才可以使用裸 `procedure` 名称。
 ## 存储过程
 
 ```ts
-await db.call('billing.create_invoice', {
+const result = await db.call('billing.create_invoice', {
   customerId: 42,
   amount: 1000,
 });
+
+console.log(result.rows);
+console.log(result.outBinds);
 ```
 
 `initDatabase()` 会从已配置的数据库 package 或 schema 加载过程元数据。数据库用户必须
@@ -346,6 +363,11 @@ await db.call('billing.create_invoice', {
 
 过程负载可以是对象、数组、`null` 或 `undefined`。运行时会拒绝 string 和 number
 这类标量负载。
+
+`rows` 按 metadata 顺序包含所有 REF CURSOR rows。`outBinds` 使用
+`outKeyTransformCase` 转换后的 key 保留每个 cursor 和 scalar `OUT`/`INOUT`
+值。只有 scalar output 的过程返回 `rows: []`。`callSqlTransaction()` 仍直接返回
+row array。
 
 ## Raw SQL 事务
 
@@ -366,7 +388,9 @@ Raw SQL 与过程调用使用同一套执行、事务、序列化和错误处理
 - `mode`：`master` 或 `slave`，默认值为 `master`。
 - `optionsCommands`：在同一事务中、主查询之前执行的受限 setup 命令。每个元素必须是
   一条不含注释或分隔符的安全命令。PostgreSQL 支持允许的 `SET`、`SET LOCAL` 和
-  `SET TRANSACTION` 形式；Oracle 支持 `ALTER SESSION SET name = value`。
+  `SET TRANSACTION` 形式；Oracle 支持除 `TIME_ZONE` 外的
+  `ALTER SESSION SET name = value`。Oracle 时区必须通过 `sessionTimeZone`
+  配置，因为 per-call `ALTER SESSION SET TIME_ZONE` 会把状态泄漏到连接池。
 - `queryId`：用于日志和封装后的数据库错误的自定义 id。
 
 ## 通知
@@ -436,7 +460,8 @@ user input 构造。
 `packagesSettings.procedureMetadataSql` 可以替换两个数据库的默认 procedure metadata
 查询。SQL 必须包含 `:PACKAGE_NAME`，并且必须返回 snake_case 到 camelCase 转换后兼容
 `IProcedureArgumentBase` 的列：`procedure_name`、`argument_name`、
-`argument_type`、`order` 和 `mode`。
+`argument_type`、`order`、`mode`，以及可选的 `size`。`mode` 必须是
+`IN`、`OUT` 或 `INOUT`/`IN/OUT`；`order` 和 `size` 必须是有效整数。
 
 `packagesSettings.metadataNotificationSql` 可以替换默认 metadata refresh 订阅 SQL。
 PostgreSQL 需要完整的 `LISTEN ...` 命令。Oracle 需要完整的 CQN `SELECT ...` 查询。
@@ -454,18 +479,26 @@ const settings = {
 };
 ```
 
-内置序列化器的格式：
+只有设置 `isNeedRegisterDefaultSerializers: true` 才会注册默认 serializers。
+v3 格式为：
 
-- `DATE` 格式化为 `yyyy-MM-dd`
-- `TIMESTAMP` 格式化为 `yyyy-MM-dd HH:mm:ss Z`
-- `TIMESTAMP_TZ` 格式化为 `yyyy-MM-dd HH:mm:ss Z`
+- `DATE`：`yyyy-MM-dd HH:mm:ss`，精确到秒；
+- `TIMESTAMP`：`yyyy-MM-dd HH:mm:ss.SSS`，精确到毫秒；
+- `TIMESTAMP_TZ`：UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`；
+- `TIMESTAMP_LTZ`：UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`。
+
+Temporal strategy 接受驱动返回的原生 `Date` 或严格 SQL/ISO string。
+带时区的 string 必须包含 `Z` 或 numeric offset。
 
 注册和删除自定义序列化器：
 
 ```ts
 db.setSerializer({
   serializerType: 'JSON',
-  strategy: (value) => JSON.parse(value.toString()),
+  strategy: ({ serializerType, value, context }) => {
+    console.log(serializerType, context?.source, context?.databaseType);
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  },
 });
 
 const serializers = db.serializerReadOnlyMapping;
@@ -474,13 +507,16 @@ db.deleteSerializer({ serializerType: 'JSON' });
 db.deleteAllSerializers();
 ```
 
-支持的 serializer keys 包括 `DATE`、`TIMESTAMP`、`TIMESTAMP_TZ`、`BOOLEAN`、
-`CHAR`、`VARCHAR`、`JSON`、`BINARY` 和 `XML`。
+每个 strategy 接收 `{ serializerType, value, context? }`。Nullish database
+value 会跳过 custom code，并统一为 `null`。支持的 keys 包括 `DATE`、
+`TIMESTAMP`、`TIMESTAMP_TZ`、`TIMESTAMP_LTZ`、`BOOLEAN`、`CHAR`、
+`VARCHAR`、`JSON`、`BINARY` 和 `XML`。
 
-运行时副作用：
+运行时作用域：
 
-- PostgreSQL serializer 会全局覆盖 `pg.Result.prototype.parseRow`；
-- Oracle serializer 会全局设置 `oracledb.fetchTypeHandler`；
+- PostgreSQL type parser 绑定到每个 package-created pool；
+- Oracle fetch handler 绑定到当前 DataSource execution path；REF CURSOR rows
+  根据 ResultSet metadata 执行大小写转换和 temporal serialization；
 - Oracle 适配器会设置 `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`。
 
 ## NestJS 集成
@@ -548,6 +584,9 @@ NestJS 入口还导出用于注入单个方法和 lazy DataSource access 的装�
 `typeorm-procedure-kit/typeorm` 入口导出装饰器、DataSource、EntityManager、
 仓储、查询构建器和相关类型。运行时基于一个维护中的 TypeORM 兼容 fork，
 并针对 Oracle 和 PostgreSQL 工作流进行了优化。
+
+其 baseline、本地 patch families 和强制 upstream sync 流程记录在
+[fork provenance and synchronization policy](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/TYPEORM_FORK.md)。
 
 请使用文档列出的入口点，不要 deep import 内置 TypeORM 的内部文件。SQL tagged
 template 会自动参数化 scalar value。`SqlTagUtils` 不再把 TypeORM-compatible raw
@@ -699,8 +738,10 @@ await db.destroy();
   不要向 `call()` 传入标量负载。
 - `Unsafe SQL identifier for ...`：procedure、cursor 或 notification channel
   names 必须匹配 supported identifier pattern。
-- 带有非零 `error_code` 或 `err_code` 的数据库结果对象会转换为
-  `ServerError`。
+- 仅当顶层 procedure error envelope 同时包含非零 code key
+  (`error_code`/`err_code` 或 `errorCode`/`errCode`) 和 text key
+  (`error_text`/`err_text` 或 `errorText`/`errText`) 时，才会转换为
+  `ServerError`；business rows 和 nested objects 不会被递归扫描。
 
 ## 许可证
 

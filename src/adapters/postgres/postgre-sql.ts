@@ -7,6 +7,7 @@ export abstract class PostgreSqlCommand {
       args.parameter_name AS "argument_name",
       args.parameter_mode AS "mode",
       args.udt_name AS "argument_type",
+      args.character_maximum_length AS "size",
       proc.routine_name AS "procedure_name"
     FROM information_schema.routines proc
     LEFT JOIN information_schema.parameters args

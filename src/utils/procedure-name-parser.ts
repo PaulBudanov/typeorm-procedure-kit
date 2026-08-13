@@ -8,7 +8,7 @@ interface IProcedureNameParser extends Record<string, unknown> {
   packageName: Lowercase<string>;
 }
 
-class ProcedureNameParser {
+export class ProcedureNameParser {
   private databaseNamingCache = new DatabaseNamingCache<IProcedureNameParser>();
   private cacheKey = Symbol('procedureNameParser');
 
@@ -22,6 +22,12 @@ class ProcedureNameParser {
    */
   public destroy(): void {
     this.databaseNamingCache.cacheClear(this.cacheKey);
+  }
+
+  /** Clears parsed names after the owning metadata snapshot changes. */
+  public clear(): void {
+    this.databaseNamingCache.cacheClear(this.cacheKey);
+    this.databaseNamingCache.createCache(this.cacheKey);
   }
   /**
    * Parse the given executeString into a procedure name and package name.
@@ -40,13 +46,14 @@ class ProcedureNameParser {
     procedureList: TDBMapStructure,
     packages: Array<Lowercase<string>>
   ): IProcedureNameParser {
+    const normalized = executeString.trim().toLowerCase();
+    const cacheEntryKey = `${packages.join(',')}:${normalized}`;
     const cached = this.databaseNamingCache.cacheGet(
       this.cacheKey,
-      executeString
+      cacheEntryKey
     );
     if (cached) return cached;
 
-    const normalized = executeString.trim().toLowerCase();
     const parts = normalized.split('.') as Array<Lowercase<string>>;
     let result: IProcedureNameParser | null = null;
 
@@ -74,7 +81,7 @@ class ProcedureNameParser {
       );
     }
 
-    this.databaseNamingCache.cacheSet(this.cacheKey, executeString, result);
+    this.databaseNamingCache.cacheSet(this.cacheKey, cacheEntryKey, result);
     return result;
   }
 
@@ -142,4 +149,3 @@ class ProcedureNameParser {
     return `${packageName}.${procedureName}`;
   }
 }
-export const procedureNameParser = new ProcedureNameParser();

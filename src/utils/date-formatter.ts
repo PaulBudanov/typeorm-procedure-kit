@@ -2,207 +2,263 @@ import { DateTime } from 'luxon';
 
 import { ServerError } from './server-error.js';
 
+export interface IDateTimeZoneOptions {
+  /** Zone assigned to strings which do not contain an offset. Defaults to local. */
+  sourceZone?: string;
+  /** Zone used for the returned value. Omit it to preserve the parsed zone. */
+  targetZone?: string;
+  /** Require a string input to end in `Z` or a numeric UTC offset. */
+  requireZone?: boolean;
+}
+
+type TLegacyLocalZoneOption = boolean;
+
 export abstract class DateFormatter {
-  private static readonly DEFAULT_DATE_FORMAT = 'yyyy-MM-dd';
-  private static readonly DEFAULT_DATETIME_TZ_FORMAT = 'yyyy-MM-dd HH:mm:ss Z';
+  private static readonly CALENDAR_DATE_FORMAT = 'yyyy-MM-dd';
+  private static readonly DEFAULT_DATE_FORMAT = 'yyyy-MM-dd HH:mm:ss';
+  private static readonly DEFAULT_TIMESTAMP_FORMAT = 'yyyy-MM-dd HH:mm:ss.SSS';
+  private static readonly DEFAULT_TIMESTAMP_TZ_FORMAT =
+    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
   private static readonly DEFAULT_TIME_FORMAT = 'HH:mm:ss';
+  private static readonly STRICT_SQL_OR_ISO_PATTERN =
+    /^(?:\d{4}-\d{2}-\d{2}(?:(?:T| )\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)?|\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)(?: ?(?:Z|[+-]\d{2}(?::?\d{2})?))?$/i;
+  private static readonly EXPLICIT_ZONE_PATTERN =
+    /(?:^|T| )\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)? ?(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
   /**
-   * Formats a date string in the format specified by outputFormat.
-   * If setLocalZone is true, the date will be converted to the local timezone.
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - Date string or Date object to be formatted.
-   * @param outputFormat - Format string for the output date.
-   * @param setLocalZone - Flag indicating whether to convert the date to the local timezone.
-   **/
+   * Formats a strict SQL/ISO string or native Date.
+   *
+   * `sourceZone` applies only to strings without an explicit offset.
+   * `targetZone` performs an explicit zone conversion after parsing.
+   */
+  public static formatSqlDate(
+    input: string | Date,
+    outputFormat?: string,
+    options?: IDateTimeZoneOptions
+  ): string;
+
+  /**
+   * @deprecated Pass `{ targetZone: 'local' }` instead. `true` converts to the
+   * local zone and `false` preserves the parsed source zone.
+   */
+  public static formatSqlDate(
+    input: string | Date,
+    outputFormat: string,
+    setLocalZone: TLegacyLocalZoneOption
+  ): string;
+
   public static formatSqlDate(
     input: string | Date,
     outputFormat: string = this.DEFAULT_DATE_FORMAT,
-    setLocalZone = true
+    options: IDateTimeZoneOptions | TLegacyLocalZoneOption = {}
   ): string {
     try {
-      const dateTime =
-        typeof input === 'string'
-          ? DateTime.fromSQL(input, { setZone: setLocalZone })
-          : DateTime.fromJSDate(input, {
-              zone: setLocalZone ? 'local' : undefined,
-            });
-
-      if (!dateTime.isValid) {
-        throw new ServerError(`Invalid date: ${dateTime.invalidReason}`);
-      }
-
-      return dateTime.toFormat(outputFormat);
+      return this.parseInput(
+        input,
+        this.normalizeZoneOptions(options)
+      ).toFormat(outputFormat);
     } catch (error) {
       throw new ServerError(
-        `Error formatting date: ${(error as Error).message}`
+        `Error formatting date: ${this.errorMessage(error)}`,
+        error,
+        { cause: error }
       );
     }
   }
 
+  /** Parses a strict SQL/ISO date string and optionally converts its zone. */
+  public static parseSqlDate(
+    input: string,
+    options?: IDateTimeZoneOptions
+  ): DateTime;
+
   /**
-   * Parses a SQL date string into a Luxon DateTime object.
-   * If setLocalZone is true, the date will be converted to the local timezone.
-   * If the input string is invalid, an error will be thrown.
-   * @param input - SQL date string to be parsed.
-   * @param setLocalZone - Flag indicating whether to convert the date to the local timezone.
-   * @returns a Luxon DateTime object.
-   * @throws Error - if the input string is invalid.
+   * @deprecated Pass `{ targetZone: 'local' }` instead. `true` converts to the
+   * local zone and `false` preserves the parsed source zone.
    */
-  public static parseSqlDate(input: string, setLocalZone = true): DateTime {
-    const dateTime = DateTime.fromSQL(input, { setZone: setLocalZone });
+  public static parseSqlDate(
+    input: string,
+    setLocalZone: TLegacyLocalZoneOption
+  ): DateTime;
 
-    if (!dateTime.isValid) {
-      throw new ServerError(`Invalid date: ${dateTime.invalidReason}`);
-    }
-
-    return dateTime;
+  public static parseSqlDate(
+    input: string,
+    options: IDateTimeZoneOptions | TLegacyLocalZoneOption = {}
+  ): DateTime {
+    return this.parseInput(input, this.normalizeZoneOptions(options));
   }
 
-  /**
-   * Formats a date string in the default date format (yyyy-MM-dd).
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - Date string or Date object to be formatted.
-   * @returns a formatted date string.
-   */
+  /** Formats a calendar date without a time component. */
+  public static formatCalendarDate(input: string | Date): string {
+    return this.formatSqlDate(input, this.CALENDAR_DATE_FORMAT);
+  }
+
+  /** Formats a database DATE while preserving time to whole seconds. */
   public static formatDefaultDate(input: string | Date): string {
     return this.formatSqlDate(input, this.DEFAULT_DATE_FORMAT);
   }
 
-  /**
-   * Formats a date string in the default datetime format (yyyy-MM-dd HH:mm:ss).
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - Date string or Date object to be formatted.
-   * @returns a formatted datetime string.
-   */
+  /** Formats a timezone-less TIMESTAMP while preserving milliseconds. */
   public static formatDefaultDateTime(input: string | Date): string {
-    return this.formatSqlDate(input, this.DEFAULT_DATETIME_TZ_FORMAT);
+    return this.formatSqlDate(input, this.DEFAULT_TIMESTAMP_FORMAT);
   }
 
-  /**
-   * Formats a date string in the default datetime with timezone format (yyyy-MM-dd HH:mm:ss Z).
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - Date string or Date object to be formatted.
-   * @returns a formatted datetime string with timezone.
-   */
+  /** Formats a zoned timestamp as a UTC ISO value. */
   public static formatDefaultDateTimeWithTimezone(
     input: string | Date
   ): string {
-    return this.formatSqlDate(input, this.DEFAULT_DATETIME_TZ_FORMAT);
+    return this.formatSqlDate(input, this.DEFAULT_TIMESTAMP_TZ_FORMAT, {
+      targetZone: 'UTC',
+      requireZone: typeof input === 'string',
+    });
   }
 
-  /**
-   * Formats a time string in the default time format (HH:mm:ss).
-   * If input is a string, it will be parsed as a SQL time string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - Time string or Date object to be formatted.
-   * @returns a formatted time string.
-   */
+  /** Formats a local-time-zone timestamp as a UTC ISO value. */
+  public static formatDefaultDateTimeWithLocalTimezone(
+    input: string | Date
+  ): string {
+    return this.formatDefaultDateTimeWithTimezone(input);
+  }
+
+  /** Formats the time component of a strict SQL/ISO string or native Date. */
   public static formatTime(input: string | Date): string {
     return this.formatSqlDate(input, this.DEFAULT_TIME_FORMAT);
   }
 
-  /**
-   * Converts a date string or a Date object from one timezone to another.
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - Date string or Date object to be converted.
-   * @param timeZone - The timezone to convert to.
-   * @param format - The format of the output datetime string. Defaults to 'yyyy-MM-dd HH:mm:ss ZZ'.
-   * @returns a formatted datetime string in the specified timezone.
-   * @throws Error - If the input date string is invalid.
-   */
+  /** Converts a date from its explicit/source zone into `timeZone`. */
   public static convertTimeZone(
     input: string | Date,
     timeZone: string,
-    format: string = this.DEFAULT_DATETIME_TZ_FORMAT
+    format: string = this.DEFAULT_TIMESTAMP_TZ_FORMAT,
+    sourceZone?: string
   ): string {
     try {
-      const dateTime =
-        typeof input === 'string'
-          ? DateTime.fromSQL(input, { setZone: true })
-          : DateTime.fromJSDate(input, {
-              zone: 'local',
-            });
-
-      if (!dateTime.isValid) {
-        throw new ServerError(`Invalid date: ${dateTime.invalidReason}`);
-      }
-
-      return dateTime.setZone(timeZone).toFormat(format);
+      return this.parseInput(input, {
+        sourceZone,
+        targetZone: timeZone,
+      }).toFormat(format);
     } catch (error) {
       throw new ServerError(
-        `Error converting date: ${(error as Error).message}`,
-        error
+        `Error converting date: ${this.errorMessage(error)}`,
+        error,
+        { cause: error }
       );
     }
   }
 
-  /**
-   * Calculates the absolute difference between two dates in the specified unit.
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param date1 - First date to compare.
-   * @param date2 - Second date to compare.
-   * @param unit - The unit of time to calculate the difference in. Defaults to 'days'.
-   * @returns The absolute difference between the two dates in the specified unit.
-   */
+  /** Calculates the absolute difference between two valid date values. */
   public static diff(
     date1: string | Date,
     date2: string | Date,
     unit: 'days' | 'hours' | 'minutes' | 'seconds' = 'days'
   ): number {
-    const dt1 =
-      typeof date1 === 'string'
-        ? DateTime.fromSQL(date1)
-        : DateTime.fromJSDate(date1);
-
-    const dt2 =
-      typeof date2 === 'string'
-        ? DateTime.fromSQL(date2)
-        : DateTime.fromJSDate(date2);
-
+    const dt1 = this.parseInput(date1, {});
+    const dt2 = this.parseInput(date2, {});
     return Math.abs(dt1.diff(dt2, unit).get(unit));
   }
 
-  /**
-   * Checks if the given input is a valid date.
-   * If input is a string, it will be parsed as a SQL date string.
-   * If input is a Date object, it will be converted to a Luxon DateTime object.
-   * @param input - The input to check.
-   * @returns True if the input is a valid date, false otherwise.
-   */
+  /** Checks whether a value is a strict, in-range date. */
   public static isValid(input: string | Date): boolean {
     try {
-      const dateTime =
-        typeof input === 'string'
-          ? DateTime.fromSQL(input)
-          : DateTime.fromJSDate(input);
-
-      return dateTime.isValid;
+      this.parseInput(input, {});
+      return true;
     } catch {
       return false;
     }
   }
 
-  /**
-   * Returns the current datetime in the specified format and timezone.
-   * @param format - The format to use for the datetime string. Defaults to 'yyyy-MM-dd HH:mm:ss'.
-   * @param timeZone - The timezone to use for the datetime. If not specified, the local timezone will be used.
-   * @returns The current datetime as a string in the specified format and timezone.
-   */
+  /** Returns the current datetime in the requested format and timezone. */
   public static now(
-    format: string = this.DEFAULT_DATETIME_TZ_FORMAT,
+    format: string = this.DEFAULT_TIMESTAMP_FORMAT,
     timeZone?: string
   ): string {
     const dateTime = timeZone
       ? DateTime.now().setZone(timeZone)
       : DateTime.now();
-
+    this.assertValidDateTime(dateTime);
     return dateTime.toFormat(format);
+  }
+
+  private static parseInput(
+    input: string | Date,
+    options: IDateTimeZoneOptions
+  ): DateTime {
+    let dateTime: DateTime;
+
+    if (typeof input === 'string') {
+      const normalizedInput = input.trim();
+      if (!this.STRICT_SQL_OR_ISO_PATTERN.test(normalizedInput)) {
+        throw new ServerError(`Invalid date syntax: ${input}`);
+      }
+      if (
+        options.requireZone === true &&
+        !this.EXPLICIT_ZONE_PATTERN.test(normalizedInput)
+      ) {
+        throw new ServerError(
+          'Zoned date strings must end in Z or a numeric UTC offset'
+        );
+      }
+      this.assertValidNumericOffset(normalizedInput);
+
+      const parseOptions = {
+        setZone: true,
+        zone: options.sourceZone ?? 'local',
+      } as const;
+      dateTime = normalizedInput.includes('T')
+        ? DateTime.fromISO(normalizedInput, parseOptions)
+        : DateTime.fromSQL(normalizedInput, parseOptions);
+    } else if (input instanceof Date) {
+      dateTime = DateTime.fromJSDate(input);
+    } else {
+      throw new ServerError('Invalid date value');
+    }
+
+    this.assertValidDateTime(dateTime);
+
+    if (options.targetZone) {
+      dateTime = dateTime.setZone(options.targetZone);
+      this.assertValidDateTime(dateTime);
+    }
+
+    return dateTime;
+  }
+
+  private static assertValidDateTime(dateTime: DateTime): void {
+    if (!dateTime.isValid) {
+      throw new ServerError(
+        `Invalid date: ${dateTime.invalidReason ?? 'unknown reason'}`
+      );
+    }
+  }
+
+  /**
+   * Luxon accepts and normalizes offsets such as `+24:00` and `+99:99`.
+   * Reject them before parsing so Oracle temporal inputs stay inside the
+   * supported numeric offset range.
+   */
+  private static assertValidNumericOffset(input: string): void {
+    if (!this.EXPLICIT_ZONE_PATTERN.test(input) || /Z$/i.test(input)) return;
+
+    const offset = /([+-])(\d{2})(?::?(\d{2}))?$/.exec(input);
+    if (!offset) return;
+
+    const hours = Number(offset[2]);
+    const minutes = Number(offset[3] ?? 0);
+    if (hours > 14 || minutes >= 60 || (hours === 14 && minutes !== 0)) {
+      throw new ServerError(`Invalid numeric UTC offset: ${offset[0]}`);
+    }
+  }
+
+  private static normalizeZoneOptions(
+    options: IDateTimeZoneOptions | TLegacyLocalZoneOption
+  ): IDateTimeZoneOptions {
+    if (typeof options === 'boolean') {
+      return options ? { targetZone: 'local' } : {};
+    }
+    return options;
+  }
+
+  private static errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

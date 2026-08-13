@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DatabaseInitializerBase } from '../../src/core/database-initializer-base.js';
+import { NotifyBase } from '../../src/core/notify-base.js';
 import type {
   IBaseConfig,
   IModuleLoggerConfig,
@@ -167,6 +168,7 @@ describe('DatabaseInitializerBase TypeORM logger config', (): void => {
 describe('DatabaseInitializerBase session time zone config', (): void => {
   it('passes sessionTimeZone to PostgreSQL connection options', async (): Promise<void> => {
     const previousPgTz = process.env.PGTZ;
+    process.env.PGTZ = 'America/New_York';
 
     try {
       const options = await getPostgresConnectionOptions({
@@ -191,7 +193,7 @@ describe('DatabaseInitializerBase session time zone config', (): void => {
         (options.replication?.slaves[0] as PostgresConnectionOptions)
           .sessionTimeZone
       ).toBe('Europe/Moscow');
-      expect(process.env.PGTZ).toBe('Europe/Moscow');
+      expect(process.env.PGTZ).toBe('America/New_York');
     } finally {
       restoreEnvValue('PGTZ', previousPgTz);
     }
@@ -199,6 +201,7 @@ describe('DatabaseInitializerBase session time zone config', (): void => {
 
   it('passes sessionTimeZone to Oracle connection options', async (): Promise<void> => {
     const previousOraSdtz = process.env.ORA_SDTZ;
+    process.env.ORA_SDTZ = 'America/New_York';
 
     try {
       const options = await getOracleConnectionOptions({
@@ -222,7 +225,7 @@ describe('DatabaseInitializerBase session time zone config', (): void => {
         (options.replication?.slaves[0] as OracleConnectionOptions)
           .sessionTimeZone
       ).toBe('+03:00');
-      expect(process.env.ORA_SDTZ).toBe('+03:00');
+      expect(process.env.ORA_SDTZ).toBe('America/New_York');
     } finally {
       restoreEnvValue('ORA_SDTZ', previousOraSdtz);
     }
@@ -281,4 +284,53 @@ describe('DatabaseInitializerBase query timeout config', (): void => {
       ).toBeUndefined();
     }
   );
+});
+
+describe('DatabaseInitializerBase rollback reset', (): void => {
+  it('recreates DataSource and adapter after a real NotifyBase is destroyed', async (): Promise<void> => {
+    const initializer = new DatabaseInitializerBase(
+      {
+        type: 'postgres',
+        master: {
+          host: 'localhost',
+          port: 5432,
+          database: 'db',
+          username: 'user',
+          password: 'pass',
+        },
+        poolSize: 1,
+        parseInt8AsBigInt: false,
+      },
+      { module: createLogger() }
+    );
+    const initDataSource = (): Promise<void> =>
+      (
+        initializer as unknown as { initDataSource(): Promise<void> }
+      ).initDataSource();
+
+    await initDataSource();
+    const firstDataSource = initializer.appDataSource;
+    const firstAdapter = initializer.databaseAdapter;
+    const firstNotifyBase = new NotifyBase(
+      firstAdapter,
+      {
+        fetchProcedureListWithArguments: (): Promise<void> => Promise.resolve(),
+      } as never,
+      createLogger()
+    );
+    await firstNotifyBase.destroy();
+
+    initializer.resetAfterFailedInitialization();
+    expect(() => initializer.appDataSource).toThrow(
+      'DataSource is not initialized'
+    );
+    expect(() => initializer.databaseAdapter).toThrow(
+      'Database adapter is not initialized'
+    );
+
+    await initDataSource();
+    expect(initializer.appDataSource).not.toBe(firstDataSource);
+    expect(initializer.databaseAdapter).not.toBe(firstAdapter);
+    await initializer.databaseAdapter.destroyNotifications();
+  });
 });

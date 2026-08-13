@@ -16,9 +16,13 @@ permissions:
 
 jobs:
   test:
-    name: Typecheck, lint, and test
+    name: Node ${{ matrix.node-version }} — typecheck, lint, test, package
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -26,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
@@ -39,12 +43,43 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: vitest-junit-report
+          name: vitest-junit-report-node-${{ matrix.node-version }}
           path: reports/vitest/junit.xml
           if-no-files-found: ignore
 
+  package-consumer:
+    name: Tarball consumer — Node ${{ matrix.node-version }} — ${{ matrix.scenario }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
+        scenario: [vendor-neutral, postgres, oracle, nest10, nest11]
+    env:
+      PROCEDURE_KIT_CONSUMER_SCENARIO: ${{ matrix.scenario }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install build dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build package
+        run: npm run clean && npm run build:esm && npm run build:cjs
+
+      - name: Verify isolated package consumer
+        run: npm run check:package-consumer
+
   integration:
-    name: Integration tests
+    name: Critical PostgreSQL and Oracle integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: test
@@ -103,6 +138,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Assert integration tests are required
+        run: test "$RUN_INTEGRATION_TESTS" = '1'
 
       - name: Run integration tests
         run: npx vitest run test/integration --reporter=default --reporter=junit --outputFile.junit=reports/vitest/integration-junit.xml

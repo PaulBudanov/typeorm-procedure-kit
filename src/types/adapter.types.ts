@@ -28,6 +28,8 @@ import type {
 import type { IColumnNameTransformStrategy } from './strategy.types.js';
 import type {
   IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
   ISqlBindingsObjectReturn,
 } from './utility.types.js';
 
@@ -70,6 +72,21 @@ export interface IDatabaseAdapterContract<
     bindings?: IBindingsObjectReturn['bindings'],
     cursorsNames?: Array<string>
   ): Promise<Awaited<Array<T>>>;
+  /**
+   * Executes a stored procedure and preserves both cursor rows and scalar OUT
+   * bindings in a stable result envelope.
+   */
+  executeProcedure<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
+    sql: string,
+    client: EntityManager,
+    optionsCommands: Array<string>,
+    bindings?: IBindingsObjectReturn['bindings'],
+    cursorsNames?: Array<string>,
+    outBindings?: Array<IProcedureOutBinding>
+  ): Promise<IProcedureResult<TRow, TOut>>;
   /**
    * Builds vendor-specific SQL for loading procedure metadata.
    */

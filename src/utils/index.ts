@@ -24,6 +24,7 @@ export { safeStringify } from './safe-stringify.js';
 
 // formatter utils
 export { DateFormatter } from './date-formatter.js';
+export type { IDateTimeZoneOptions } from './date-formatter.js';
 
 // Database Naming cache
 export { DatabaseNamingCache } from './database-naming-cache.js';

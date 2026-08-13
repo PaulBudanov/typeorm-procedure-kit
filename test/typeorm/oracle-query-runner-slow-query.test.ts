@@ -24,6 +24,7 @@ function createQueryRunner(
     connection: dataSource,
     options,
     oracle: { OUT_FORMAT_OBJECT: 1 },
+    getFetchTypeHandler: vi.fn().mockReturnValue(undefined),
     obtainMasterConnection: vi.fn().mockResolvedValue(oracleConnection),
   };
   Object.assign(dataSource, { driver });

@@ -64,7 +64,27 @@ async function createOracleProcedureFixture(
         PROCEDURE ECHO_VALUES(
           P_VALUE IN NUMBER,
           P_LABEL IN VARCHAR2,
-          OUT_CURSOR OUT SYS_REFCURSOR
+          P_COUNT IN OUT NUMBER,
+          OUT_DATE OUT DATE,
+          OUT_TIMESTAMP OUT TIMESTAMP,
+          OUT_TSTZ OUT TIMESTAMP WITH TIME ZONE,
+          OUT_TSLTZ OUT TIMESTAMP WITH LOCAL TIME ZONE,
+          OUT_CURSOR OUT SYS_REFCURSOR,
+          OUT_SECOND_CURSOR OUT SYS_REFCURSOR
+        );
+        PROCEDURE ECHO_TEMPORALS(
+          P_DATE_IN IN DATE,
+          P_TIMESTAMP_IN IN TIMESTAMP,
+          P_TSTZ_IN IN TIMESTAMP WITH TIME ZONE,
+          P_TSLTZ_IN IN TIMESTAMP WITH LOCAL TIME ZONE,
+          OUT_DATE OUT DATE,
+          OUT_TIMESTAMP OUT TIMESTAMP,
+          OUT_TSTZ OUT TIMESTAMP WITH TIME ZONE,
+          OUT_TSLTZ OUT TIMESTAMP WITH LOCAL TIME ZONE,
+          P_DATE_IN_OUT IN OUT DATE,
+          P_TIMESTAMP_IN_OUT IN OUT TIMESTAMP,
+          P_TSTZ_IN_OUT IN OUT TIMESTAMP WITH TIME ZONE,
+          P_TSLTZ_IN_OUT IN OUT TIMESTAMP WITH LOCAL TIME ZONE
         );
       END ${procedurePackage.toUpperCase()};
     `);
@@ -73,12 +93,84 @@ async function createOracleProcedureFixture(
         PROCEDURE ECHO_VALUES(
           P_VALUE IN NUMBER,
           P_LABEL IN VARCHAR2,
-          OUT_CURSOR OUT SYS_REFCURSOR
+          P_COUNT IN OUT NUMBER,
+          OUT_DATE OUT DATE,
+          OUT_TIMESTAMP OUT TIMESTAMP,
+          OUT_TSTZ OUT TIMESTAMP WITH TIME ZONE,
+          OUT_TSLTZ OUT TIMESTAMP WITH LOCAL TIME ZONE,
+          OUT_CURSOR OUT SYS_REFCURSOR,
+          OUT_SECOND_CURSOR OUT SYS_REFCURSOR
         ) AS
         BEGIN
+          P_COUNT := P_COUNT + 1;
+          OUT_DATE := TO_DATE(
+            '2026-07-16 12:30:45',
+            'YYYY-MM-DD HH24:MI:SS'
+          );
+          OUT_TIMESTAMP := TIMESTAMP '2026-07-16 12:30:45.123456';
+          OUT_TSTZ := TO_TIMESTAMP_TZ(
+            '2026-07-16 12:30:45.123456 +03:00',
+            'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'
+          );
+          OUT_TSLTZ := CAST(
+            TO_TIMESTAMP_TZ(
+              '2026-07-16 12:30:45.123456 +03:00',
+              'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'
+            ) AS TIMESTAMP WITH LOCAL TIME ZONE
+          );
           OPEN OUT_CURSOR FOR
-            SELECT P_VALUE + 1 AS result, P_LABEL AS label FROM dual;
+            SELECT
+              P_VALUE + 1 AS result,
+              P_LABEL AS label,
+              'first' AS source,
+              TO_DATE(
+                '2026-07-16 12:30:45',
+                'YYYY-MM-DD HH24:MI:SS'
+              ) AS cursor_date,
+              TIMESTAMP '2026-07-16 12:30:45.123456' AS cursor_timestamp,
+              TO_TIMESTAMP_TZ(
+                '2026-07-16 12:30:45.123456 +03:00',
+                'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'
+              ) AS cursor_tstz,
+              CAST(
+                TO_TIMESTAMP_TZ(
+                  '2026-07-16 12:30:45.123456 +03:00',
+                  'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'
+                ) AS TIMESTAMP WITH LOCAL TIME ZONE
+              ) AS cursor_tsltz
+            FROM dual;
+          OPEN OUT_SECOND_CURSOR FOR
+            SELECT
+              P_VALUE + 2 AS result,
+              P_LABEL AS label,
+              'second' AS source
+            FROM dual;
         END ECHO_VALUES;
+        PROCEDURE ECHO_TEMPORALS(
+          P_DATE_IN IN DATE,
+          P_TIMESTAMP_IN IN TIMESTAMP,
+          P_TSTZ_IN IN TIMESTAMP WITH TIME ZONE,
+          P_TSLTZ_IN IN TIMESTAMP WITH LOCAL TIME ZONE,
+          OUT_DATE OUT DATE,
+          OUT_TIMESTAMP OUT TIMESTAMP,
+          OUT_TSTZ OUT TIMESTAMP WITH TIME ZONE,
+          OUT_TSLTZ OUT TIMESTAMP WITH LOCAL TIME ZONE,
+          P_DATE_IN_OUT IN OUT DATE,
+          P_TIMESTAMP_IN_OUT IN OUT TIMESTAMP,
+          P_TSTZ_IN_OUT IN OUT TIMESTAMP WITH TIME ZONE,
+          P_TSLTZ_IN_OUT IN OUT TIMESTAMP WITH LOCAL TIME ZONE
+        ) AS
+        BEGIN
+          OUT_DATE := P_DATE_IN;
+          OUT_TIMESTAMP := P_TIMESTAMP_IN;
+          OUT_TSTZ := P_TSTZ_IN;
+          OUT_TSLTZ := P_TSLTZ_IN;
+          P_DATE_IN_OUT := P_DATE_IN_OUT + (2 / 86400);
+          P_TIMESTAMP_IN_OUT :=
+            P_TIMESTAMP_IN_OUT + NUMTODSINTERVAL(2, 'SECOND');
+          P_TSTZ_IN_OUT := P_TSTZ_IN_OUT + NUMTODSINTERVAL(2, 'SECOND');
+          P_TSLTZ_IN_OUT := P_TSLTZ_IN_OUT + NUMTODSINTERVAL(2, 'SECOND');
+        END ECHO_TEMPORALS;
       END ${procedurePackage.toUpperCase()};
     `);
   });
@@ -270,6 +362,8 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
       ...settings!,
       config: {
         ...settings!.config,
+        isNeedRegisterDefaultSerializers: true,
+        sessionTimeZone: 'UTC',
         packagesSettings: {
           packages: [procedurePackage],
           procedureObjectList: {
@@ -282,18 +376,193 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
     try {
       await kit.initDatabase();
 
-      const rows = await kit.call<{ result: number; label: string }>(
-        `${procedurePackage}.echo_values`,
-        {
-          value: 41,
-          label: 'procedure',
-        }
-      );
+      const result = await kit.call<{
+        result: number;
+        label: string;
+        source: string;
+        cursorDate?: string;
+        cursorTimestamp?: string;
+        cursorTstz?: string;
+        cursorTsltz?: string;
+      }>(`${procedurePackage}.echo_values`, {
+        value: 41,
+        label: 'procedure',
+        count: 5,
+      });
 
-      expect(rows).toEqual([{ result: 42, label: 'procedure' }]);
+      expect(result).toEqual({
+        rows: [
+          {
+            result: 42,
+            label: 'procedure',
+            source: 'first',
+            cursorDate: '2026-07-16 12:30:45',
+            cursorTimestamp: '2026-07-16 12:30:45.123',
+            cursorTstz: '2026-07-16T09:30:45.123Z',
+            cursorTsltz: '2026-07-16T09:30:45.123Z',
+          },
+          { result: 43, label: 'procedure', source: 'second' },
+        ],
+        outBinds: {
+          p_count: 6,
+          out_date: '2026-07-16 12:30:45',
+          out_timestamp: '2026-07-16 12:30:45.123',
+          out_tstz: '2026-07-16T09:30:45.123Z',
+          out_tsltz: '2026-07-16T09:30:45.123Z',
+          out_cursor: [
+            {
+              result: 42,
+              label: 'procedure',
+              source: 'first',
+              cursorDate: '2026-07-16 12:30:45',
+              cursorTimestamp: '2026-07-16 12:30:45.123',
+              cursorTstz: '2026-07-16T09:30:45.123Z',
+              cursorTsltz: '2026-07-16T09:30:45.123Z',
+            },
+          ],
+          out_second_cursor: [
+            { result: 43, label: 'procedure', source: 'second' },
+          ],
+        },
+      });
     } finally {
       await kit.destroy();
       await dropOracleProcedureFixture(settings!);
+    }
+  });
+
+  it('binds Oracle temporal IN, OUT, and IN OUT procedure arguments', async (): Promise<void> => {
+    await createOracleProcedureFixture(settings!);
+
+    const kit = new TypeOrmProcedureKit({
+      ...settings!,
+      config: {
+        ...settings!.config,
+        isNeedRegisterDefaultSerializers: true,
+        sessionTimeZone: 'UTC',
+        packagesSettings: {
+          packages: [procedurePackage],
+          procedureObjectList: {
+            echoTemporals: `${procedurePackage}.echo_temporals`,
+          },
+        },
+      },
+    });
+    const input = new Date('2026-07-16T12:30:45.678Z');
+
+    try {
+      await kit.initDatabase();
+
+      const result = await kit.call<
+        never,
+        {
+          date_in: Date;
+          timestamp_in: Date;
+          tstz_in: Date;
+          tsltz_in: Date;
+          date_in_out: Date;
+          timestamp_in_out: Date;
+          tstz_in_out: Date;
+          tsltz_in_out: Date;
+        },
+        {
+          out_date: string;
+          out_timestamp: string;
+          out_tstz: string;
+          out_tsltz: string;
+          p_date_in_out: string;
+          p_timestamp_in_out: string;
+          p_tstz_in_out: string;
+          p_tsltz_in_out: string;
+        }
+      >(`${procedurePackage}.echo_temporals`, {
+        date_in: input,
+        timestamp_in: input,
+        tstz_in: input,
+        tsltz_in: input,
+        date_in_out: input,
+        timestamp_in_out: input,
+        tstz_in_out: input,
+        tsltz_in_out: input,
+      });
+
+      expect(result).toEqual({
+        rows: [],
+        outBinds: {
+          out_date: '2026-07-16 12:30:45',
+          out_timestamp: '2026-07-16 12:30:45.678',
+          out_tstz: '2026-07-16T12:30:45.678Z',
+          out_tsltz: '2026-07-16T12:30:45.678Z',
+          p_date_in_out: '2026-07-16 12:30:47',
+          p_timestamp_in_out: '2026-07-16 12:30:47.678',
+          p_tstz_in_out: '2026-07-16T12:30:47.678Z',
+          p_tsltz_in_out: '2026-07-16T12:30:47.678Z',
+        },
+      });
+    } finally {
+      await kit.destroy();
+      await dropOracleProcedureFixture(settings!);
+    }
+  });
+
+  it('serializes all Oracle temporal fetch types in a UTC session', async (): Promise<void> => {
+    const kit = new TypeOrmProcedureKit({
+      ...settings!,
+      config: {
+        ...settings!.config,
+        isNeedRegisterDefaultSerializers: true,
+        sessionTimeZone: 'UTC',
+      },
+    });
+
+    try {
+      await kit.initDatabase();
+
+      const rows = await kit.callSqlTransaction<{
+        date_value: string;
+        timestamp_value: string;
+        timestamp_tz_value: string;
+        timestamp_ltz_value: string;
+      }>(
+        `
+          SELECT
+            TO_DATE(
+              '2026-07-16 12:30:45',
+              'YYYY-MM-DD HH24:MI:SS'
+            ) AS date_value,
+            TIMESTAMP '2026-07-16 12:30:45.123456' AS timestamp_value,
+            TO_TIMESTAMP_TZ(
+              '2026-07-16 12:30:45.123456 +03:00',
+              'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'
+            ) AS timestamp_tz_value,
+            CAST(
+              TO_TIMESTAMP_TZ(
+                '2026-07-16 12:30:45.123456 +03:00',
+                'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'
+              ) AS TIMESTAMP WITH LOCAL TIME ZONE
+            ) AS timestamp_ltz_value
+          FROM dual
+        `,
+        undefined,
+        {
+          optionsCommands: [
+            "ALTER SESSION SET NLS_DATE_FORMAT = 'DD/MM/RR'",
+            "ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'DD-MON-RR HH24:MI:SSXFF'",
+            "ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'DD-MON-RR HH24:MI:SSXFF TZH:TZM'",
+          ],
+        }
+      );
+
+      expect(rows).toEqual([
+        {
+          date_value: '2026-07-16 12:30:45',
+          timestamp_value: '2026-07-16 12:30:45.123',
+          timestamp_tz_value: '2026-07-16T09:30:45.123Z',
+          timestamp_ltz_value: '2026-07-16T09:30:45.123Z',
+        },
+      ]);
+    } finally {
+      await kit.destroy();
     }
   });
 
@@ -376,11 +645,24 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
       await dataSource.initialize();
       await createOracleQueryBuilderFixture(dataSource);
 
-      await dataSource
+      const insertResult = await dataSource
+        .createQueryBuilder()
+        .insert()
+        .into(IntegrationAuditLogEntity)
+        .values({
+          id: 4,
+          status: 'inserted',
+          updatedAt: new Date('2026-01-04T00:00:00.456Z'),
+          version: 1,
+        })
+        .returning(['ID', 'STATUS', 'UPDATED_AT'])
+        .execute();
+      const updateResult = await dataSource
         .createQueryBuilder()
         .update(IntegrationAuditLogEntity)
         .set({ status: 'processed' })
         .where('ID = :id', { id: 1 })
+        .returning(['STATUS', 'ROW_VERSION'])
         .execute();
       await dataSource
         .createQueryBuilder()
@@ -388,12 +670,39 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
         .from(IntegrationAuditLogEntity)
         .where('ID = :id', { id: 2 })
         .execute();
-      await dataSource
+      const deleteResult = await dataSource
         .createQueryBuilder()
         .delete()
         .from(IntegrationAuditLogEntity)
         .where('ID = :id', { id: 3 })
+        .returning(['ID', 'STATUS'])
         .execute();
+
+      const flattenReturnedValues = (raw: unknown): Array<unknown> => {
+        if (!Array.isArray(raw)) return [raw];
+        const rawValues = raw as Array<unknown>;
+        const returnedValues: Array<unknown> = [];
+        for (const value of rawValues) {
+          if (Array.isArray(value)) {
+            const nestedValues = value as Array<unknown>;
+            for (const nestedValue of nestedValues)
+              returnedValues.push(nestedValue);
+          } else {
+            returnedValues.push(value);
+          }
+        }
+        return returnedValues;
+      };
+      const insertedValues = flattenReturnedValues(insertResult.raw);
+      const updatedValues = flattenReturnedValues(updateResult.raw);
+      const deletedValues = flattenReturnedValues(deleteResult.raw);
+      expect(insertedValues).toContain('inserted');
+      expect(insertedValues.map(Number)).toContain(4);
+      expect(insertedValues.some((value) => value instanceof Date)).toBe(true);
+      expect(updatedValues).toContain('processed');
+      expect(updatedValues.map(Number)).toContain(2);
+      expect(deletedValues).toContain('stale');
+      expect(deletedValues.map(Number)).toContain(3);
 
       const rows = await dataSource.query<
         Array<{
@@ -412,7 +721,7 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
         ORDER BY ID
       `);
 
-      expect(rows).toHaveLength(2);
+      expect(rows).toHaveLength(3);
       expect(rows[0]).toMatchObject({
         id: 1,
         status: 'processed',
@@ -425,6 +734,43 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
         row_version: 2,
       });
       expect(rows[1]?.deleted_at).toBeInstanceOf(Date);
+      expect(rows[2]).toMatchObject({
+        id: 4,
+        status: 'inserted',
+        deleted_at: null,
+        row_version: 1,
+      });
+    } finally {
+      if (dataSource.isInitialized) {
+        await dropOracleQueryBuilderFixture(dataSource);
+        await dataSource.destroy();
+      }
+    }
+  });
+
+  it('persists and hydrates a temporal entity through a real Oracle repository', async (): Promise<void> => {
+    const dataSource = createOracleQueryBuilderDataSource(settings!);
+    const createdAt = new Date('2026-01-05T12:30:45.678Z');
+
+    try {
+      await dataSource.initialize();
+      await createOracleQueryBuilderFixture(dataSource);
+
+      const repository = dataSource.getRepository(
+        IntegrationMessageAuditEntity
+      );
+      await repository.save(
+        repository.create({
+          id: 99,
+          messageUuid: 'm-1',
+          createdAt,
+        })
+      );
+
+      const hydrated = await repository.findOneByOrFail({ id: 99 });
+      expect(hydrated).toBeInstanceOf(IntegrationMessageAuditEntity);
+      expect(hydrated.createdAt).toBeInstanceOf(Date);
+      expect(hydrated.createdAt.getTime()).toBe(createdAt.getTime());
     } finally {
       if (dataSource.isInitialized) {
         await dropOracleQueryBuilderFixture(dataSource);

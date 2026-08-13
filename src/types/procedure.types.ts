@@ -1,9 +1,13 @@
+export type TProcedureArgumentMode = 'IN' | 'OUT' | 'IN/OUT';
+
 export interface IProcedureArgumentBase {
   procedureName: string;
   argumentName: string;
   argumentType: string;
   order: number;
-  mode: string;
+  mode: TProcedureArgumentMode;
+  /** Maximum bind size reported by database metadata, when available. */
+  size?: number;
 }
 
 /**

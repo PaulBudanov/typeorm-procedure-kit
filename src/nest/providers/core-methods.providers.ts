@@ -19,6 +19,7 @@ import type {
   TProcedurePayload,
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
+import type { IProcedureResult } from '../../types/utility.types.js';
 import {
   CALL_PROCEDURE,
   CALL_SQL,
@@ -35,12 +36,20 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   {
     provide: CALL_PROCEDURE,
     useFactory: (service: TypeOrmProcedureKitNestService): TCallProcedure => {
-      return <T, U extends TProcedurePayload = TProcedurePayload>(
+      return <
+        TRow,
+        TPayload extends TProcedurePayload = TProcedurePayload,
+        TOut extends Record<string, unknown> = Record<string, unknown>,
+      >(
         executeString: string,
-        params?: TProcedurePayloadInput<U>,
+        params?: TProcedurePayloadInput<TPayload>,
         executionOptions?: IExecutionOptions
-      ): Promise<Array<T>> =>
-        service.call<T, U>(executeString, params, executionOptions);
+      ): Promise<IProcedureResult<TRow, TOut>> =>
+        service.call<TRow, TPayload, TOut>(
+          executeString,
+          params,
+          executionOptions
+        );
     },
     inject: [TypeOrmProcedureKitNestService],
   },

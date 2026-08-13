@@ -1,4 +1,5 @@
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { PostgresDriver } from '../../typeorm/driver/postgres/PostgresDriver.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
@@ -10,6 +11,8 @@ import type {
 } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
@@ -27,6 +30,29 @@ export class PostgreAdapter extends DatabaseAdapter<
   PostgreConnection
 > {
   private refCursorType = 'refcursor' as const;
+
+  public override registerFetchHandlerHook(): void {
+    super.registerFetchHandlerHook();
+    const driver = this.appDataSource.driver as unknown;
+    if (
+      driver === null ||
+      typeof driver !== 'object' ||
+      !('configureResultHandling' in driver) ||
+      typeof driver.configureResultHandling !== 'function'
+    ) {
+      throw new ServerError(
+        'PostgreSQL DataSource driver does not support instance result handling'
+      );
+    }
+    const resultHandlingDriver = driver as Pick<
+      PostgresDriver,
+      'configureResultHandling'
+    >;
+    resultHandlingDriver.configureResultHandling(
+      this.serializer.getTypeOverrides(),
+      (rows, fields) => this.serializer.transformRows(rows, fields)
+    );
+  }
 
   public constructor(
     protected readonly appDataSource: DataSource,
@@ -82,25 +108,54 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param manager - entity manager that owns the active transaction.
    * @returns concatenated rows from all cursors.
    */
-  protected override async fetchAllCursors<T>(
+  protected override async createProcedureResult<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
     cursorsNames: Array<string>,
+    outBindings: Array<IProcedureOutBinding>,
     executeResult: {
       manager: EntityManager;
+      result?: unknown;
     }
-  ): Promise<Array<T>> {
-    let cursorResults: Array<T> = [];
-    await Promise.all(
-      cursorsNames.map(async (cursorName) => {
-        const cursorResult: Array<T> = await executeResult.manager.query<
-          Array<T>
-        >(`FETCH ALL IN ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`);
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    const rows: Array<TRow> = [];
+    const outBinds: Record<string, unknown> = {};
+    const rawResult: unknown = executeResult.result;
+    const firstResult: unknown = Array.isArray(rawResult)
+      ? (rawResult as Array<unknown>)[0]
+      : undefined;
+    const scalarRecord =
+      firstResult !== null && typeof firstResult === 'object'
+        ? (firstResult as Record<string, unknown>)
+        : {};
+
+    for (const outBinding of outBindings) {
+      const outName = outBinding.name;
+      const outputName =
+        this.handlerOptions.caseStrategy.transformColumnName(outName);
+      if (!cursorsNames.includes(outName)) {
+        const rawKey =
+          Object.keys(scalarRecord).find(
+            (key) =>
+              key.toLowerCase() === outName.toLowerCase() || key === outputName
+          ) ?? outName;
+        outBinds[outputName] = scalarRecord[rawKey];
+        continue;
+      }
+      const cursorResult = await executeResult.manager.query<Array<TRow>>(
+        `FETCH ALL IN ${SqlIdentifier.quotePostgresIdentifier(outName)}`
+      );
+      try {
+        outBinds[outputName] = cursorResult;
+        for (const row of cursorResult) rows.push(row);
+      } finally {
         await executeResult.manager.query(
-          `CLOSE ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`
+          `CLOSE ${SqlIdentifier.quotePostgresIdentifier(outName)}`
         );
-        cursorResults = cursorResults.concat(cursorResult);
-      })
-    );
-    return cursorResults;
+      }
+    }
+    return { rows, outBinds: this.asProcedureOut<TOut>(outBinds) };
   }
 
   /**
@@ -137,7 +192,16 @@ export class PostgreAdapter extends DatabaseAdapter<
     const processBindings = (payload?: U): IBindingsObjectReturn => {
       const bindings: Array<unknown> = [];
       const cursorsNames: Array<string> = [];
+      const outBindings: Array<IProcedureOutBinding> = [];
       functionParams.forEach((item, index) => {
+        if (item.mode !== 'IN') {
+          outBindings.push({
+            name: item.argumentName,
+            type:
+              item.argumentType === this.refCursorType ? 'cursor' : 'scalar',
+            databaseType: item.argumentType,
+          });
+        }
         if (item.argumentType === this.refCursorType) {
           cursorsNames.push(item.argumentName);
           bindings.push(item.argumentName);
@@ -171,7 +235,13 @@ export class PostgreAdapter extends DatabaseAdapter<
       const paramExecuteString = `CALL ${SqlIdentifier.quotePostgresQualifiedIdentifier(
         [packageName, processName]
       )}(${paramInputString})`;
-      return { paramExecuteString, bindings, cursorsNames };
+      return {
+        paramExecuteString,
+        bindings,
+        cursorsNames,
+        outNames: outBindings.map(({ name }) => name),
+        outBindings,
+      };
     };
     if (TypeGuards.isNullOrUndefined(payload)) payload = {} as U;
     return processBindings(payload);

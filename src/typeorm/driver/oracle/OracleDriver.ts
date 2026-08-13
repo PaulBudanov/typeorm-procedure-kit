@@ -23,6 +23,7 @@ import { replaceNamedParameters } from '../../util/NamedParameterUtils.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import type { Driver } from '../Driver.js';
 import { DriverUtils } from '../DriverUtils.js';
+import { normalizeSessionTimeZone } from '../SessionTimeZone.js';
 import type { ColumnType } from '../types/ColumnTypes.js';
 import type { CteCapabilities } from '../types/CteCapabilities.js';
 import type { DataTypeDefaults } from '../types/DataTypeDefaults.js';
@@ -31,8 +32,96 @@ import type { ReplicationMode } from '../types/ReplicationMode.js';
 import type { UpsertType } from '../types/UpsertType.js';
 
 import type { OracleConnectionCredentialsOptions } from './OracleConnectionCredentialsOptions.js';
-import type { OracleConnectionOptions } from './OracleConnectionOptions.js';
+import type {
+  OracleConnectionOptions,
+  OracleThickModeOptions,
+} from './OracleConnectionOptions.js';
 import { OracleQueryRunner } from './OracleQueryRunner.js';
+
+interface OracleClientInitialization {
+  externallyInitialized: boolean;
+  fingerprint?: string;
+}
+
+const oracleClientInitializations = new WeakMap<
+  object,
+  OracleClientInitialization
+>();
+
+function normalizeThickModeOptions(thickMode: true | OracleThickModeOptions): {
+  fingerprint: string;
+  options?: OracleThickModeOptions;
+} {
+  if (thickMode === true) return { fingerprint: 'default' };
+
+  const normalizeDirectory = (value: string | undefined): string | undefined =>
+    value === undefined ? undefined : PlatformTools.pathResolve(value);
+  const options: OracleThickModeOptions = {
+    ...(thickMode.binaryDir === undefined
+      ? {}
+      : { binaryDir: normalizeDirectory(thickMode.binaryDir) }),
+    ...(thickMode.configDir === undefined
+      ? {}
+      : { configDir: normalizeDirectory(thickMode.configDir) }),
+    ...(thickMode.driverName === undefined
+      ? {}
+      : { driverName: thickMode.driverName }),
+    ...(thickMode.errorUrl === undefined
+      ? {}
+      : { errorUrl: thickMode.errorUrl }),
+    ...(thickMode.libDir === undefined
+      ? {}
+      : { libDir: normalizeDirectory(thickMode.libDir) }),
+  };
+  return { fingerprint: JSON.stringify(options), options };
+}
+
+function initializeOracleClient(
+  oracle: typeof oracledb,
+  thickMode: true | OracleThickModeOptions
+): void {
+  const oracleModule = oracle as object;
+  const previousInitialization = oracleClientInitializations.get(oracleModule);
+  const normalized = normalizeThickModeOptions(thickMode);
+
+  if (previousInitialization) {
+    if (
+      !previousInitialization.externallyInitialized &&
+      previousInitialization.fingerprint !== normalized.fingerprint
+    ) {
+      throw new TypeORMError(
+        'Oracle Client is already initialized with a different Thick mode configuration'
+      );
+    }
+    return;
+  }
+
+  const oracleLib = oracle as unknown as Record<string, unknown>;
+  if (oracleLib['thin'] === false) {
+    // node-oracledb exposes the active mode, but not the libDir/config used by
+    // an external initOracleClient() call, so compatibility cannot be checked.
+    oracleClientInitializations.set(oracleModule, {
+      externallyInitialized: true,
+    });
+    return;
+  }
+
+  const initOracleClient = oracleLib['initOracleClient'];
+  if (typeof initOracleClient !== 'function') {
+    throw new TypeORMError(
+      'Oracle driver does not expose initOracleClient for Thick mode'
+    );
+  }
+  const initialize = initOracleClient as (
+    options?: OracleThickModeOptions
+  ) => void;
+  if (normalized.options) initialize(normalized.options);
+  else initialize();
+  oracleClientInitializations.set(oracleModule, {
+    externallyInitialized: false,
+    fingerprint: normalized.fingerprint,
+  });
+}
 
 /**
  * Organizes communication with Oracle RDBMS.
@@ -71,6 +160,13 @@ export class OracleDriver implements Driver {
    * Connection options.
    */
   public options: OracleConnectionOptions;
+
+  /** Validated session time zone applied to every physical pool connection. */
+  public readonly sessionTimeZone: string;
+
+  private fetchTypeHandler?: NonNullable<
+    oracledb.ExecuteOptions['fetchTypeHandler']
+  >;
 
   /**
    * Database name used to perform all write queries.
@@ -271,11 +367,9 @@ export class OracleDriver implements Driver {
   public constructor(connection: DataSource) {
     this.connection = connection;
     this.options = connection.options as OracleConnectionOptions;
-
-    const sessionTimeZone = this.options.sessionTimeZone?.trim();
-    if (sessionTimeZone) {
-      process.env.ORA_SDTZ = sessionTimeZone;
-    }
+    this.sessionTimeZone = normalizeSessionTimeZone(
+      this.options.sessionTimeZone
+    );
     // load oracle package
     this.loadDependencies();
 
@@ -965,13 +1059,28 @@ export class OracleDriver implements Driver {
       case 'clob':
         return oracleLib['DB_TYPE_CLOB'];
       case 'date':
+        return oracleLib['DB_TYPE_DATE'];
       case 'timestamp':
-      case 'timestamp with time zone':
-      case 'timestamp with local time zone':
         return oracleLib['DB_TYPE_TIMESTAMP'];
+      case 'timestamp with time zone':
+        return oracleLib['DB_TYPE_TIMESTAMP_TZ'];
+      case 'timestamp with local time zone':
+        return oracleLib['DB_TYPE_TIMESTAMP_LTZ'];
       case 'json':
         return oracleLib['DB_TYPE_JSON'];
     }
+  }
+
+  public setFetchTypeHandler(
+    handler: NonNullable<oracledb.ExecuteOptions['fetchTypeHandler']>
+  ): void {
+    this.fetchTypeHandler = handler;
+  }
+
+  public getFetchTypeHandler():
+    | NonNullable<oracledb.ExecuteOptions['fetchTypeHandler']>
+    | undefined {
+    return this.fetchTypeHandler;
   }
 
   // -------------------------------------------------------------------------
@@ -991,14 +1100,7 @@ export class OracleDriver implements Driver {
     }
     const thickMode = this.options.thickMode;
     if (thickMode) {
-      const oracleLib = this.oracle as Record<string, unknown>;
-      if (typeof thickMode === 'object') {
-        (oracleLib['initOracleClient'] as (options?: unknown) => void)(
-          thickMode
-        );
-      } else {
-        (oracleLib['initOracleClient'] as () => void)();
-      }
+      initializeOracleClient(this.oracle, thickMode);
     }
   }
 
@@ -1050,6 +1152,18 @@ export class OracleDriver implements Driver {
       },
       {
         poolMax: options.poolSize,
+        sessionCallback: (
+          connection: oracledb.Connection,
+          _requestedTag: string,
+          callback: (error?: unknown) => void
+        ): void => {
+          void connection
+            .execute(
+              `ALTER SESSION SET TIME_ZONE = '${this.sessionTimeZone.replaceAll("'", "''")}'`
+            )
+            .then(() => callback())
+            .catch((error: unknown) => callback(error));
+        },
       }
     );
 

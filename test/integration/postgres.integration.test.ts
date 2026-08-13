@@ -58,13 +58,24 @@ async function createPostgresProcedureFixture(
       CREATE PROCEDURE "${procedureSchema}".echo_values(
         IN p_value integer,
         IN p_label text,
-        INOUT out_cursor refcursor
+        INOUT p_count integer,
+        INOUT out_cursor refcursor,
+        INOUT out_second_cursor refcursor
       )
       LANGUAGE plpgsql
       AS $$
       BEGIN
+        p_count := p_count + 1;
         OPEN out_cursor FOR
-          SELECT (p_value + 1)::integer AS result, p_label AS label;
+          SELECT
+            (p_value + 1)::integer AS result,
+            p_label AS label,
+            'first'::text AS source;
+        OPEN out_second_cursor FOR
+          SELECT
+            (p_value + 2)::integer AS result,
+            p_label AS label,
+            'second'::text AS source;
       END;
       $$;
     `);
@@ -224,15 +235,29 @@ describe.skipIf(!settings)('PostgreSQL integration', (): void => {
     try {
       await kit.initDatabase();
 
-      const rows = await kit.call<{ result: number; label: string }>(
-        `${procedureSchema}.echo_values`,
-        {
-          value: 41,
-          label: 'procedure',
-        }
-      );
+      const result = await kit.call<{
+        result: number;
+        label: string;
+        source: string;
+      }>(`${procedureSchema}.echo_values`, {
+        value: 41,
+        label: 'procedure',
+        count: 5,
+      });
 
-      expect(rows).toEqual([{ result: 42, label: 'procedure' }]);
+      expect(result).toEqual({
+        rows: [
+          { result: 42, label: 'procedure', source: 'first' },
+          { result: 43, label: 'procedure', source: 'second' },
+        ],
+        outBinds: {
+          p_count: 6,
+          out_cursor: [{ result: 42, label: 'procedure', source: 'first' }],
+          out_second_cursor: [
+            { result: 43, label: 'procedure', source: 'second' },
+          ],
+        },
+      });
     } finally {
       await kit.destroy();
       await dropPostgresProcedureFixture(settings!);

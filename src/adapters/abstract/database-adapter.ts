@@ -1,5 +1,3 @@
-import type oracledb from 'oracledb';
-
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type {
   IDatabaseAdapterContract,
@@ -24,6 +22,8 @@ import type {
 } from '../../types/serializer.types.js';
 import type {
   IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
@@ -85,6 +85,7 @@ export abstract class DatabaseAdapter<
           argumentType: item.argumentType,
           order: item.order,
           mode: item.mode,
+          ...(item.size === undefined ? {} : { size: item.size }),
         });
         acc[itemObjectNameToLowerCase].sort((a, b) => a.order - b.order);
 
@@ -112,7 +113,7 @@ export abstract class DatabaseAdapter<
     client: EntityManager,
     optionsCommands: Array<string>,
     bindings: IBindingsObjectReturn['bindings'] = [],
-    cursorsNames: Array<string> = []
+    _cursorsNames: Array<string> = []
   ): Promise<Awaited<Array<T>>> {
     return client.transaction(async (manager) => {
       const setupCommands = optionsCommands ?? [];
@@ -123,18 +124,39 @@ export abstract class DatabaseAdapter<
           this.logger
         );
       }
-      const result = await manager.query<
-        | Array<T | oracledb.ResultSet<T>>
-        | Record<string, T | oracledb.ResultSet<T>>
-      >(sql, bindings);
-      const isCursorResult =
-        result !== null &&
-        typeof result === 'object' &&
-        cursorsNames.length > 0;
-      if (isCursorResult) {
-        return this.fetchAllCursors<T>(cursorsNames, { result, manager });
+      return manager.query<Array<T>>(sql, bindings);
+    });
+  }
+
+  /**
+   * Executes a stored procedure inside a transaction and delegates vendor
+   * output-bind normalization to the concrete adapter.
+   */
+  public async executeProcedure<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
+    sql: string,
+    client: EntityManager,
+    optionsCommands: Array<string>,
+    bindings: IBindingsObjectReturn['bindings'] = [],
+    cursorsNames: Array<string> = [],
+    outBindings: Array<IProcedureOutBinding> = []
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    return client.transaction(async (manager) => {
+      const setupCommands = optionsCommands ?? [];
+      if (setupCommands.length > 0) {
+        await DatabaseOptionsExecutor.executeCommands(
+          setupCommands,
+          manager,
+          this.logger
+        );
       }
-      return result as Array<T>;
+      const result = await manager.query<unknown>(sql, bindings);
+      return this.createProcedureResult<TRow, TOut>(cursorsNames, outBindings, {
+        result,
+        manager,
+      });
     });
   }
 
@@ -178,23 +200,35 @@ export abstract class DatabaseAdapter<
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn;
 
-  //TODO: Add in the future support for another out bindings
   /**
-   * Reads all output cursors returned by a procedure call.
+   * Normalizes scalar and cursor output bindings returned by a procedure call.
    * @param cursorNames - output cursor names from procedure metadata.
    * @param result - raw driver result containing cursor handles when required.
    * @param manager - entity manager used by adapters that fetch cursors by SQL.
-   * @returns rows read from all cursors.
+   * @returns procedure result envelope.
    */
-  protected abstract fetchAllCursors<T>(
+  protected abstract createProcedureResult<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
     cursorNames: Array<string>,
+    outBindings: Array<IProcedureOutBinding>,
     executeResult: {
-      result?:
-        | Array<oracledb.ResultSet<T> | T>
-        | Record<string, oracledb.ResultSet<T> | T>;
-      manager?: EntityManager;
+      result?: unknown;
+      manager: EntityManager;
     }
-  ): Promise<Array<T>>;
+  ): Promise<IProcedureResult<TRow, TOut>>;
+
+  /**
+   * Narrows the adapter-owned output record at the single generic boundary.
+   * Runtime keys and values have already been normalized before this helper;
+   * the caller supplies the public TOut shape.
+   */
+  protected asProcedureOut<TOut extends Record<string, unknown>>(
+    value: Record<string, unknown>
+  ): TOut {
+    return value as TOut;
+  }
 
   /**
    * Registers or replaces a serializer for driver result values.

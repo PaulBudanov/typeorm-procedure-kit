@@ -78,10 +78,19 @@ export abstract class AsyncUtils {
     timeoutMs: number,
     timeoutMessage = 'Operation timeout'
   ): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new ServerError(timeoutMessage)), timeoutMs);
+      timeoutHandle = setTimeout(
+        () => reject(new ServerError(timeoutMessage)),
+        timeoutMs
+      );
+      timeoutHandle.unref?.();
     });
 
-    return Promise.race([fn(), timeoutPromise]);
+    try {
+      return await Promise.race([fn(), timeoutPromise]);
+    } finally {
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    }
   }
 }

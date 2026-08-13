@@ -35,6 +35,8 @@
   },
   "files": [
     "dist",
+    "!dist/*.tsbuildinfo",
+    "!dist/**/*.tsbuildinfo",
     "package.json",
     "docs",
     "CHANGELOG.md"
@@ -45,12 +47,15 @@
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
     "clean": "rm -rf dist",
+    "prepack": "node scripts/prepare-package-readme.mjs",
+    "postpack": "node scripts/cleanup-package-readme.mjs",
     "check": "npm run typecheck && npm run typecheck:test && npm run lint && npm run test && npm run check:runtime",
-    "check:runtime": "npm run clean && npm run build:esm && npm run build:cjs && npm run check:dist",
+    "check:runtime": "npm run clean && npm run build:esm && npm run build:cjs && npm run check:dist && npm run check:package-consumer",
     "check:dist": "npm run check:circular && npm run check:esm-imports && npm run check:cjs-imports",
     "check:circular": "madge --circular --extensions js dist/esm && madge --circular --extensions js dist/cjs",
     "check:esm-imports": "node --input-type=module -e \"await import('typeorm-procedure-kit'); await import('typeorm-procedure-kit/nestjs'); await import('typeorm-procedure-kit/typeorm'); await import('typeorm-procedure-kit/typeorm-extend')\"",
     "check:cjs-imports": "node -e \"require('typeorm-procedure-kit'); require('typeorm-procedure-kit/nestjs'); require('typeorm-procedure-kit/typeorm'); require('typeorm-procedure-kit/typeorm-extend')\"",
+    "check:package-consumer": "node scripts/check-package-consumer.mjs",
     "prepublishOnly": "npm run check:ci",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --no-error-on-unmatched-pattern",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --no-error-on-unmatched-pattern",
@@ -105,6 +110,9 @@
     "url": "https://github.com/PaulBudanov/typeorm-procedure-kit/issues"
   },
   "dependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/oracledb": "^7.0.1",
+    "@types/pg": "^8.16.0",
     "app-root-path": "^3.1.0",
     "dedent": "^1.7.1",
     "dotenv": "^17.3.1",
@@ -112,20 +120,17 @@
     "lodash": "^4.18.1",
     "lru-cache": "^11.2.7",
     "luxon": "^3.7.2",
-    "reflect-metadata": "^0.2.2"
+    "reflect-metadata": "^0.2.2",
+    "tslib": "^2.8.1"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
-    "@nestjs/core": "^11.1.18",
     "oracledb": "^6.0.0 || ^7.0.0",
     "pg": "^8.5.1",
     "pg-query-stream": "^4.12.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
-      "optional": true
-    },
-    "@nestjs/core": {
       "optional": true
     },
     "pg": {
@@ -141,7 +146,6 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nestjs/common": "^10.0.0 || ^11.0.0",
-    "@nestjs/core": "^11.1.18",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/git": "^10.0.1",
@@ -149,10 +153,7 @@
     "@semantic-release/npm": "^13.1.3",
     "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/lodash": "^4.17.24",
-    "@types/luxon": "^3.7.1",
     "@types/node": "^26.0.0",
-    "@types/oracledb": "^7.0.1",
-    "@types/pg": "^8.16.0",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
@@ -165,7 +166,6 @@
     "pg-query-stream": "^4.12.0",
     "prettier": "^3.8.4",
     "semantic-release": "^25.0.2",
-    "tslib": "^2.8.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.0",
     "vitest": "^4.1.5"

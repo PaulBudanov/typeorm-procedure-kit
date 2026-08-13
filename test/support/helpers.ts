@@ -30,6 +30,7 @@ export function createAdapterMock(
   return {
     sortArgumentsAlgorithm: vi.fn(),
     execute: vi.fn(),
+    executeProcedure: vi.fn(),
     generatePackageInfoSql: vi.fn(),
     makeSqlBindings: vi.fn(),
     makeBindings: vi.fn(),

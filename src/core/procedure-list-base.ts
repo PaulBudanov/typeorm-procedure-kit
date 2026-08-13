@@ -3,10 +3,11 @@ import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type {
   IProcedureArgumentBase,
+  TProcedureArgumentMode,
   TDBMapStructure,
+  TProcedureArgumentList,
 } from '../types/procedure.types.js';
-import { AsyncUtils } from '../utils/async-utils.js';
-import { procedureNameParser } from '../utils/procedure-name-parser.js';
+import { ProcedureNameParser } from '../utils/procedure-name-parser.js';
 import { ServerError } from '../utils/server-error.js';
 import { StringUtilities } from '../utils/string-utilities.js';
 
@@ -14,6 +15,15 @@ import type { ExecuteBase } from './execute-base.js';
 
 export class ProcedureListBase {
   public packagesWithProceduresList: TDBMapStructure = new Map();
+  private readonly procedureNameParser = new ProcedureNameParser();
+  private readonly retryTimers = new Map<
+    Lowercase<string>,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly activeFetchPromises = new Set<Promise<void>>();
+  private destroyPromise: Promise<void> | null = null;
+  private isDestroyed = false;
+  private static readonly RETRY_DELAY_MS = 1000 * 60 * 5;
 
   public constructor(
     private readonly logger: ILoggerModule,
@@ -25,39 +35,102 @@ export class ProcedureListBase {
   /**
    * Fetch procedure list with arguments from database
    * @param packageName - name of package in lowercase
-   * @param isRetry - flag to indicate if procedure call failed previously and should be retried
    * @returns Promise<void> - promise that resolves when procedure list is fetched
    */
-  public async fetchProcedureListWithArguments(
-    packageName: Lowercase<string>,
-    isRetry = false
+  public fetchProcedureListWithArguments(
+    packageName: Lowercase<string>
+  ): Promise<void> {
+    if (this.isDestroyed) {
+      return Promise.reject(new ServerError('ProcedureListBase is destroyed'));
+    }
+
+    const fetchPromise = this.fetchProcedureListInternal(packageName);
+    this.activeFetchPromises.add(fetchPromise);
+    const clearFetch = (): void => {
+      this.activeFetchPromises.delete(fetchPromise);
+    };
+    void fetchPromise.then(clearFetch, clearFetch);
+    return fetchPromise;
+  }
+
+  private async fetchProcedureListInternal(
+    packageName: Lowercase<string>
   ): Promise<void> {
     try {
       this.logger.log(
         `Package was changed: ${packageName.toUpperCase()} or init get package info from DB`
       );
 
-      this.packagesWithProceduresList.delete(packageName);
-      await this.callbackFetchProcedureList(packageName);
-      this.checkExistingProcedures(packageName);
+      const packageSnapshot = await this.fetchPackageSnapshot(packageName);
+      this.assertActive();
+      this.checkExistingProcedures(packageName, packageSnapshot);
+      this.assertActive();
+
+      const nextSnapshot = new Map(this.packagesWithProceduresList);
+      nextSnapshot.set(packageName, packageSnapshot);
+      this.packagesWithProceduresList = nextSnapshot;
+      this.procedureNameParser.clear();
+      this.clearRetryTimer(packageName);
     } catch (error: unknown) {
-      const errorMessage = (error as Error).message;
+      const metadataError = ServerError.ENSURE_SERVER_ERROR({ error });
+      const errorMessage = metadataError.message;
       this.logger.error(
         `Error fetching procedure list with arguments: ${errorMessage}`
       );
 
-      if (isRetry) {
-        throw new ServerError(
-          `Failed to fetch procedure list with arguments for package ${packageName}: ${errorMessage}`
-        );
-      }
-
-      this.logger.warn(
-        'Retrying fetching procedure list with arguments in 5 minutes'
+      if (!this.isDestroyed) this.scheduleRetry(packageName);
+      throw new ServerError(
+        `Failed to fetch procedure list with arguments for package ${packageName}: ${errorMessage}`,
+        error,
+        { cause: error }
       );
-      await AsyncUtils.delay(1000 * 60 * 5);
-      await this.fetchProcedureListWithArguments(packageName, true);
     }
+  }
+
+  private assertActive(): void {
+    if (this.isDestroyed)
+      throw new ServerError('ProcedureListBase is destroyed');
+  }
+
+  /** Parses a procedure name using the cache owned by this metadata registry. */
+  public parseProcedureName(
+    executeString: string,
+    packages: Array<Lowercase<string>>
+  ): { processName: Lowercase<string>; packageName: Lowercase<string> } {
+    return this.procedureNameParser.parse(
+      executeString,
+      this.packagesWithProceduresList,
+      packages
+    );
+  }
+
+  private scheduleRetry(packageName: Lowercase<string>): void {
+    if (this.isDestroyed || this.retryTimers.has(packageName)) return;
+
+    this.logger.warn(
+      `Retrying fetching procedure list with arguments for ${packageName.toUpperCase()} in 5 minutes`
+    );
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(packageName);
+      if (this.isDestroyed) return;
+      void this.fetchProcedureListWithArguments(packageName).catch(
+        (error: unknown) => {
+          const metadataError = ServerError.ENSURE_SERVER_ERROR({ error });
+          this.logger.error(
+            `Background procedure metadata refresh failed for ${packageName}: ${metadataError.message}`
+          );
+        }
+      );
+    }, ProcedureListBase.RETRY_DELAY_MS);
+    (timer as { unref?: () => void }).unref?.();
+    this.retryTimers.set(packageName, timer);
+  }
+
+  private clearRetryTimer(packageName: Lowercase<string>): void {
+    const timer = this.retryTimers.get(packageName);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.retryTimers.delete(packageName);
   }
 
   /**
@@ -65,10 +138,10 @@ export class ProcedureListBase {
    * If any procedures are not found, logs an error with the names of the missing procedures.
    * @param searchPackageName - name of package to search for procedures in
    */
-  private checkExistingProcedures(searchPackageName: Lowercase<string>): void {
-    const procedureObject =
-      this.packagesWithProceduresList.get(searchPackageName);
-
+  private checkExistingProcedures(
+    searchPackageName: Lowercase<string>,
+    procedureObject: TProcedureArgumentList
+  ): void {
     if (!procedureObject || Object.keys(procedureObject).length < 1) {
       this.logger.error(`No procedure list for package ${searchPackageName}`);
       return;
@@ -90,13 +163,18 @@ export class ProcedureListBase {
 
     const notFoundProcedures = Object.entries(procedureObjectList)
       .map(([_, sqlString]) => {
-        const { processName, packageName } = procedureNameParser.parse(
-          sqlString,
-          this.packagesWithProceduresList,
-          packages
-        );
+        const explicitPackageName =
+          this.procedureNameParser.extractPackageName(sqlString);
+        const packageName = (explicitPackageName ??
+          (packages.length === 1 ? packages[0] : undefined)) as
+          | Lowercase<string>
+          | undefined;
 
         if (packageName !== searchPackageName) return null;
+
+        const processName = this.procedureNameParser.extractProcedureName(
+          sqlString
+        ) as Lowercase<string>;
 
         return procedureMap.some((item) => item[0] === processName)
           ? null
@@ -121,28 +199,32 @@ export class ProcedureListBase {
    * @throws Error - if the package does not have any procedures in the procedureObjectList
    */
 
-  private async callbackFetchProcedureList(
+  private async fetchPackageSnapshot(
     packageName: Lowercase<string>
-  ): Promise<void> {
+  ): Promise<TProcedureArgumentList> {
     if (!this.packagesSettings) {
       throw new ServerError('Package settings are not configured');
     }
 
     const rawArguments = (
-      await this.executeBase.execute<IProcedureArgumentBase>(
+      await this.executeBase.execute<unknown>(
         this.databaseAdapter.generatePackageInfoSql(
           packageName,
           this.packagesSettings.procedureMetadataSql
         )
       )
-    ).map((item) =>
-      Object.fromEntries(
-        Object.entries(item).map(([key, value]) => [
-          StringUtilities.toCamelCase(key),
-          value,
-        ])
-      )
-    );
+    ).map((item, index) => {
+      const normalizedItem =
+        item !== null && typeof item === 'object' && !Array.isArray(item)
+          ? Object.fromEntries(
+              Object.entries(item).map(([key, itemValue]) => [
+                StringUtilities.toCamelCase(key),
+                itemValue,
+              ])
+            )
+          : item;
+      return this.decodeProcedureArgument(normalizedItem, index);
+    });
 
     if (rawArguments.length < 1) {
       throw new ServerError(
@@ -150,19 +232,81 @@ export class ProcedureListBase {
       );
     }
 
-    this.packagesWithProceduresList.delete(packageName);
-
-    this.packagesWithProceduresList.set(
+    return this.databaseAdapter.sortArgumentsAlgorithm(
+      rawArguments,
+      Object.values(this.packagesSettings.procedureObjectList).map((item) =>
+        item.toLowerCase()
+      ) as Array<Lowercase<string>>,
       packageName,
-      this.databaseAdapter.sortArgumentsAlgorithm(
-        rawArguments as Array<IProcedureArgumentBase>,
-        Object.values(this.packagesSettings.procedureObjectList).map((item) =>
-          item.toLowerCase()
-        ) as Array<Lowercase<string>>,
-        packageName,
-        this.packagesSettings.packages.length
-      )
+      this.packagesSettings.packages.length
     );
+  }
+
+  private decodeProcedureArgument(
+    value: unknown,
+    index: number
+  ): IProcedureArgumentBase {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(
+        `Invalid procedure metadata row ${index + 1}: expected an object`
+      );
+    }
+    const record = value as Record<string, unknown>;
+    const readString = (key: string): string => {
+      const candidate = record[key];
+      if (typeof candidate !== 'string' || candidate.trim().length === 0) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: ${key} must be a non-empty string`
+        );
+      }
+      return candidate.trim();
+    };
+
+    const rawMode = readString('mode').toUpperCase().replaceAll(' ', '');
+    let mode: TProcedureArgumentMode;
+    if (rawMode === 'IN') mode = 'IN';
+    else if (rawMode === 'OUT') mode = 'OUT';
+    else if (rawMode === 'INOUT' || rawMode === 'IN/OUT') mode = 'IN/OUT';
+    else
+      throw new ServerError(
+        `Invalid procedure metadata row ${index + 1}: unsupported mode ${rawMode}`
+      );
+
+    const rawOrder = record['order'];
+    const order =
+      typeof rawOrder === 'number' ||
+      (typeof rawOrder === 'string' && rawOrder.trim().length > 0)
+        ? Number(rawOrder)
+        : Number.NaN;
+    if (!Number.isSafeInteger(order) || order < 0) {
+      throw new ServerError(
+        `Invalid procedure metadata row ${index + 1}: order must be a non-negative safe integer`
+      );
+    }
+
+    const rawSize = record['size'];
+    let size: number | undefined;
+    if (rawSize !== undefined && rawSize !== null) {
+      const parsedSize =
+        typeof rawSize === 'number' || typeof rawSize === 'string'
+          ? Number(rawSize)
+          : Number.NaN;
+      if (!Number.isSafeInteger(parsedSize) || parsedSize <= 0) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: size must be a positive safe integer`
+        );
+      }
+      size = parsedSize;
+    }
+
+    return {
+      procedureName: readString('procedureName'),
+      argumentName: readString('argumentName'),
+      argumentType: readString('argumentType'),
+      order,
+      mode,
+      ...(size === undefined ? {} : { size }),
+    };
   }
 
   public async initPackagesMap(): Promise<void> {
@@ -175,5 +319,21 @@ export class ProcedureListBase {
         )
       )
     );
+  }
+
+  /** Stops retries and releases the instance-local parser cache. */
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.isDestroyed = true;
+    for (const timer of this.retryTimers.values()) clearTimeout(timer);
+    this.retryTimers.clear();
+    this.destroyPromise = this.destroyInternal();
+    return this.destroyPromise;
+  }
+
+  private async destroyInternal(): Promise<void> {
+    await Promise.allSettled(this.activeFetchPromises);
+    this.procedureNameParser.destroy();
+    this.packagesWithProceduresList = new Map();
   }
 }

@@ -6,6 +6,7 @@ import { createLogger } from '../support/helpers.js';
 
 describe('AsyncUtils', (): void => {
   afterEach((): void => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -74,5 +75,38 @@ describe('AsyncUtils', (): void => {
 
     await expect(promise).rejects.toBeInstanceOf(ServerError);
     await expect(promise).rejects.toThrow('too slow');
+  });
+
+  it('unrefs and clears the timeout timer when the operation settles', async (): Promise<void> => {
+    const unref = vi.fn<() => void>();
+    const timeoutHandle = { unref } as unknown as NodeJS.Timeout;
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((): void => undefined);
+    vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
+
+    await expect(
+      AsyncUtils.timeout(async (): Promise<string> => 'done', 100)
+    ).resolves.toBe('done');
+
+    expect(unref).toHaveBeenCalledOnce();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
+  it('does not imply cancellation of work after a timeout', async (): Promise<void> => {
+    vi.useFakeTimers();
+    let operationCompleted = false;
+    const promise = AsyncUtils.timeout(async (): Promise<void> => {
+      await AsyncUtils.delay(20);
+      operationCompleted = true;
+    }, 10);
+    promise.catch((): void => undefined);
+
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(promise).rejects.toBeInstanceOf(ServerError);
+    expect(operationCompleted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(10);
+    expect(operationCompleted).toBe(true);
   });
 });

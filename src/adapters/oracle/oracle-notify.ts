@@ -309,32 +309,40 @@ export class OracleNotify extends DatabaseNotify<
           restoreOptions
         );
       }
-      const tables: Array<oracledb.SubscriptionTable> | undefined = msg
-        .queries?.[0]
-        ? msg.queries[0].tables
-        : msg.tables;
-      if (!tables || tables.length < 1) {
+      const tables = [
+        ...(msg.tables ?? []),
+        ...(msg.queries?.flatMap((query) => query.tables ?? []) ?? []),
+      ];
+      if (tables.length < 1) {
         this.logger.warn('No tables found in subscription message');
         return;
       }
-      const affectedTables = new Map<string, Array<string>>();
+      const affectedTables = new Map<string, Set<string> | null>();
       tables.forEach((table) => {
         const { name, rows } = table;
         const tableName = SqlIdentifier.validateQualifiedIdentifier(
           name,
           'oracle notification table'
         );
-        const tableEntry = affectedTables.get(tableName) ?? new Array<string>();
-        rows?.forEach(({ rowid }) =>
-          tableEntry.push(`'${SqlIdentifier.validateRowId(rowid)}'`)
+        if (!rows || rows.length === 0) {
+          affectedTables.set(tableName, null);
+          return;
+        }
+        if (affectedTables.get(tableName) === null) return;
+
+        const tableEntry = affectedTables.get(tableName) ?? new Set<string>();
+        rows.forEach(({ rowid }) =>
+          tableEntry.add(SqlIdentifier.validateRowId(rowid))
         );
         affectedTables.set(tableName, tableEntry);
       });
-      for (const messageTable of affectedTables) {
-        const [tableName, rowsArray] = messageTable;
-        const sqlQuery = `SELECT * FROM ${tableName} WHERE rowid IN (${rowsArray.join(
-          ', '
-        )})`;
+      for (const [tableName, rowIds] of affectedTables) {
+        const sqlQuery = rowIds
+          ? `SELECT * FROM ${tableName} WHERE rowid IN (${Array.from(
+              rowIds,
+              (rowId) => `'${rowId}'`
+            ).join(', ')})`
+          : `SELECT * FROM ${tableName}`;
         const result = await client.execute<T>(
           sqlQuery,
           {},
@@ -354,7 +362,6 @@ export class OracleNotify extends DatabaseNotify<
           );
           throw error;
         }
-        return;
       }
     } catch (error) {
       this.logger.error(
