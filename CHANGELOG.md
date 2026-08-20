@@ -1,3 +1,12 @@
+## [2.3.1](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.3.0...v2.3.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* delete security check ([3721f12](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/3721f1254c8904434e1b4f4628e2ce8830e2f6bf))
+* error handling name ([e48f1e6](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/e48f1e617d2b9830df4c9aa19de59552606c78b7))
+* off security check ([55727d2](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/55727d2e321d1244c7b11946bb339367e0f184e2))
+
 # [2.3.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.2...v2.3.0) (2026-06-26)
 
 
