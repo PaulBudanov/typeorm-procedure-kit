@@ -72,6 +72,30 @@ describe('ConnectionBase', (): void => {
     );
   });
 
+  it('releases a query runner when acquisition fails after it was created', async (): Promise<void> => {
+    const logger = createLogger();
+    const acquisitionError = new Error('connect failed');
+    const queryRunner = {
+      isReleased: false,
+      connect: vi.fn<() => Promise<void>>().mockRejectedValue(acquisitionError),
+      release: vi.fn<(_error?: Error) => Promise<void>>().mockResolvedValue(),
+      manager: { connection: { isInitialized: true } },
+    };
+    const connectionBase = new ConnectionBase(
+      {
+        isInitialized: true,
+        options: {},
+        createQueryRunner: (): typeof queryRunner => queryRunner,
+      } as never,
+      logger
+    );
+
+    await expect(connectionBase.getEntityManager()).rejects.toBe(
+      acquisitionError
+    );
+    expect(queryRunner.release).toHaveBeenCalledWith(acquisitionError);
+  });
+
   it('releases entity managers and swallows release errors', async (): Promise<void> => {
     const logger = createLogger();
     const connectionBase = new ConnectionBase({} as never, logger);

@@ -1,9 +1,9 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { TypeORMError } from '../error/index.js';
-import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 import type { QueryExpressionMap } from './QueryExpressionMap.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import type { InsertResult } from './result/InsertResult.js';
 import type { UpdateResult } from './result/UpdateResult.js';
 
@@ -42,22 +42,22 @@ export class ReturningResultsEntityUpdator {
           if (
             this.queryRunner.connection.driver.options.type === 'oracle' &&
             Array.isArray(updateResult.raw) &&
-            this.expressionMap.extraReturningColumns!.length > 0
+            this.expressionMap.extraReturningColumns.length > 0
           ) {
-            updateResult.raw = updateResult.raw.reduce(
+            updateResult.raw = updateResult.raw.reduce<ObjectLiteral>(
               (
                 newRaw: ObjectLiteral,
                 rawItem: Array<unknown>,
                 rawItemIndex
               ) => {
                 newRaw[
-                  this.expressionMap.extraReturningColumns![
+                  this.expressionMap.extraReturningColumns[
                     rawItemIndex
                   ]!.databaseName
                 ] = rawItem[0];
                 return newRaw;
               },
-              {} as ObjectLiteral
+              {}
             );
           }
           const result = Array.isArray(updateResult.raw)
@@ -138,25 +138,25 @@ export class ReturningResultsEntityUpdator {
       this.queryRunner.connection.driver.isReturningSqlSupported('insert');
     insertionColumns = insertionColumns.filter((column) => {
       if (!column.isGenerated) return true;
-      return needToCheckGenerated === true;
+      return needToCheckGenerated;
     });
 
     const generatedMaps = entities.map((entity, entityIndex) => {
       if (
         Array.isArray(insertResult.raw) &&
-        this.expressionMap.extraReturningColumns!.length > 0
+        this.expressionMap.extraReturningColumns.length > 0
       ) {
         if (this.queryRunner.connection.driver.options.type === 'oracle') {
-          insertResult.raw = insertResult.raw.reduce(
+          insertResult.raw = insertResult.raw.reduce<ObjectLiteral>(
             (newRaw: ObjectLiteral, rawItem: Array<unknown>, rawItemIndex) => {
               newRaw[
-                this.expressionMap.extraReturningColumns![
+                this.expressionMap.extraReturningColumns[
                   rawItemIndex
                 ]!.databaseName
               ] = rawItem[0];
               return newRaw;
             },
-            {} as ObjectLiteral
+            {}
           );
         }
       }
@@ -174,11 +174,11 @@ export class ReturningResultsEntityUpdator {
           entities.length
         ) || {};
 
-      if (entityIndex in this.expressionMap.locallyGenerated!) {
+      if (entityIndex in this.expressionMap.locallyGenerated) {
         this.queryRunner.manager.merge(
           metadata.target,
           generatedMap,
-          this.expressionMap.locallyGenerated![entityIndex]!
+          this.expressionMap.locallyGenerated[entityIndex]!
         );
       }
 
@@ -233,7 +233,7 @@ export class ReturningResultsEntityUpdator {
       entities.forEach((entity, entityIndex) => {
         this.queryRunner.manager.merge(
           metadata.target,
-          generatedMaps[entityIndex] as ObjectLiteral,
+          generatedMaps[entityIndex]!,
           returningResult[entityIndex]!
         );
 

@@ -1,10 +1,10 @@
-import type { TFunction } from '../../types/utility.types.js';
-import { type EntityTarget } from '../common/EntityTarget.js';
-import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import { TypeORMError } from './TypeORMError.js';
+
+import type { TFunction } from '../../types/utility.types.js';
+import type { EntityTarget } from '../common/EntityTarget.js';
 
 export class EntityMetadataNotFoundError extends TypeORMError {
   public constructor(target: EntityTarget<unknown>) {
@@ -17,7 +17,7 @@ export class EntityMetadataNotFoundError extends TypeORMError {
 
   private stringifyTarget(target: EntityTarget<unknown>): string {
     if (InstanceChecker.isEntitySchema(target)) {
-      return (target as EntitySchema).options.name;
+      return target.options.name;
     } else if (typeof target === 'function') {
       return (target as unknown as TFunction).name;
     } else if (ObjectUtils.isObject(target) && 'name' in (target as object)) {

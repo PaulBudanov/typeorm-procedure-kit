@@ -1,27 +1,23 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
-import type { EntityTarget } from '../common/EntityTarget.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
-import type { Driver, ReturningType } from '../driver/Driver.js';
-import type { OracleDriver } from '../driver/oracle/OracleDriver.js';
+import {
+  resolveIdentifierQuoting,
+  validateUnquotedIdentifier,
+} from '../data-source/IdentifierQuoting.js';
 import { EntityPropertyNotFoundError } from '../error/EntityPropertyNotFoundError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { FindOperator } from '../find-options/FindOperator.js';
 import { In } from '../find-options/operator/In.js';
-import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { escapeRegExp } from '../util/escapeRegExp.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
+import { OrmUtils } from '../util/OrmUtils.js';
+
+import { Brackets } from './Brackets.js';
+import { QueryExpressionMap } from './QueryExpressionMap.js';
 
 import type { Alias } from './Alias.js';
-import { Brackets } from './Brackets.js';
 import type { DeleteQueryBuilder } from './DeleteQueryBuilder.js';
 import type { InsertQueryBuilder } from './InsertQueryBuilder.js';
 import type { NotBrackets } from './NotBrackets.js';
 import type { QueryBuilderCteOptions } from './QueryBuilderCte.js';
-import { QueryExpressionMap } from './QueryExpressionMap.js';
 import type { QueryDeepPartialEntity } from './QueryPartialEntity.js';
 import type { RelationQueryBuilder } from './RelationQueryBuilder.js';
 import type { SelectQueryBuilder } from './SelectQueryBuilder.js';
@@ -29,6 +25,24 @@ import type { SoftDeleteQueryBuilder } from './SoftDeleteQueryBuilder.js';
 import type { UpdateQueryBuilder } from './UpdateQueryBuilder.js';
 import type { WhereClause, WhereClauseCondition } from './WhereClause.js';
 import type { WhereExpressionBuilder } from './WhereExpressionBuilder.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { TIdentifierQuoting } from '../data-source/DataSourceOptions.js';
+import type { Driver, ReturningType } from '../driver/Driver.js';
+import type { OracleDriver } from '../driver/oracle/OracleDriver.js';
+import type { FindOperator } from '../find-options/FindOperator.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+
+const WRITE_QUERY_TYPES = new Set([
+  'update',
+  'delete',
+  'soft-delete',
+  'restore',
+]);
 
 // todo: completely cover query builder with tests
 // todo: entityOrProperty can be target name. implement proper behaviour if it is.
@@ -90,6 +104,9 @@ export abstract class QueryBuilder<Entity = unknown> {
    * Memo to help keep place of current parameter index for `createParameter`
    */
   private parameterIndex = 0;
+
+  /** Validated identifiers reused while one builder composes its SQL. */
+  private readonly unquotedIdentifierCache = new Map<string, string>();
 
   /**
    * Contains all registered query builder classes.
@@ -207,9 +224,8 @@ export abstract class QueryBuilder<Entity = unknown> {
     if (InstanceChecker.isSelectQueryBuilder(this))
       return this as unknown as SelectQueryBuilder<Entity>;
 
-    const selectQueryBuilder = QueryBuilder.queryBuilderRegistry[
-      'SelectQueryBuilder'
-    ]! as TFunction;
+    const selectQueryBuilder = QueryBuilder.queryBuilderRegistry
+      .SelectQueryBuilder! as TFunction;
     return selectQueryBuilder(this) as SelectQueryBuilder<Entity>;
   }
 
@@ -221,9 +237,9 @@ export abstract class QueryBuilder<Entity = unknown> {
 
     if (InstanceChecker.isInsertQueryBuilder(this)) return this;
 
-    return (
-      QueryBuilder.queryBuilderRegistry['InsertQueryBuilder']! as TFunction
-    )(this) as InsertQueryBuilder<ObjectLiteral>;
+    return (QueryBuilder.queryBuilderRegistry.InsertQueryBuilder! as TFunction)(
+      this
+    ) as InsertQueryBuilder<ObjectLiteral>;
   }
 
   /**
@@ -283,9 +299,9 @@ export abstract class QueryBuilder<Entity = unknown> {
 
     if (InstanceChecker.isUpdateQueryBuilder(this)) return this;
 
-    return (
-      QueryBuilder.queryBuilderRegistry['UpdateQueryBuilder']! as TFunction
-    )(this) as UpdateQueryBuilder<ObjectLiteral>;
+    return (QueryBuilder.queryBuilderRegistry.UpdateQueryBuilder! as TFunction)(
+      this
+    ) as UpdateQueryBuilder<ObjectLiteral>;
   }
 
   /**
@@ -296,30 +312,28 @@ export abstract class QueryBuilder<Entity = unknown> {
 
     if (InstanceChecker.isDeleteQueryBuilder(this)) return this;
 
-    return (
-      QueryBuilder.queryBuilderRegistry['DeleteQueryBuilder']! as TFunction
-    )(this) as DeleteQueryBuilder<ObjectLiteral>;
+    return (QueryBuilder.queryBuilderRegistry.DeleteQueryBuilder! as TFunction)(
+      this
+    ) as DeleteQueryBuilder<ObjectLiteral>;
   }
 
   public softDelete(): SoftDeleteQueryBuilder<ObjectLiteral> {
     this.expressionMap.queryType = 'soft-delete';
 
-    if (InstanceChecker.isSoftDeleteQueryBuilder(this))
-      return this as SoftDeleteQueryBuilder<ObjectLiteral>;
+    if (InstanceChecker.isSoftDeleteQueryBuilder(this)) return this;
 
     return (
-      QueryBuilder.queryBuilderRegistry['SoftDeleteQueryBuilder']! as TFunction
+      QueryBuilder.queryBuilderRegistry.SoftDeleteQueryBuilder! as TFunction
     )(this) as SoftDeleteQueryBuilder<ObjectLiteral>;
   }
 
   public restore(): SoftDeleteQueryBuilder<ObjectLiteral> {
     this.expressionMap.queryType = 'restore';
 
-    if (InstanceChecker.isSoftDeleteQueryBuilder(this))
-      return this as SoftDeleteQueryBuilder<ObjectLiteral>;
+    if (InstanceChecker.isSoftDeleteQueryBuilder(this)) return this;
 
     return (
-      QueryBuilder.queryBuilderRegistry['SoftDeleteQueryBuilder']! as TFunction
+      QueryBuilder.queryBuilderRegistry.SoftDeleteQueryBuilder! as TFunction
     )(this) as SoftDeleteQueryBuilder<ObjectLiteral>;
   }
 
@@ -347,7 +361,7 @@ export abstract class QueryBuilder<Entity = unknown> {
       arguments.length === 2 ? entityTargetOrPropertyPath : undefined;
     const propertyPath =
       arguments.length === 2
-        ? (maybePropertyPath as string)
+        ? maybePropertyPath!
         : (entityTargetOrPropertyPath as string);
 
     this.expressionMap.queryType = 'relation';
@@ -361,7 +375,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     if (InstanceChecker.isRelationQueryBuilder(this)) return this;
 
     return (
-      QueryBuilder.queryBuilderRegistry['RelationQueryBuilder']! as TFunction
+      QueryBuilder.queryBuilderRegistry.RelationQueryBuilder! as TFunction
     )(this) as RelationQueryBuilder<ObjectLiteral>;
   }
 
@@ -425,7 +439,7 @@ export abstract class QueryBuilder<Entity = unknown> {
       );
     }
 
-    if (!key.match(/^([A-Za-z0-9_.]+)$/)) {
+    if (!/^([A-Za-z0-9_.]+)$/.exec(key)) {
       throw new TypeORMError(
         'QueryBuilder parameter keys may only contain numbers, letters, underscores, or periods.'
       );
@@ -435,7 +449,7 @@ export abstract class QueryBuilder<Entity = unknown> {
       this.parentQueryBuilder.setParameter(key, value);
     }
 
-    this.expressionMap.parameters[key] = value as ObjectLiteral;
+    this.expressionMap.parameters[key] = value;
     return this;
   }
 
@@ -489,17 +503,14 @@ export abstract class QueryBuilder<Entity = unknown> {
     );
 
     // add discriminator column parameter if it exist
-    if (
-      this.expressionMap.mainAlias &&
-      this.expressionMap.mainAlias.hasMetadata
-    ) {
-      const metadata = this.expressionMap.mainAlias!.metadata;
+    if (this.expressionMap.mainAlias?.hasMetadata) {
+      const metadata = this.expressionMap.mainAlias.metadata;
       if (metadata.discriminatorColumn && metadata.parentEntityMetadata) {
         const values = metadata.childEntityMetadatas
           .filter((childMetadata) => childMetadata.discriminatorColumn)
           .map((childMetadata) => childMetadata.discriminatorValue);
         values.push(metadata.discriminatorValue);
-        parameters['discriminatorColumnValues'] = values;
+        parameters.discriminatorColumnValues = values;
       }
     }
 
@@ -562,7 +573,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     return new (this.constructor as new (
       connection: DataSource,
       queryRunner?: QueryRunner
-    ) => T)(this.connection, queryRunner ?? this.queryRunner) as T;
+    ) => T)(this.connection, queryRunner ?? this.queryRunner);
   }
 
   /**
@@ -574,7 +585,7 @@ export abstract class QueryBuilder<Entity = unknown> {
   public clone(): QueryBuilder<Entity> {
     return new (this.constructor as new (
       qb: QueryBuilder<Entity>
-    ) => QueryBuilder<Entity>)(this as QueryBuilder<Entity>);
+    ) => QueryBuilder<Entity>)(this);
   }
   /**
    * Includes a Query comment in the query builder.  This is helpful for debugging purposes,
@@ -586,27 +597,18 @@ export abstract class QueryBuilder<Entity = unknown> {
     return this;
   }
 
-  /**
-   * Disables automatic driver quoting for table, alias, and column identifiers.
-   */
-  public disableEscaping(): this {
-    this.expressionMap.isQuotingDisabled = true;
-    return this;
-  }
-  /**
-   * Enables automatic driver quoting for table, alias, and column identifiers.
-   */
-  public enableEscaping(): this {
-    this.expressionMap.isQuotingDisabled = false;
+  /** Overrides physical identifier quoting for this builder and its clones. */
+  public setIdentifierQuoting(mode: TIdentifierQuoting): this {
+    this.expressionMap.identifierQuoting = resolveIdentifierQuoting(mode);
+    this.unquotedIdentifierCache.clear();
     return this;
   }
 
   /**
-   * Quotes a table name, column name, or alias with the current database driver's quote character.
-   * When quoting is disabled, pass `isNeedQuote = true` to force quoting for one identifier.
+   * Explicitly quotes one identifier with the current database driver's quote
+   * character. This method is independent from the builder quoting policy.
    */
-  public escape(name: string, isNeedQuote = false): string {
-    if (this.expressionMap.isQuotingDisabled && !isNeedQuote) return name;
+  public escape(name: string): string {
     return this.driver.escape(name);
   }
 
@@ -660,12 +662,46 @@ export abstract class QueryBuilder<Entity = unknown> {
    * schema name, otherwise returns escaped table name.
    */
   protected getTableName(tablePath: string): string {
+    if (
+      this.expressionMap.commonTableExpressions.some(
+        (cte) => cte.alias === tablePath
+      )
+    ) {
+      return this.escapeAlias(tablePath);
+    }
+    return this.escapeTablePath(tablePath);
+  }
+
+  /** Applies the configured policy to one physical database identifier. */
+  protected escapeDatabaseIdentifier(name: string): string {
+    if (this.expressionMap.identifierQuoting === 'enabled') {
+      return this.driver.escape(name);
+    }
+
+    const cached = this.unquotedIdentifierCache.get(name);
+    if (cached !== undefined) return cached;
+
+    const validated = validateUnquotedIdentifier(
+      name,
+      this.connection.options.type
+    );
+    this.unquotedIdentifierCache.set(name, validated);
+    return validated;
+  }
+
+  /** Always quotes a SQL alias, including generated and CTE aliases. */
+  protected escapeAlias(name: string): string {
+    return this.driver.escape(name);
+  }
+
+  /** Applies physical identifier policy independently to every qualified part. */
+  protected escapeTablePath(tablePath: string): string {
     return tablePath
       .split('.')
       .map((i) => {
         // this condition need because in SQL Server driver when custom database name was specified and schema name was not, we got `dbName..tableName` string, and doesn't need to escape middle empty string
         if (i === '') return i;
-        return this.escape(i);
+        return this.escapeDatabaseIdentifier(i);
       })
       .join('.');
   }
@@ -722,7 +758,7 @@ export abstract class QueryBuilder<Entity = unknown> {
         return this.expressionMap.createAlias({
           type: 'from',
           name: aliasName,
-          tablePath: !isSubquery ? (entityTarget as string) : undefined,
+          tablePath: !isSubquery ? entityTarget : undefined,
           subQuery: isSubquery ? entityTarget : undefined,
         });
       }
@@ -847,21 +883,21 @@ export abstract class QueryBuilder<Entity = unknown> {
               replacements[matches[2] as string]
             );
             if (replacement) {
-              return `${pre}${this.escape(
+              return `${pre}${this.escapeAlias(
                 (matches[2] as string).substring(
                   0,
                   (matches[2] as string).length - 1
-                ),
-                true
-              )}.${this.escape(replacement)}`;
+                )
+              )}.${this.escapeDatabaseIdentifier(replacement)}`;
             }
           } else {
             match = matches[0];
             pre = matches[1] as string;
             p = matches[2] as string;
 
-            if (replacements['']?.[p]) {
-              return `${pre}${this.escape(replacements['']?.[p] as string)}`;
+            const replacement = replacements['']?.[p];
+            if (replacement) {
+              return `${pre}${this.escapeDatabaseIdentifier(replacement)}`;
             }
           }
           return match;
@@ -925,6 +961,17 @@ export abstract class QueryBuilder<Entity = unknown> {
     const whereExpression = this.createWhereClausesExpression(
       this.expressionMap.wheres
     );
+
+    if (
+      WRITE_QUERY_TYPES.has(this.expressionMap.queryType) &&
+      this.expressionMap.wheres.length > 0 &&
+      (whereExpression.length === 0 || whereExpression === '1=1')
+    ) {
+      throw new TypeORMError(
+        `Empty criteria(s) are not allowed for the ${this.expressionMap.queryType} operation. ` +
+          `Provide a WHERE condition, or build the query without one to intentionally affect all rows.`
+      );
+    }
 
     if (whereExpression.length > 0 && whereExpression !== '1=1') {
       conditionsArray.push(whereExpression);
@@ -998,7 +1045,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     ) {
       columns.push(
         ...this.expressionMap.extraReturningColumns.filter((column) => {
-          return columns.indexOf(column) === -1;
+          return !columns.includes(column);
         })
       );
     }
@@ -1006,7 +1053,7 @@ export abstract class QueryBuilder<Entity = unknown> {
     if (columns.length) {
       let columnsExpression = columns
         .map((column) => {
-          const name = this.escape(column.databaseName);
+          const name = this.escapeDatabaseIdentifier(column.databaseName);
           return name;
         })
         .join(', ');
@@ -1041,7 +1088,7 @@ export abstract class QueryBuilder<Entity = unknown> {
   protected getReturningColumns(): Array<ColumnMetadata> {
     const columns: Array<ColumnMetadata> = [];
     if (Array.isArray(this.expressionMap.returning)) {
-      (this.expressionMap.returning as Array<string>).forEach((columnName) => {
+      this.expressionMap.returning.forEach((columnName) => {
         if (this.expressionMap.mainAlias!.hasMetadata) {
           columns.push(
             ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
@@ -1161,10 +1208,7 @@ export abstract class QueryBuilder<Entity = unknown> {
           condition.condition
         )})`;
       case 'brackets':
-        return `${this.createWhereConditionExpression(
-          condition.condition,
-          true
-        )}`;
+        return this.createWhereConditionExpression(condition.condition, true);
       case 'and':
         return '(' + condition.parameters.join(' AND ') + ')';
       case 'or':
@@ -1199,10 +1243,10 @@ export abstract class QueryBuilder<Entity = unknown> {
         }
         this.setParameters(cte.queryBuilder.getParameters());
       }
-      let cteHeader = this.escape(cte.alias);
+      let cteHeader = this.escapeAlias(cte.alias);
       if (cte.options.columnNames) {
         const escapedColumnNames = cte.options.columnNames.map((column) =>
-          this.escape(column)
+          this.escapeAlias(column)
         );
         if (InstanceChecker.isSelectQueryBuilder(cte.queryBuilder)) {
           if (
@@ -1262,13 +1306,14 @@ export abstract class QueryBuilder<Entity = unknown> {
       // todo: remove this transformer check after #2390 is fixed
       // This also fails for embedded & relation, so until that is fixed skip it.
       if (
-        !primaryColumn?.transformer &&
-        !primaryColumn?.relationMetadata &&
-        !primaryColumn?.embeddedMetadata
+        primaryColumn &&
+        !primaryColumn.transformer &&
+        !primaryColumn.relationMetadata &&
+        !primaryColumn.embeddedMetadata
       ) {
         return {
-          [primaryColumn?.propertyName as string]: In(
-            normalized.map((id) => primaryColumn?.getEntityValue(id, false))
+          [primaryColumn.propertyName]: In(
+            normalized.map((id) => primaryColumn.getEntityValue(id, false))
           ),
         };
       }
@@ -1518,9 +1563,10 @@ export abstract class QueryBuilder<Entity = unknown> {
     } else {
       for (const key of Object.keys(where)) {
         const parameterValue = where[key];
+        const columnName = this.escapeDatabaseIdentifier(key);
         const aliasPath = this.expressionMap.aliasNamePrefixingEnabled
-          ? `${this.alias}.${key}`
-          : key;
+          ? `${this.escapeAlias(this.alias)}.${columnName}`
+          : columnName;
 
         yield [aliasPath, parameterValue];
       }
@@ -1601,31 +1647,6 @@ export abstract class QueryBuilder<Entity = unknown> {
           parameters: [aliasPath, ...parameters],
         };
       }
-    } else if (parameterValue === null) {
-      const nullBehavior =
-        this.connection.options.invalidWhereValuesBehavior?.null || 'ignore';
-      if (nullBehavior === 'sql-null') {
-        return {
-          operator: 'isNull',
-          parameters: [aliasPath],
-        };
-      } else if (nullBehavior === 'throw') {
-        throw new TypeORMError(
-          `Null value encountered in property '${aliasPath}' of a where condition. ` +
-            `To match with SQL NULL, the IsNull() operator must be used. ` +
-            `Set 'invalidWhereValuesBehavior.null' to 'ignore' or 'sql-null' in connection options to skip or handle null values.`
-        );
-      }
-    } else if (parameterValue === undefined) {
-      const undefinedBehavior =
-        this.connection.options.invalidWhereValuesBehavior?.undefined ||
-        'ignore';
-      if (undefinedBehavior === 'throw') {
-        throw new TypeORMError(
-          `Undefined value encountered in property '${aliasPath}' of a where condition. ` +
-            `Set 'invalidWhereValuesBehavior.undefined' to 'ignore' in connection options to skip properties with undefined values.`
-        );
-      }
     }
 
     return {
@@ -1678,9 +1699,29 @@ export abstract class QueryBuilder<Entity = unknown> {
       return where(this);
     }
 
-    const wheres: Array<ObjectLiteral | NotBrackets> = Array.isArray(where)
-      ? where
-      : [where];
+    const normalizedWhere = OrmUtils.normalizeWhereCriteria(
+      where,
+      WRITE_QUERY_TYPES.has(this.expressionMap.queryType)
+        ? OrmUtils.getWriteWhereOptions(
+            this.connection.options.invalidWhereValuesBehavior
+          )
+        : this.connection.options.invalidWhereValuesBehavior
+    ) as ObjectLiteral | Array<ObjectLiteral>;
+    const wheres: Array<ObjectLiteral | NotBrackets> = Array.isArray(
+      normalizedWhere
+    )
+      ? normalizedWhere
+      : [normalizedWhere];
+
+    if (
+      WRITE_QUERY_TYPES.has(this.expressionMap.queryType) &&
+      (wheres.length === 0 ||
+        wheres.some((item) => Object.keys(item).length === 0))
+    ) {
+      throw new TypeORMError(
+        `Empty criteria(s) are not allowed for the ${this.expressionMap.queryType} operation.`
+      );
+    }
     const clauses: Array<WhereClause> = [];
 
     for (const where of wheres) {
@@ -1707,6 +1748,34 @@ export abstract class QueryBuilder<Entity = unknown> {
     }
 
     return clauses;
+  }
+
+  /**
+   * Normalizes a number-like runtime input.
+   */
+  protected normalizeNumber(num: unknown): number | undefined {
+    if (typeof num === 'number') return num;
+    if (num === undefined || num === null) return undefined;
+    return Number(num);
+  }
+
+  /**
+   * Normalizes and validates a numeric query-builder input.
+   */
+  protected validateNumericInput(
+    label: string,
+    num: number | undefined
+  ): number | undefined {
+    const normalized = this.normalizeNumber(num);
+    if (
+      normalized !== undefined &&
+      (!Number.isSafeInteger(normalized) || normalized < 0)
+    ) {
+      throw new TypeORMError(
+        `Provided "${label}" value must be a finite, non-negative safe integer.`
+      );
+    }
+    return normalized;
   }
 
   /**

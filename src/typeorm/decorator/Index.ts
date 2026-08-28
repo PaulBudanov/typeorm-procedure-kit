@@ -1,10 +1,10 @@
 import { getMetadataArgsStorage } from '../globals.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
+
 import type {
   IndexColumnsResolver,
   IndexMetadataArgs,
 } from '../metadata-args/IndexMetadataArgs.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-
 import type { IndexOptions } from './options/IndexOptions.js';
 
 type FieldsFunction = IndexColumnsResolver;
@@ -120,18 +120,18 @@ export function Index(
       name: name,
       columns: propertyName ? [propertyName] : fields,
       synchronize:
-        options && (options as { synchronize: false }).synchronize === false
+        options && !(options as { synchronize: false }).synchronize
           ? false
           : true,
       where: options ? options.where : undefined,
-      unique: options && options.unique ? true : false,
-      spatial: options && options.spatial ? true : false,
-      fulltext: options && options.fulltext ? true : false,
-      nullFiltered: options && options.nullFiltered ? true : false,
+      unique: options?.unique ? true : false,
+      spatial: options?.spatial ? true : false,
+      fulltext: options?.fulltext ? true : false,
+      nullFiltered: options?.nullFiltered ? true : false,
       parser: options ? options.parser : undefined,
-      sparse: options && options.sparse ? true : false,
-      background: options && options.background ? true : false,
-      concurrent: options && options.concurrent ? true : false,
+      sparse: options?.sparse ? true : false,
+      background: options?.background ? true : false,
+      concurrent: options?.concurrent ? true : false,
       expireAfterSeconds: options ? options.expireAfterSeconds : undefined,
     } as IndexMetadataArgs);
   };

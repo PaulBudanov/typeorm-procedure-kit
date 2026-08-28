@@ -1,9 +1,10 @@
-import type { DataSource } from '../data-source/DataSource.js';
 import { MissingDriverError } from '../error/MissingDriverError.js';
 
-import type { Driver } from './Driver.js';
 import { OracleDriver } from './oracle/OracleDriver.js';
 import { PostgresDriver } from './postgres/PostgresDriver.js';
+
+import type { Driver } from './Driver.js';
+import type { DataSource } from '../data-source/DataSource.js';
 
 /**
  * Helps to create drivers.
@@ -16,9 +17,9 @@ export class DriverFactory {
     const { type } = connection.options;
     switch (type) {
       case 'postgres':
-        return new PostgresDriver(connection) as unknown as Driver;
+        return new PostgresDriver(connection);
       case 'oracle':
-        return new OracleDriver(connection) as unknown as Driver;
+        return new OracleDriver(connection);
       default:
         throw new MissingDriverError(type, ['oracle', 'postgres']);
     }

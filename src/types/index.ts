@@ -1,4 +1,5 @@
 // Configuration
+export type { TIdentifierQuoting } from '../typeorm/data-source/DataSourceOptions.js';
 export type {
   IBaseConfig,
   IDatabaseFactory,
@@ -10,6 +11,7 @@ export type {
   TOracleDbConfig,
   TPostgresDbConfig,
   IDatabaseCredentials,
+  IResourceLimits,
 } from './config.types.js';
 
 // Procedures
@@ -90,6 +92,7 @@ export type {
 // Logger
 export type {
   ILoggerModule,
+  TBindingLogMode,
   TTypeOrmLoggerLevel,
   TTypeOrmLoggerLevels,
 } from './logger.types.js';

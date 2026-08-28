@@ -1,4 +1,5 @@
 import { getMetadataArgsStorage } from '../../globals.js';
+
 import type { InheritanceMetadataArgs } from '../../metadata-args/InheritanceMetadataArgs.js';
 import type { ColumnOptions } from '../options/ColumnOptions.js';
 

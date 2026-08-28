@@ -15,8 +15,18 @@ guide covers the changes that require application updates when moving from v2.
    new `UTC` default.
 5. Remove `@nestjs/core` if it was installed only to satisfy this package's
    peer dependencies.
-6. Run the application on Node.js 20, 22, or 24 and compile its package
+6. Replace the removed boolean quoting switch with `identifierQuoting` and
+   verify identifiers that require explicit quoting.
+7. Replace persistent or arbitrary `optionsCommands` with the supported
+   transaction-local PostgreSQL or restored Oracle NLS forms.
+8. Run the application on Node.js 20, 22, or 24 and compile its ES2022 package
    consumption with `skipLibCheck: false` before deployment.
+
+## Runtime and published output
+
+Version 3 requires Node.js 20 or newer, and both published ESM and CJS builds
+target ES2022. Source maps and declaration maps are intentionally excluded from
+the npm package.
 
 ## Stored procedure result envelope
 
@@ -63,6 +73,87 @@ interface IProcedureResult<TRow, TOut extends Record<string, unknown>> {
 
 This envelope is used by direct calls and Nest's `@InjectCallProcedure()`
 provider type.
+
+PostgreSQL cursor handling is also stricter. Missing `IN`/`INOUT refcursor`
+names are generated automatically. A pure `OUT refcursor` must be named by the
+stored procedure itself; every `<unnamed portal ...>` result is rejected.
+Explicit portal names are limited to 63 UTF-8 bytes so that `FETCH` and `CLOSE`
+cannot refer to a server-truncated SQL identifier.
+
+Procedure results are still materialized, but bounded by `resourceLimits`.
+PostgreSQL cursors are fetched in batches of at most 1,000 rows so row and byte
+limits are enforced incrementally. Review the 100,000-row, 64 MiB total-result,
+10,000-row procedure-metadata, 16 MiB per-LOB, 1,000-event queue, and 10,000
+Oracle-CQN-ROWID defaults before deploying workloads that intentionally exceed
+them. Byte accounting is an approximate logical payload estimate, not an exact
+measurement of heap use, wire size, or database-driver allocations.
+
+Oracle CQN refetch now preserves the configured projection and predicate rather
+than issuing `SELECT *`. Custom Oracle CQN SQL must therefore be a simple
+single-table `SELECT` with an optional alias and `WHERE` clause. Joins, set
+operations, grouping, ordering, and nested queries fail before subscription
+registration; split those cases into separate simple subscriptions.
+
+For `packagesSettings.metadataNotificationSql`, an absent, empty, or
+whitespace-only value now selects the adapter default SQL. Non-empty custom SQL
+is trimmed before it is registered.
+
+## Manual performance check
+
+`npm run benchmark:postgre-materialization` is a manual diagnostic and remains
+outside CI. It reports the median, raw samples, nanoseconds per row, Node.js
+version, platform, and architecture. It has no built-in baseline. To compare a
+run, pass both positive non-zero values explicitly:
+
+```bash
+npm run benchmark:postgre-materialization -- \
+  --baseline-ns 20000 \
+  --max-regression-percent 10
+```
+
+The command fails when the measured median exceeds the permitted regression.
+
+## Logging and identifier safety
+
+Binding values are no longer logged wholesale. The secure default
+`logger.bindingLogMode: 'metadata-only'` hides every value. The less strict
+`redact-by-name` compatibility mode exposes named values not recognized by its
+sensitive-name heuristic. The `unsafe-values` mode restores all value logging
+only as an explicit opt-in.
+
+The bundled TypeORM runtime now uses `identifierQuoting: 'disabled'` by default
+for physical database, schema, table, and column names. Generated table,
+subquery, select-output, CTE, and internal aliases remain quoted. Unquoted
+physical names are validated and reserved or unsafe identifiers fail with an
+instruction to enable quoting.
+
+The former boolean quoting switch has been removed without a compatibility
+alias. Replace the old `false` value with:
+
+```ts
+new DataSource({ type: 'postgres', identifierQuoting: 'enabled' });
+```
+
+Use `setIdentifierQuoting('enabled')` for a single builder. Clone and subquery
+builders inherit that override. Public `escape(name)` always quotes explicitly
+and no longer reads the builder policy. Raw SQL strings remain unchanged.
+
+The database query-cache default table was renamed from `query-result-cache` to
+the unquoted-safe `query_result_cache`. Rename the existing table before the
+upgrade, allow synchronization to create the new table, or retain the legacy
+name explicitly with quoting enabled:
+
+```ts
+new DataSource({
+  type: 'postgres',
+  identifierQuoting: 'enabled',
+  cache: { type: 'database', tableName: 'query-result-cache' },
+});
+```
+
+Unsafe configured cache-table names are rejected while identifier quoting is
+disabled. This keeps cache synchronization, reads, inserts, updates, and
+deletes on the same physical-identifier policy.
 
 ## Serializer strategy input
 
@@ -167,7 +258,7 @@ outputs pass through the matching serializer and appear in `outBinds`.
 The optional Nest peer is now only:
 
 ```text
-@nestjs/common ^10 || ^11
+@nestjs/common ^10.4.16 || ^11.0.16
 ```
 
 `@nestjs/core` is no longer required by this package. Keep it when the host

@@ -14,16 +14,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
-  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml"><img alt="security" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
   <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml"><img alt="release" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml/badge.svg"></a>
-  <a href="https://github.com/semantic-release/semantic-release"><img alt="semantic-release" src="https://img.shields.io/badge/semantic--release-enabled-e10079?logo=semantic-release"></a>
   <a href="https://github.com/PaulBudanov/typeorm-procedure-kit"><img alt="last commit" src="https://img.shields.io/github/last-commit/PaulBudanov/typeorm-procedure-kit?color=64748b&logo=github"></a>
 </p>
 
 ## 翻译
 
-- [英语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.md)
+- [英语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/README.md)
 - [俄语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.ru.md)
 - [德语](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.de.md)
 - [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.zh.md)
@@ -62,11 +60,13 @@ TypeORM 很适合以 CRUD 为主的应用，但企业级数据库系统通常还
 ## 要求
 
 - Node.js `>=20`
+- 发布的 ESM 和 CJS 构建以 ES2022 为 target；npm package 不包含 source map 或
+  declaration map。
 - 使用实体装饰器时，需要启用 TypeScript 装饰器
 - PostgreSQL 驱动：`pg`
 - Oracle 驱动：`oracledb`
 - 可选的 PostgreSQL 流式查询依赖：`pg-query-stream`
-- 可选的 NestJS 对等依赖：`@nestjs/common` 版本 10 或 11
+- 可选的 NestJS 对等依赖：`@nestjs/common`（`^10.4.16 || ^11.0.16`）
 
 ## 安装
 
@@ -289,10 +289,17 @@ const settings: IModuleConfig = {
 - `maxQueryExecutionTime`：传递给底层 DataSource 的慢查询阈值；记录慢查询但不会取消。
 - `logger.typeormLogLevels`：通过 `logger.module` 输出的 TypeORM 日志级别。
   支持 `query`、`error`、`schema`、`info`、`warn`、`migration` 或 `all`。
+- `logger.bindingLogMode`：绑定值日志策略。安全默认值 `metadata-only` 隐藏全部值；
+  `redact-by-name` 是兼容性较强但保护较弱的模式，会显示未被敏感名称启发式规则识别的
+  值；`unsafe-values` 是可能暴露机密数据的显式 opt-in。
 - `queryTimeoutMs`：可选的正整数 query timeout（毫秒）。PostgreSQL 会把它作为
   `statement_timeout` 传给 `pg` pool，这是 statement-level timeout。Oracle 会在每次
   获取 physical connection 后把它设置为 `oracledb` `connection.callTimeout`；它限制
   每个 database round-trip，而不是整个 statement 的总耗时。
+- `resourceLimits`：可选资源上限；安全默认值为 100000 行、每次过程结果 64 MiB、
+  10000 行 metadata、每个 LOB 16 MiB、1000 个待处理通知事件，以及每个事件 10000
+  个不同的 Oracle CQN ROWID。`maxProcedureBytes` 使用近似的逻辑 payload 计数，
+  不是 heap、wire size 或 database driver allocation 的精确测量。
 - `callTimeout`：`maxQueryExecutionTime` 的 deprecated alias。
 - `outKeyTransformCase`：`camelCase`、`lowerCase` 或 `snakeCase`；默认值为
   `camelCase`。
@@ -369,6 +376,11 @@ console.log(result.outBinds);
 值。只有 scalar output 的过程返回 `rows: []`。`callSqlTransaction()` 仍直接返回
 row array。
 
+PostgreSQL `IN`/`INOUT refcursor` 缺少 portal 名称时会自动生成。纯
+`OUT refcursor` 必须由存储过程自行命名。包括 `<unnamed portal 1>` 在内的所有
+`<unnamed portal ...>` 结果都会被拒绝；有效名称最多为 63 个 UTF-8 字节。Cursor
+rows 每批最多读取 1000 行，因此会增量执行 row/byte limit 检查。
+
 ## Raw SQL 事务
 
 ```ts
@@ -387,10 +399,9 @@ Raw SQL 与过程调用使用同一套执行、事务、序列化和错误处理
 
 - `mode`：`master` 或 `slave`，默认值为 `master`。
 - `optionsCommands`：在同一事务中、主查询之前执行的受限 setup 命令。每个元素必须是
-  一条不含注释或分隔符的安全命令。PostgreSQL 支持允许的 `SET`、`SET LOCAL` 和
-  `SET TRANSACTION` 形式；Oracle 支持除 `TIME_ZONE` 外的
-  `ALTER SESSION SET name = value`。Oracle 时区必须通过 `sessionTimeZone`
-  配置，因为 per-call `ALTER SESSION SET TIME_ZONE` 会把状态泄漏到连接池。
+  一条不含注释或分隔符的安全命令。PostgreSQL 只支持文档列出的 transaction-local
+  `SET LOCAL` 和 `SET TRANSACTION` 形式。Oracle 只支持允许的 `NLS_*` 格式设置；
+  原值会在连接返回池前恢复。Oracle 时区必须通过 `sessionTimeZone` 配置。
 - `queryId`：用于日志和封装后的数据库错误的自定义 id。
 
 ## 通知
@@ -437,6 +448,9 @@ await db.unlistenNotify(channel);
 
 适配器会生成 UUID 订阅名。当 CQN 报告 changed ROWIDs 时，适配器会获取变更行，
 并把这些行传给回调。Oracle 订阅会被监控，并在 CQN 注销、关闭事件、连接错误或
+refetch 会保留配置的 projection 和 predicate。为确保 ROWID refetch 可预测且有界，
+Oracle CQN SQL 必须是 single-table `SELECT`，可带 alias 和 `WHERE`；join、set
+operation、grouping、ordering 和 nested query 会在创建 connection 前被拒绝。
 静默连接丢失后恢复。
 只有需要数据库回调端口的 server-initiated CQN setup 才应同时使用
 `clientInitiated: false` 和 legacy `cqnPort`。
@@ -460,11 +474,17 @@ user input 构造。
 `packagesSettings.procedureMetadataSql` 可以替换两个数据库的默认 procedure metadata
 查询。SQL 必须包含 `:PACKAGE_NAME`，并且必须返回 snake_case 到 camelCase 转换后兼容
 `IProcedureArgumentBase` 的列：`procedure_name`、`argument_name`、
-`argument_type`、`order`、`mode`，以及可选的 `size`。`mode` 必须是
-`IN`、`OUT` 或 `INOUT`/`IN/OUT`；`order` 和 `size` 必须是有效整数。
+`argument_type`、`order`、`mode`，以及可选的 `size`。PostgreSQL overload 还需
+`specific_name`；Oracle 还需 `owner`、`subprogram_id` 和 `overload`；不明确的签名
+会被拒绝。`mode` 必须是 `IN`、`OUT` 或 `INOUT`/`IN/OUT`；`order` 和 `size`
+必须是有效整数。Built-in metadata SQL 最多读取 `maxMetadataRows + 1` 行用于 overflow
+检测。Custom metadata query 超出限制时也会被拒绝；若 source 可能无界，还应在 SQL
+中设置 database-side limit，以避免先物化过大的结果。
 
 `packagesSettings.metadataNotificationSql` 可以替换默认 metadata refresh 订阅 SQL。
-PostgreSQL 需要完整的 `LISTEN ...` 命令。Oracle 需要完整的 CQN `SELECT ...` 查询。
+PostgreSQL 需要完整的 `LISTEN ...` 命令。Oracle 需要符合上述 single-table 限制的
+CQN `SELECT ...` 查询。未提供、空白或仅包含空格的值会使用 adapter 默认 SQL；
+非空值会在使用前去除首尾空白。
 
 ## 序列化器
 
@@ -604,9 +624,11 @@ Migration path：`unsafeRawSql()` 仅用于经过审查的 trusted SQL fragment�
 - `EntityMetadata.propertiesMap` 用于 TypeORM property paths（包括
   relations），`EntityMetadata.databasePropertiesMap` 用于显式
   `@Column({ name })` options 和命名策略规则之后的数据库列名；
-- kit DataSource 初始化时设置 `isQuotingDisabled: true`，因此查询构建器默认
-  不会为标识符加引号。可以通过 `enableEscaping()` 或 `escape(name, true)`
-  启用加引号行为。
+- 物理 database、schema、table 和 column 名称默认使用
+  `identifierQuoting: 'disabled'`，生成的 alias 始终加引号。可以在 kit
+  配置或直接 `DataSource` 中设置 `identifierQuoting: 'enabled'`，也可以对
+  单个 query builder 调用 `setIdentifierQuoting('enabled')`。`escape(name)`
+  始终执行显式加引号，不受该策略影响。
 
 ## TypeORM 扩展装饰器
 
@@ -725,6 +747,22 @@ await db.destroy();
 部分清理失败，会抛出 `AggregateError`。设置
 `isRegisterShutdownHandlers: true` 可自动注册进程信号处理器，或者手动调用
 `db.registerShutdownHandlers()`。
+
+## 手动 materialization benchmark
+
+请在没有明显后台负载时手动运行 `npm run benchmark:postgre-materialization`。
+JSON output 包含 median、raw samples、每行 nanoseconds，以及 Node.js version、
+platform 和 architecture。它是 CI 之外的诊断工具，不含内置 baseline。
+
+只有同时显式提供两个正数且非零的值时才启用 comparison：
+
+```bash
+npm run benchmark:postgre-materialization -- \
+  --baseline-ns 20000 \
+  --max-regression-percent 10
+```
+
+如果测得的 median 超出允许的 regression，命令会以失败状态退出。
 
 ## 常见错误
 

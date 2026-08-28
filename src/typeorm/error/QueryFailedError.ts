@@ -1,8 +1,6 @@
-import { safeStringify } from '../../utils/safe-stringify.js';
-import type { QueryParameterValues } from '../driver/QueryParameters.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
 
 /**
  * Thrown when query execution has failed.
@@ -26,11 +24,27 @@ export class QueryFailedError<T extends Error = Error> extends TypeORMError {
     );
 
     if (driverError) {
-      const { name: _, ...otherProperties } = driverError;
-
-      ObjectUtils.assign(this, {
-        ...otherProperties,
-      });
+      for (const property of Reflect.ownKeys(driverError)) {
+        if (
+          property === 'name' ||
+          property === 'message' ||
+          property === 'stack' ||
+          property === 'query' ||
+          property === 'parameters' ||
+          property === 'driverError'
+        ) {
+          continue;
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(
+          driverError,
+          property
+        );
+        if (!descriptor?.enumerable) continue;
+        Object.defineProperty(this, property, {
+          ...descriptor,
+          enumerable: false,
+        });
+      }
     }
 
     Object.defineProperties(this, {
@@ -50,15 +64,20 @@ export class QueryFailedError<T extends Error = Error> extends TypeORMError {
   }
 
   public get safeParameters(): string | undefined {
-    return this.parameters ? safeStringify(this.parameters) : undefined;
+    if (!this.parameters) return undefined;
+    return Array.isArray(this.parameters)
+      ? `${this.parameters.length} positional value(s)`
+      : `${Object.keys(this.parameters).length} named value(s)`;
   }
 
   public toJSON(): Record<string, unknown> {
+    const driverCode = (this.driverError as Error & { code?: unknown }).code;
     return {
       name: this.name,
-      message: this.message,
-      query: this.query,
-      parameters: this.safeParameters,
+      message: 'Database query failed',
+      ...(typeof driverCode === 'string' || typeof driverCode === 'number'
+        ? { code: driverCode }
+        : {}),
     };
   }
 }

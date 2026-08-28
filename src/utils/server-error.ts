@@ -17,7 +17,7 @@ export class ServerError extends Error {
    *   stack - The stack trace of the error.
    */
   public constructor(
-    public readonly message: string,
+    public override readonly message: string,
     public readonly errorContext?: unknown,
     public readonly options?: {
       cause?: unknown;
@@ -28,8 +28,41 @@ export class ServerError extends Error {
     super(message, options);
     this.name = 'ServerError';
     this.errorId = options?.errorId ?? randomUUID();
+    Object.defineProperties(this, {
+      errorContext: {
+        value: errorContext,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      },
+      options: {
+        value: options,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      },
+    });
     Object.setPrototypeOf(this, new.target.prototype);
-    if (!options?.stack) Error.captureStackTrace?.(this, this.constructor);
+    if (!options?.stack) Error.captureStackTrace(this, this.constructor);
+  }
+
+  /**
+   * Returns the intentionally small public representation of this error.
+   * Driver errors, bind values, credentials, and stack traces remain available
+   * through explicit error handling APIs but are not serialized accidentally.
+   */
+  public toJSON(): {
+    name: string;
+    message: string;
+    errorId: string;
+    timestamp: string;
+  } {
+    return {
+      name: this.name,
+      message: this.message,
+      errorId: this.errorId,
+      timestamp: this.timestamp.toISOString(),
+    };
   }
 
   /**
@@ -62,9 +95,7 @@ export class ServerError extends Error {
     const messageString =
       errorObject.error instanceof Error
         ? errorObject.error.message
-        : typeof errorObject.error === 'object'
-          ? safeStringify(errorObject.error)
-          : String(errorObject.error);
+        : safeStringify(errorObject.error);
     return new ServerError(
       errorObject.message ?? messageString,
       errorObject.error,

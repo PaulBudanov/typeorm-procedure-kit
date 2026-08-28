@@ -36,9 +36,9 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
       },
     ];
     class FakeQueryStream {
-      public readonly _result = { fields };
+      public readonly ['_result'] = { fields };
     }
-    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream as never);
+    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream);
 
     const databaseConnection = {
       query: vi.fn(() => source),
@@ -68,9 +68,7 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
     Object.assign(dataSource, { driver });
     const queryRunner = new PostgresQueryRunner(driver as never, 'master');
 
-    const stream = (await queryRunner.stream(
-      'select created_at from events'
-    )) as unknown as Readable;
+    const stream = await queryRunner.stream('select created_at from events');
     const iterator = stream[Symbol.asyncIterator]();
 
     await expect(iterator.next()).resolves.toEqual({
@@ -95,6 +93,64 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
     });
   });
 
+  it('validates private query metadata once for a many-row stream', async (): Promise<void> => {
+    const rowCount = 250;
+    const source = Readable.from(
+      Array.from({ length: rowCount }, (_, value) => ({ VALUE: value })),
+      { objectMode: true }
+    );
+    let resultMetadataReads = 0;
+    let fieldValidationReads = 0;
+    const result = {
+      fields: [
+        {
+          name: 'VALUE',
+          get dataTypeID(): number {
+            fieldValidationReads += 1;
+            return 23;
+          },
+        },
+      ],
+    };
+    class FakeQueryStream {
+      public get ['_result'](): typeof result {
+        resultMetadataReads += 1;
+        return result;
+      }
+    }
+    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream);
+
+    const databaseConnection = {
+      query: vi.fn(() => source),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    const transformResultRows = vi.fn(
+      (rows: Array<unknown>): Array<unknown> => rows
+    );
+    const dataSource = { logger: { logQuery: vi.fn() }, subscribers: [] };
+    const driver = {
+      connection: dataSource,
+      connectedQueryRunners: [],
+      isReplicated: false,
+      obtainMasterConnection: vi
+        .fn()
+        .mockResolvedValue([databaseConnection, vi.fn()]),
+      transformResultRows,
+    };
+    Object.assign(dataSource, { driver });
+    const queryRunner = new PostgresQueryRunner(driver as never, 'master');
+    const stream = await queryRunner.stream('select value from events');
+    const rows: Array<unknown> = [];
+
+    for await (const row of stream) rows.push(row);
+
+    expect(rows).toHaveLength(rowCount);
+    expect(transformResultRows).toHaveBeenCalledTimes(rowCount);
+    expect(resultMetadataReads).toBe(1);
+    expect(fieldValidationReads).toBe(1);
+  });
+
   it('cancels the source and finalizes once when consumption stops early', async (): Promise<void> => {
     const source = new Readable({
       objectMode: true,
@@ -103,11 +159,11 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
     source.push({ VALUE: 1 });
     source.push({ VALUE: 2 });
     class FakeQueryStream {
-      public readonly _result = {
+      public readonly ['_result'] = {
         fields: [{ name: 'VALUE', dataTypeID: 23 }],
       };
     }
-    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream as never);
+    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream);
     const release = vi.fn();
     const databaseConnection = {
       query: vi.fn(() => source),
@@ -149,11 +205,11 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
       read: (): void => undefined,
     });
     class FakeQueryStream {
-      public readonly _result = {
+      public readonly ['_result'] = {
         fields: [{ name: 'VALUE', dataTypeID: 23 }],
       };
     }
-    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream as never);
+    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream);
     const release = vi.fn();
     const databaseConnection = {
       query: vi.fn(() => source),
@@ -191,11 +247,15 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
   it('normalizes unknown transformation failures into Error instances', async (): Promise<void> => {
     const source = Readable.from([{ VALUE: 1 }], { objectMode: true });
     class FakeQueryStream {
-      public readonly _result = {
+      public readonly ['_result'] = {
         fields: [{ name: 'VALUE', dataTypeID: 23 }],
       };
     }
-    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream as never);
+    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream);
+    const unknownFailure = (function* (): Generator<void> {
+      yield;
+    })();
+    unknownFailure.next();
     const databaseConnection = {
       query: vi.fn(() => source),
       on: vi.fn(),
@@ -210,7 +270,8 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
         .fn()
         .mockResolvedValue([databaseConnection, vi.fn()]),
       transformResultRows: (): never => {
-        throw 'transform failed';
+        unknownFailure.throw('transform failed');
+        throw new Error('Unreachable transformation result');
       },
     };
     Object.assign(dataSource, { driver });
@@ -222,5 +283,61 @@ describe('PostgresQueryRunner stream result isolation', (): void => {
         // The transform fails before yielding a row.
       }
     }).rejects.toMatchObject({ message: 'transform failed' });
+  });
+
+  it('waits for asynchronous finalization before ending the consumer stream', async (): Promise<void> => {
+    const source = Readable.from([{ VALUE: 1 }], { objectMode: true });
+    class FakeQueryStream {
+      public readonly ['_result'] = {
+        fields: [{ name: 'VALUE', dataTypeID: 23 }],
+      };
+    }
+    vi.spyOn(PlatformTools, 'load').mockResolvedValue(FakeQueryStream);
+    const databaseConnection = {
+      query: vi.fn(() => source),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    const dataSource = { logger: { logQuery: vi.fn() }, subscribers: [] };
+    const driver = {
+      connection: dataSource,
+      connectedQueryRunners: [],
+      isReplicated: false,
+      obtainMasterConnection: vi
+        .fn()
+        .mockResolvedValue([databaseConnection, vi.fn()]),
+      transformResultRows: (rows: Array<unknown>): Array<unknown> => rows,
+    };
+    Object.assign(dataSource, { driver });
+    const queryRunner = new PostgresQueryRunner(driver as never, 'master');
+    let completeFinalization!: () => void;
+    const onEnd = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeFinalization = resolve;
+        })
+    );
+    const stream = await queryRunner.stream(
+      'select value from events',
+      [],
+      onEnd
+    );
+    const iterator = stream[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({ done: false });
+    const completion = iterator.next();
+    await vi.waitFor(() => expect(onEnd).toHaveBeenCalledOnce());
+    let isSettled = false;
+    void completion.then(() => {
+      isSettled = true;
+    });
+    await Promise.resolve();
+    expect(isSettled).toBe(false);
+
+    completeFinalization();
+    await expect(completion).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
   });
 });

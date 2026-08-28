@@ -1,4 +1,3 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { MetadataUtils } from '../metadata-builder/MetadataUtils.js';
 
 import type { CheckMetadataArgs } from './CheckMetadataArgs.js';
@@ -24,6 +23,7 @@ import type { TransactionEntityMetadataArgs } from './TransactionEntityMetadataA
 import type { TransactionRepositoryMetadataArgs } from './TransactionRepositoryMetadataArgs.js';
 import type { TreeMetadataArgs } from './TreeMetadataArgs.js';
 import type { UniqueMetadataArgs } from './UniqueMetadataArgs.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Storage all metadatas args of all available types: tables, columns, subscribers, relations, etc.
@@ -104,7 +104,7 @@ export class MetadataArgsStorage {
     return this.generations.find((generated) => {
       return (
         (Array.isArray(target)
-          ? target.indexOf(generated.target as TFunction) !== -1
+          ? target.includes(generated.target)
           : generated.target === target) &&
         generated.propertyName === propertyName
       );
@@ -116,7 +116,7 @@ export class MetadataArgsStorage {
   ): TreeMetadataArgs | undefined {
     return this.trees.find((tree) => {
       return Array.isArray(target)
-        ? target.indexOf(tree.target as TFunction) !== -1
+        ? target.includes(tree.target)
         : tree.target === target;
     });
   }
@@ -176,7 +176,7 @@ export class MetadataArgsStorage {
     // todo: implement parent-entity overrides?
     return this.indices.filter((index) => {
       return Array.isArray(target)
-        ? target.indexOf(index.target as TFunction) !== -1
+        ? target.includes(index.target)
         : index.target === target;
     });
   }
@@ -192,7 +192,7 @@ export class MetadataArgsStorage {
   ): Array<ForeignKeyMetadataArgs> {
     return this.foreignKeys.filter((foreignKey) => {
       return Array.isArray(target)
-        ? target.indexOf(foreignKey.target) !== -1
+        ? target.includes(foreignKey.target)
         : foreignKey.target === target;
     });
   }
@@ -206,7 +206,7 @@ export class MetadataArgsStorage {
   ): Array<UniqueMetadataArgs> {
     return this.uniques.filter((unique) => {
       return Array.isArray(target)
-        ? target.indexOf(unique.target as TFunction) !== -1
+        ? target.includes(unique.target)
         : unique.target === target;
     });
   }
@@ -220,7 +220,7 @@ export class MetadataArgsStorage {
   ): Array<CheckMetadataArgs> {
     return this.checks.filter((check) => {
       return Array.isArray(target)
-        ? target.indexOf(check.target as TFunction) !== -1
+        ? target.includes(check.target)
         : check.target === target;
     });
   }
@@ -236,7 +236,7 @@ export class MetadataArgsStorage {
   ): Array<ExclusionMetadataArgs> {
     return this.exclusions.filter((exclusion) => {
       return Array.isArray(target)
-        ? target.indexOf(exclusion.target as TFunction) !== -1
+        ? target.includes(exclusion.target)
         : exclusion.target === target;
     });
   }
@@ -322,7 +322,7 @@ export class MetadataArgsStorage {
     return this.transactionEntityManagers.filter((transactionEm) => {
       return (
         (Array.isArray(target)
-          ? target.indexOf(transactionEm.target) !== -1
+          ? target.includes(transactionEm.target)
           : transactionEm.target === target) &&
         transactionEm.methodName === propertyName
       );
@@ -336,7 +336,7 @@ export class MetadataArgsStorage {
     return this.transactionRepositories.filter((transactionEm) => {
       return (
         (Array.isArray(target)
-          ? target.indexOf(transactionEm.target) !== -1
+          ? target.includes(transactionEm.target)
           : transactionEm.target === target) &&
         transactionEm.methodName === propertyName
       );
@@ -385,7 +385,7 @@ export class MetadataArgsStorage {
   ): Array<T> {
     return array.filter((table) => {
       return Array.isArray(target)
-        ? target.indexOf(table.target) !== -1
+        ? target.includes(table.target)
         : table.target === target;
     });
   }
@@ -405,7 +405,7 @@ export class MetadataArgsStorage {
     const newArray: Array<T> = [];
     array.forEach((item) => {
       const sameTarget = Array.isArray(target)
-        ? target.indexOf(item.target) !== -1
+        ? target.includes(item.target)
         : item.target === target;
       if (sameTarget) {
         if (
@@ -431,24 +431,19 @@ export class MetadataArgsStorage {
     const newArray: Array<T> = [];
     array.forEach((item) => {
       const sameTarget = Array.isArray(target)
-        ? target.indexOf(item.target as TFunction) !== -1
+        ? target.includes(item.target)
         : item.target === target;
       if (sameTarget) {
         const existingIndex = newArray.findIndex(
           (newItem) => newItem.propertyName === item.propertyName
         );
+        const existingItem = newArray[existingIndex];
         if (
           Array.isArray(target) &&
-          existingIndex !== -1 &&
-          target.indexOf(item.target as TFunction | string) <
-            target.indexOf(
-              newArray[existingIndex]?.target as TFunction | string
-            )
+          existingItem &&
+          target.indexOf(item.target) < target.indexOf(existingItem.target)
         ) {
-          const clone = Object.create(newArray[existingIndex] as T) as Record<
-            string,
-            unknown
-          >;
+          const clone = Object.create(existingItem) as Record<string, unknown>;
           clone.type = item.type;
           newArray[existingIndex] = clone as T;
         } else if (existingIndex === -1) {
@@ -471,7 +466,7 @@ export class MetadataArgsStorage {
     const newArray: Array<T> = [];
     array.forEach((item) => {
       const sameTarget = Array.isArray(target)
-        ? target.indexOf(item.target as TFunction) !== -1
+        ? target.includes(item.target)
         : item.target === target;
       if (sameTarget) {
         const isDuplicateEmbeddedProperty = newArray.find(

@@ -4,7 +4,6 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -15,6 +14,9 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const tempRoot = await mkdtemp(join(tmpdir(), 'typeorm-procedure-kit-'));
+const maxPackedBytes = 1_500_000;
+const maxUnpackedBytes = 7_000_000;
+const maxEntryCount = 2_000;
 const sourcePackageJson = JSON.parse(
   await readFile(join(projectRoot, 'package.json'), 'utf8')
 );
@@ -26,7 +28,8 @@ const supportedScenarios = new Set([
   'nest10',
   'nest11',
 ]);
-const scenario = process.env.PROCEDURE_KIT_CONSUMER_SCENARIO ?? 'combined';
+const scenario =
+  process.env.PROCEDURE_KIT_CONSUMER_SCENARIO ?? process.argv[2] ?? 'combined';
 
 if (!supportedScenarios.has(scenario)) {
   throw new Error(
@@ -39,12 +42,14 @@ function run(command, args, cwd = projectRoot) {
     cwd,
     encoding: 'utf8',
     env: process.env,
+    maxBuffer: 16 * 1024 * 1024,
   });
 
-  if (result.status !== 0) {
+  if (result.error || result.status !== 0) {
     throw new Error(
       [
         `${command} ${args.join(' ')} failed with exit code ${result.status}`,
+        result.error?.message,
         result.stdout,
         result.stderr,
       ]
@@ -54,6 +59,115 @@ function run(command, args, cwd = projectRoot) {
   }
 
   return result.stdout;
+}
+
+function parseJson(value, description) {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(`${description} is not valid JSON`, { cause: error });
+  }
+}
+
+function packProject() {
+  const results = parseJson(
+    run('npm', [
+      'pack',
+      '--ignore-scripts',
+      '--json',
+      '--pack-destination',
+      tempRoot,
+      '--cache',
+      join(tempRoot, 'npm-cache'),
+    ]),
+    'npm pack output'
+  );
+  if (!Array.isArray(results) || results.length !== 1) {
+    throw new Error('npm pack must return exactly one package result');
+  }
+
+  const packResult = results[0];
+  if (
+    !packResult ||
+    typeof packResult !== 'object' ||
+    typeof packResult.filename !== 'string' ||
+    typeof packResult.size !== 'number' ||
+    typeof packResult.unpackedSize !== 'number' ||
+    typeof packResult.entryCount !== 'number' ||
+    !Array.isArray(packResult.files)
+  ) {
+    throw new Error('npm pack returned an invalid package result');
+  }
+  if (
+    packResult.size > maxPackedBytes ||
+    packResult.unpackedSize > maxUnpackedBytes ||
+    packResult.entryCount > maxEntryCount
+  ) {
+    throw new Error(
+      `Package exceeds its size budget: ${packResult.size} packed bytes, ${packResult.unpackedSize} unpacked bytes, ${packResult.entryCount} entries`
+    );
+  }
+
+  const entries = new Set(packResult.files.map((file) => file.path));
+  for (const requiredPath of [
+    'CHANGELOG.md',
+    'LICENSE.md',
+    'README.md',
+    'THIRD_PARTY_NOTICES.md',
+    'dist/cjs/index.js',
+    'dist/cjs/package.json',
+    'dist/esm/index.js',
+    'dist/types/index.d.ts',
+    'docs/MIGRATION_V3.md',
+    'docs/TYPEORM_FORK.md',
+    'package.json',
+  ]) {
+    if (!entries.has(requiredPath)) {
+      throw new Error(`Packed package is missing ${requiredPath}`);
+    }
+  }
+
+  for (const entry of entries) {
+    if (
+      entry === 'SBOM.cdx.json' ||
+      entry.startsWith('.github/') ||
+      entry.startsWith('reports/') ||
+      entry.startsWith('scripts/') ||
+      entry.startsWith('src/') ||
+      entry.endsWith('.map') ||
+      (entry.endsWith('.ts') && !entry.endsWith('.d.ts')) ||
+      entry.toLowerCase().includes('tsbuildinfo') ||
+      entry === '.env' ||
+      entry.startsWith('.env.')
+    ) {
+      throw new Error(`Packed package contains forbidden path ${entry}`);
+    }
+  }
+
+  return {
+    filename: packResult.filename,
+    tarballPath: join(tempRoot, packResult.filename),
+  };
+}
+
+async function validateInstalledPackage(packageRoot) {
+  for (const requiredPath of [
+    'CHANGELOG.md',
+    'LICENSE.md',
+    'README.md',
+    'THIRD_PARTY_NOTICES.md',
+    'dist/cjs/index.js',
+    'dist/cjs/package.json',
+    'dist/esm/index.js',
+    'dist/types/index.d.ts',
+    'docs/MIGRATION_V3.md',
+    'docs/TYPEORM_FORK.md',
+    'package.json',
+  ]) {
+    if (!(await pathExists(join(packageRoot, requiredPath)))) {
+      throw new Error(`Installed package is missing ${requiredPath}`);
+    }
+  }
 }
 
 async function getInstalledVersion(packageName) {
@@ -91,9 +205,9 @@ async function getScenarioDependencies() {
     dependencies['@nestjs/common'] =
       await getInstalledVersion('@nestjs/common');
   } else if (scenario === 'nest10') {
-    dependencies['@nestjs/common'] = '^10.0.0';
+    dependencies['@nestjs/common'] = '^10.4.16';
   } else if (scenario === 'nest11') {
-    dependencies['@nestjs/common'] = '^11.0.0';
+    dependencies['@nestjs/common'] = '^11.0.16';
   }
 
   return dependencies;
@@ -120,46 +234,10 @@ function expectedRuntimePeer(packageName) {
 }
 
 try {
-  run('npm', [
-    'pack',
-    '--silent',
-    '--pack-destination',
-    tempRoot,
-    '--cache',
-    join(tempRoot, 'npm-cache'),
-  ]);
-  const filename = (await readdir(tempRoot)).find((entry) =>
-    entry.endsWith('.tgz')
-  );
-  if (!filename) throw new Error('npm pack did not create a tarball');
-  const tarballPath = join(tempRoot, filename);
-  const entries = run('tar', ['-tzf', tarballPath]).trim().split('\n');
-
-  if (!entries.includes('package/README.md')) {
-    throw new Error('Packed package does not contain a root README.md');
-  }
-  for (const requiredDocument of [
-    'package/docs/MIGRATION_V3.md',
-    'package/docs/TYPEORM_FORK.md',
-  ]) {
-    if (!entries.includes(requiredDocument)) {
-      throw new Error(`Packed package does not contain ${requiredDocument}`);
-    }
-  }
-  if (entries.some((entry) => entry.endsWith('.tsbuildinfo'))) {
-    throw new Error('Packed package contains TypeScript build info cache');
-  }
+  const { filename, tarballPath } = packProject();
 
   const consumerRoot = join(tempRoot, 'consumer');
   await mkdir(consumerRoot, { recursive: true });
-  const packedPackageJson = JSON.parse(
-    run('tar', ['-xOf', tarballPath, 'package/package.json'])
-  );
-  if (packedPackageJson.version !== sourcePackageJson.version) {
-    throw new Error(
-      `Expected tarball version ${sourcePackageJson.version}, received ${packedPackageJson.version}`
-    );
-  }
   await writeFile(
     join(consumerRoot, 'package.json'),
     `${JSON.stringify(
@@ -204,9 +282,17 @@ try {
       'utf8'
     )
   );
-  if (installedPackageJson.version !== packedPackageJson.version) {
-    throw new Error('Installed package version differs from the tarball');
+  if (installedPackageJson.version !== sourcePackageJson.version) {
+    throw new Error(
+      `Expected package version ${sourcePackageJson.version}, received ${installedPackageJson.version}`
+    );
   }
+  if (installedPackageJson.private !== undefined) {
+    throw new Error('Published package manifest must not contain private');
+  }
+  await validateInstalledPackage(
+    join(consumerRoot, 'node_modules', 'typeorm-procedure-kit')
+  );
 
   for (const runtimePeer of [
     'pg',

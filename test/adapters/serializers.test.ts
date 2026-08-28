@@ -4,22 +4,25 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js';
 import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serializer.js';
+import { ServerError } from '../../src/utils/server-error.js';
+import { createLogger } from '../support/helpers.js';
+
 import type {
   ISetSerializer,
   TSerializerInput,
   TSerializerType,
 } from '../../src/types/serializer.types.js';
-import { ServerError } from '../../src/utils/server-error.js';
-import { createLogger } from '../support/helpers.js';
 
 const caseStrategy = {
   transformColumnName: (value: string): string => value.toLowerCase(),
   destroy: (): void => undefined,
 };
 
-function createOracleSerializer(registerDefaults = false): OracleSerializer {
+function createOracleSerializer(
+  shouldRegisterDefaults = false
+): OracleSerializer {
   return new OracleSerializer(createLogger(), {
-    isNeedRegisterDefaultSerializers: registerDefaults,
+    isNeedRegisterDefaultSerializers: shouldRegisterDefaults,
     caseStrategy,
   });
 }
@@ -107,6 +110,26 @@ describe('database serializers', (): void => {
     expect(serializer.serializerMapping.has('TIMESTAMP_LTZ')).toBe(true);
 
     serializer.deleteAllSerializers();
+  });
+
+  it('preserves PostgreSQL refcursor portal values with transformed keys', (): void => {
+    const serializer = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy,
+    });
+
+    expect(
+      serializer.transformRows(
+        [{ OUT_CURSOR: 'portal"name', STATUS: 'ready' }],
+        [
+          {
+            name: 'OUT_CURSOR',
+            dataTypeID: pgTypes.builtins.REFCURSOR,
+          },
+          { name: 'STATUS', dataTypeID: pgTypes.builtins.TEXT },
+        ] as never
+      )
+    ).toEqual([{ out_cursor: 'portal"name', status: 'ready' }]);
   });
 
   it('passes native Oracle Date directly to all temporal defaults', (): void => {

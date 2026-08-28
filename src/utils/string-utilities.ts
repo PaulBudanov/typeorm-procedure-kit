@@ -1,5 +1,6 @@
 import camelCase from 'lodash/camelCase.js';
 import snakeCase from 'lodash/snakeCase.js';
+
 export abstract class StringUtilities {
   public static toCamelCase(input: string | undefined): string {
     return camelCase(input);

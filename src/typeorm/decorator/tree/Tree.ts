@@ -1,4 +1,5 @@
 import { getMetadataArgsStorage } from '../../globals.js';
+
 import type { ClosureTreeOptions } from '../../metadata/types/ClosureTreeOptions.js';
 import type { TreeType } from '../../metadata/types/TreeTypes.js';
 import type { TreeMetadataArgs } from '../../metadata-args/TreeMetadataArgs.js';

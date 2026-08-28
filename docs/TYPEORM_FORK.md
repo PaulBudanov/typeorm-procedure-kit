@@ -18,8 +18,33 @@ local patch families, and the required process for future upstream syncs.
   that the tree is byte-identical to a particular upstream commit.
 
 Do not invent an upstream SHA retroactively. A future maintainer may establish
-one only by a reproducible source comparison and must document the method and
+one only by a documented source comparison and must document the method and
 remaining differences.
+
+## Vendored component record
+
+The repository keeps the following provenance record for the bundled runtime.
+The non-standard version suffix is deliberate: it prevents the inferred
+baseline from being mistaken for a byte-identical copy of the upstream npm
+package.
+
+| Field                 | Value                                      |
+| --------------------- | ------------------------------------------ |
+| Component             | `typeorm`                                  |
+| Component type        | `library`                                  |
+| Version               | `0.3.28-inferred`                          |
+| SPDX license          | `MIT`                                      |
+| Vendored and modified | `true`                                     |
+| Source path           | `src/typeorm`                              |
+| Published paths       | `dist/{esm,cjs,types}/typeorm`             |
+| Local import commit   | `37fb510f1332381b5d767e11413bc4406a2283f6` |
+| Exact upstream commit | `unknown`                                  |
+| Third-party notice    | `THIRD_PARTY_NOTICES.md`                   |
+| Upstream repository   | `https://github.com/typeorm/typeorm`       |
+
+`THIRD_PARTY_NOTICES.md` and this document are included in every npm package.
+The package is built and packed directly from the tagged source, and npm trusted
+publishing attaches provenance to the published version.
 
 ## Local patch log
 
@@ -28,7 +53,7 @@ remain the source of truth for individual changes.
 
 | Patch family            | Local behavior maintained by this project                                                                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Packaging and runtime   | ESM/CJS dual output, Node.js 20+ and ES2022 migration, package-owned TypeORM entry point, circular-import fixes.                                      |
+| Packaging and runtime   | ESM/CJS dual output targeting ES2022 on Node.js 20+, no published source/declaration maps, package-owned TypeORM entry point, circular-import fixes.  |
 | Oracle/PostgreSQL focus | Reduced driver surface focused on Oracle and PostgreSQL, custom pool/config wiring, optional `pg-native` handling, query-runner release fixes.        |
 | Session isolation       | Validated per-connection `sessionTimeZone`, default UTC sessions, per-pool result parser/fetch-handler configuration.                                 |
 | Query builders          | Configurable identifier quoting, database-column/property-path resolution, compound count fixes, Oracle/PostgreSQL `RETURNING`, safe SQL-tag helpers. |
@@ -36,6 +61,42 @@ remain the source of truth for individual changes.
 | Naming and results      | Shared case strategy for ORM metadata and native rows, explicit custom database column maps, structured Oracle out-bind handling.                     |
 | Logging and lifecycle   | ProcedureKit logger routing, slow-query reporting, connection cleanup, query runner and cache resource ownership.                                     |
 | Security                | SHA-256 internal alias hashing, identifier validation, removal of callback-based raw SQL shortcuts in favor of explicit trusted fragments.            |
+
+### Intentional identifier-quoting divergence
+
+The official
+[TypeORM 0.3.28 QueryBuilder](https://github.com/typeorm/typeorm/blob/0.3.28/src/query-builder/QueryBuilder.ts)
+routes generated identifiers through its shared escaping switch. This fork
+intentionally adds a more granular physical-identifier policy that is not an
+upstream API: `identifierQuoting: 'disabled' | 'enabled'`, defaulting to
+`disabled`. Physical database, schema, table, and column names follow that
+policy; generated aliases, CTE names and outputs, constraints, indexes, and the
+public explicit `escape(name)` path remain quoted. Unquoted names are validated
+against the active Oracle or PostgreSQL reserved-word set and a Unicode-safe
+identifier grammar.
+
+The implementation keeps the upstream query-builder structure and changes only
+the identifier-formatting decision points. The inferred `0.3.28` baseline and
+unknown exact upstream SHA remain unchanged; this local policy must be reviewed
+and re-applied deliberately during future upstream synchronization.
+
+The upstream database-cache default `query-result-cache` requires quoted SQL.
+Because this fork defaults physical quoting to `disabled`, its local default is
+`query_result_cache`. Explicit legacy or otherwise unsafe cache-table names are
+supported with `identifierQuoting: 'enabled'` and rejected early when quoting is
+disabled. Cache read/write SQL follows the physical column policy while its
+internal `cache` alias remains quoted.
+
+### Security advisory coverage
+
+- `GHSA-2rp8-mm9q-fp49` / `CVE-2026-73651` (TypeORM versions before `0.3.31`,
+  migration-generation template-literal injection) was audited against this
+  fork. The affected `src/commands/MigrationGenerateCommand.ts`, command/CLI
+  tree, and `migration:generate` package entry point are not vendored, exported,
+  or published here, so the vulnerable code-generation sink is not present.
+  Reintroducing TypeORM CLI commands requires porting the upstream fixed
+  implementation from `0.3.31` or later and regression tests covering backticks,
+  backslashes, and `${...}` sequences in introspected SQL metadata.
 
 Notable historical commits affecting the fork include `5b8932f` (ES2022/type
 refactor), `034a18e` (case strategy and raw result mapping), `c8e84dc` (typed

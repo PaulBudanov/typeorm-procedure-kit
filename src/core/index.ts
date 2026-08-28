@@ -1,4 +1,15 @@
 import { SHUTDOWN_SIGNALS } from '../consts/shuwtdown.consts.js';
+import { QueryLogContextBuilder } from '../utils/query-log-context-builder.js';
+import { QueryLogContextStorage } from '../utils/query-log-context.js';
+import { ServerError } from '../utils/server-error.js';
+
+import { ConnectionBase } from './connection-base.js';
+import { DatabaseInitializerBase } from './database-initializer-base.js';
+import { ExecuteBase } from './execute-base.js';
+import { NotifyBase } from './notify-base.js';
+import { ProcedureListBase } from './procedure-list-base.js';
+import { SerializerBase } from './serializer-base.js';
+
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
@@ -22,16 +33,6 @@ import type {
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
 import type { IProcedureResult } from '../types/utility.types.js';
-import { QueryLogContextBuilder } from '../utils/query-log-context-builder.js';
-import { QueryLogContextStorage } from '../utils/query-log-context.js';
-import { ServerError } from '../utils/server-error.js';
-
-import { ConnectionBase } from './connection-base.js';
-import { DatabaseInitializerBase } from './database-initializer-base.js';
-import { ExecuteBase } from './execute-base.js';
-import { NotifyBase } from './notify-base.js';
-import { ProcedureListBase } from './procedure-list-base.js';
-import { SerializerBase } from './serializer-base.js';
 
 type TProcedureKitState =
   | 'new'
@@ -87,13 +88,15 @@ export class TypeOrmProcedureKit {
     this.executeBase = new ExecuteBase(
       this.connectionBase,
       this.databaseInitializerBase.databaseAdapter,
-      this.logger
+      this.logger,
+      this.settings.logger.bindingLogMode
     );
     this.procedureListBase = new ProcedureListBase(
       this.logger,
       this.databaseInitializerBase.databaseAdapter,
       this.executeBase,
-      this.settings.config.packagesSettings
+      this.settings.config.packagesSettings,
+      this.databaseInitializerBase.resolvedResourceLimits.maxMetadataRows
     );
     this.notifyBase = new NotifyBase(
       this.databaseInitializerBase.databaseAdapter,
@@ -185,14 +188,18 @@ export class TypeOrmProcedureKit {
         packagesSettings.isNeedDynamicallyUpdatePackagesInfo
       ) {
         const notifyBase = this.requireNotifyBase();
+        const configuredNotificationSql =
+          packagesSettings.metadataNotificationSql?.trim();
         const metadataNotificationSql =
-          packagesSettings.metadataNotificationSql?.trim() ||
-          this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
-            packagesSettings.packages
-          );
+          configuredNotificationSql && configuredNotificationSql.length > 0
+            ? configuredNotificationSql
+            : this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
+                packagesSettings.packages
+              );
         await notifyBase.createNotification<TNotifyPackageCallback>({
           sql: metadataNotificationSql,
-          notifyCallback: notifyBase.packageNotifyCallback.bind(notifyBase),
+          notifyCallback:
+            notifyBase.schedulePackageNotifyCallback.bind(notifyBase),
         });
       }
       if (this.state === 'initializing') this.state = 'ready';
@@ -489,7 +496,7 @@ export class TypeOrmProcedureKit {
   }
 
   private async cleanupResources(
-    destroyCaseStrategy: boolean
+    isDestroyCaseStrategy: boolean
   ): Promise<Array<Error>> {
     const errors: Array<Error> = [];
     const notifyBase = this.notifyBase;
@@ -532,7 +539,7 @@ export class TypeOrmProcedureKit {
       this.logger.error(`DataSource destroy error: ${cleanupError.message}`);
     }
 
-    if (destroyCaseStrategy) {
+    if (isDestroyCaseStrategy) {
       try {
         this.databaseInitializerBase.caseSettings.strategy.destroy();
       } catch (error: unknown) {

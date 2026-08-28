@@ -8,6 +8,14 @@ export interface IProcedureArgumentBase {
   mode: TProcedureArgumentMode;
   /** Maximum bind size reported by database metadata, when available. */
   size?: number;
+  /** Database-specific routine identifier used to distinguish overloads. */
+  specificName?: string;
+  /** Routine owner/schema reported by database metadata. */
+  owner?: string;
+  /** Oracle subprogram identifier used to distinguish overloads. */
+  subprogramId?: number;
+  /** Oracle overload identifier, when present. */
+  overload?: string;
 }
 
 /**

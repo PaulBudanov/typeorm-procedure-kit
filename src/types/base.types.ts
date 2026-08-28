@@ -3,7 +3,11 @@ import type {
   IMigrationOptions,
   TDbConfig,
 } from './config.types.js';
-import type { ILoggerModule, TTypeOrmLoggerLevels } from './logger.types.js';
+import type {
+  ILoggerModule,
+  TBindingLogMode,
+  TTypeOrmLoggerLevels,
+} from './logger.types.js';
 
 export interface IModuleLoggerConfig {
   /**
@@ -15,6 +19,12 @@ export interface IModuleLoggerConfig {
    * Use `all` to enable every TypeORM log level.
    */
   typeormLogLevels?: TTypeOrmLoggerLevels;
+  /**
+   * Controls binding values written to query logs. The default is
+   * `metadata-only`, which hides every value. `redact-by-name` is a less strict
+   * compatibility mode; `unsafe-values` exposes values explicitly.
+   */
+  bindingLogMode?: TBindingLogMode;
 }
 
 export interface IModuleConfig {

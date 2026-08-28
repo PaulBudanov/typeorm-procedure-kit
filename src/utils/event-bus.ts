@@ -38,7 +38,7 @@ export class EventBusService implements IEventBusService {
     this.eventEmitter.once<U>(event, callback);
     return {
       unsubscribe: (): void => {
-        return this.eventUnsubscribe<T, U>(event, callback);
+        this.eventUnsubscribe<T, U>(event, callback);
       },
     };
   }

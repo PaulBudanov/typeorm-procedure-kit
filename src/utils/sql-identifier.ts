@@ -37,7 +37,9 @@ export abstract class SqlIdentifier {
   }
 
   public static quotePostgresQualifiedIdentifier(parts: Array<string>): string {
-    return parts.map(SqlIdentifier.quotePostgresIdentifier).join('.');
+    return parts
+      .map(SqlIdentifier.quotePostgresIdentifier.bind(this))
+      .join('.');
   }
 
   public static formatOracleQualifiedIdentifier(parts: Array<string>): string {

@@ -1,3 +1,6 @@
+import { QueueManager } from '../utils/queue-manager.js';
+
+import type { ProcedureListBase } from './procedure-list-base.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
@@ -6,9 +9,6 @@ import type {
   IOracleOptionsNotify,
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
-import { QueueManager } from '../utils/queue-manager.js';
-
-import type { ProcedureListBase } from './procedure-list-base.js';
 
 interface IPackageRefreshState {
   requestedGeneration: number;
@@ -129,8 +129,7 @@ export class NotifyBase {
         } catch (error) {
           refreshState.completedGeneration = requestedGeneration;
           if (
-            this.isDestroyed ||
-            refreshState.requestedGeneration === requestedGeneration
+            this.shouldAbortRefreshAfterError(refreshState, requestedGeneration)
           ) {
             throw error;
           }
@@ -143,6 +142,17 @@ export class NotifyBase {
         this.refreshStates.delete(packageName);
       }
     }
+  }
+
+  /** Re-reads mutable refresh state after the awaited metadata request. */
+  private shouldAbortRefreshAfterError(
+    refreshState: IPackageRefreshState,
+    requestedGeneration: number
+  ): boolean {
+    return (
+      this.isDestroyed ||
+      refreshState.requestedGeneration === requestedGeneration
+    );
   }
 
   /**
@@ -177,12 +187,17 @@ export class NotifyBase {
   ): Promise<void> {
     if (this.isDestroyed) return;
 
+    const configuredPackages = new Set(
+      (this.packagesSettings?.packages ?? []).map((packageName) =>
+        packageName.toLowerCase()
+      )
+    );
+
     const processPackage = async (packageNameRaw: string): Promise<void> => {
-      const packageName = packageNameRaw.toLowerCase() as Lowercase<string>;
-      if (
-        this.packagesSettings &&
-        this.packagesSettings.packages.includes(packageName)
-      ) {
+      const packageName = packageNameRaw
+        .trim()
+        .toLowerCase() as Lowercase<string>;
+      if (packageName.length > 0 && configuredPackages.has(packageName)) {
         const wasEnqueued = await this.queueManager.enqueueAsync(
           undefined,
           packageName
@@ -192,16 +207,54 @@ export class NotifyBase {
     };
 
     if (Array.isArray(notifyData)) {
-      await Promise.all(notifyData.map((item) => processPackage(item.name)));
+      await Promise.all(
+        notifyData.map(async (item) => {
+          const packageName = this.readStringField(item, 'name');
+          if (!packageName) {
+            this.logger.warn(
+              'Ignoring Oracle package notification without a string NAME field'
+            );
+            return;
+          }
+          await processPackage(packageName);
+        })
+      );
     } else {
+      const event = this.readStringField(notifyData, 'event');
+      const packageName = this.readStringField(notifyData, 'object');
       if (
-        notifyData.event &&
-        (notifyData.event.toUpperCase() === 'DROP' ||
-          notifyData.event.toUpperCase() === 'CREATE')
-      )
-        await processPackage(notifyData.object);
+        packageName &&
+        event &&
+        (event.toUpperCase() === 'DROP' || event.toUpperCase() === 'CREATE')
+      ) {
+        await processPackage(packageName);
+      }
     }
     return;
+  }
+
+  /**
+   * Starts metadata refresh work without holding the adapter's per-channel
+   * notification queue until the database metadata query completes. Bursts are
+   * still coalesced by packageNotifyCallback and refreshPackage.
+   */
+  public schedulePackageNotifyCallback(
+    notifyData: TNotifyPackageCallback
+  ): void {
+    void this.packageNotifyCallback(notifyData).catch((error: unknown) => {
+      this.logger.error(
+        `Failed to process package notification: ${(error as Error).message}`,
+        (error as Error).stack
+      );
+    });
+  }
+
+  private readStringField(value: unknown, fieldName: string): string | null {
+    if (value === null || typeof value !== 'object') return null;
+    const entry = Object.entries(value).find(
+      ([key]) => key.toLowerCase() === fieldName.toLowerCase()
+    );
+    return typeof entry?.[1] === 'string' ? entry[1] : null;
   }
 
   /**

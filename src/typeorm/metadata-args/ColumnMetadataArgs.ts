@@ -1,7 +1,6 @@
+import type { ColumnMode } from './types/ColumnMode.js';
 import type { TFunction } from '../../types/utility.types.js';
 import type { ColumnOptions } from '../decorator/options/ColumnOptions.js';
-
-import type { ColumnMode } from './types/ColumnMode.js';
 
 /**
  * Arguments for ColumnMetadata class.

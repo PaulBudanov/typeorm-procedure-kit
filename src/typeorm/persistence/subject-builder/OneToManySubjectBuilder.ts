@@ -1,8 +1,9 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import { Subject } from '../Subject.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 
 /**
  * Builds operations needs to be executed for one-to-many relations of the given subjects.
@@ -33,7 +34,7 @@ export class OneToManySubjectBuilder {
     this.subjects.forEach((subject) => {
       subject.metadata.oneToManyRelations.forEach((relation) => {
         // skip relations for which persistence is disabled
-        if (relation.persistenceEnabled === false) return;
+        if (!relation.persistenceEnabled) return;
 
         this.buildForSubjectRelation(subject, relation);
       });
@@ -94,7 +95,7 @@ export class OneToManySubjectBuilder {
     relatedEntities.forEach((relatedEntity) => {
       // by example: relatedEntity is a category here
       let relationIdMap =
-        relation.inverseEntityMetadata!.getEntityIdMap(relatedEntity); // by example: relationIdMap is category.id map here, e.g. { id: ... }
+        relation.inverseEntityMetadata.getEntityIdMap(relatedEntity); // by example: relationIdMap is category.id map here, e.g. { id: ... }
 
       // try to find a subject of this related entity, maybe it was loaded or was marked for persistence
       let relatedEntitySubject = this.subjects.find((subject) => {

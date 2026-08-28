@@ -9,6 +9,7 @@ export abstract class AsyncUtils {
    * const result = await AsyncUtils.delay(1000);
    */
   public static delay(ms: number): Promise<void> {
+    AsyncUtils.assertNonNegativeDelay(ms, 'delay');
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
@@ -36,13 +37,20 @@ export abstract class AsyncUtils {
     delayMs = 1000,
     logger?: { warn: (msg: string) => void; error: (msg: string) => void }
   ): Promise<T> {
-    let lastError: Error;
+    if (!Number.isSafeInteger(maxRetries) || maxRetries <= 0) {
+      throw new RangeError('maxRetries must be a positive safe integer');
+    }
+    AsyncUtils.assertNonNegativeDelay(delayMs, 'retry delay');
+    let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
       } catch (error) {
-        lastError = error as Error;
+        lastError =
+          error instanceof Error
+            ? error
+            : ServerError.ENSURE_SERVER_ERROR({ error });
 
         if (logger) {
           logger.warn(
@@ -56,11 +64,11 @@ export abstract class AsyncUtils {
       }
     }
 
-    if (logger) {
-      logger.error(`All ${maxRetries} attempts failed: ${lastError!.message}`);
+    if (lastError === undefined) {
+      throw new ServerError('Retry completed without an attempt result');
     }
-
-    throw lastError!;
+    logger?.error(`All ${maxRetries} attempts failed: ${lastError.message}`);
+    throw lastError;
   }
 
   /**
@@ -78,19 +86,27 @@ export abstract class AsyncUtils {
     timeoutMs: number,
     timeoutMessage = 'Operation timeout'
   ): Promise<T> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new RangeError('timeoutMs must be a positive safe integer');
+    }
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(
-        () => reject(new ServerError(timeoutMessage)),
-        timeoutMs
-      );
-      timeoutHandle.unref?.();
+      timeoutHandle = setTimeout(() => {
+        reject(new ServerError(timeoutMessage));
+      }, timeoutMs);
+      timeoutHandle.unref();
     });
 
     try {
       return await Promise.race([fn(), timeoutPromise]);
     } finally {
       if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    }
+  }
+
+  private static assertNonNegativeDelay(ms: number, name: string): void {
+    if (!Number.isSafeInteger(ms) || ms < 0) {
+      throw new RangeError(`${name} must be a non-negative safe integer`);
     }
   }
 }

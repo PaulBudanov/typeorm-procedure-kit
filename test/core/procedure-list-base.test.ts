@@ -134,6 +134,10 @@ describe('ProcedureListBase', (): void => {
             ORDER: '2',
             MODE: 'INOUT',
             SIZE: '4096',
+            SPECIFIC_NAME: 'run_123',
+            OWNER: 'APP',
+            SUBPROGRAM_ID: '2',
+            OVERLOAD: '1',
           },
         ]),
       } as never,
@@ -154,6 +158,10 @@ describe('ProcedureListBase', (): void => {
           order: 2,
           mode: 'IN/OUT',
           size: 4096,
+          specificName: 'run_123',
+          owner: 'APP',
+          subprogramId: 2,
+          overload: '1',
         },
       ],
       ['pkg.run'],
@@ -239,7 +247,7 @@ describe('ProcedureListBase', (): void => {
     expect(executeBase.execute).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(1);
 
-    procedureList.destroy();
+    void procedureList.destroy();
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -285,7 +293,89 @@ describe('ProcedureListBase', (): void => {
     expect(procedureList.packagesWithProceduresList.get('pkg')).toHaveProperty(
       'run'
     );
-    procedureList.destroy();
+    void procedureList.destroy();
+  });
+
+  it('coalesces concurrent refreshes and performs one final rerun', async (): Promise<void> => {
+    const resolvers: Array<(value: Array<Record<string, unknown>>) => void> =
+      [];
+    const execute = vi.fn(
+      () =>
+        new Promise<Array<Record<string, unknown>>>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+    const procedureList = new ProcedureListBase(
+      createLogger(),
+      createAdapterMock({
+        generatePackageInfoSql: vi.fn(() => 'select args'),
+        sortArgumentsAlgorithm: vi.fn((argumentsList) => ({
+          [argumentsList[0]!.procedureName.toLowerCase()]: [],
+        })),
+      }),
+      { execute } as never,
+      {
+        packages: ['pkg'],
+        procedureObjectList: { latest: 'pkg.latest' },
+      }
+    );
+
+    const first = procedureList.fetchProcedureListWithArguments('pkg');
+    const concurrent = procedureList.fetchProcedureListWithArguments('pkg');
+    expect(concurrent).toBe(first);
+    expect(execute).toHaveBeenCalledOnce();
+
+    resolvers[0]!([
+      {
+        procedure_name: 'old',
+        argument_name: 'p_id',
+        argument_type: 'NUMBER',
+        order: 1,
+        mode: 'IN',
+      },
+    ]);
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
+    resolvers[1]!([
+      {
+        procedure_name: 'latest',
+        argument_name: 'p_id',
+        argument_type: 'NUMBER',
+        order: 1,
+        mode: 'IN',
+      },
+    ]);
+
+    await expect(first).resolves.toBeUndefined();
+    expect(procedureList.packagesWithProceduresList.get('pkg')).toEqual({
+      latest: [],
+    });
+  });
+
+  it('rejects oversized procedure metadata before decoding or sorting it', async (): Promise<void> => {
+    const sortArgumentsAlgorithm = vi.fn();
+    const procedureList = new ProcedureListBase(
+      createLogger(),
+      createAdapterMock({
+        generatePackageInfoSql: vi.fn(() => 'select args'),
+        sortArgumentsAlgorithm,
+      }),
+      {
+        execute: vi
+          .fn()
+          .mockResolvedValue([{ invalid: true }, { invalid: true }]),
+      } as never,
+      {
+        packages: ['pkg'],
+        procedureObjectList: { run: 'pkg.run' },
+      },
+      1
+    );
+
+    await expect(
+      procedureList.fetchProcedureListWithArguments('pkg')
+    ).rejects.toThrow('resourceLimits.maxMetadataRows (1)');
+    expect(sortArgumentsAlgorithm).not.toHaveBeenCalled();
+    void procedureList.destroy();
   });
 
   it('waits for an in-flight background retry and never publishes after destroy', async (): Promise<void> => {
@@ -319,12 +409,12 @@ describe('ProcedureListBase', (): void => {
     await vi.advanceTimersByTimeAsync(1000 * 60 * 5);
     expect(execute).toHaveBeenCalledTimes(2);
 
-    let destroyCompleted = false;
+    let isDestroyCompleted = false;
     const destroyPromise = procedureList.destroy().then(() => {
-      destroyCompleted = true;
+      isDestroyCompleted = true;
     });
     await Promise.resolve();
-    expect(destroyCompleted).toBe(false);
+    expect(isDestroyCompleted).toBe(false);
 
     resolveRetry([
       {

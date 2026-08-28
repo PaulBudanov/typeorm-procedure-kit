@@ -77,4 +77,21 @@ describe('DatabaseErrorHandler', (): void => {
       });
     }).not.toThrow();
   });
+
+  it('treats numeric and string zero codes as success', (): void => {
+    expect((): void => {
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: '0',
+        error_text: 'ok',
+      });
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: '00000',
+        error_text: 'ok',
+      });
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: '  ',
+        error_text: 'ok',
+      });
+    }).not.toThrow();
+  });
 });

@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { SerializerBase } from '../../src/core/serializer-base.js';
+import { ServerError } from '../../src/utils/server-error.js';
+import { createAdapterMock } from '../support/helpers.js';
+
 import type {
   ISetSerializer,
   TSerializerInput,
   TSerializerType,
 } from '../../src/types/serializer.types.js';
-import { ServerError } from '../../src/utils/server-error.js';
-import { createAdapterMock } from '../support/helpers.js';
 
 describe('SerializerBase', (): void => {
   it('delegates serializer mutations to the adapter', (): void => {

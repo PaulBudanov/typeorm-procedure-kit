@@ -6,14 +6,15 @@ import { Column } from '../../src/typeorm/decorator/columns/Column.js';
 import { PrimaryColumn } from '../../src/typeorm/decorator/columns/PrimaryColumn.js';
 import { Entity } from '../../src/typeorm/decorator/entity/Entity.js';
 import { getMetadataArgsStorage } from '../../src/typeorm/globals.js';
-import type { ObjectLiteral } from '../../src/typeorm/index.js';
 import { ExtendColumn } from '../../src/typeorm-extend/decorators/ExtendColumn.js';
 import { ExtendEntity } from '../../src/typeorm-extend/decorators/ExtendEntity.js';
 import { ExtendPrimaryColumn } from '../../src/typeorm-extend/decorators/ExtendPrimaryColumn.js';
 import { ExtendPrimaryGeneratedColumn } from '../../src/typeorm-extend/decorators/ExtendPrimaryGeneratedColumn.js';
-import type { TFunction } from '../../src/types/utility.types.js';
 import { DatabaseNamingCache } from '../../src/utils/database-naming-cache.js';
 import { ServerError } from '../../src/utils/server-error.js';
+
+import type { ObjectLiteral } from '../../src/typeorm/index.js';
+import type { TFunction } from '../../src/types/utility.types.js';
 
 class BaseEntity {
   public id!: number;

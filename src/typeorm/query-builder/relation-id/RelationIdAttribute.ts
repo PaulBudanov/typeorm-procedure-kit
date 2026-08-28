@@ -1,9 +1,10 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
 import { QueryBuilderUtils } from '../QueryBuilderUtils.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import type { QueryExpressionMap } from '../QueryExpressionMap.js';
 import type { SelectQueryBuilder } from '../SelectQueryBuilder.js';
 
@@ -104,11 +105,11 @@ export class RelationIdAttribute {
       );
 
     const relationOwnerSelection = this.queryExpressionMap.findAliasByName(
-      this.parentAlias!
+      this.parentAlias
     );
     const relation =
       relationOwnerSelection.metadata.findRelationWithPropertyPath(
-        this.relationPropertyPath!
+        this.relationPropertyPath
       );
     if (!relation)
       throw new TypeORMError(

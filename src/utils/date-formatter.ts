@@ -44,7 +44,7 @@ export abstract class DateFormatter {
   public static formatSqlDate(
     input: string | Date,
     outputFormat: string,
-    setLocalZone: TLegacyLocalZoneOption
+    shouldSetLocalZone: TLegacyLocalZoneOption
   ): string;
 
   public static formatSqlDate(
@@ -78,7 +78,7 @@ export abstract class DateFormatter {
    */
   public static parseSqlDate(
     input: string,
-    setLocalZone: TLegacyLocalZoneOption
+    shouldSetLocalZone: TLegacyLocalZoneOption
   ): DateTime;
 
   public static parseSqlDate(

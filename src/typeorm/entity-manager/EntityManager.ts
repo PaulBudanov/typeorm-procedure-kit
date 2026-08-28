@@ -1,5 +1,22 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
+import { formatDatabaseIdentifier } from '../data-source/IdentifierQuoting.js';
+import { EntityNotFoundError } from '../error/EntityNotFoundError.js';
+import { NoNeedToReleaseEntityManagerError } from '../error/NoNeedToReleaseEntityManagerError.js';
+import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError.js';
+import { TreeRepositoryNotSupportedError } from '../error/TreeRepositoryNotSupportedError.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
+import { EntityPersistExecutor } from '../persistence/EntityPersistExecutor.js';
+import { PlainObjectToDatabaseEntityTransformer } from '../query-builder/transformer/PlainObjectToDatabaseEntityTransformer.js';
+import { PlainObjectToNewEntityTransformer } from '../query-builder/transformer/PlainObjectToNewEntityTransformer.js';
+import { Repository } from '../repository/Repository.js';
+import { TreeRepository } from '../repository/TreeRepository.js';
+import { InstanceChecker } from '../util/InstanceChecker.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
+import { OrmUtils } from '../util/OrmUtils.js';
+import { buildSqlTag } from '../util/SqlTagUtils.js';
+
+import type { TFunction } from '../../types/utility.types.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -8,35 +25,24 @@ import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import type { QueryParameterValues } from '../driver/QueryParameters.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
-import { EntityNotFoundError } from '../error/EntityNotFoundError.js';
-import { NoNeedToReleaseEntityManagerError } from '../error/NoNeedToReleaseEntityManagerError.js';
-import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError.js';
-import { TreeRepositoryNotSupportedError } from '../error/TreeRepositoryNotSupportedError.js';
-import { TypeORMError } from '../error/TypeORMError.js';
 import type { FindManyOptions } from '../find-options/FindManyOptions.js';
 import type { FindOneOptions } from '../find-options/FindOneOptions.js';
-import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
 import type { FindOptionsWhere } from '../find-options/FindOptionsWhere.js';
-import { EntityPersistExecutor } from '../persistence/EntityPersistExecutor.js';
 import type { QueryDeepPartialEntity } from '../query-builder/QueryPartialEntity.js';
 import type { DeleteResult } from '../query-builder/result/DeleteResult.js';
 import type { InsertResult } from '../query-builder/result/InsertResult.js';
 import type { UpdateResult } from '../query-builder/result/UpdateResult.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
-import { PlainObjectToDatabaseEntityTransformer } from '../query-builder/transformer/PlainObjectToDatabaseEntityTransformer.js';
-import { PlainObjectToNewEntityTransformer } from '../query-builder/transformer/PlainObjectToNewEntityTransformer.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
 // MongoRepository import removed - module not found
 // import { MongoRepository } from '../repository/MongoRepository.js';
 import type { RemoveOptions } from '../repository/RemoveOptions.js';
-import { Repository } from '../repository/Repository.js';
 import type { SaveOptions } from '../repository/SaveOptions.js';
-import { TreeRepository } from '../repository/TreeRepository.js';
 import type { UpsertOptions } from '../repository/UpsertOptions.js';
-import { InstanceChecker } from '../util/InstanceChecker.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-import { OrmUtils } from '../util/OrmUtils.js';
-import { buildSqlTag } from '../util/SqlTagUtils.js';
+
+const INVALIDATE_CONNECTION = Symbol.for(
+  'typeorm-procedure-kit.invalidate-connection'
+);
 
 /**
  * Entity manager supposed to work with any entity, automatically find its repository and call its methods,
@@ -129,31 +135,52 @@ export class EntityManager {
       );
     }
 
-    if (this.queryRunner && this.queryRunner.isReleased)
+    if (this.queryRunner?.isReleased)
       throw new QueryRunnerProviderAlreadyReleasedError();
 
     // if query runner is already defined in this class, it means this entity manager was already created for a single connection
     // if its not defined we create a new query runner - single connection where we'll execute all our operations
     const queryRunner: QueryRunner =
       this.queryRunner ?? this.connection.createQueryRunner();
+    let releaseError: Error | undefined;
+    let commitAttempted = false;
 
     try {
       await queryRunner.startTransaction(isolation);
       const result = await runInTransaction(queryRunner.manager);
+      commitAttempted = true;
       await queryRunner.commitTransaction();
       return result;
     } catch (err) {
-      try {
-        // we throw original error even if rollback thrown an error
-        await queryRunner.rollbackTransaction();
-      } catch {
-        // do nothing
+      const transactionError =
+        err instanceof Error ? err : new Error(String(err));
+      if (
+        commitAttempted ||
+        (transactionError as unknown as Record<symbol, unknown>)[
+          INVALIDATE_CONNECTION
+        ] === true
+      ) {
+        releaseError = transactionError;
+      }
+      if (queryRunner.isTransactionActive) {
+        try {
+          // we throw original error even if rollback thrown an error
+          await queryRunner.rollbackTransaction();
+        } catch (rollbackError: unknown) {
+          releaseError =
+            rollbackError instanceof Error
+              ? rollbackError
+              : new Error(String(rollbackError));
+        }
       }
       throw err;
     } finally {
       if (!this.queryRunner)
         // if we used a new query runner provider then release it
-        await queryRunner.release();
+        await queryRunner.release(releaseError);
+      else if (releaseError)
+        // A scoped owner may release again later; QueryRunner.release is idempotent.
+        await queryRunner.release(releaseError);
     }
   }
 
@@ -186,7 +213,7 @@ export class EntityManager {
       expressions: values,
     });
 
-    return await this.query(query, parameters);
+    return this.query(query, parameters);
   }
 
   /**
@@ -319,14 +346,14 @@ export class EntityManager {
       return metadata.create(this.queryRunner) as Entity;
 
     if (Array.isArray(plainObjectOrObjects))
-      return (plainObjectOrObjects as Array<EntityLike>).map(
-        (plainEntityLike) => this.create(entityClass, plainEntityLike)
+      return plainObjectOrObjects.map((plainEntityLike) =>
+        this.create(entityClass, plainEntityLike)
       );
 
     const mergeIntoEntity = metadata.create(this.queryRunner) as Entity;
     this.plainObjectToEntityTransformer.transform(
       mergeIntoEntity,
-      plainObjectOrObjects as unknown as ObjectLiteral,
+      plainObjectOrObjects,
       metadata,
       true
     );
@@ -449,7 +476,7 @@ export class EntityManager {
         ? (targetOrEntity as TFunction | string)
         : undefined;
     const entity: T | Array<T> = target
-      ? (maybeEntityOrOptions as T | Array<T>)
+      ? maybeEntityOrOptions!
       : (targetOrEntity as T | Array<T>);
     const options = target
       ? maybeOptions
@@ -525,7 +552,7 @@ export class EntityManager {
         ? (targetOrEntity as TFunction | string)
         : undefined;
     const entity: Entity | Array<Entity> = target
-      ? (maybeEntityOrOptions as Entity | Array<Entity>)
+      ? maybeEntityOrOptions!
       : (targetOrEntity as Entity | Array<Entity>);
     const options = target
       ? maybeOptions
@@ -602,7 +629,7 @@ export class EntityManager {
         ? (targetOrEntity as TFunction | string)
         : undefined;
     const entity: T | Array<T> = target
-      ? (maybeEntityOrOptions as T | Array<T>)
+      ? maybeEntityOrOptions!
       : (targetOrEntity as T | Array<T>);
     const options = target
       ? maybeOptions
@@ -678,7 +705,7 @@ export class EntityManager {
         ? (targetOrEntity as TFunction | string)
         : undefined;
     const entity: T | Array<T> = target
-      ? (maybeEntityOrOptions as T | Array<T>)
+      ? maybeEntityOrOptions!
       : (targetOrEntity as T | Array<T>);
     const options = target
       ? maybeOptions
@@ -789,7 +816,7 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  public update<Entity extends ObjectLiteral>(
+  public async update<Entity extends ObjectLiteral>(
     target: EntityTarget<Entity>,
     criteria:
       | string
@@ -801,28 +828,16 @@ export class EntityManager {
       | unknown,
     partialEntity: QueryDeepPartialEntity<Entity>
   ): Promise<UpdateResult> {
-    // if user passed empty criteria or empty list of criterias, then throw an error
-    if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
-      return Promise.reject(
-        new TypeORMError(
-          `Empty criteria(s) are not allowed for the update method.`
-        )
-      );
-    }
-
-    if (OrmUtils.isPrimitiveCriteria(criteria)) {
-      return this.createQueryBuilder()
-        .update(target)
-        .set(partialEntity)
-        .whereInIds(criteria)
-        .execute();
-    } else {
-      return this.createQueryBuilder()
-        .update(target)
-        .set(partialEntity)
-        .where(criteria as ObjectLiteral)
-        .execute();
-    }
+    const normalized = this.normalizeAndValidateWhereCriteria(
+      criteria,
+      'update'
+    );
+    const queryBuilder = this.createQueryBuilder()
+      .update(target)
+      .set(partialEntity);
+    return normalized.isPrimitive
+      ? queryBuilder.whereInIds(normalized.criteria).execute()
+      : queryBuilder.where(normalized.criteria as ObjectLiteral).execute();
   }
 
   /**
@@ -849,7 +864,7 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  public delete<Entity extends ObjectLiteral>(
+  public async delete<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>,
     criteria:
       | string
@@ -860,28 +875,16 @@ export class EntityManager {
       | Array<Date>
       | unknown
   ): Promise<DeleteResult> {
-    // if user passed empty criteria or empty list of criterias, then throw an error
-    if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
-      return Promise.reject(
-        new TypeORMError(
-          `Empty criteria(s) are not allowed for the delete method.`
-        )
-      );
-    }
-
-    if (OrmUtils.isPrimitiveCriteria(criteria)) {
-      return this.createQueryBuilder()
-        .delete()
-        .from(targetOrEntity)
-        .whereInIds(criteria)
-        .execute();
-    } else {
-      return this.createQueryBuilder()
-        .delete()
-        .from(targetOrEntity)
-        .where(criteria as ObjectLiteral)
-        .execute();
-    }
+    const normalized = this.normalizeAndValidateWhereCriteria(
+      criteria,
+      'delete'
+    );
+    const queryBuilder = this.createQueryBuilder()
+      .delete()
+      .from(targetOrEntity);
+    return normalized.isPrimitive
+      ? queryBuilder.whereInIds(normalized.criteria).execute()
+      : queryBuilder.where(normalized.criteria as ObjectLiteral).execute();
   }
 
   /**
@@ -904,7 +907,7 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  public softDelete<Entity extends ObjectLiteral>(
+  public async softDelete<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>,
     criteria:
       | string
@@ -915,28 +918,16 @@ export class EntityManager {
       | Array<Date>
       | unknown
   ): Promise<UpdateResult> {
-    // if user passed empty criteria or empty list of criterias, then throw an error
-    if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
-      return Promise.reject(
-        new TypeORMError(
-          `Empty criteria(s) are not allowed for the softDelete method.`
-        )
-      );
-    }
-
-    if (OrmUtils.isPrimitiveCriteria(criteria)) {
-      return this.createQueryBuilder()
-        .softDelete()
-        .from(targetOrEntity)
-        .whereInIds(criteria)
-        .execute();
-    } else {
-      return this.createQueryBuilder()
-        .softDelete()
-        .from(targetOrEntity)
-        .where(criteria as ObjectLiteral)
-        .execute();
-    }
+    const normalized = this.normalizeAndValidateWhereCriteria(
+      criteria,
+      'softDelete'
+    );
+    const queryBuilder = this.createQueryBuilder()
+      .softDelete()
+      .from(targetOrEntity);
+    return normalized.isPrimitive
+      ? queryBuilder.whereInIds(normalized.criteria).execute()
+      : queryBuilder.where(normalized.criteria as ObjectLiteral).execute();
   }
 
   /**
@@ -946,7 +937,7 @@ export class EntityManager {
    * Does not check if entity exist in the database.
    * Condition(s) cannot be empty.
    */
-  public restore<Entity extends ObjectLiteral>(
+  public async restore<Entity extends ObjectLiteral>(
     targetOrEntity: EntityTarget<Entity>,
     criteria:
       | string
@@ -957,28 +948,52 @@ export class EntityManager {
       | Array<Date>
       | unknown
   ): Promise<UpdateResult> {
-    // if user passed empty criteria or empty list of criterias, then throw an error
-    if (OrmUtils.isCriteriaNullOrEmpty(criteria)) {
-      return Promise.reject(
-        new TypeORMError(
-          `Empty criteria(s) are not allowed for the restore method.`
-        )
+    const normalized = this.normalizeAndValidateWhereCriteria(
+      criteria,
+      'restore'
+    );
+    const queryBuilder = this.createQueryBuilder()
+      .restore()
+      .from(targetOrEntity);
+    return normalized.isPrimitive
+      ? queryBuilder.whereInIds(normalized.criteria).execute()
+      : queryBuilder.where(normalized.criteria as ObjectLiteral).execute();
+  }
+
+  private normalizeAndValidateWhereCriteria(
+    criteria: unknown,
+    methodName: 'update' | 'delete' | 'softDelete' | 'restore'
+  ): { criteria: unknown; isPrimitive: boolean } {
+    const error = (): TypeORMError =>
+      new TypeORMError(
+        `Empty criteria(s) are not allowed for the ${methodName} method.`
       );
+
+    if (OrmUtils.isCriteriaNullOrEmpty(criteria)) throw error();
+    if (OrmUtils.isPrimitiveCriteria(criteria)) {
+      return { criteria, isPrimitive: true };
     }
 
-    if (OrmUtils.isPrimitiveCriteria(criteria)) {
-      return this.createQueryBuilder()
-        .restore()
-        .from(targetOrEntity)
-        .whereInIds(criteria)
-        .execute();
-    } else {
-      return this.createQueryBuilder()
-        .restore()
-        .from(targetOrEntity)
-        .where(criteria as ObjectLiteral)
-        .execute();
+    const normalized = OrmUtils.normalizeWhereCriteria(
+      criteria,
+      OrmUtils.getWriteWhereOptions(
+        this.connection.options.invalidWhereValuesBehavior
+      )
+    );
+    const rendersNoPredicate = (value: unknown): boolean =>
+      value === null ||
+      typeof value !== 'object' ||
+      Object.keys(value).length === 0;
+
+    if (
+      (Array.isArray(normalized) &&
+        (normalized.length === 0 || normalized.some(rendersNoPredicate))) ||
+      (!Array.isArray(normalized) && rendersNoPredicate(normalized))
+    ) {
+      throw error();
     }
+
+    return { criteria: normalized, isPrimitive: false };
   }
 
   /**
@@ -1103,11 +1118,19 @@ export class EntityManager {
 
     const result = (await this.createQueryBuilder(entityClass, metadata.name)
       .setFindOptions({ where })
-      .select(`${fnName}(${this.driver.escape(column.databaseName)})`, fnName)
+      .select(
+        `${fnName}(${formatDatabaseIdentifier(
+          column.databaseName,
+          this.connection.identifierQuoting,
+          this.connection.options.type,
+          (identifier) => this.driver.escape(identifier)
+        )})`,
+        fnName
+      )
       .getRawOne()) as Record<string, string> | null;
     return result?.[fnName] === null || result?.[fnName] === undefined
       ? null
-      : parseFloat(result[fnName] as string);
+      : parseFloat(result[fnName]);
   }
 
   /**
@@ -1207,7 +1230,7 @@ export class EntityManager {
 
     // prepare alias for built query
     let alias: string = metadata.name;
-    if (options && options.join) {
+    if (options?.join) {
       alias = options.join.alias;
     }
 
@@ -1314,7 +1337,8 @@ export class EntityManager {
     const metadata = this.connection.getMetadata(entityClass);
     const queryRunner = this.queryRunner || this.connection.createQueryRunner();
     try {
-      return await queryRunner.clearTable(metadata.tablePath); // await is needed here because we are using finally
+      await queryRunner.clearTable(metadata.tablePath);
+      return; // await is needed here because we are using finally
     } finally {
       if (!this.queryRunner) await queryRunner.release();
     }
@@ -1336,23 +1360,33 @@ export class EntityManager {
         `Column ${propertyPath} was not found in ${metadata.targetName} entity.`
       );
 
-    if (isNaN(Number(value)))
+    const numericValue =
+      typeof value === 'string' && value.trim() === '' ? NaN : Number(value);
+    if (!Number.isFinite(numericValue))
       throw new TypeORMError(`Value "${value}" is not a number.`);
 
-    // convert possible embedded path "social.likes" into object { social: { like: () => value } }
+    const parameterName = '__typeorm_increment_delta';
+    const queryBuilder = this.createQueryBuilder<Entity>(entityClass, 'entity');
+    // convert possible embedded path "social.likes" into object { social: { likes: () => expression } }
     const values = propertyPath
       .split('.')
       .reduceRight(
         (acc, key) => ({ [key]: acc }),
         (() =>
-          this.driver.escape(column.databaseName) +
+          formatDatabaseIdentifier(
+            column.databaseName,
+            this.connection.identifierQuoting,
+            this.connection.options.type,
+            (identifier) => this.driver.escape(identifier)
+          ) +
           ' + ' +
-          value) as unknown as Record<string, unknown>
+          `:${parameterName}`) as unknown as Record<string, unknown>
       );
 
-    return this.createQueryBuilder<Entity>(entityClass, 'entity')
+    return queryBuilder
       .update(entityClass)
       .set(values as QueryDeepPartialEntity<Entity>)
+      .setParameter(parameterName, numericValue)
       .where(conditions)
       .execute();
   }
@@ -1373,23 +1407,33 @@ export class EntityManager {
         `Column ${propertyPath} was not found in ${metadata.targetName} entity.`
       );
 
-    if (isNaN(Number(value)))
+    const numericValue =
+      typeof value === 'string' && value.trim() === '' ? NaN : Number(value);
+    if (!Number.isFinite(numericValue))
       throw new TypeORMError(`Value "${value}" is not a number.`);
 
-    // convert possible embedded path "social.likes" into object { social: { like: () => value } }
+    const parameterName = '__typeorm_decrement_delta';
+    const queryBuilder = this.createQueryBuilder<Entity>(entityClass, 'entity');
+    // convert possible embedded path "social.likes" into object { social: { likes: () => expression } }
     const values = propertyPath
       .split('.')
       .reduceRight(
         (acc, key) => ({ [key]: acc }),
         (() =>
-          this.connection.driver.escape(column.databaseName) +
-          ' + ' +
-          value) as unknown as Record<string, unknown>
+          formatDatabaseIdentifier(
+            column.databaseName,
+            this.connection.identifierQuoting,
+            this.connection.options.type,
+            (identifier) => this.connection.driver.escape(identifier)
+          ) +
+          ' - ' +
+          `:${parameterName}`) as unknown as Record<string, unknown>
       );
 
-    return this.createQueryBuilder<Entity>(entityClass, 'entity')
+    return queryBuilder
       .update(entityClass)
       .set(values as QueryDeepPartialEntity<Entity>)
+      .setParameter(parameterName, numericValue)
       .where(conditions)
       .execute();
   }
@@ -1439,7 +1483,7 @@ export class EntityManager {
     target: EntityTarget<Entity>
   ): TreeRepository<Entity> {
     // tree tables aren't supported by some drivers (mongodb)
-    if (this.driver.treeSupport === false)
+    if (!this.driver.treeSupport)
       throw new TreeRepositoryNotSupportedError(this.connection.driver);
 
     // find already created repository instance and return it if found

@@ -1,42 +1,42 @@
-import type oracledb from 'oracledb';
-
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import type { DataSource } from '../../data-source/DataSource.js';
 import { ConnectionIsNotSetError } from '../../error/ConnectionIsNotSetError.js';
 import { DriverPackageNotInstalledError } from '../../error/DriverPackageNotInstalledError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
-import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import type { OnDeleteType } from '../../metadata/types/OnDeleteType.js';
-import type { OnUpdateType } from '../../metadata/types/OnUpdateType.js';
 import { PlatformTools } from '../../platform/PlatformTools.js';
-import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { RdbmsSchemaBuilder } from '../../schema-builder/RdbmsSchemaBuilder.js';
-import type { Table } from '../../schema-builder/table/Table.js';
-import type { TableColumn } from '../../schema-builder/table/TableColumn.js';
-import type { TableForeignKey } from '../../schema-builder/table/TableForeignKey.js';
-import type { View } from '../../schema-builder/view/View.js';
 import { ApplyValueTransformers } from '../../util/ApplyValueTransformers.js';
 import { DateUtils } from '../../util/DateUtils.js';
 import { InstanceChecker } from '../../util/InstanceChecker.js';
 import { replaceNamedParameters } from '../../util/NamedParameterUtils.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
-import type { Driver } from '../Driver.js';
 import { DriverUtils } from '../DriverUtils.js';
 import { normalizeSessionTimeZone } from '../SessionTimeZone.js';
-import type { ColumnType } from '../types/ColumnTypes.js';
-import type { CteCapabilities } from '../types/CteCapabilities.js';
-import type { DataTypeDefaults } from '../types/DataTypeDefaults.js';
-import type { MappedColumnTypes } from '../types/MappedColumnTypes.js';
-import type { ReplicationMode } from '../types/ReplicationMode.js';
-import type { UpsertType } from '../types/UpsertType.js';
+
+import { OracleQueryRunner } from './OracleQueryRunner.js';
 
 import type { OracleConnectionCredentialsOptions } from './OracleConnectionCredentialsOptions.js';
 import type {
   OracleConnectionOptions,
   OracleThickModeOptions,
 } from './OracleConnectionOptions.js';
-import { OracleQueryRunner } from './OracleQueryRunner.js';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { OnDeleteType } from '../../metadata/types/OnDeleteType.js';
+import type { OnUpdateType } from '../../metadata/types/OnUpdateType.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+import type { Table } from '../../schema-builder/table/Table.js';
+import type { TableColumn } from '../../schema-builder/table/TableColumn.js';
+import type { TableForeignKey } from '../../schema-builder/table/TableForeignKey.js';
+import type { View } from '../../schema-builder/view/View.js';
+import type { Driver } from '../Driver.js';
+import type { ColumnType } from '../types/ColumnTypes.js';
+import type { CteCapabilities } from '../types/CteCapabilities.js';
+import type { DataTypeDefaults } from '../types/DataTypeDefaults.js';
+import type { MappedColumnTypes } from '../types/MappedColumnTypes.js';
+import type { ReplicationMode } from '../types/ReplicationMode.js';
+import type { UpsertType } from '../types/UpsertType.js';
+import type oracledb from 'oracledb';
 
 interface OracleClientInitialization {
   externallyInitialized: boolean;
@@ -97,7 +97,7 @@ function initializeOracleClient(
   }
 
   const oracleLib = oracle as unknown as Record<string, unknown>;
-  if (oracleLib['thin'] === false) {
+  if (oracleLib.thin === false) {
     // node-oracledb exposes the active mode, but not the libDir/config used by
     // an external initOracleClient() call, so compatibility cannot be checked.
     oracleClientInitializations.set(oracleModule, {
@@ -106,7 +106,7 @@ function initializeOracleClient(
     return;
   }
 
-  const initOracleClient = oracleLib['initOracleClient'];
+  const initOracleClient = oracleLib.initOracleClient;
   if (typeof initOracleClient !== 'function') {
     throw new TypeORMError(
       'Oracle driver does not expose initOracleClient for Thick mode'
@@ -458,7 +458,7 @@ export class OracleDriver implements Driver {
    * Creates a query runner used to execute database queries.
    */
   public createQueryRunner(mode: ReplicationMode): QueryRunner {
-    return new OracleQueryRunner(this, mode) as unknown as QueryRunner;
+    return new OracleQueryRunner(this, mode);
   }
 
   /**
@@ -848,7 +848,7 @@ export class OracleDriver implements Driver {
     if (!this.master) {
       throw new TypeORMError('Driver not Connected');
     }
-    return await this.master.getConnection();
+    return this.master.getConnection();
   }
 
   /**
@@ -865,7 +865,7 @@ export class OracleDriver implements Driver {
     if (!slavePool) {
       throw new TypeORMError('Slave connection not available');
     }
-    return await slavePool.getConnection();
+    return slavePool.getConnection();
   }
 
   /**
@@ -877,7 +877,7 @@ export class OracleDriver implements Driver {
   ): ObjectLiteral | undefined {
     if (!insertResult) return undefined;
 
-    return Object.keys(insertResult).reduce((map, key) => {
+    return Object.keys(insertResult).reduce<ObjectLiteral>((map, key) => {
       const column = metadata.findColumnWithDatabaseName(key);
       if (column) {
         OrmUtils.mergeDeep(
@@ -888,7 +888,7 @@ export class OracleDriver implements Driver {
         );
       }
       return map;
-    }, {} as ObjectLiteral);
+    }, {});
   }
 
   /**
@@ -1047,28 +1047,29 @@ export class OracleDriver implements Driver {
       case 'smallint':
       case 'dec':
       case 'decimal':
-        return oracleLib['DB_TYPE_NUMBER'];
+        return oracleLib.DB_TYPE_NUMBER;
       case 'char':
       case 'nchar':
       case 'nvarchar2':
       case 'varchar2':
-        return oracleLib['DB_TYPE_VARCHAR'];
+        return oracleLib.DB_TYPE_VARCHAR;
       case 'blob':
-        return oracleLib['DB_TYPE_BLOB'];
+        return oracleLib.DB_TYPE_BLOB;
       case 'simple-json':
       case 'clob':
-        return oracleLib['DB_TYPE_CLOB'];
+        return oracleLib.DB_TYPE_CLOB;
       case 'date':
-        return oracleLib['DB_TYPE_DATE'];
+        return oracleLib.DB_TYPE_DATE;
       case 'timestamp':
-        return oracleLib['DB_TYPE_TIMESTAMP'];
+        return oracleLib.DB_TYPE_TIMESTAMP;
       case 'timestamp with time zone':
-        return oracleLib['DB_TYPE_TIMESTAMP_TZ'];
+        return oracleLib.DB_TYPE_TIMESTAMP_TZ;
       case 'timestamp with local time zone':
-        return oracleLib['DB_TYPE_TIMESTAMP_LTZ'];
+        return oracleLib.DB_TYPE_TIMESTAMP_LTZ;
       case 'json':
-        return oracleLib['DB_TYPE_JSON'];
+        return oracleLib.DB_TYPE_JSON;
     }
+    return undefined;
   }
 
   public setFetchTypeHandler(
@@ -1161,8 +1162,12 @@ export class OracleDriver implements Driver {
             .execute(
               `ALTER SESSION SET TIME_ZONE = '${this.sessionTimeZone.replaceAll("'", "''")}'`
             )
-            .then(() => callback())
-            .catch((error: unknown) => callback(error));
+            .then(() => {
+              callback();
+            })
+            .catch((error: unknown) => {
+              callback(error);
+            });
         },
       }
     );
@@ -1172,12 +1177,15 @@ export class OracleDriver implements Driver {
     return new Promise<oracledb.Pool>((ok, fail) => {
       const oracleLib = this.oracle as Record<string, unknown>;
       (
-        oracleLib['createPool'] as (
+        oracleLib.createPool as (
           options: unknown,
           callback: (err: unknown, pool: unknown) => void
         ) => void
       )(connectionOptions, (err: unknown, pool: unknown) => {
-        if (err) return fail(err);
+        if (err) {
+          fail(err);
+          return;
+        }
         ok(pool as oracledb.Pool);
       });
     });
@@ -1189,8 +1197,14 @@ export class OracleDriver implements Driver {
   protected async closePool(pool: unknown): Promise<void> {
     return new Promise<void>((ok, fail) => {
       const poolObj = pool as Record<string, unknown>;
-      (poolObj['close'] as (callback: (err: unknown) => void) => void)(
-        (err: unknown) => (err ? fail(err) : ok())
+      (poolObj.close as (callback: (err: unknown) => void) => void)(
+        (err: unknown) => {
+          if (err) {
+            fail(err);
+            return;
+          }
+          ok();
+        }
       );
     });
   }

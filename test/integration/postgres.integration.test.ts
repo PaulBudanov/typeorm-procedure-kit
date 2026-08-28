@@ -2,7 +2,6 @@ import pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import { TypeOrmProcedureKit } from '../../src/index.js';
-import type { DataSource } from '../../src/typeorm/data-source/DataSource.js';
 
 import {
   createPostgresIntegrationSettings,
@@ -16,21 +15,23 @@ import {
   queryBuilderTables,
 } from './query-builder-integration.fixtures.js';
 
+import type { DataSource } from '../../src/typeorm/data-source/DataSource.js';
+
 const settings = createPostgresIntegrationSettings();
 const replicationSettings = createPostgresReplicationIntegrationSettings();
 const procedureSchema = 'tpk_it_proc' as const;
 
-type PostgresIntegrationSettings = NonNullable<
+type TPostgresIntegrationSettings = NonNullable<
   ReturnType<typeof createPostgresIntegrationSettings>
 >;
 
-interface PostgresDriverWithReplicationMethods {
+interface IPostgresDriverWithReplicationMethods {
   obtainMasterConnection: () => Promise<unknown>;
   obtainSlaveConnection: () => Promise<unknown>;
 }
 
 async function withPostgresClient<T>(
-  integrationSettings: PostgresIntegrationSettings,
+  integrationSettings: TPostgresIntegrationSettings,
   callback: (client: pg.Client) => Promise<T>
 ): Promise<T> {
   const client = new pg.Client({
@@ -49,7 +50,7 @@ async function withPostgresClient<T>(
 }
 
 async function createPostgresProcedureFixture(
-  integrationSettings: PostgresIntegrationSettings
+  integrationSettings: TPostgresIntegrationSettings
 ): Promise<void> {
   await withPostgresClient(integrationSettings, async (client) => {
     await client.query(`DROP SCHEMA IF EXISTS "${procedureSchema}" CASCADE`);
@@ -79,11 +80,43 @@ async function createPostgresProcedureFixture(
       END;
       $$;
     `);
+    await client.query(`
+      CREATE PROCEDURE "${procedureSchema}".no_args()
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        NULL;
+      END;
+      $$;
+    `);
+    await client.query(`
+      CREATE PROCEDURE "${procedureSchema}".named_out_cursor(
+        OUT out_cursor refcursor
+      )
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        out_cursor := 'tpk_named_out_cursor';
+        OPEN out_cursor FOR SELECT 42::integer AS result;
+      END;
+      $$;
+    `);
+    await client.query(`
+      CREATE PROCEDURE "${procedureSchema}".unnamed_out_cursor(
+        OUT out_cursor refcursor
+      )
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        OPEN out_cursor FOR SELECT 42::integer AS result;
+      END;
+      $$;
+    `);
   });
 }
 
 async function dropPostgresProcedureFixture(
-  integrationSettings: PostgresIntegrationSettings
+  integrationSettings: TPostgresIntegrationSettings
 ): Promise<void> {
   await withPostgresClient(integrationSettings, async (client) => {
     await client.query(`DROP SCHEMA IF EXISTS "${procedureSchema}" CASCADE`);
@@ -91,7 +124,7 @@ async function dropPostgresProcedureFixture(
 }
 
 function createPostgresQueryBuilderDataSource(
-  integrationSettings: PostgresIntegrationSettings
+  integrationSettings: TPostgresIntegrationSettings
 ): DataSource {
   return createQueryBuilderIntegrationDataSource({
     type: 'postgres',
@@ -264,6 +297,66 @@ describe.skipIf(!settings)('PostgreSQL integration', (): void => {
     }
   });
 
+  it('supports no-argument and explicitly named pure OUT cursor procedures', async (): Promise<void> => {
+    await createPostgresProcedureFixture(settings!);
+    const kit = new TypeOrmProcedureKit({
+      ...settings!,
+      config: {
+        ...settings!.config,
+        packagesSettings: {
+          packages: [procedureSchema],
+          procedureObjectList: {
+            noArgs: `${procedureSchema}.no_args`,
+            namedOutCursor: `${procedureSchema}.named_out_cursor`,
+          },
+        },
+      },
+    });
+
+    try {
+      await kit.initDatabase();
+      await expect(kit.call(`${procedureSchema}.no_args`)).resolves.toEqual({
+        rows: [],
+        outBinds: {},
+      });
+      await expect(
+        kit.call<{ result: number }>(`${procedureSchema}.named_out_cursor`)
+      ).resolves.toEqual({
+        rows: [{ result: 42 }],
+        outBinds: { out_cursor: [{ result: 42 }] },
+      });
+    } finally {
+      await kit.destroy();
+      await dropPostgresProcedureFixture(settings!);
+    }
+  });
+
+  it('rejects PostgreSQL-generated unnamed portals from pure OUT cursors', async (): Promise<void> => {
+    await createPostgresProcedureFixture(settings!);
+    const kit = new TypeOrmProcedureKit({
+      ...settings!,
+      config: {
+        ...settings!.config,
+        packagesSettings: {
+          packages: [procedureSchema],
+          procedureObjectList: {
+            unnamedOutCursor: `${procedureSchema}.unnamed_out_cursor`,
+          },
+        },
+      },
+    });
+
+    try {
+      await kit.initDatabase();
+      await expect(
+        kit.call(`${procedureSchema}.unnamed_out_cursor`)
+      ).rejects.toThrow('Unsafe PostgreSQL portal name');
+    } finally {
+      await kit.destroy();
+      await dropPostgresProcedureFixture(settings!);
+    }
+  });
+
   it('executes complex QueryBuilder selects and counts against real tables', async (): Promise<void> => {
     const dataSource = createPostgresQueryBuilderDataSource(settings!);
 
@@ -411,7 +504,7 @@ describe.skipIf(!replicationSettings)(
         await kit.initDatabase();
 
         const driver = kit.dataSource
-          .driver as unknown as PostgresDriverWithReplicationMethods;
+          .driver as unknown as IPostgresDriverWithReplicationMethods;
         const masterSpy = vi.spyOn(driver, 'obtainMasterConnection');
         const slaveSpy = vi.spyOn(driver, 'obtainSlaveConnection');
 

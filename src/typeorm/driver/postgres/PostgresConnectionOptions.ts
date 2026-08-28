@@ -1,9 +1,7 @@
-import type pg from 'pg';
-
+import type { PostgresConnectionCredentialsOptions } from './PostgresConnectionCredentialsOptions.js';
 import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
 import type { ReplicationMode } from '../types/ReplicationMode.js';
-
-import type { PostgresConnectionCredentialsOptions } from './PostgresConnectionCredentialsOptions.js';
+import type pg from 'pg';
 
 /**
  * Postgres-specific connection options.

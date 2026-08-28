@@ -1,7 +1,7 @@
-import type { TDBMapStructure } from '../types/procedure.types.js';
-
 import { DatabaseNamingCache } from './database-naming-cache.js';
 import { ServerError } from './server-error.js';
+
+import type { TDBMapStructure } from '../types/procedure.types.js';
 
 interface IProcedureNameParser extends Record<string, unknown> {
   processName: Lowercase<string>;
@@ -126,7 +126,8 @@ export class ProcedureNameParser {
     const normalized = executeString.trim().toLowerCase();
     const parts = normalized.split('.');
 
-    return parts.length === 2 ? (parts[1] as string) : (parts[0] as string);
+    const firstPart = parts[0] ?? '';
+    return parts.length === 2 ? (parts[1] ?? firstPart) : firstPart;
   }
 
   /**

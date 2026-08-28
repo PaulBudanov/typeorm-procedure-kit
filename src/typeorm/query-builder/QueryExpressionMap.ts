@@ -1,22 +1,24 @@
+import { TypeORMError } from '../error/TypeORMError.js';
+
+import { Alias } from './Alias.js';
+import { JoinAttribute } from './JoinAttribute.js';
+import { RelationCountAttribute } from './relation-count/RelationCountAttribute.js';
+import { RelationIdAttribute } from './relation-id/RelationIdAttribute.js';
+
+import type { QueryBuilder } from './QueryBuilder.js';
+import type { QueryBuilderCteOptions } from './QueryBuilderCte.js';
+import type { SelectQuery } from './SelectQuery.js';
+import type { SelectQueryBuilderOption } from './SelectQueryBuilderOption.js';
+import type { WhereClause } from './WhereClause.js';
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
+import type { TIdentifierQuoting } from '../data-source/DataSourceOptions.js';
 import type { UpsertType } from '../driver/types/UpsertType.js';
-import { TypeORMError } from '../error/TypeORMError.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-
-import { Alias } from './Alias.js';
-import { JoinAttribute } from './JoinAttribute.js';
-import type { QueryBuilder } from './QueryBuilder.js';
-import type { QueryBuilderCteOptions } from './QueryBuilderCte.js';
-import { RelationCountAttribute } from './relation-count/RelationCountAttribute.js';
-import { RelationIdAttribute } from './relation-id/RelationIdAttribute.js';
-import type { SelectQuery } from './SelectQuery.js';
-import type { SelectQueryBuilderOption } from './SelectQueryBuilderOption.js';
-import type { WhereClause } from './WhereClause.js';
 
 /**
  * Contains all properties of the QueryBuilder that needs to be build a final query.
@@ -230,13 +232,8 @@ export class QueryExpressionMap {
    */
   public parameters: ObjectLiteral = {};
 
-  /**
-   * Disables driver quoting for aliases, table names, and column names when true.
-   *
-   * Defaults to true for this kit, so generated SQL keeps identifiers unquoted
-   * unless query-builder code explicitly enables quoting or forces it per call.
-   */
-  public isQuotingDisabled = true;
+  /** Quoting policy for physical database, schema, table, and column names. */
+  public identifierQuoting: TIdentifierQuoting = 'disabled';
 
   /**
    * Indicates if virtual columns should be included in entity result.
@@ -363,11 +360,7 @@ export class QueryExpressionMap {
     if (connection.options.relationLoadStrategy)
       this.relationLoadStrategy = connection.options.relationLoadStrategy;
 
-    if (
-      connection.options.isQuotingDisabled !== undefined &&
-      connection.options.isQuotingDisabled !== null
-    )
-      this.isQuotingDisabled = connection.options.isQuotingDisabled;
+    this.identifierQuoting = connection.identifierQuoting;
   }
 
   // -------------------------------------------------------------------------
@@ -382,16 +375,17 @@ export class QueryExpressionMap {
     if (
       !Object.keys(this.orderBys).length &&
       this.mainAlias!.hasMetadata &&
-      this.options.indexOf('disable-global-order') === -1
+      !this.options.includes('disable-global-order')
     ) {
       const entityOrderBy = this.mainAlias!.metadata.orderBy || {};
-      return Object.keys(entityOrderBy).reduce((orderBy, key) => {
-        const orderByKey = this.mainAlias!.name + '.' + key;
-        orderBy[orderByKey] = entityOrderBy[
-          key
-        ] as (typeof orderBy)[keyof typeof orderBy];
-        return orderBy;
-      }, {} as OrderByCondition);
+      return Object.keys(entityOrderBy).reduce<OrderByCondition>(
+        (orderBy, key) => {
+          const orderByKey = this.mainAlias!.name + '.' + key;
+          orderBy[orderByKey] = entityOrderBy[key]!;
+          return orderBy;
+        },
+        {}
+      );
     }
 
     return this.orderBys;
@@ -532,7 +526,7 @@ export class QueryExpressionMap {
     map.lockTables = this.lockTables;
     map.withDeleted = this.withDeleted;
     map.parameters = Object.assign({}, this.parameters);
-    map.isQuotingDisabled = this.isQuotingDisabled;
+    map.identifierQuoting = this.identifierQuoting;
     map.enableRelationIdValues = this.enableRelationIdValues;
     map.extraAppendedAndWhereCondition = this.extraAppendedAndWhereCondition;
     map.subQuery = this.subQuery;

@@ -17,7 +17,16 @@ export { QueryLogContextStorage } from './query-log-context.js';
 
 // Query timeout validate
 
-export { normalizeQueryTimeoutMs } from './query-timeout.js';
+export {
+  assertValidQueryTimeoutMs,
+  normalizeQueryTimeoutMs,
+} from './query-timeout.js';
+
+// Resource limits
+export {
+  DEFAULT_RESOURCE_LIMITS,
+  resolveResourceLimits,
+} from './resource-limits.js';
 
 // Safe log serialization
 export { safeStringify } from './safe-stringify.js';

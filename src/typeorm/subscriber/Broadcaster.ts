@@ -1,3 +1,8 @@
+import { ObjectUtils } from '../util/ObjectUtils.js';
+
+import { BroadcasterResult } from './BroadcasterResult.js';
+
+import type { EntitySubscriberInterface } from './EntitySubscriberInterface.js';
 import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { QueryParameterValues } from '../driver/QueryParameters.js';
@@ -5,10 +10,6 @@ import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-
-import { BroadcasterResult } from './BroadcasterResult.js';
-import type { EntitySubscriberInterface } from './EntitySubscriberInterface.js';
 
 interface BroadcasterEvents {
   BeforeQuery: (
@@ -817,7 +818,7 @@ export class Broadcaster {
     metadata: EntityMetadata,
     entities: Array<ObjectLiteral>
   ): void {
-    return this.broadcastLoadEvent(result, metadata, entities);
+    this.broadcastLoadEvent(result, metadata, entities);
   }
 
   /**
@@ -914,12 +915,11 @@ export class Broadcaster {
    * or listens our entity.
    */
   protected isAllowedSubscriber(
-    subscriber: EntitySubscriberInterface<unknown>,
+    subscriber: EntitySubscriberInterface,
     target: () => unknown | string
   ): boolean {
     return (
-      !subscriber.listenTo ||
-      !subscriber.listenTo() ||
+      !subscriber.listenTo?.() ||
       subscriber.listenTo() === Object ||
       subscriber.listenTo() === target ||
       Object.prototype.isPrototypeOf.call(subscriber.listenTo(), target)

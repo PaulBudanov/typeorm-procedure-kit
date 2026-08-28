@@ -1,14 +1,16 @@
-import {
-  ServerError,
-  type IModuleConfig,
-  type TOracleDbConfig,
-  type TPostgresDbConfig,
-} from '../../src/index.js';
-import { createLogger, type TestLogger } from '../support/helpers.js';
+import { ServerError } from '../../src/index.js';
+import { createLogger } from '../support/helpers.js';
 
-interface IntegrationTestSettings<TConfig extends IModuleConfig['config']> {
+import type {
+  IModuleConfig,
+  TOracleDbConfig,
+  TPostgresDbConfig,
+} from '../../src/index.js';
+import type { ITestLogger } from '../support/helpers.js';
+
+interface IIntegrationTestSettings<TConfig extends IModuleConfig['config']> {
   config: TConfig;
-  logger: { module: TestLogger };
+  logger: { module: ITestLogger };
 }
 
 function isIntegrationRequired(database: string): boolean {
@@ -52,7 +54,7 @@ function getPostgresSlaveCredentials(
   };
 }
 
-export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPostgresDbConfig> | null {
+export function createPostgresIntegrationSettings(): IIntegrationTestSettings<TPostgresDbConfig> | null {
   const host = process.env.POSTGRES_HOST;
   const port = process.env.POSTGRES_PORT;
   const database = process.env.POSTGRES_DATABASE;
@@ -80,7 +82,7 @@ export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPo
   };
 }
 
-export function createPostgresReplicationIntegrationSettings(): IntegrationTestSettings<TPostgresDbConfig> | null {
+export function createPostgresReplicationIntegrationSettings(): IIntegrationTestSettings<TPostgresDbConfig> | null {
   const settings = createPostgresIntegrationSettings();
 
   if (!settings) return null;
@@ -94,7 +96,7 @@ export function createPostgresReplicationIntegrationSettings(): IntegrationTestS
   };
 }
 
-export function createOracleIntegrationSettings(): IntegrationTestSettings<TOracleDbConfig> | null {
+export function createOracleIntegrationSettings(): IIntegrationTestSettings<TOracleDbConfig> | null {
   const host = process.env.ORACLE_HOST;
   const port = process.env.ORACLE_PORT;
   const database = process.env.ORACLE_DATABASE;

@@ -41,7 +41,7 @@ export class TableExclusion {
     return new TableExclusion({
       name: this.name,
       expression: this.expression,
-    } as TableExclusionOptions);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -55,6 +55,6 @@ export class TableExclusion {
     return new TableExclusion({
       name: exclusionMetadata.name,
       expression: exclusionMetadata.expression,
-    } as TableExclusionOptions);
+    });
   }
 }

@@ -1,14 +1,15 @@
-import type { TFunction } from '../../types/utility.types.js';
-import type { DataSource } from '../data-source/DataSource.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
-import type { Alias } from './Alias.js';
 import { QueryBuilderUtils } from './QueryBuilderUtils.js';
+
+import type { Alias } from './Alias.js';
 import type { QueryExpressionMap } from './QueryExpressionMap.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 
 /**
  * Stores all join attributes which will be used to build a JOIN query.
@@ -270,12 +271,12 @@ export class JoinAttribute {
   public get mapToPropertyParentAlias(): string | undefined {
     if (!this.mapToProperty) return undefined;
 
-    return this.mapToProperty!.split('.')[0];
+    return this.mapToProperty.split('.')[0];
   }
 
   public get mapToPropertyPropertyName(): string | undefined {
     if (!this.mapToProperty) return undefined;
 
-    return this.mapToProperty!.split('.')[1];
+    return this.mapToProperty.split('.')[1];
   }
 }

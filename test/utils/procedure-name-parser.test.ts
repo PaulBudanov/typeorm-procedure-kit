@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TDBMapStructure } from '../../src/types/procedure.types.js';
 import { ProcedureNameParser } from '../../src/utils/procedure-name-parser.js';
 import { ServerError } from '../../src/utils/server-error.js';
+
+import type { TDBMapStructure } from '../../src/types/procedure.types.js';
 
 describe('procedureNameParser', (): void => {
   const procedureNameParser = new ProcedureNameParser();

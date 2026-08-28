@@ -1,9 +1,10 @@
+import { ServerError } from '../utils/server-error.js';
+
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type {
   ISetSerializer,
   TSerializerTypeCastWithoutFormat,
 } from '../types/serializer.types.js';
-import { ServerError } from '../utils/server-error.js';
 
 export class SerializerBase {
   public constructor(
@@ -45,7 +46,7 @@ export class SerializerBase {
    * @throws Error - If the serializer type is unknown.
    */
   public setSerializer(options: ISetSerializer): void {
-    return this.databaseAdapter.setSerializer(options);
+    this.databaseAdapter.setSerializer(options);
   }
 
   /**
@@ -54,7 +55,7 @@ export class SerializerBase {
    * but don't want to keep the old ones.
    */
   public deleteAllSerializers(): void {
-    return this.databaseAdapter.deleteAllSerializers();
+    this.databaseAdapter.deleteAllSerializers();
   }
 
   /**
@@ -64,6 +65,6 @@ export class SerializerBase {
   public deleteSerializer(
     serializerType: Pick<ISetSerializer, 'serializerType'>
   ): void {
-    return this.databaseAdapter.deleteSerializer(serializerType);
+    this.databaseAdapter.deleteSerializer(serializerType);
   }
 }

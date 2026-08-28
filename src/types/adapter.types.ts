@@ -1,16 +1,4 @@
-import type oracledb from 'oracledb';
-import type { Client, PoolClient } from 'pg';
-
-import type { OracleConnection } from '../adapters/oracle/oracle-connection.js';
-import type { OracleNotify } from '../adapters/oracle/oracle-notify.js';
-import type { OracleSerializer } from '../adapters/oracle/oracle-serializer.js';
-import type { PostgreConnection } from '../adapters/postgres/postgre-connection.js';
-import type { PostgreNotify } from '../adapters/postgres/postgre-notify.js';
-import type { PostgreSerializer } from '../adapters/postgres/postgre-serializer.js';
-import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
-import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
-import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
-
+import type { IResourceLimits } from './config.types.js';
 import type {
   INotifyRetryOptions,
   TNotifyCallbackGeneric,
@@ -32,6 +20,17 @@ import type {
   IProcedureResult,
   ISqlBindingsObjectReturn,
 } from './utility.types.js';
+import type { OracleConnection } from '../adapters/oracle/oracle-connection.js';
+import type { OracleNotify } from '../adapters/oracle/oracle-notify.js';
+import type { OracleSerializer } from '../adapters/oracle/oracle-serializer.js';
+import type { PostgreConnection } from '../adapters/postgres/postgre-connection.js';
+import type { PostgreNotify } from '../adapters/postgres/postgre-notify.js';
+import type { PostgreSerializer } from '../adapters/postgres/postgre-serializer.js';
+import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
+import type oracledb from 'oracledb';
+import type { Client, PoolClient } from 'pg';
 
 export interface IRegisteredFetchHandlerOptions {
   /**
@@ -42,6 +41,8 @@ export interface IRegisteredFetchHandlerOptions {
    * Whether adapter initialization should register built-in date/time serializers.
    */
   isNeedRegisterDefaultSerializers: boolean;
+  /** Resolved materialization limits supplied by the kit initializer. */
+  resourceLimits?: Readonly<IResourceLimits>;
 }
 
 export type TSerializerClassTypes = OracleSerializer | PostgreSerializer;

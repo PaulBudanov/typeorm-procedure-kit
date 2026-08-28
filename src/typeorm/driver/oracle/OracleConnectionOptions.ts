@@ -1,8 +1,6 @@
-import type oracledb from 'oracledb';
-
-import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
-
 import type { OracleConnectionCredentialsOptions } from './OracleConnectionCredentialsOptions.js';
+import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
+import type oracledb from 'oracledb';
 
 export interface OracleThickModeOptions {
   binaryDir?: string;

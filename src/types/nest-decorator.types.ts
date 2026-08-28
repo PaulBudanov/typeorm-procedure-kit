@@ -1,5 +1,3 @@
-import type { DataSource } from '../typeorm/data-source/DataSource.js';
-
 import type { IExecutionOptions } from './config.types.js';
 import type {
   ICreateNotify,
@@ -11,6 +9,7 @@ import type {
 } from './procedure.types.js';
 import type { ISetSerializer } from './serializer.types.js';
 import type { IProcedureResult } from './utility.types.js';
+import type { DataSource } from '../typeorm/data-source/DataSource.js';
 
 export type TCallProcedure = <
   TRow,

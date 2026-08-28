@@ -1,4 +1,14 @@
-import type { Provider } from '@nestjs/common';
+import {
+  CALL_PROCEDURE,
+  CALL_SQL,
+  DELETE_ALL_SERIALIZERS,
+  DELETE_SERIALIZER,
+  GET_DATA_SOURCE,
+  MAKE_NOTIFY,
+  SET_SERIALIZER,
+  UNLISTEN_NOTIFY,
+} from '../consts.js';
+import { TypeOrmProcedureKitNestService } from '../typeorm-procedure-kit-nest.service.js';
 
 import type { IExecutionOptions } from '../../types/config.types.js';
 import type {
@@ -20,17 +30,7 @@ import type {
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type { IProcedureResult } from '../../types/utility.types.js';
-import {
-  CALL_PROCEDURE,
-  CALL_SQL,
-  DELETE_ALL_SERIALIZERS,
-  DELETE_SERIALIZER,
-  GET_DATA_SOURCE,
-  MAKE_NOTIFY,
-  SET_SERIALIZER,
-  UNLISTEN_NOTIFY,
-} from '../consts.js';
-import { TypeOrmProcedureKitNestService } from '../typeorm-procedure-kit-nest.service.js';
+import type { Provider } from '@nestjs/common';
 
 export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   {
@@ -93,8 +93,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   {
     provide: SET_SERIALIZER,
     useFactory: (service: TypeOrmProcedureKitNestService): TSetSerializer => {
-      return (serializer: Parameters<TSetSerializer>[0]): void =>
+      return (serializer: Parameters<TSetSerializer>[0]): void => {
         service.setSerializer(serializer);
+      };
     },
     inject: [TypeOrmProcedureKitNestService],
   },
@@ -103,8 +104,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
     useFactory: (
       service: TypeOrmProcedureKitNestService
     ): TDeleteSerializer => {
-      return (serializerType: Parameters<TDeleteSerializer>[0]): void =>
+      return (serializerType: Parameters<TDeleteSerializer>[0]): void => {
         service.deleteSerializer(serializerType);
+      };
     },
     inject: [TypeOrmProcedureKitNestService],
   },
@@ -113,7 +115,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
     useFactory: (
       service: TypeOrmProcedureKitNestService
     ): TDeleteAllSerializers => {
-      return (): void => service.deleteAllSerializers();
+      return (): void => {
+        service.deleteAllSerializers();
+      };
     },
     inject: [TypeOrmProcedureKitNestService],
   },

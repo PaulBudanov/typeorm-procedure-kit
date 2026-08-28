@@ -1,10 +1,12 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
+import { formatDatabaseIdentifier } from '../data-source/IdentifierQuoting.js';
 import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
-import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 import type { SelectQueryBuilder } from './SelectQueryBuilder.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { TIdentifierQuoting } from '../data-source/DataSourceOptions.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
  * Wraps entities and creates getters/setters for their relations
@@ -31,7 +33,7 @@ export class RelationLoader {
     queryBuilder?: SelectQueryBuilder<ObjectLiteral>
   ): Promise<Array<unknown>> {
     // todo: check all places where it uses non array
-    if (queryRunner && queryRunner.isReleased) queryRunner = undefined; // get new one if already closed
+    if (queryRunner?.isReleased) queryRunner = undefined; // get new one if already closed
     if (relation.isManyToOne || relation.isOneToOneOwner) {
       return this.loadManyToOneOrOneToOneOwner(
         relation,
@@ -99,7 +101,7 @@ export class RelationLoader {
       .map((joinColumn) => {
         return `${relation.entityMetadata.name}.${
           joinColumn.propertyName
-        } = ${mainAlias}.${joinColumn.referencedColumn!.propertyName!}`;
+        } = ${mainAlias}.${joinColumn.referencedColumn!.propertyName}`;
       })
       .join(' AND ');
 
@@ -112,12 +114,12 @@ export class RelationLoader {
     if (columns.length === 1) {
       const column = columns[0]!;
       qb.where(
-        `${joinAliasName}.${column.propertyPath!} IN (:...${
-          joinAliasName + '_' + column.propertyName!
+        `${joinAliasName}.${column.propertyPath} IN (:...${
+          joinAliasName + '_' + column.propertyName
         })`
       );
       qb.setParameter(
-        joinAliasName + '_' + column.propertyName!,
+        joinAliasName + '_' + column.propertyName,
         entities.map((entity) => column.getEntityValue(entity, true))
       );
     } else {
@@ -129,7 +131,7 @@ export class RelationLoader {
                 joinAliasName + '_entity_' + entityIndex + '_' + columnIndex;
               qb.setParameter(paramName, column.getEntityValue(entity, true));
               return (
-                joinAliasName + '.' + column.propertyPath! + ' = :' + paramName
+                joinAliasName + '.' + column.propertyPath + ' = :' + paramName
               );
             })
             .join(' AND ');
@@ -145,7 +147,7 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany() as Promise<Array<ObjectLiteral>>;
+    return qb.getMany();
     // return qb.getOne(); todo: fix all usages
   }
 
@@ -181,12 +183,12 @@ export class RelationLoader {
     if (columns.length === 1) {
       const column = columns[0]!;
       qb.where(
-        `${aliasName}.${column.propertyPath!} IN (:...${
-          aliasName + '_' + column.propertyName!
+        `${aliasName}.${column.propertyPath} IN (:...${
+          aliasName + '_' + column.propertyName
         })`
       );
       qb.setParameter(
-        aliasName + '_' + column.propertyName!,
+        aliasName + '_' + column.propertyName,
         entities.map((entity) =>
           column.referencedColumn!.getEntityValue(entity, true)
         )
@@ -202,9 +204,7 @@ export class RelationLoader {
                 paramName,
                 column.referencedColumn!.getEntityValue(entity, true)
               );
-              return (
-                aliasName + '.' + column.propertyPath! + ' = :' + paramName
-              );
+              return aliasName + '.' + column.propertyPath + ' = :' + paramName;
             })
             .join(' AND ');
         })
@@ -219,7 +219,7 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany() as Promise<Array<ObjectLiteral>>;
+    return qb.getMany();
     // return relation.isOneToMany ? qb.getMany() : qb.getOne(); todo: fix all usages
   }
 
@@ -241,12 +241,15 @@ export class RelationLoader {
     const entities = Array.isArray(entityOrEntities)
       ? entityOrEntities
       : [entityOrEntities];
-    const parameters = relation.joinColumns.reduce((parameters, joinColumn) => {
-      parameters[joinColumn.propertyName] = entities.map((entity) =>
-        joinColumn.referencedColumn!.getEntityValue(entity, true)
-      );
-      return parameters;
-    }, {} as ObjectLiteral);
+    const parameters = relation.joinColumns.reduce<ObjectLiteral>(
+      (parameters, joinColumn) => {
+        parameters[joinColumn.propertyName] = entities.map((entity) =>
+          joinColumn.referencedColumn!.getEntityValue(entity, true)
+        );
+        return parameters;
+      },
+      {}
+    );
 
     const qb = queryBuilder
       ? queryBuilder
@@ -258,16 +261,22 @@ export class RelationLoader {
     const mainAlias = qb.expressionMap.mainAlias!.name;
     const joinAlias = relation.junctionEntityMetadata!.tableName;
     const joinColumnConditions = relation.joinColumns.map((joinColumn) => {
-      return `${this.escapeAliasColumn(joinAlias, joinColumn.databaseName)} IN (:...${joinColumn.propertyName})`;
+      return `${this.escapeAliasColumn(
+        joinAlias,
+        joinColumn.databaseName,
+        qb.expressionMap.identifierQuoting
+      )} IN (:...${joinColumn.propertyName})`;
     });
     const inverseJoinColumnConditions = relation.inverseJoinColumns.map(
       (inverseJoinColumn) => {
         return `${this.escapeAliasColumn(
           joinAlias,
-          inverseJoinColumn.databaseName
+          inverseJoinColumn.databaseName,
+          qb.expressionMap.identifierQuoting
         )}=${this.escapeAliasColumn(
           mainAlias,
-          inverseJoinColumn.referencedColumn!.databaseName
+          inverseJoinColumn.referencedColumn!.databaseName,
+          qb.expressionMap.identifierQuoting
         )}`;
       }
     );
@@ -284,7 +293,7 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany() as Promise<Array<ObjectLiteral>>;
+    return qb.getMany();
   }
 
   /**
@@ -319,10 +328,12 @@ export class RelationLoader {
       (joinColumn) => {
         return `${this.escapeAliasColumn(
           joinAlias,
-          joinColumn.databaseName
+          joinColumn.databaseName,
+          qb.expressionMap.identifierQuoting
         )} = ${this.escapeAliasColumn(
           mainAlias,
-          joinColumn.referencedColumn!.databaseName
+          joinColumn.referencedColumn!.databaseName,
+          qb.expressionMap.identifierQuoting
         )}`;
       }
     );
@@ -330,18 +341,20 @@ export class RelationLoader {
       relation.inverseRelation!.inverseJoinColumns.map((inverseJoinColumn) => {
         return `${this.escapeAliasColumn(
           joinAlias,
-          inverseJoinColumn.databaseName
+          inverseJoinColumn.databaseName,
+          qb.expressionMap.identifierQuoting
         )} IN (:...${inverseJoinColumn.propertyName})`;
       });
-    const parameters = relation.inverseRelation!.inverseJoinColumns.reduce(
-      (parameters, joinColumn) => {
-        parameters[joinColumn.propertyName] = entities.map((entity) =>
-          joinColumn.referencedColumn!.getEntityValue(entity, true)
-        );
-        return parameters;
-      },
-      {} as ObjectLiteral
-    );
+    const parameters =
+      relation.inverseRelation!.inverseJoinColumns.reduce<ObjectLiteral>(
+        (parameters, joinColumn) => {
+          parameters[joinColumn.propertyName] = entities.map((entity) =>
+            joinColumn.referencedColumn!.getEntityValue(entity, true)
+          );
+          return parameters;
+        },
+        {}
+      );
 
     qb.innerJoin(
       joinAlias,
@@ -355,13 +368,22 @@ export class RelationLoader {
       qb.expressionMap.mainAlias!.metadata
     );
 
-    return qb.getMany() as Promise<Array<ObjectLiteral>>;
+    return qb.getMany();
   }
 
-  private escapeAliasColumn(alias: string, columnName: string): string {
+  private escapeAliasColumn(
+    alias: string,
+    columnName: string,
+    identifierQuoting: TIdentifierQuoting
+  ): string {
     const { driver } = this.connection;
 
-    return `${driver.escape(alias, true)}.${driver.escape(columnName)}`;
+    return `${driver.escape(alias)}.${formatDatabaseIdentifier(
+      columnName,
+      identifierQuoting,
+      this.connection.options.type,
+      (identifier) => driver.escape(identifier)
+    )}`;
   }
 
   /**
@@ -402,21 +424,18 @@ export class RelationLoader {
     };
 
     Object.defineProperty(entity, relation.propertyName, {
-      get: function () {
-        if (
-          (this as unknown as ObjectLiteral)[resolveIndex] === true ||
-          (this as unknown as ObjectLiteral)[dataIndex] !== undefined
-        )
+      get: function (this: ObjectLiteral) {
+        if (this[resolveIndex] === true || this[dataIndex] !== undefined)
           // if related data already was loaded then simply return it
-          return Promise.resolve((this as unknown as ObjectLiteral)[dataIndex]);
+          return Promise.resolve(this[dataIndex]);
 
-        if ((this as unknown as ObjectLiteral)[promiseIndex])
+        if (this[promiseIndex])
           // if related data is loading then return a promise relationLoader loads it
-          return (this as unknown as ObjectLiteral)[promiseIndex];
+          return this[promiseIndex];
 
         // nothing is loaded yet, load relation data and save it in the model once they are loaded
         const loader = relationLoader
-          .load(relation, this as unknown as ObjectLiteral, queryRunner)
+          .load(relation, this, queryRunner)
           .then((result) =>
             relation.isOneToOne || relation.isManyToOne
               ? result.length === 0
@@ -424,16 +443,16 @@ export class RelationLoader {
                 : result[0]
               : result
           );
-        return setPromise(this as unknown as ObjectLiteral, loader);
+        return setPromise(this, loader);
       },
-      set: function (value: unknown | Promise<unknown>) {
+      set: function (this: ObjectLiteral, value: unknown | Promise<unknown>) {
         if (value instanceof Promise) {
           // if set data is a promise then wait for its resolve and save in the object
 
-          setPromise(this as unknown as ObjectLiteral, value);
+          setPromise(this, value);
         } else {
           // if its direct data set (non promise, probably not safe-typed)
-          setData(this as unknown as ObjectLiteral, value);
+          setData(this, value);
         }
       },
       configurable: true,

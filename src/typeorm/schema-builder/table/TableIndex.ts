@@ -98,7 +98,7 @@ export class TableIndex {
       isNullFiltered: this.isNullFiltered,
       parser: this.parser,
       where: this.where,
-    } as TableIndexOptions);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -119,6 +119,6 @@ export class TableIndex {
       isNullFiltered: indexMetadata.isNullFiltered,
       parser: indexMetadata.parser,
       where: indexMetadata.where,
-    } as TableIndexOptions);
+    });
   }
 }

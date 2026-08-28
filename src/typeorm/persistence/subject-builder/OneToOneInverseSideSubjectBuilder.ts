@@ -1,7 +1,8 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import { Subject } from '../Subject.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 
 /**
  * Builds operations needs to be executed for one-to-one non-owner relations of the given subjects.
@@ -33,7 +34,7 @@ export class OneToOneInverseSideSubjectBuilder {
       subject.metadata.oneToOneRelations.forEach((relation) => {
         // we don't need owning relations, this operation is only for inverse side of one-to-one relations
         // skip relations for which persistence is disabled
-        if (relation.isOwning || relation.persistenceEnabled === false) return;
+        if (relation.isOwning || !relation.persistenceEnabled) return;
 
         this.buildForSubjectRelation(subject, relation);
       });
@@ -62,7 +63,7 @@ export class OneToOneInverseSideSubjectBuilder {
       // related entity in the database can exist only if this entity (post) is saved
       relatedEntityDatabaseRelationId = relation.getEntityValue(
         subject.databaseEntity
-      ) as ObjectLiteral | undefined;
+      );
 
     // get related entities of persisted entity
     // by example: get category from the passed to persist post entity
@@ -105,7 +106,7 @@ export class OneToOneInverseSideSubjectBuilder {
     // extract only relation id from the related entities, since we only need it for comparison
     // by example: extract from category only relation id (category id, or let's say category title, depend on join column options)
     let relationIdMap =
-      relation.inverseEntityMetadata!.getEntityIdMap(relatedEntity); // by example: relationIdMap is category.id map here, e.g. { id: ... }
+      relation.inverseEntityMetadata.getEntityIdMap(relatedEntity); // by example: relationIdMap is category.id map here, e.g. { id: ... }
 
     // try to find a subject of this related entity, maybe it was loaded or was marked for persistence
     let relatedEntitySubject = this.subjects.find((operateSubject) => {

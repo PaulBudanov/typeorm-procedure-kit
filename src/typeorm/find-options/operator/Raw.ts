@@ -1,5 +1,6 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { FindOperator } from '../FindOperator.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 
 /**
  * Find Options Operator.

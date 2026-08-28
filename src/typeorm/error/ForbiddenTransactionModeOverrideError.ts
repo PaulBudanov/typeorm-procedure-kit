@@ -1,6 +1,6 @@
-import type { Migration } from '../migration/Migration.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { Migration } from '../migration/Migration.js';
 
 /**
  * Thrown when the per-migration transaction mode is overriden but the global transaction mode is set to "all".

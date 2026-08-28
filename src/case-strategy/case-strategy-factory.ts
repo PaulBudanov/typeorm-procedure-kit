@@ -1,20 +1,21 @@
-import type {
-  ICaseStrategyFactory,
-  TKeyTransformCase,
-} from '../types/strategy.types.js';
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { StringUtilities } from '../utils/string-utilities.js';
 
 import { OrmStrategy } from './orm-strategy.js';
 
+import type {
+  ICaseStrategyFactory,
+  TKeyTransformCase,
+} from '../types/strategy.types.js';
+
 export abstract class CaseStrategyFactory {
-  private static TRANSFORM_STRATEGIES: Record<
+  private static readonly TRANSFORM_STRATEGIES: Record<
     TKeyTransformCase,
     (str: string) => string
   > = {
-    camelCase: StringUtilities.toCamelCase,
-    lowerCase: StringUtilities.toLowerCase,
-    snakeCase: StringUtilities.toSnakeCase,
+    camelCase: (value) => StringUtilities.toCamelCase(value),
+    lowerCase: (value) => StringUtilities.toLowerCase(value),
+    snakeCase: (value) => StringUtilities.toSnakeCase(value),
   };
 
   /**
@@ -28,8 +29,7 @@ export abstract class CaseStrategyFactory {
     outKeyTransformCase: TKeyTransformCase = 'camelCase'
   ): ICaseStrategyFactory {
     const transformFn =
-      CaseStrategyFactory.TRANSFORM_STRATEGIES[outKeyTransformCase] ??
-      StringUtilities.toCamelCase;
+      CaseStrategyFactory.TRANSFORM_STRATEGIES[outKeyTransformCase];
     const cacheKey = Symbol('columnNameCacheKey');
     const cache = new DatabaseNamingCache<string>();
     cache.createCache(cacheKey);

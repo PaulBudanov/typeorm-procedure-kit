@@ -1,22 +1,14 @@
-import type { TFunction } from '../../types/utility.types.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
-import type { Driver } from '../driver/Driver.js';
 import { CannotCreateEntityIdMapError } from '../error/CannotCreateEntityIdMapError.js';
 // import { OrderByCondition } from '../find-options/OrderByCondition.js';
 import { EntityPropertyNotFoundError } from '../error/EntityPropertyNotFoundError.js';
-import type { OrderByCondition } from '../find-options/OrderByCondition.js';
-import type { TableMetadataArgs } from '../metadata-args/TableMetadataArgs.js';
-import type { TreeMetadataArgs } from '../metadata-args/TreeMetadataArgs.js';
-import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 import { shorten } from '../util/StringUtils.js';
 
+import { resolveColumnPath } from './ColumnPathResolver.js';
+
 import type { CheckMetadata } from './CheckMetadata.js';
 import type { ColumnMetadata } from './ColumnMetadata.js';
-import { resolveColumnPath } from './ColumnPathResolver.js';
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import type { EntityListenerMetadata } from './EntityListenerMetadata.js';
 import type { ExclusionMetadata } from './ExclusionMetadata.js';
@@ -33,6 +25,15 @@ import type {
 import type { TableType } from './types/TableTypes.js';
 import type { TreeType } from './types/TreeTypes.js';
 import type { UniqueMetadata } from './UniqueMetadata.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
+import type { OrderByCondition } from '../find-options/OrderByCondition.js';
+import type { TableMetadataArgs } from '../metadata-args/TableMetadataArgs.js';
+import type { TreeMetadataArgs } from '../metadata-args/TreeMetadataArgs.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
  * Contains all entity metadata.
@@ -588,7 +589,7 @@ export class EntityMetadata<Entity = ObjectLiteral> {
     queryRunner?: QueryRunner,
     options?: { fromDeserializer?: boolean; pojo?: boolean }
   ): ObjectLiteral {
-    const pojo = options && options.pojo === true ? true : false;
+    const pojo = options?.pojo === true ? true : false;
     // if target is set to a function (e.g. class) that can be created then create it
     let ret: unknown;
     if (typeof this.target === 'function' && !pojo) {
@@ -604,13 +605,13 @@ export class EntityMetadata<Entity = ObjectLiteral> {
       ret = {};
     }
 
-    this.lazyRelations.forEach((relation) =>
+    this.lazyRelations.forEach((relation) => {
       this.connection.relationLoader.enableLazyLoad(
         relation,
         ret as ObjectLiteral,
         queryRunner
-      )
-    );
+      );
+    });
     return ret as ObjectLiteral;
   }
 
@@ -748,8 +749,7 @@ export class EntityMetadata<Entity = ObjectLiteral> {
     const relation = this.relations.find(
       (relation) => relation.propertyPath === propertyPath
     );
-    if (relation && relation.joinColumns.length === 1)
-      return relation.joinColumns[0];
+    if (relation?.joinColumns.length === 1) return relation.joinColumns[0];
 
     return undefined;
   }
@@ -779,7 +779,7 @@ export class EntityMetadata<Entity = ObjectLiteral> {
     // in the case if column with property path was not found, try to find a relation with such property path
     // if we find relation and it has a single join column then its the column user was seeking
     const relation = this.findRelationWithPropertyPath(propertyPath);
-    if (relation && relation.joinColumns) return relation.joinColumns;
+    if (relation?.joinColumns) return relation.joinColumns;
 
     return [];
   }
@@ -853,7 +853,7 @@ export class EntityMetadata<Entity = ObjectLiteral> {
       if (column == null) {
         throw new EntityPropertyNotFoundError(
           propertyPath,
-          this as EntityMetadata<ObjectLiteral>
+          this as EntityMetadata
         );
       }
       return column;
@@ -995,21 +995,18 @@ export class EntityMetadata<Entity = ObjectLiteral> {
     entity: ObjectLiteral,
     columns: Array<ColumnMetadata>
   ): ObjectLiteral | undefined {
-    return columns.reduce(
-      (map, column) => {
-        const value = column.getEntityValueMap(entity);
+    return columns.reduce<ObjectLiteral | undefined>((map, column) => {
+      const value = column.getEntityValueMap(entity);
 
-        // make sure that none of the values of the columns are not missing
-        if (map === undefined || value === null || value === undefined)
-          return undefined;
+      // make sure that none of the values of the columns are not missing
+      if (map === undefined || value === null || value === undefined)
+        return undefined;
 
-        // Skip array values as they are not supported in mergeDeep
-        if (Array.isArray(value)) return map;
+      // Skip array values as they are not supported in mergeDeep
+      if (Array.isArray(value)) return map;
 
-        return OrmUtils.mergeDeep(map, value);
-      },
-      {} as ObjectLiteral | undefined
-    );
+      return OrmUtils.mergeDeep(map, value);
+    }, {});
   }
 
   // ---------------------------------------------------------------------
@@ -1105,7 +1102,7 @@ export class EntityMetadata<Entity = ObjectLiteral> {
    * Registers a new column in the entity and recomputes all depend properties.
    */
   public registerColumn(column: ColumnMetadata): void {
-    if (this.ownColumns.indexOf(column) !== -1) return;
+    if (this.ownColumns.includes(column)) return;
 
     this.ownColumns.push(column);
     this.columns = this.embeddeds.reduce(
@@ -1123,9 +1120,9 @@ export class EntityMetadata<Entity = ObjectLiteral> {
     this.databasePropertiesMap =
       this.createDatabasePropertiesMap() as EntityDatabasePropertiesMap<Entity>;
     if (this.childEntityMetadatas)
-      this.childEntityMetadatas.forEach((entityMetadata) =>
-        entityMetadata.registerColumn(column)
-      );
+      this.childEntityMetadatas.forEach((entityMetadata) => {
+        entityMetadata.registerColumn(column);
+      });
   }
 
   /**

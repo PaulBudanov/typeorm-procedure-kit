@@ -1,4 +1,3 @@
-import type { FactoryProvider, Provider } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -13,6 +12,8 @@ import {
   UNLISTEN_NOTIFY,
 } from '../../src/nest/consts.js';
 import { TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS } from '../../src/nest/providers/index.js';
+import { ServerError } from '../../src/utils/server-error.js';
+
 import type { TypeOrmProcedureKitNestService } from '../../src/nest/typeorm-procedure-kit-nest.service.js';
 import type {
   TCallProcedure,
@@ -24,7 +25,7 @@ import type {
   TSetSerializer,
   TUnlistenNotify,
 } from '../../src/types/nest-decorator.types.js';
-import { ServerError } from '../../src/utils/server-error.js';
+import type { FactoryProvider, Provider } from '@nestjs/common';
 
 interface IProcedureParams {
   id: number;

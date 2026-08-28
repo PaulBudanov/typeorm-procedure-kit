@@ -1,13 +1,14 @@
-import type { Client } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DatabaseNotify } from '../../src/adapters/abstract/database-notify.js';
+import { createLogger } from '../support/helpers.js';
+
 import type { ILoggerModule } from '../../src/types/logger.types.js';
 import type {
   INotifyRetryOptions,
   TNotifyCallbackGeneric,
 } from '../../src/types/notification.types.js';
-import { createLogger } from '../support/helpers.js';
+import type { Client } from 'pg';
 
 class TestDatabaseNotify extends DatabaseNotify<Client> {
   public constructor(logger: ILoggerModule) {
@@ -93,18 +94,18 @@ describe('DatabaseNotify', (): void => {
       await Promise.resolve();
       await Promise.resolve();
 
-      let destroySettled = false;
+      let isDestroySettled = false;
       const destroyPromise = notify.destroy().then(() => {
-        destroySettled = true;
+        isDestroySettled = true;
       });
       await Promise.resolve();
 
-      expect(destroySettled).toBe(false);
+      expect(isDestroySettled).toBe(false);
 
       await vi.advanceTimersByTimeAsync(5_000);
       await destroyPromise;
 
-      expect(destroySettled).toBe(true);
+      expect(isDestroySettled).toBe(true);
       expect(notify.getNotificationPool().size).toBe(0);
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining(

@@ -1,12 +1,13 @@
+import { DriverUtils } from '../../driver/DriverUtils.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { Driver } from '../../driver/Driver.js';
-import { DriverUtils } from '../../driver/DriverUtils.js';
 import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
-import { ObjectUtils } from '../../util/ObjectUtils.js';
-import { OrmUtils } from '../../util/OrmUtils.js';
 import type { Alias } from '../Alias.js';
 import type { QueryExpressionMap } from '../QueryExpressionMap.js';
 import type { RelationCountLoadResult } from '../relation-count/RelationCountLoadResult.js';
@@ -147,7 +148,7 @@ export class RawSqlResultsToEntityTransformer {
         })
         .join('_'); // todo: check partial
 
-      const items = map.get(id) as Array<unknown>;
+      const items = map.get(id)!;
       if (!items) {
         map.set(id, [rawResult]);
       } else {
@@ -226,7 +227,7 @@ export class RawSqlResultsToEntityTransformer {
     // except for the case when entity only contain a primary column as a relation to another entity
     // in this case its absolutely possible our entity to not have any columns except a single relation
     const hasOnlyVirtualPrimaryColumns = metadata.primaryColumns.every(
-      (column) => column.isVirtual === true
+      (column) => column.isVirtual
     ); // todo: create metadata.hasOnlyVirtualPrimaryColumns
     if (
       hasOnlyVirtualPrimaryColumns &&
@@ -303,7 +304,7 @@ export class RawSqlResultsToEntityTransformer {
         if (
           !join.relation ||
           join.parentAlias !== alias.name ||
-          join.relationPropertyPath !== join.relation!.propertyPath
+          join.relationPropertyPath !== join.relation.propertyPath
         )
           continue;
       }
@@ -375,7 +376,11 @@ export class RawSqlResultsToEntityTransformer {
           return map;
         }
         if (property && properties.length > 0) {
-          mapToProperty(properties, map[property] as ObjectLiteral, value);
+          return mapToProperty(
+            properties,
+            map[property] as ObjectLiteral,
+            value
+          );
         } else {
           return map;
         }
@@ -429,9 +434,9 @@ export class RawSqlResultsToEntityTransformer {
           rawRelationCountResult.relationCountAttribute.mapToPropertyPropertyName
         ] = 0;
         for (const result of rawRelationCountResult.results) {
-          if ((result as ObjectLiteral)['parentId'] !== referenceColumnValue)
+          if ((result as ObjectLiteral).parentId !== referenceColumnValue)
             continue;
-          const cnt = (result as ObjectLiteral)['cnt'];
+          const cnt = (result as ObjectLiteral).cnt;
           entity[
             rawRelationCountResult.relationCountAttribute.mapToPropertyPropertyName
           ] = parseInt(cnt as string);
@@ -501,7 +506,7 @@ export class RawSqlResultsToEntityTransformer {
         );
       }
     }
-    return columns.reduce((valueMap, column) => {
+    return columns.reduce<ObjectLiteral>((valueMap, column) => {
       for (const rawSqlResult of rawSqlResults) {
         if (relation.isManyToOne || relation.isOneToOneOwner) {
           valueMap[column.databaseName] = this.driver.prepareHydratedValue(
@@ -525,7 +530,7 @@ export class RawSqlResultsToEntityTransformer {
         }
       }
       return valueMap;
-    }, {} as ObjectLiteral);
+    }, {});
   }
 
   private extractEntityPrimaryIds(
@@ -550,13 +555,13 @@ export class RawSqlResultsToEntityTransformer {
         );
       }
     }
-    return columns.reduce((data, column) => {
+    return columns.reduce<ObjectLiteral>((data, column) => {
       data[column.databaseName] = this.getRawValue(
         relationIdRawResult as ObjectLiteral,
         column.databaseName
       );
       return data;
-    }, {} as ObjectLiteral);
+    }, {});
   }
 
   /*private removeVirtualColumns(entity: ObjectLiteral, alias: Alias) {
@@ -598,7 +603,7 @@ export class RawSqlResultsToEntityTransformer {
         return rawRelationIdResult.results.reduce<
           Record<string, Array<unknown>>
         >((agg, result) => {
-          let idMap = columns.reduce((idMap, column) => {
+          let idMap = columns.reduce<ObjectLiteral>((idMap, column) => {
             let value = this.getRawValue(
               result as ObjectLiteral,
               column.databaseName
@@ -628,7 +633,7 @@ export class RawSqlResultsToEntityTransformer {
               idMap,
               column.referencedColumn!.createValueMap(value)
             );
-          }, {} as ObjectLiteral);
+          }, {});
 
           if (
             columns.length === 1 &&
@@ -639,7 +644,7 @@ export class RawSqlResultsToEntityTransformer {
               if (column) idMap = column.getEntityValue(idMap) as ObjectLiteral;
             } else {
               const column = columns[0];
-              if (column && column.referencedColumn)
+              if (column?.referencedColumn)
                 idMap = column.referencedColumn.getEntityValue(
                   idMap
                 ) as ObjectLiteral;

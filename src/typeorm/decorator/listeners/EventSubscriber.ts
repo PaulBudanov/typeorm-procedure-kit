@@ -1,4 +1,5 @@
 import { getMetadataArgsStorage } from '../../globals.js';
+
 import type { EntitySubscriberMetadataArgs } from '../../metadata-args/EntitySubscriberMetadataArgs.js';
 
 /**

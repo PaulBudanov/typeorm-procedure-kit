@@ -27,12 +27,71 @@ function createKit(): TypeOrmProcedureKit {
   });
 }
 
+interface IMetadataNotificationOptions {
+  sql: string;
+  notifyCallback: (args: unknown) => unknown;
+}
+
+function createMetadataNotificationHarness(
+  metadataNotificationSql: string | undefined
+): {
+  kit: TypeOrmProcedureKit;
+  getPackagesNotifySql: ReturnType<typeof vi.fn<() => string>>;
+  createNotification: ReturnType<
+    typeof vi.fn<(options: IMetadataNotificationOptions) => Promise<string>>
+  >;
+} {
+  const kit = new TypeOrmProcedureKit({
+    config: {
+      type: 'postgres',
+      master: {
+        host: 'localhost',
+        port: 5432,
+        database: 'db',
+        username: 'user',
+        password: 'pass',
+      },
+      poolSize: 1,
+      parseInt8AsBigInt: false,
+      packagesSettings: {
+        packages: ['pkg'],
+        procedureObjectList: { run: 'pkg.run' },
+        isNeedDynamicallyUpdatePackagesInfo: true,
+        metadataNotificationSql,
+      },
+    },
+    logger: { module: createLogger() },
+  });
+  const getPackagesNotifySql = vi.fn((): string => 'LISTEN "fallback"');
+  const createNotification = vi
+    .fn<(options: IMetadataNotificationOptions) => Promise<string>>()
+    .mockResolvedValue('package_updates');
+
+  Reflect.set(kit, 'databaseInitializerBase', {
+    initDatabaseModule: vi.fn().mockResolvedValue(undefined),
+    databaseAdapter: {
+      getPackagesNotifySql,
+    },
+  });
+  Reflect.set(kit, 'initMainClasses', (): void => {
+    Reflect.set(kit, 'procedureListBase', {
+      initPackagesMap: vi.fn().mockResolvedValue(undefined),
+    });
+    Reflect.set(kit, 'notifyBase', {
+      createNotification,
+      schedulePackageNotifyCallback: vi.fn(),
+    });
+  });
+
+  return { kit, getPackagesNotifySql, createNotification };
+}
+
 describe('TypeOrmProcedureKit', (): void => {
   it('throws useful errors before initialization', (): void => {
     const kit = createKit();
 
     expect((): void => {
-      kit.call('pkg.run');
+      void kit.call('pkg.run');
     }).toThrow('Procedure packages are not configured');
     expect((): void => {
       kit.setSerializer({
@@ -465,10 +524,10 @@ describe('TypeOrmProcedureKit', (): void => {
     expect(dataSourceDestroy).toHaveBeenCalledOnce();
     expect(strategyDestroy).toHaveBeenCalledOnce();
     expect((): void => {
-      kit.call('pkg.run');
+      void kit.call('pkg.run');
     }).toThrow(SHUTDOWN_ERROR);
     expect((): void => {
-      kit.callSqlTransaction('SELECT 1');
+      void kit.callSqlTransaction('SELECT 1');
     }).toThrow(SHUTDOWN_ERROR);
     expect(makeSqlBindings).not.toHaveBeenCalled();
   });
@@ -519,7 +578,7 @@ describe('TypeOrmProcedureKit', (): void => {
       });
     }).toThrow(SHUTDOWN_ERROR);
     expect((): void => {
-      kit.callSqlTransaction('SELECT 1');
+      void kit.callSqlTransaction('SELECT 1');
     }).toThrow(SHUTDOWN_ERROR);
     expect(makeSqlBindings).not.toHaveBeenCalled();
 
@@ -565,65 +624,39 @@ describe('TypeOrmProcedureKit', (): void => {
     expect(strategyDestroy).toHaveBeenCalledOnce();
   });
 
-  it('uses custom metadata notification SQL during initialization', async (): Promise<void> => {
-    const kit = new TypeOrmProcedureKit({
-      config: {
-        type: 'postgres',
-        master: {
-          host: 'localhost',
-          port: 5432,
-          database: 'db',
-          username: 'user',
-          password: 'pass',
-        },
-        poolSize: 1,
-        parseInt8AsBigInt: false,
-        packagesSettings: {
-          packages: ['pkg'],
-          procedureObjectList: { run: 'pkg.run' },
-          isNeedDynamicallyUpdatePackagesInfo: true,
-          metadataNotificationSql: 'LISTEN "package_updates"',
-        },
-      },
-      logger: { module: createLogger() },
-    });
-    const getPackagesNotifySql = vi.fn((): string => 'LISTEN "fallback"');
-    const createNotification = vi
-      .fn<
-        (_options: {
-          sql: string;
-          notifyCallback: (args: unknown) => unknown;
-        }) => Promise<string>
-      >()
-      .mockResolvedValue('package_updates');
-    const kitInternals = kit as unknown as Record<string, unknown>;
-
-    Object.assign(kitInternals, {
-      databaseInitializerBase: {
-        initDatabaseModule: vi.fn().mockResolvedValue(undefined),
-        databaseAdapter: {
-          getPackagesNotifySql,
-        },
-      },
-      initMainClasses(): void {
-        Object.assign(kitInternals, {
-          procedureListBase: {
-            initPackagesMap: vi.fn().mockResolvedValue(undefined),
-          },
-          notifyBase: {
-            createNotification,
-            packageNotifyCallback: vi.fn(),
-          },
-        });
-      },
-    });
+  it('trims custom metadata notification SQL during initialization', async (): Promise<void> => {
+    const { kit, getPackagesNotifySql, createNotification } =
+      createMetadataNotificationHarness(' \n\t LISTEN "package_updates" \t');
 
     await kit.initDatabase();
 
     expect(createNotification).toHaveBeenCalledOnce();
-    const [notificationOptions] = createNotification.mock.calls[0]!;
+    const notificationCall = createNotification.mock.calls.at(0);
+    expect(notificationCall).toBeDefined();
+    if (!notificationCall)
+      throw new Error('Notification call was not recorded');
+    const [notificationOptions] = notificationCall;
     expect(notificationOptions.sql).toBe('LISTEN "package_updates"');
     expect(typeof notificationOptions.notifyCallback).toBe('function');
     expect(getPackagesNotifySql).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, '', ' \n\t '])(
+    'uses adapter metadata notification SQL when custom SQL is %j',
+    async (metadataNotificationSql): Promise<void> => {
+      const { kit, getPackagesNotifySql, createNotification } =
+        createMetadataNotificationHarness(metadataNotificationSql);
+
+      await kit.initDatabase();
+
+      expect(getPackagesNotifySql).toHaveBeenCalledOnce();
+      expect(getPackagesNotifySql).toHaveBeenCalledWith(['pkg']);
+      expect(createNotification).toHaveBeenCalledOnce();
+      const notificationCall = createNotification.mock.calls.at(0);
+      expect(notificationCall).toBeDefined();
+      if (!notificationCall)
+        throw new Error('Notification call was not recorded');
+      expect(notificationCall[0].sql).toBe('LISTEN "fallback"');
+    }
+  );
 });

@@ -1,19 +1,19 @@
 import { randomUUID } from 'crypto';
 
-import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
-import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
-import type { IExecutionOptions } from '../types/config.types.js';
-import type { ILoggerModule } from '../types/logger.types.js';
-import type {
-  IBindingsObjectReturn,
-  IProcedureOutBinding,
-  IProcedureResult,
-} from '../types/utility.types.js';
 import { DatabaseErrorHandler } from '../utils/database-error-handler.js';
 import { QueryTimer } from '../utils/query-timer.js';
 import { ServerError } from '../utils/server-error.js';
 
 import type { ConnectionBase } from './connection-base.js';
+import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
+import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
+import type { IExecutionOptions } from '../types/config.types.js';
+import type { ILoggerModule, TBindingLogMode } from '../types/logger.types.js';
+import type {
+  IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
+} from '../types/utility.types.js';
 
 export class ExecuteBase {
   /**
@@ -25,7 +25,8 @@ export class ExecuteBase {
   public constructor(
     private readonly connectionBase: ConnectionBase,
     private readonly databaseAdapter: TAdapterUtilsClassTypes,
-    private readonly logger: ILoggerModule
+    private readonly logger: ILoggerModule,
+    private readonly bindingLogMode: TBindingLogMode = 'metadata-only'
   ) {}
 
   /**
@@ -49,7 +50,13 @@ export class ExecuteBase {
       optionsCommands = [],
       queryId = randomUUID(),
     } = executionOptions;
-    const queryTimer = new QueryTimer(sql, this.logger, queryId, bindings);
+    const queryTimer = new QueryTimer(
+      sql,
+      this.logger,
+      queryId,
+      bindings,
+      this.bindingLogMode
+    );
     const client: EntityManager =
       await this.connectionBase.getEntityManager(mode);
     try {
@@ -95,7 +102,13 @@ export class ExecuteBase {
       optionsCommands = [],
       queryId = randomUUID(),
     } = executionOptions;
-    const queryTimer = new QueryTimer(sql, this.logger, queryId, bindings);
+    const queryTimer = new QueryTimer(
+      sql,
+      this.logger,
+      queryId,
+      bindings,
+      this.bindingLogMode
+    );
     const client: EntityManager =
       await this.connectionBase.getEntityManager(mode);
     try {

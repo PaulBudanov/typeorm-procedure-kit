@@ -63,6 +63,64 @@ describe('NotifyBase', (): void => {
     expect(fetchProcedureListWithArguments).toHaveBeenCalledTimes(2);
   });
 
+  it('accepts case-insensitive Oracle field names and ignores malformed rows', async (): Promise<void> => {
+    const fetchProcedureListWithArguments = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    const logger = createLogger();
+    const notifyBase = new NotifyBase(
+      createAdapterMock(),
+      { fetchProcedureListWithArguments } as never,
+      logger,
+      {
+        packages: ['PKG' as Lowercase<string>],
+        procedureObjectList: {},
+      }
+    );
+
+    await notifyBase.packageNotifyCallback([
+      { NAME: 'PKG' },
+      { name: 42 },
+    ] as never);
+
+    expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
+    expect(fetchProcedureListWithArguments).toHaveBeenCalledWith('pkg');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('without a string NAME field')
+    );
+  });
+
+  it('schedules notification refreshes without awaiting database metadata work', async (): Promise<void> => {
+    let resolveRefresh!: () => void;
+    const refresh = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const fetchProcedureListWithArguments = vi.fn().mockReturnValue(refresh);
+    const notifyBase = new NotifyBase(
+      createAdapterMock(),
+      { fetchProcedureListWithArguments } as never,
+      createLogger(),
+      {
+        packages: ['pkg'],
+        procedureObjectList: {},
+      }
+    );
+
+    const result = notifyBase.schedulePackageNotifyCallback({
+      event: 'CREATE',
+      object: 'PKG',
+    });
+
+    expect(result).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
+    });
+    resolveRefresh();
+    await vi.waitFor(() => {
+      expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
+    });
+  });
+
   it('coalesces concurrent refreshes for the same package', async (): Promise<void> => {
     let resolveRefresh!: () => void;
     const refresh = new Promise<void>((resolve) => {

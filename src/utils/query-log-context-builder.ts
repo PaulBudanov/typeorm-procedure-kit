@@ -1,4 +1,5 @@
 import { replaceNamedParameters } from '../typeorm/util/NamedParameterUtils.js';
+
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
@@ -79,7 +80,7 @@ export class QueryLogContextBuilder {
   }
 
   private static extractBindingLogValue(binding: unknown): unknown {
-    if (binding && typeof binding === 'object' && 'val' in binding) {
+    if (binding !== null && typeof binding === 'object' && 'val' in binding) {
       return (binding as { val?: unknown }).val;
     }
     return binding;

@@ -285,6 +285,6 @@ export abstract class AbstractTypeormRepository<
   private isMapRecord(
     value: string | IRepositoryPropertyMapRecord | undefined
   ): value is IRepositoryPropertyMapRecord {
-    return typeof value === 'object' && value !== null;
+    return typeof value === 'object';
   }
 }

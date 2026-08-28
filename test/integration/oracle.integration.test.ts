@@ -2,7 +2,6 @@ import oracledb from 'oracledb';
 import { describe, expect, it } from 'vitest';
 
 import { TypeOrmProcedureKit } from '../../src/index.js';
-import type { DataSource } from '../../src/typeorm/data-source/DataSource.js';
 
 import { createOracleIntegrationSettings } from './database-integration.helpers.js';
 import {
@@ -13,15 +12,17 @@ import {
   queryBuilderTables,
 } from './query-builder-integration.fixtures.js';
 
+import type { DataSource } from '../../src/typeorm/data-source/DataSource.js';
+
 const settings = createOracleIntegrationSettings();
 const procedurePackage = 'tpk_it_pkg' as const;
 
-type OracleIntegrationSettings = NonNullable<
+type TOracleIntegrationSettings = NonNullable<
   ReturnType<typeof createOracleIntegrationSettings>
 >;
 
 async function withOracleConnection<T>(
-  integrationSettings: OracleIntegrationSettings,
+  integrationSettings: TOracleIntegrationSettings,
   callback: (connection: oracledb.Connection) => Promise<T>
 ): Promise<T> {
   const connection = await oracledb.getConnection({
@@ -38,7 +39,7 @@ async function withOracleConnection<T>(
 }
 
 async function dropOracleProcedureFixture(
-  integrationSettings: OracleIntegrationSettings
+  integrationSettings: TOracleIntegrationSettings
 ): Promise<void> {
   await withOracleConnection(integrationSettings, async (connection) => {
     await connection.execute(`
@@ -55,7 +56,7 @@ async function dropOracleProcedureFixture(
 }
 
 async function createOracleProcedureFixture(
-  integrationSettings: OracleIntegrationSettings
+  integrationSettings: TOracleIntegrationSettings
 ): Promise<void> {
   await dropOracleProcedureFixture(integrationSettings);
   await withOracleConnection(integrationSettings, async (connection) => {
@@ -177,7 +178,7 @@ async function createOracleProcedureFixture(
 }
 
 function createOracleQueryBuilderDataSource(
-  integrationSettings: OracleIntegrationSettings
+  integrationSettings: TOracleIntegrationSettings
 ): DataSource {
   return createQueryBuilderIntegrationDataSource({
     type: 'oracle',

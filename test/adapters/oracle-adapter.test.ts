@@ -4,10 +4,16 @@ import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OracleAdapter } from '../../src/adapters/oracle/oracle-adapter.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../src/utils/resource-limits.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
-function createOracleAdapter(registerDefaults = false): OracleAdapter {
+import type { IResourceLimits } from '../../src/types/config.types.js';
+
+function createOracleAdapter(
+  shouldRegisterDefaults = false,
+  resourceLimits?: Partial<IResourceLimits>
+): OracleAdapter {
   return new OracleAdapter(
     {
       options: { replication: { master: {} } },
@@ -15,12 +21,37 @@ function createOracleAdapter(registerDefaults = false): OracleAdapter {
     } as never,
     createLogger(),
     {
-      isNeedRegisterDefaultSerializers: registerDefaults,
+      isNeedRegisterDefaultSerializers: shouldRegisterDefaults,
       caseStrategy: {
         transformColumnName: (value: string): string => value.toLowerCase(),
       },
+      resourceLimits: {
+        ...DEFAULT_RESOURCE_LIMITS,
+        ...resourceLimits,
+      },
     }
   );
+}
+
+function createTrackedLob(
+  type: oracledb.DbType,
+  chunks: Array<string | Buffer>
+): { lob: oracledb.Lob; destroy: ReturnType<typeof vi.fn> } {
+  let isDestroyed = false;
+  const destroy = vi.fn((): void => {
+    isDestroyed = true;
+  });
+  const lob = {
+    type,
+    get destroyed(): boolean {
+      return isDestroyed;
+    },
+    destroy,
+    async *[Symbol.asyncIterator](): AsyncGenerator<string | Buffer> {
+      yield* chunks;
+    },
+  } as unknown as oracledb.Lob;
+  return { lob, destroy };
 }
 
 describe('OracleAdapter', (): void => {
@@ -29,12 +60,107 @@ describe('OracleAdapter', (): void => {
 
     const sql = adapter.generatePackageInfoSql('pkg');
 
-    expect(sql).toContain("a.PACKAGE_NAME = 'PKG'");
+    expect(sql).toContain("p.OBJECT_NAME = 'PKG'");
+    expect(sql).toContain("p.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')");
+    expect(sql).toContain('p.SUBPROGRAM_ID AS "subprogram_id"');
+    expect(sql).toContain("'__TPK_NO_ARGUMENT__'");
+    expect(sql).toContain('FETCH FIRST 10001 ROWS ONLY');
     expect(sql).not.toContain(':PACKAGE_NAME');
     expect(sql).not.toContain('package_name');
     expect((): void => {
       adapter.generatePackageInfoSql('pkg;drop');
     }).toThrow(ServerError);
+  });
+
+  it('preserves all single-package routines and filters multi-package metadata', (): void => {
+    const adapter = createOracleAdapter();
+
+    const procedures = adapter.sortArgumentsAlgorithm(
+      [
+        {
+          procedureName: 'Ping',
+          argumentName: '__TPK_NO_ARGUMENT__',
+          argumentType: 'VOID',
+          order: 0,
+          mode: 'IN',
+          owner: 'APP',
+          subprogramId: 1,
+        },
+        {
+          procedureName: 'Unlisted',
+          argumentName: '__TPK_NO_ARGUMENT__',
+          argumentType: 'VOID',
+          order: 0,
+          mode: 'IN',
+          owner: 'APP',
+          subprogramId: 2,
+        },
+      ],
+      ['pkg.ping'],
+      'pkg',
+      1
+    );
+    expect(procedures).toEqual({ ping: [], unlisted: [] });
+    expect(
+      adapter.sortArgumentsAlgorithm(
+        [
+          {
+            procedureName: 'Ping',
+            argumentName: '__TPK_NO_ARGUMENT__',
+            argumentType: 'VOID',
+            order: 0,
+            mode: 'IN',
+            owner: 'APP',
+            subprogramId: 1,
+          },
+          {
+            procedureName: 'Unlisted',
+            argumentName: '__TPK_NO_ARGUMENT__',
+            argumentType: 'VOID',
+            order: 0,
+            mode: 'IN',
+            owner: 'APP',
+            subprogramId: 2,
+          },
+        ],
+        ['pkg.ping'],
+        'pkg',
+        2
+      )
+    ).toEqual({ ping: [] });
+    expect(adapter.makeBindings('pkg', 'ping', procedures)).toMatchObject({
+      paramExecuteString: 'BEGIN PKG.PING (); END;',
+      bindings: {},
+      cursorsNames: [],
+    });
+
+    expect(() =>
+      adapter.sortArgumentsAlgorithm(
+        [
+          {
+            procedureName: 'Run',
+            argumentName: 'p_value',
+            argumentType: 'NUMBER',
+            order: 1,
+            mode: 'IN',
+            subprogramId: 10,
+            overload: '1',
+          },
+          {
+            procedureName: 'Run',
+            argumentName: 'p_value',
+            argumentType: 'VARCHAR2',
+            order: 1,
+            mode: 'IN',
+            subprogramId: 11,
+            overload: '2',
+          },
+        ],
+        ['pkg.run'],
+        'pkg',
+        1
+      )
+    ).toThrow('is overloaded');
   });
 
   it('generates package info SQL from a custom template', (): void => {
@@ -232,6 +358,8 @@ describe('OracleAdapter', (): void => {
           order: 1,
           mode: 'OUT',
           size: 512,
+          owner: 'APP',
+          subprogramId: 7,
         },
         {
           procedureName: 'RUN',
@@ -239,13 +367,19 @@ describe('OracleAdapter', (): void => {
           argumentType: 'RAW',
           order: 2,
           mode: 'IN/OUT',
+          owner: 'APP',
+          subprogramId: 7,
         },
       ],
       ['pkg.run'],
       'pkg',
       1
     );
-    expect(procedures.run?.[0]).toMatchObject({ size: 512 });
+    expect(procedures.run?.[0]).toMatchObject({
+      size: 512,
+      owner: 'APP',
+      subprogramId: 7,
+    });
 
     const result = adapter.makeBindings('pkg', 'run', procedures, {
       raw: Buffer.from('input'),
@@ -601,8 +735,206 @@ describe('OracleAdapter', (): void => {
     ]);
   });
 
-  it('flattens a 200k-row Oracle cursor without argument spreading', async (): Promise<void> => {
+  it('materializes scalar and cursor CLOB/BLOB values', async (): Promise<void> => {
     const adapter = createOracleAdapter();
+    const createLob = (
+      type: oracledb.DbType,
+      chunks: Array<string | Buffer>
+    ): oracledb.Lob => {
+      const lob = Readable.from(chunks) as unknown as oracledb.Lob;
+      Object.defineProperty(lob, 'type', { value: type });
+      return lob;
+    };
+    const cursorResultSet = {
+      metaData: [
+        { name: 'TEXT_VALUE', dbType: oracledb.DB_TYPE_CLOB },
+        { name: 'BINARY_VALUE', dbType: oracledb.DB_TYPE_BLOB },
+      ],
+      toQueryStream: (): Readable =>
+        Readable.from([
+          {
+            TEXT_VALUE: createLob(oracledb.DB_TYPE_CLOB, ['hello', ' world']),
+            BINARY_VALUE: createLob(oracledb.DB_TYPE_BLOB, [
+              Buffer.from([1, 2]),
+              Buffer.from([3]),
+            ]),
+          },
+        ]),
+      close: vi.fn(),
+    };
+    const multibyteText = Buffer.from('🙂');
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        OUT_CLOB: createLob(oracledb.DB_TYPE_CLOB, [
+          multibyteText.subarray(0, 2),
+          multibyteText.subarray(2),
+        ]),
+        OUT_BLOB: createLob(oracledb.DB_TYPE_BLOB, [Buffer.from([4, 5])]),
+        OUT_CURSOR: cursorResultSet,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    const result = await adapter.executeProcedure(
+      'begin pkg.run(:out_clob, :out_blob, :out_cursor); end;',
+      manager as never,
+      [],
+      {},
+      ['out_cursor'],
+      [
+        { name: 'out_clob', type: 'lob', databaseType: 'CLOB' },
+        { name: 'out_blob', type: 'lob', databaseType: 'BLOB' },
+        { name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' },
+      ]
+    );
+
+    expect(result.outBinds).toEqual({
+      out_clob: '🙂',
+      out_blob: Buffer.from([4, 5]),
+      out_cursor: [
+        {
+          text_value: 'hello world',
+          binary_value: Buffer.from([1, 2, 3]),
+        },
+      ],
+    });
+  });
+
+  it('aborts Oracle LOB materialization above the configured limit', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxLobBytes: 3 });
+    const lob = Readable.from(['abcd']) as unknown as oracledb.Lob;
+    Object.defineProperty(lob, 'type', { value: oracledb.DB_TYPE_CLOB });
+    const manager = {
+      query: vi.fn().mockResolvedValue({ out_clob: lob }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_clob); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [{ name: 'out_clob', type: 'lob', databaseType: 'CLOB' }]
+      )
+    ).rejects.toThrow('resourceLimits.maxLobBytes (3)');
+    expect(lob.destroyed).toBe(true);
+  });
+
+  it('destroys the active and later top-level LOBs exactly once after a LOB limit error', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxLobBytes: 3 });
+    const first = createTrackedLob(oracledb.DB_TYPE_CLOB, ['abcd']);
+    const second = createTrackedLob(oracledb.DB_TYPE_BLOB, [Buffer.from([1])]);
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_first: first.lob,
+        out_second: second.lob,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_first, :out_second); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          { name: 'out_first', type: 'lob', databaseType: 'CLOB' },
+          { name: 'out_second', type: 'lob', databaseType: 'BLOB' },
+        ]
+      )
+    ).rejects.toThrow('resourceLimits.maxLobBytes (3)');
+    expect(first.destroy).toHaveBeenCalledOnce();
+    expect(second.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('destroys a later top-level LOB when an earlier cursor fails', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const later = createTrackedLob(oracledb.DB_TYPE_CLOB, ['later']);
+    const resultSet = {
+      toQueryStream: vi.fn(() => {
+        throw new Error('cursor setup failed');
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_cursor: resultSet,
+        out_lob: later.lob,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_cursor, :out_lob); end;',
+        manager as never,
+        [],
+        {},
+        ['out_cursor'],
+        [
+          { name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' },
+          { name: 'out_lob', type: 'lob', databaseType: 'CLOB' },
+        ]
+      )
+    ).rejects.toThrow('cursor setup failed');
+    expect(resultSet.close).toHaveBeenCalledOnce();
+    expect(later.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('destroys a later top-level LOB when an earlier scalar serializer fails', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    adapter.setSerializer({
+      serializerType: 'DATE',
+      strategy: (): never => {
+        throw new Error('scalar serializer failed');
+      },
+    });
+    const later = createTrackedLob(oracledb.DB_TYPE_CLOB, ['later']);
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_date: new Date('2026-01-01T00:00:00.000Z'),
+        out_lob: later.lob,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_date, :out_lob); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          { name: 'out_date', type: 'scalar', databaseType: 'DATE' },
+          { name: 'out_lob', type: 'lob', databaseType: 'CLOB' },
+        ]
+      )
+    ).rejects.toThrow('scalar serializer failed');
+    expect(later.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('flattens a 200k-row Oracle cursor without argument spreading when allowed', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxProcedureRows: 200_001 });
     const resultSet = {
       toQueryStream: (): Readable =>
         Readable.from(
@@ -633,5 +965,33 @@ describe('OracleAdapter', (): void => {
     expect(
       (result.outBinds as Record<string, Array<number>>).out_cursor
     ).toHaveLength(200_000);
+  });
+
+  it('aborts and destroys an Oracle cursor stream above the row limit', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxProcedureRows: 2 });
+    const stream = Readable.from([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    const resultSet = {
+      toQueryStream: (): Readable => stream,
+      close: vi.fn(),
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({ out_cursor: resultSet }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_cursor); end;',
+        manager as never,
+        [],
+        {},
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' }]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureRows (2)');
+    expect(stream.destroyed).toBe(true);
   });
 });

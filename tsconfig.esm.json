@@ -2,6 +2,6 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist/esm",
-    "tsBuildInfoFile": "./dist/tsconfig.esm.tsbuildinfo"
+    "tsBuildInfoFile": "./.cache/typescript/esm.tsbuildinfo"
   }
 }

@@ -1,6 +1,6 @@
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 /**
  * Thrown when specified entity property was not found.

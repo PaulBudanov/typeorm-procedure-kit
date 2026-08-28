@@ -1,14 +1,4 @@
-import {
-  Module,
-  type DynamicModule,
-  type ForwardReference,
-  type InjectionToken,
-  type OptionalFactoryDependency,
-  type Provider,
-  type Type,
-} from '@nestjs/common';
-
-import type { IModuleConfig } from '../types/base.types.js';
+import { Module } from '@nestjs/common';
 
 import {
   DATABASE_CONFIG_TOKEN,
@@ -17,6 +7,16 @@ import {
 } from './consts.js';
 import { TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS } from './providers/index.js';
 import { TypeOrmProcedureKitNestService } from './typeorm-procedure-kit-nest.service.js';
+
+import type { IModuleConfig } from '../types/base.types.js';
+import type {
+  DynamicModule,
+  ForwardReference,
+  InjectionToken,
+  OptionalFactoryDependency,
+  Provider,
+  Type,
+} from '@nestjs/common';
 
 @Module({})
 export class TypeOrmProcedureKitNestModule {

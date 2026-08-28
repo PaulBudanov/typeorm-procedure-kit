@@ -1,6 +1,5 @@
 import { getMetadataArgsStorage } from '../../globals.js';
 import { EventListenerTypes } from '../../metadata/types/EventListenerTypes.js';
-import type { EntityListenerMetadataArgs } from '../../metadata-args/EntityListenerMetadataArgs.js';
 
 // Type alias to avoid ESLint no-unsafe-function-type
 type AnyFunction = (...args: Array<unknown>) => unknown;
@@ -17,6 +16,6 @@ export function BeforeRecover(): PropertyDecorator {
           ? propertyName.toString()
           : propertyName,
       type: EventListenerTypes.BEFORE_RECOVER,
-    } as unknown as EntityListenerMetadataArgs);
+    });
   };
 }

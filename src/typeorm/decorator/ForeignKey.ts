@@ -1,8 +1,8 @@
-import type { ObjectType } from '../common/ObjectType.js';
 import { getMetadataArgsStorage } from '../globals.js';
-import type { ForeignKeyMetadataArgs } from '../metadata-args/ForeignKeyMetadataArgs.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
+import type { ObjectType } from '../common/ObjectType.js';
+import type { ForeignKeyMetadataArgs } from '../metadata-args/ForeignKeyMetadataArgs.js';
 import type { ForeignKeyOptions } from './options/ForeignKeyOptions.js';
 
 type TypeFunction<T> = (type?: unknown) => ObjectType<T>;

@@ -1,9 +1,9 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { TypeORMError } from '../error/index.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import type { QueryBuilder } from './QueryBuilder.js';
 import type { QueryExpressionMap } from './QueryExpressionMap.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 
 /**
  * Allows to work with entity relations and perform specific operations with those relations.
@@ -31,13 +31,18 @@ export class RelationUpdater {
     const relation = this.expressionMap.relationMetadata;
 
     if (relation.isManyToOne || relation.isOneToOneOwner) {
-      const updateSet = relation.joinColumns.reduce((updateSet, joinColumn) => {
-        const relationValue = ObjectUtils.isObject(value)
-          ? joinColumn.referencedColumn!.getEntityValue(value as ObjectLiteral)
-          : value;
-        joinColumn.setEntityValue(updateSet, relationValue);
-        return updateSet;
-      }, {} as ObjectLiteral);
+      const updateSet = relation.joinColumns.reduce<ObjectLiteral>(
+        (updateSet, joinColumn) => {
+          const relationValue = ObjectUtils.isObject(value)
+            ? joinColumn.referencedColumn!.getEntityValue(
+                value as ObjectLiteral
+              )
+            : value;
+          joinColumn.setEntityValue(updateSet, relationValue);
+          return updateSet;
+        },
+        {}
+      );
 
       if (
         !this.expressionMap.of ||
@@ -49,7 +54,7 @@ export class RelationUpdater {
         .createQueryBuilder<QueryBuilder<ObjectLiteral>>()
         .update(relation.entityMetadata.target)
         .set(updateSet)
-        .whereInIds(this.expressionMap.of as ObjectLiteral)
+        .whereInIds(this.expressionMap.of)
         .execute();
     } else if (
       (relation.isOneToOneNotOwner || relation.isOneToMany) &&
@@ -65,16 +70,16 @@ export class RelationUpdater {
       const expressionMapOf = this.expressionMap.of as
         | ObjectLiteral
         | Array<ObjectLiteral>;
-      const ofs = (
-        Array.isArray(expressionMapOf) ? expressionMapOf : [expressionMapOf]
-      ) as Array<ObjectLiteral>;
+      const ofs = Array.isArray(expressionMapOf)
+        ? expressionMapOf
+        : [expressionMapOf];
       const parameters: ObjectLiteral = {};
       const conditions: Array<string> = [];
       ofs.forEach((of, ofIndex) => {
         relation.inverseRelation!.joinColumns.map((column, columnIndex) => {
           const parameterName = 'joinColumn_' + ofIndex + '_' + columnIndex;
           parameters[parameterName] = ObjectUtils.isObject(of)
-            ? column.referencedColumn!.getEntityValue(of as ObjectLiteral)
+            ? column.referencedColumn!.getEntityValue(of)
             : of;
           conditions.push(`${column.propertyPath} = :${parameterName}`);
         });
@@ -96,16 +101,17 @@ export class RelationUpdater {
         );
 
       const of = this.expressionMap.of as ObjectLiteral;
-      const updateSet = relation.inverseRelation!.joinColumns.reduce(
-        (updateSet, joinColumn) => {
-          const relationValue = ObjectUtils.isObject(of)
-            ? joinColumn.referencedColumn!.getEntityValue(of)
-            : of;
-          joinColumn.setEntityValue(updateSet, relationValue);
-          return updateSet;
-        },
-        {} as ObjectLiteral
-      );
+      const updateSet =
+        relation.inverseRelation!.joinColumns.reduce<ObjectLiteral>(
+          (updateSet, joinColumn) => {
+            const relationValue = ObjectUtils.isObject(of)
+              ? joinColumn.referencedColumn!.getEntityValue(of)
+              : of;
+            joinColumn.setEntityValue(updateSet, relationValue);
+            return updateSet;
+          },
+          {}
+        );
 
       if (!value || (Array.isArray(value) && !value.length)) return;
 
@@ -113,7 +119,7 @@ export class RelationUpdater {
         .createQueryBuilder<QueryBuilder<ObjectLiteral>>()
         .update(relation.inverseEntityMetadata.target)
         .set(updateSet)
-        .whereInIds(value as ObjectLiteral)
+        .whereInIds(value)
         .execute();
     } else {
       // many to many
@@ -121,13 +127,11 @@ export class RelationUpdater {
       const expressionMapOf = this.expressionMap.of as
         | ObjectLiteral
         | Array<ObjectLiteral>;
-      const ofs = (
-        Array.isArray(expressionMapOf) ? expressionMapOf : [expressionMapOf]
-      ) as Array<ObjectLiteral>;
+      const ofs = Array.isArray(expressionMapOf)
+        ? expressionMapOf
+        : [expressionMapOf];
       const valuesArray = value as ObjectLiteral | Array<ObjectLiteral>;
-      const values = (
-        Array.isArray(valuesArray) ? valuesArray : [valuesArray]
-      ) as Array<ObjectLiteral>;
+      const values = Array.isArray(valuesArray) ? valuesArray : [valuesArray];
       const firstColumnValues = relation.isManyToManyOwner ? ofs : values;
       const secondColumnValues = relation.isManyToManyOwner ? values : ofs;
 
@@ -137,18 +141,14 @@ export class RelationUpdater {
           const inserted: ObjectLiteral = {};
           junctionMetadata.ownerColumns.forEach((column) => {
             inserted[column.databaseName] = ObjectUtils.isObject(firstColumnVal)
-              ? column.referencedColumn!.getEntityValue(
-                  firstColumnVal as ObjectLiteral
-                )
+              ? column.referencedColumn!.getEntityValue(firstColumnVal)
               : firstColumnVal;
           });
           junctionMetadata.inverseColumns.forEach((column) => {
             inserted[column.databaseName] = ObjectUtils.isObject(
               secondColumnVal
             )
-              ? column.referencedColumn!.getEntityValue(
-                  secondColumnVal as ObjectLiteral
-                )
+              ? column.referencedColumn!.getEntityValue(secondColumnVal)
               : secondColumnVal;
           });
           bulkInserted.push(inserted);

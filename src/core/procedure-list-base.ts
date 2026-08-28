@@ -1,3 +1,9 @@
+import { ProcedureNameParser } from '../utils/procedure-name-parser.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../utils/resource-limits.js';
+import { ServerError } from '../utils/server-error.js';
+import { StringUtilities } from '../utils/string-utilities.js';
+
+import type { ExecuteBase } from './execute-base.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
@@ -7,11 +13,11 @@ import type {
   TDBMapStructure,
   TProcedureArgumentList,
 } from '../types/procedure.types.js';
-import { ProcedureNameParser } from '../utils/procedure-name-parser.js';
-import { ServerError } from '../utils/server-error.js';
-import { StringUtilities } from '../utils/string-utilities.js';
 
-import type { ExecuteBase } from './execute-base.js';
+interface IPackageFetchState {
+  promise: Promise<void>;
+  rerunRequested: boolean;
+}
 
 export class ProcedureListBase {
   public packagesWithProceduresList: TDBMapStructure = new Map();
@@ -21,6 +27,10 @@ export class ProcedureListBase {
     ReturnType<typeof setTimeout>
   >();
   private readonly activeFetchPromises = new Set<Promise<void>>();
+  private readonly packageFetchStates = new Map<
+    Lowercase<string>,
+    IPackageFetchState
+  >();
   private destroyPromise: Promise<void> | null = null;
   private isDestroyed = false;
   private static readonly RETRY_DELAY_MS = 1000 * 60 * 5;
@@ -29,7 +39,8 @@ export class ProcedureListBase {
     private readonly logger: ILoggerModule,
     private readonly databaseAdapter: TAdapterUtilsClassTypes,
     private readonly executeBase: ExecuteBase,
-    private readonly packagesSettings?: TDbConfig['packagesSettings']
+    private readonly packagesSettings?: TDbConfig['packagesSettings'],
+    private readonly maxMetadataRows = DEFAULT_RESOURCE_LIMITS.maxMetadataRows
   ) {}
 
   /**
@@ -44,13 +55,49 @@ export class ProcedureListBase {
       return Promise.reject(new ServerError('ProcedureListBase is destroyed'));
     }
 
-    const fetchPromise = this.fetchProcedureListInternal(packageName);
+    const activeState = this.packageFetchStates.get(packageName);
+    if (activeState) {
+      activeState.rerunRequested = true;
+      return activeState.promise;
+    }
+
+    const state = {
+      promise: Promise.resolve(),
+      rerunRequested: false,
+    };
+    const fetchPromise = (async (): Promise<void> => {
+      let lastError: unknown;
+      do {
+        state.rerunRequested = false;
+        try {
+          await this.fetchProcedureListInternal(packageName);
+          lastError = undefined;
+        } catch (error: unknown) {
+          lastError = error;
+        }
+      } while (this.shouldRerunFetch(state));
+      if (lastError !== undefined) {
+        throw lastError instanceof Error
+          ? lastError
+          : ServerError.ENSURE_SERVER_ERROR({ error: lastError });
+      }
+    })();
+    state.promise = fetchPromise;
+    this.packageFetchStates.set(packageName, state);
     this.activeFetchPromises.add(fetchPromise);
     const clearFetch = (): void => {
       this.activeFetchPromises.delete(fetchPromise);
+      if (this.packageFetchStates.get(packageName) === state) {
+        this.packageFetchStates.delete(packageName);
+      }
     };
     void fetchPromise.then(clearFetch, clearFetch);
     return fetchPromise;
+  }
+
+  /** Re-reads fetch state that callers may mutate while the request is awaited. */
+  private shouldRerunFetch(state: IPackageFetchState): boolean {
+    return state.rerunRequested && !this.isDestroyed;
   }
 
   private async fetchProcedureListInternal(
@@ -142,7 +189,7 @@ export class ProcedureListBase {
     searchPackageName: Lowercase<string>,
     procedureObject: TProcedureArgumentList
   ): void {
-    if (!procedureObject || Object.keys(procedureObject).length < 1) {
+    if (Object.keys(procedureObject).length < 1) {
       this.logger.error(`No procedure list for package ${searchPackageName}`);
       return;
     }
@@ -206,14 +253,18 @@ export class ProcedureListBase {
       throw new ServerError('Package settings are not configured');
     }
 
-    const rawArguments = (
-      await this.executeBase.execute<unknown>(
-        this.databaseAdapter.generatePackageInfoSql(
-          packageName,
-          this.packagesSettings.procedureMetadataSql
-        )
+    const metadataRows = await this.executeBase.execute<unknown>(
+      this.databaseAdapter.generatePackageInfoSql(
+        packageName,
+        this.packagesSettings.procedureMetadataSql
       )
-    ).map((item, index) => {
+    );
+    if (metadataRows.length > this.maxMetadataRows) {
+      throw new ServerError(
+        `Procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
+    const rawArguments = metadataRows.map((item, index) => {
       const normalizedItem =
         item !== null && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(
@@ -272,7 +323,7 @@ export class ProcedureListBase {
         `Invalid procedure metadata row ${index + 1}: unsupported mode ${rawMode}`
       );
 
-    const rawOrder = record['order'];
+    const rawOrder = record.order;
     const order =
       typeof rawOrder === 'number' ||
       (typeof rawOrder === 'string' && rawOrder.trim().length > 0)
@@ -284,7 +335,7 @@ export class ProcedureListBase {
       );
     }
 
-    const rawSize = record['size'];
+    const rawSize = record.size;
     let size: number | undefined;
     if (rawSize !== undefined && rawSize !== null) {
       const parsedSize =
@@ -299,6 +350,39 @@ export class ProcedureListBase {
       size = parsedSize;
     }
 
+    const readOptionalString = (key: string): string | undefined => {
+      const candidate = record[key];
+      if (candidate === undefined || candidate === null) return undefined;
+      if (typeof candidate !== 'string' || candidate.trim().length === 0) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: ${key} must be a non-empty string when provided`
+        );
+      }
+      return candidate.trim();
+    };
+    const rawSubprogramId = record.subprogramId;
+    let subprogramId: number | undefined;
+    if (rawSubprogramId !== undefined && rawSubprogramId !== null) {
+      const parsedSubprogramId =
+        typeof rawSubprogramId === 'number' ||
+        typeof rawSubprogramId === 'string'
+          ? Number(rawSubprogramId)
+          : Number.NaN;
+      if (
+        !Number.isSafeInteger(parsedSubprogramId) ||
+        parsedSubprogramId <= 0
+      ) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: subprogramId must be a positive safe integer`
+        );
+      }
+      subprogramId = parsedSubprogramId;
+    }
+
+    const specificName = readOptionalString('specificName');
+    const owner = readOptionalString('owner');
+    const overload = readOptionalString('overload');
+
     return {
       procedureName: readString('procedureName'),
       argumentName: readString('argumentName'),
@@ -306,6 +390,10 @@ export class ProcedureListBase {
       order,
       mode,
       ...(size === undefined ? {} : { size }),
+      ...(specificName === undefined ? {} : { specificName }),
+      ...(owner === undefined ? {} : { owner }),
+      ...(subprogramId === undefined ? {} : { subprogramId }),
+      ...(overload === undefined ? {} : { overload }),
     };
   }
 
@@ -333,6 +421,7 @@ export class ProcedureListBase {
 
   private async destroyInternal(): Promise<void> {
     await Promise.allSettled(this.activeFetchPromises);
+    this.packageFetchStates.clear();
     this.procedureNameParser.destroy();
     this.packagesWithProceduresList = new Map();
   }

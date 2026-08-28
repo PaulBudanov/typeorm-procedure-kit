@@ -2,6 +2,15 @@ import { randomUUID } from 'crypto';
 
 import oracledb from 'oracledb';
 
+import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
+import { DatabaseNotify } from '../abstract/database-notify.js';
+
+import { OracleSqlCommand } from './oracle-sql.js';
+
+import type { OracleConnection } from './oracle-connection.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   IOracleNotifyMsg,
@@ -10,18 +19,24 @@ import type {
   TNotifyCallbackGeneric,
   TOracleNormilizeOptionsNotify,
 } from '../../types/notification.types.js';
-import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
-import { ServerError } from '../../utils/server-error.js';
-import { SqlIdentifier } from '../../utils/sql-identifier.js';
-import { DatabaseNotify } from '../abstract/database-notify.js';
 
-import type { OracleConnection } from './oracle-connection.js';
-import { OracleSqlCommand } from './oracle-sql.js';
+interface IOracleCqnRefetchPlan {
+  projection: string;
+  tableName: string;
+  alias?: string;
+  predicate?: string;
+}
 
 export class OracleNotify extends DatabaseNotify<
   oracledb.Connection,
   IOracleOptionsNotify
 > {
+  private static readonly MAX_ROWIDS_PER_QUERY = 1_000;
+  private readonly subscriptionQueues = new Map<
+    string,
+    { tail: Promise<void>; size: number }
+  >();
+  private readonly closingSubscriptionChannels = new Set<string>();
   /**
    * Creates an Oracle notification adapter for Continuous Query Notification.
    * @param oracleConnection - single-connection helper used by CQN subscriptions.
@@ -29,7 +44,9 @@ export class OracleNotify extends DatabaseNotify<
    */
   public constructor(
     private readonly oracleConnection: OracleConnection,
-    protected readonly logger: ILoggerModule
+    protected override readonly logger: ILoggerModule,
+    private readonly maxNotificationQueue = DEFAULT_RESOURCE_LIMITS.maxNotificationQueue,
+    private readonly maxNotificationRows = DEFAULT_RESOURCE_LIMITS.maxNotificationRows
   ) {
     super(logger);
   }
@@ -68,18 +85,42 @@ export class OracleNotify extends DatabaseNotify<
    * @param channelName - subscription name returned by listenNotify.
    */
   public override async unlistenNotify(channelName: string): Promise<void> {
-    await this.closeSubscription(channelName, true);
+    const channelNames = Array.from(
+      new Set(
+        channelName
+          .split(',')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      )
+    );
+    await Promise.all(
+      channelNames.map((name) => this.closeSubscription(name, true))
+    );
   }
 
   private async closeSubscription(
     channelName: string,
-    cancelRestore: boolean
+    shouldCancelRestore: boolean,
+    shouldDrainCallbacks = true
   ): Promise<void> {
-    if (cancelRestore) this.cancelNotificationRestore(channelName);
+    if (shouldCancelRestore) this.cancelNotificationRestore(channelName);
+    this.stopConnectionHealthCheck(channelName);
+    if (!shouldDrainCallbacks) {
+      await this.performCloseSubscription(channelName, shouldCancelRestore);
+      return;
+    }
+    return this.closeNotificationChannel(channelName, () =>
+      this.performCloseSubscription(channelName, shouldCancelRestore)
+    );
+  }
+
+  private async performCloseSubscription(
+    channelName: string,
+    shouldCancelRestore: boolean
+  ): Promise<void> {
     const connection = this.notificationPool.get(channelName);
     this.notificationPool.delete(channelName);
-    this.stopConnectionHealthCheck(channelName);
-    if (cancelRestore) this.clearNotificationRestoreState(channelName);
+    if (shouldCancelRestore) this.clearNotificationRestoreState(channelName);
     if (!connection) {
       this.logger.warn(`No active subscription for channel: ${channelName}`);
       return;
@@ -99,6 +140,18 @@ export class OracleNotify extends DatabaseNotify<
     } finally {
       await this.oracleConnection.closeSingleConnection(connection);
     }
+  }
+
+  protected override beginNotificationQueueClose(
+    channelName: string
+  ): Promise<void> | undefined {
+    this.closingSubscriptionChannels.add(channelName);
+    return this.subscriptionQueues.get(channelName)?.tail;
+  }
+
+  protected override completeNotificationQueueClose(channelName: string): void {
+    this.subscriptionQueues.delete(channelName);
+    this.closingSubscriptionChannels.delete(channelName);
   }
   /**
    * Registers an Oracle Continuous Query Notification subscription.
@@ -123,11 +176,29 @@ export class OracleNotify extends DatabaseNotify<
     options: IOracleOptionsNotify = {}
   ): Promise<string> {
     this.assertCanRegisterNotification();
+    this.parseCqnRefetchPlan(sqlCommand);
     if (Array.isArray(options.operations)) {
+      if (options.operations.length === 0) {
+        throw new TypeError(
+          'Oracle notification operations must contain at least one operation'
+        );
+      }
       if (options.operations.length >= 4)
         throw new ServerError(
           'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,'
         );
+    }
+    return this.trackNotificationRegistration(() =>
+      this.registerSubscriptions(sqlCommand, notifyCallback, options)
+    );
+  }
+
+  private async registerSubscriptions<T>(
+    sqlCommand: string,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    options: IOracleOptionsNotify
+  ): Promise<string> {
+    if (Array.isArray(options.operations)) {
       const subscriptions: Array<string> = [];
       try {
         for (const operation of options.operations) {
@@ -188,6 +259,7 @@ export class OracleNotify extends DatabaseNotify<
     channelName: string,
     connection: oracledb.Connection
   ): oracledb.SubscribeOptions {
+    this.parseCqnRefetchPlan(sql);
     const restoreOptions: TOracleNormilizeOptionsNotify = {
       operations: settings.operations,
       qos: settings.qos,
@@ -198,17 +270,17 @@ export class OracleNotify extends DatabaseNotify<
       retryDelayMs: settings.retryDelayMs,
       retryAfterMaxDelayMs: settings.retryAfterMaxDelayMs,
     };
-    const clientInitiated =
+    const isClientInitiated =
       settings.clientInitiated === undefined ? true : settings.clientInitiated;
     const subscribeOptions = {
       sql,
-      clientInitiated,
+      clientInitiated: isClientInitiated,
       timeout: settings.timeout ?? 60 * 60 * 12,
       operations: settings.operations ?? oracledb.CQN_OPCODE_ALL_OPS,
       qos: settings.qos ?? oracledb.SUBSCR_QOS_ROWIDS,
-      port: clientInitiated === true ? undefined : settings.cqnPort,
+      port: isClientInitiated ? undefined : settings.cqnPort,
       callback: (msg: oracledb.SubscriptionMessage): Promise<void> =>
-        this.makeSubscriptionHandler(
+        this.enqueueSubscriptionMessage(
           notifyCallback,
           connection,
           channelName,
@@ -218,6 +290,52 @@ export class OracleNotify extends DatabaseNotify<
         ),
     };
     return subscribeOptions;
+  }
+
+  private enqueueSubscriptionMessage<T>(
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    client: oracledb.Connection,
+    channelName: string,
+    subscribeUnionOptions: Omit<oracledb.SubscribeOptions, 'callback'>,
+    restoreOptions: TOracleNormilizeOptionsNotify,
+    msg: IOracleNotifyMsg
+  ): Promise<void> {
+    if (this.closingSubscriptionChannels.has(channelName)) {
+      return Promise.resolve();
+    }
+    const queue = this.subscriptionQueues.get(channelName) ?? {
+      tail: Promise.resolve(),
+      size: 0,
+    };
+    if (queue.size >= this.maxNotificationQueue) {
+      this.logger.error(
+        `Oracle notification queue limit (${this.maxNotificationQueue}) exceeded for channel ${channelName}; dropping event`
+      );
+      return Promise.resolve();
+    }
+    queue.size += 1;
+    const processMessage = (): Promise<void> => {
+      if (this.notificationPool.get(channelName) !== client) {
+        return Promise.resolve();
+      }
+      return this.makeSubscriptionHandler(
+        notifyCallback,
+        client,
+        channelName,
+        subscribeUnionOptions,
+        restoreOptions,
+        msg
+      );
+    };
+    const current = queue.tail.then(processMessage, processMessage);
+    queue.tail = current;
+    this.subscriptionQueues.set(channelName, queue);
+    return current.finally(() => {
+      queue.size -= 1;
+      if (queue.size === 0 && queue.tail === current) {
+        this.subscriptionQueues.delete(channelName);
+      }
+    });
   }
   /**
    * Registers one Oracle CQN subscription on an existing connection.
@@ -249,7 +367,7 @@ export class OracleNotify extends DatabaseNotify<
       this.startConnectionHealthCheck({
         channelName,
         connection,
-        intervalMs: this.CONNECTION_HEALTH_CHECK_INTERVAL_MS,
+        intervalMs: OracleNotify.CONNECTION_HEALTH_CHECK_INTERVAL_MS,
         isHealthy: (connection) =>
           this.oracleConnection.isSingleConnectionHealthy(connection),
         restore: () =>
@@ -302,12 +420,13 @@ export class OracleNotify extends DatabaseNotify<
         !msg.registered
       ) {
         if (this.notificationPool.get(channelName) !== client) return;
-        return void this.restoreSubscriptionCallback<T>(
+        await this.restoreSubscriptionCallback<T>(
           subscribeUnionOptions.sql,
           channelName,
           notifyCallback,
           restoreOptions
         );
+        return;
       }
       const tables = [
         ...(msg.tables ?? []),
@@ -317,50 +436,89 @@ export class OracleNotify extends DatabaseNotify<
         this.logger.warn('No tables found in subscription message');
         return;
       }
-      const affectedTables = new Map<string, Set<string> | null>();
-      tables.forEach((table) => {
+      const refetchPlan = this.parseCqnRefetchPlan(subscribeUnionOptions.sql);
+      const affectedTables = new Map<string, Set<string>>();
+      let distinctRowIds = 0;
+      for (const table of tables) {
         const { name, rows } = table;
         const tableName = SqlIdentifier.validateQualifiedIdentifier(
           name,
           'oracle notification table'
         );
-        if (!rows || rows.length === 0) {
-          affectedTables.set(tableName, null);
-          return;
+        if (!this.isSameCqnTable(refetchPlan.tableName, tableName)) {
+          this.logger.warn(
+            `Ignoring Oracle CQN table ${tableName} because the subscription targets ${refetchPlan.tableName}`
+          );
+          continue;
         }
-        if (affectedTables.get(tableName) === null) return;
+        if (!rows || rows.length === 0) {
+          if (!affectedTables.has(tableName)) {
+            affectedTables.set(tableName, new Set<string>());
+          }
+          continue;
+        }
 
         const tableEntry = affectedTables.get(tableName) ?? new Set<string>();
-        rows.forEach(({ rowid }) =>
-          tableEntry.add(SqlIdentifier.validateRowId(rowid))
-        );
-        affectedTables.set(tableName, tableEntry);
-      });
-      for (const [tableName, rowIds] of affectedTables) {
-        const sqlQuery = rowIds
-          ? `SELECT * FROM ${tableName} WHERE rowid IN (${Array.from(
-              rowIds,
-              (rowId) => `'${rowId}'`
-            ).join(', ')})`
-          : `SELECT * FROM ${tableName}`;
-        const result = await client.execute<T>(
-          sqlQuery,
-          {},
-          {
-            outFormat: oracledb.OUT_FORMAT_OBJECT,
-            autoCommit: true,
+        for (const { rowid } of rows) {
+          const validatedRowId = SqlIdentifier.validateRowId(rowid);
+          const previousSize = tableEntry.size;
+          tableEntry.add(validatedRowId);
+          if (tableEntry.size > previousSize) {
+            distinctRowIds += 1;
+            if (distinctRowIds > this.maxNotificationRows) {
+              this.logger.error(
+                `Oracle CQN event exceeds resourceLimits.maxNotificationRows (${this.maxNotificationRows}); dropping event`
+              );
+              return;
+            }
           }
-        );
-        const rows = result.rows as TNotifyCallbackGeneric<T>;
-        try {
-          DatabaseErrorHandler.checkForDatabaseError<T>(rows);
-          await notifyCallback(rows);
-        } catch (error) {
-          this.logger.error(
-            `Unhandled callback error: ${(error as Error).message}`,
-            (error as Error).stack
+        }
+        affectedTables.set(tableName, tableEntry);
+      }
+      for (const [tableName, rowIds] of affectedTables) {
+        if (rowIds.size === 0) {
+          this.logger.warn(
+            `Oracle CQN event for ${tableName} did not include ROWIDs; skipping unsafe full-table refresh`
           );
-          throw error;
+          continue;
+        }
+        const rowIdList = Array.from(rowIds);
+        for (
+          let offset = 0;
+          offset < rowIdList.length;
+          offset += OracleNotify.MAX_ROWIDS_PER_QUERY
+        ) {
+          const chunk = rowIdList.slice(
+            offset,
+            offset + OracleNotify.MAX_ROWIDS_PER_QUERY
+          );
+          const bindings = Object.fromEntries(
+            chunk.map((rowId, index) => [`rowid_${index}`, rowId])
+          );
+          const placeholders = Object.keys(bindings)
+            .map((name) => `:${name}`)
+            .join(', ');
+          const sqlQuery = this.buildCqnRefetchSql(refetchPlan, placeholders);
+          const result = await client.execute<T>(sqlQuery, bindings, {
+            outFormat: oracledb.OUT_FORMAT_OBJECT,
+            maxRows: chunk.length + 1,
+          });
+          const changedRows = (result.rows ?? []) as TNotifyCallbackGeneric<T>;
+          if (Array.isArray(changedRows) && changedRows.length > chunk.length) {
+            throw new ServerError(
+              'Oracle CQN refetch returned more rows than the changed ROWID set'
+            );
+          }
+          try {
+            DatabaseErrorHandler.checkForDatabaseError<T>(changedRows);
+            await notifyCallback(changedRows);
+          } catch (error) {
+            this.logger.error(
+              `Unhandled callback error: ${(error as Error).message}`,
+              (error as Error).stack
+            );
+            throw error;
+          }
         }
       }
     } catch (error) {
@@ -372,6 +530,74 @@ export class OracleNotify extends DatabaseNotify<
     }
   }
 
+  private parseCqnRefetchPlan(sql: string): IOracleCqnRefetchPlan {
+    const normalizedSql = sql.trim();
+    if (normalizedSql.length === 0 || /;|--|\/\*|\*\//.test(normalizedSql)) {
+      throw new ServerError(
+        'Oracle CQN SQL must be one simple SELECT statement without comments or terminators'
+      );
+    }
+    const match =
+      /^SELECT\s+([\s\S]+?)\s+FROM\s+([A-Za-z_][A-Za-z0-9_$#]*(?:\.[A-Za-z_][A-Za-z0-9_$#]*)?)(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_$#]*))?(?:\s+WHERE\s+([\s\S]+?))?$/i.exec(
+        normalizedSql
+      );
+    if (!match) {
+      throw new ServerError(
+        'Oracle CQN SQL must be a simple single-table SELECT with an optional alias and WHERE clause'
+      );
+    }
+    const projection = match[1]?.trim() ?? '';
+    const tableName = SqlIdentifier.validateQualifiedIdentifier(
+      match[2] ?? '',
+      'oracle CQN source table'
+    );
+    const alias = match[3]
+      ? SqlIdentifier.validateIdentifier(match[3], 'oracle CQN table alias')
+      : undefined;
+    const predicate = match[4]?.trim();
+    const forbiddenSql =
+      /\b(?:SELECT|DISTINCT|JOIN|UNION|INTERSECT|MINUS|GROUP\s+BY|ORDER\s+BY|HAVING|FETCH|OFFSET|CONNECT\s+BY|START\s+WITH|MODEL)\b/i;
+    if (
+      projection.length === 0 ||
+      forbiddenSql.test(projection) ||
+      (predicate && forbiddenSql.test(predicate))
+    ) {
+      throw new ServerError(
+        'Oracle CQN SQL uses a construct that cannot be safely refetched by ROWID'
+      );
+    }
+    return { projection, tableName, alias, predicate };
+  }
+
+  private isSameCqnTable(
+    configuredTable: string,
+    changedTable: string
+  ): boolean {
+    const configuredParts = configuredTable.toUpperCase().split('.');
+    const changedParts = changedTable.toUpperCase().split('.');
+    if (configuredParts.at(-1) !== changedParts.at(-1)) return false;
+    return (
+      configuredParts.length === 1 ||
+      changedParts.length === 1 ||
+      configuredTable.toUpperCase() === changedTable.toUpperCase()
+    );
+  }
+
+  private buildCqnRefetchSql(
+    plan: IOracleCqnRefetchPlan,
+    rowIdPlaceholders: string
+  ): string {
+    const fromSql = plan.alias
+      ? `${plan.tableName} ${plan.alias}`
+      : plan.tableName;
+    const rowIdColumn = plan.alias ? `${plan.alias}.ROWID` : 'ROWID';
+    const rowIdPredicate = `${rowIdColumn} IN (${rowIdPlaceholders})`;
+    const whereSql = plan.predicate
+      ? `(${plan.predicate}) AND ${rowIdPredicate}`
+      : rowIdPredicate;
+    return `SELECT ${plan.projection} FROM ${fromSql} WHERE ${whereSql}`;
+  }
+
   private async restoreSubscription<T>(
     settings: IOracleNotifyRestoreSettings<T>,
     channelName: string
@@ -379,7 +605,7 @@ export class OracleNotify extends DatabaseNotify<
     let connection: oracledb.Connection | undefined;
     try {
       try {
-        await this.closeSubscription(channelName, false);
+        await this.closeSubscription(channelName, false, false);
         if (this.isNotificationRestoreCancelled(channelName)) return;
       } catch {
         const newChannelName = randomUUID();
@@ -405,7 +631,7 @@ export class OracleNotify extends DatabaseNotify<
         settings.options
       );
       if (this.isNotificationRestoreCancelled(channelName)) {
-        await this.closeSubscription(channelName, false);
+        await this.closeSubscription(channelName, false, false);
         return;
       }
     } catch (error: unknown) {
@@ -415,9 +641,7 @@ export class OracleNotify extends DatabaseNotify<
       this.clearNotificationRestoreState(channelName);
       throw error;
     }
-    this.logger.log(
-      `Successfully restored subscription for sqlCommand: ${settings.sqlCommand}`
-    );
+    this.logger.log(`Successfully restored subscription: ${channelName}`);
     return;
   }
 
@@ -439,9 +663,9 @@ export class OracleNotify extends DatabaseNotify<
     channelName: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: TOracleNormilizeOptionsNotify,
-    maxRetries = options.maxRetries ?? this.RESTORE_MAX_RETRIES,
-    retryDelayMs = options.retryDelayMs ?? this.RESTORE_RETRY_DELAY_MS,
-    currentRetry = this.RESTORE_CURRENT_RETRY
+    maxRetries = options.maxRetries ?? OracleNotify.RESTORE_MAX_RETRIES,
+    retryDelayMs = options.retryDelayMs ?? OracleNotify.RESTORE_RETRY_DELAY_MS,
+    currentRetry = OracleNotify.RESTORE_CURRENT_RETRY
   ): Promise<void> {
     await this.restoreNotification<IOracleNotifyRestoreSettings<T>>({
       channelName,
@@ -454,7 +678,8 @@ export class OracleNotify extends DatabaseNotify<
       retryDelayMs,
       currentRetry,
       retryAfterMaxDelayMs:
-        options.retryAfterMaxDelayMs ?? this.RESTORE_RETRY_AFTER_MAX_DELAY_MS,
+        options.retryAfterMaxDelayMs ??
+        OracleNotify.RESTORE_RETRY_AFTER_MAX_DELAY_MS,
       restore: (settings) => this.restoreSubscription(settings, channelName),
     });
   }

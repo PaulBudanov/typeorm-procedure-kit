@@ -15,16 +15,14 @@ Serializer und eine erweiterte, gebuendelte TypeORM-kompatible Runtime.
 </p>
 
 <p align="center">
-  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
-  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml"><img alt="security" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
   <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml"><img alt="release" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml/badge.svg"></a>
-  <a href="https://github.com/semantic-release/semantic-release"><img alt="semantic-release" src="https://img.shields.io/badge/semantic--release-enabled-e10079?logo=semantic-release"></a>
   <a href="https://github.com/PaulBudanov/typeorm-procedure-kit"><img alt="last commit" src="https://img.shields.io/github/last-commit/PaulBudanov/typeorm-procedure-kit?color=64748b&logo=github"></a>
 </p>
 
 ## Uebersetzungen
 
-- [English](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.md)
+- [English](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/README.md)
 - [Русский](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.ru.md)
 - [Deutsch](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.de.md)
 - [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.zh.md)
@@ -66,11 +64,14 @@ ergaenzt:
 ## Anforderungen
 
 - Node.js `>=20`
+- Die veroeffentlichten ESM- und CJS-Builds verwenden ES2022 als Target. Das npm
+  package enthaelt weder source maps noch declaration maps.
 - TypeScript mit aktivierten decorators bei Verwendung von entity decorators
 - PostgreSQL driver: `pg`
 - Oracle driver: `oracledb`
 - Optionale PostgreSQL streaming dependency: `pg-query-stream`
-- Optionale NestJS peer dependency: `@nestjs/common` Version 10 oder 11
+- Optionale NestJS peer dependency: `@nestjs/common`
+  (`^10.4.16 || ^11.0.16`)
 
 ## Installation
 
@@ -298,11 +299,22 @@ Gemeinsame Optionen:
 - `logger.typeormLogLevels`: TypeORM log levels, die ueber `logger.module`
   ausgegeben werden. Unterstuetzt werden `query`, `error`, `schema`, `info`,
   `warn`, `migration` oder `all`.
+- `logger.bindingLogMode`: Policy fuer binding values. Der sichere Default
+  `metadata-only` verbirgt alle Werte. `redact-by-name` ist ein weniger strikter
+  Kompatibilitaetsmodus und zeigt Werte, deren Namen die Sensitive-Heuristik
+  nicht erkennt. `unsafe-values` ist ein expliziter, potenziell unsicherer
+  Opt-in.
 - `queryTimeoutMs`: optionaler positiver integer query timeout in Millisekunden.
   PostgreSQL gibt ihn als `statement_timeout` an den `pg` pool weiter, also als
   statement-level timeout. Oracle setzt ihn fuer jede erworbene physical
   connection als `oracledb` `connection.callTimeout`; dies begrenzt jeden
   database round-trip, nicht die gesamte statement duration.
+- `resourceLimits`: optionale Grenzen mit sicheren Defaults: 100000 procedure
+  rows, 64 MiB pro procedure result, 10000 metadata rows, 16 MiB pro LOB und
+  1000 wartende notification events sowie 10000 eindeutige Oracle-CQN-ROWIDs
+  pro event. `maxProcedureBytes` verwendet eine approximative logische
+  payload-Berechnung, keine exakte Messung von heap, wire size oder
+  driver allocations.
 - `callTimeout`: deprecated alias fuer `maxQueryExecutionTime`.
 - `outKeyTransformCase`: `camelCase`, `lowerCase` oder `snakeCase`; default ist
   `camelCase`.
@@ -384,6 +396,13 @@ Cursor und jeden scalar `OUT`/`INOUT` value unter dem mit
 `outKeyTransformCase` transformierten key. Eine scalar-only procedure liefert
 `rows: []`. `callSqlTransaction()` liefert weiterhin direkt sein row array.
 
+Fehlende Namen fuer PostgreSQL `IN`/`INOUT refcursor` werden automatisch
+erzeugt. Einen reinen `OUT refcursor` muss die procedure selbst benennen.
+Ergebnisse wie `<unnamed portal ...>` einschliesslich `<unnamed portal 1>`
+werden abgelehnt. Zulaessige Namen sind auf 63 UTF-8 Bytes begrenzt. Cursor
+rows werden in Batches von hoechstens 1000 gelesen, sodass row/byte limits
+inkrementell geprueft werden.
+
 ## Raw SQL Transactions
 
 ```ts
@@ -406,10 +425,10 @@ Execution options:
 - `optionsCommands`: eingeschraenkte setup commands, die in derselben
   transaction vor dem main query ausgefuehrt werden. Jeder Eintrag muss genau
   einen sicheren command ohne comments oder separators enthalten. PostgreSQL
-  akzeptiert unterstuetzte `SET`, `SET LOCAL` und `SET TRANSACTION` forms;
-  Oracle akzeptiert `ALTER SESSION SET name = value` ausser `TIME_ZONE`.
-  Verwenden Sie fuer Oracle time zones `sessionTimeZone`, weil ein per-call
-  `ALTER SESSION SET TIME_ZONE` Zustand in den pool leaken wuerde.
+  akzeptiert nur die dokumentierten transaction-local `SET LOCAL` und
+  `SET TRANSACTION` forms. Oracle akzeptiert nur die unterstuetzten `NLS_*`
+  formats; die vorherigen Werte werden vor der Rueckgabe an den pool
+  wiederhergestellt. Verwenden Sie fuer Oracle time zones `sessionTimeZone`.
 - `queryId`: custom id fuer logs und wrapped database errors.
 
 ## Benachrichtigungen
@@ -457,6 +476,10 @@ await db.unlistenNotify(channel);
 
 Oracle erzeugt subscription names intern. Wenn CQN changed ROWIDs meldet, holt
 der adapter changed rows und uebergibt diese rows an den callback. Oracle
+refetch behaelt projection und predicate bei. Fuer einen deterministischen,
+begrenzten ROWID refetch muss Oracle CQN SQL ein single-table `SELECT` mit
+optionalem alias und `WHERE` sein; joins, set operations, grouping, ordering und
+nested queries werden vor dem Erstellen einer connection abgelehnt.
 subscriptions werden ueberwacht und nach CQN deregistration, shutdown events,
 connection errors oder silent connection loss wiederhergestellt.
 Verwenden Sie `clientInitiated: false` mit legacy `cqnPort` nur fuer
@@ -483,13 +506,21 @@ geprueften Konstanten zusammen; bauen Sie sie nicht aus user input.
 query fuer beide databases ersetzen. Die SQL muss `:PACKAGE_NAME` enthalten und
 muss Spalten liefern, die nach snake_case to camelCase conversion zu
 `IProcedureArgumentBase` passen: `procedure_name`, `argument_name`,
-`argument_type`, `order`, `mode` und optional `size`. Modes werden als `IN`,
+`argument_type`, `order`, `mode` und optional `size`. Overloads brauchen in
+PostgreSQL zusaetzlich `specific_name`, in Oracle `owner`, `subprogram_id` und
+`overload`; mehrdeutige signatures werden abgelehnt. Modes werden als `IN`,
 `OUT` oder `INOUT`/`IN/OUT` validiert; `order` und `size` muessen gueltige
-integer values sein.
+integer values sein. Built-in metadata SQL liest fuer overflow detection
+hoechstens `maxMetadataRows + 1` rows. Ein custom query wird nach dem Limit
+ebenfalls abgelehnt, sollte fuer unbounded sources aber einen eigenen
+database-side limit enthalten, um oversized materialization zu vermeiden.
 
 `packagesSettings.metadataNotificationSql` kann die default SQL fuer metadata
 refresh subscriptions ersetzen. PostgreSQL erwartet einen vollstaendigen
-`LISTEN ...` command. Oracle erwartet eine vollstaendige CQN `SELECT ...` query.
+`LISTEN ...` command. Oracle erwartet eine CQN `SELECT ...` query mit den oben
+genannten single-table Einschraenkungen. Ein fehlender, leerer oder nur aus
+Leerzeichen bestehender Wert verwendet die adapter default SQL; ein nicht leerer
+Wert wird vor der Verwendung getrimmt.
 
 ## Serializers
 
@@ -634,9 +665,11 @@ Enhancements include:
 - `EntityMetadata.propertiesMap` fuer TypeORM property paths inklusive
   relations, und `EntityMetadata.databasePropertiesMap` fuer database column
   names nach explicit `@Column({ name })` options und naming strategy rules;
-- `isQuotingDisabled: true` bei der Initialisierung der kit DataSource, sodass
-  query builders identifiers standardmaessig nicht quoten. Quoting kann mit
-  `enableEscaping()` oder `escape(name, true)` aktiviert werden.
+- `identifierQuoting: 'disabled'` als Standard fuer physische Datenbank-,
+  Schema-, Tabellen- und Spaltennamen; generierte Aliase bleiben immer quoted.
+  Mit `identifierQuoting: 'enabled'` in der kit-Konfiguration oder direkten
+  `DataSource` beziehungsweise `setIdentifierQuoting('enabled')` fuer einen
+  query builder wird Quoting aktiviert. `escape(name)` quotet immer explizit.
 
 ## TypeORM Extension Decorators
 
@@ -760,6 +793,25 @@ procedure and naming caches und wirft `AggregateError`, wenn ein Teil des
 cleanup fehlschlaegt. Setzen Sie `isRegisterShutdownHandlers: true`, um process
 signal handlers automatisch zu registrieren, oder rufen Sie
 `db.registerShutdownHandlers()` selbst auf.
+
+## Manueller materialization benchmark
+
+Fuehren Sie `npm run benchmark:postgre-materialization` manuell und ohne laute
+background workloads aus. Der JSON output enthaelt median, raw samples,
+nanoseconds pro row sowie Node.js version, platform und architecture. Das Tool
+ist bewusst ausserhalb von CI und hat keinen eingebauten baseline.
+
+Ein Vergleich wird nur aktiviert, wenn beide positiven, von null verschiedenen
+Werte explizit angegeben werden:
+
+```bash
+npm run benchmark:postgre-materialization -- \
+  --baseline-ns 20000 \
+  --max-regression-percent 10
+```
+
+Der command endet mit einem Fehler, wenn der gemessene median die erlaubte
+Regression ueberschreitet.
 
 ## Haeufige Fehler
 

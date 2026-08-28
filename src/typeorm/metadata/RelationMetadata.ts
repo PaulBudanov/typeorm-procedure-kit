@@ -1,21 +1,21 @@
-import type { TFunction } from '../../types/utility.types.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { RelationMetadataArgs } from '../metadata-args/RelationMetadataArgs.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
+import { EntityMetadata } from './EntityMetadata.js';
+
 import type { ColumnMetadata } from './ColumnMetadata.js';
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
-import { EntityMetadata } from './EntityMetadata.js';
 import type { ForeignKeyMetadata } from './ForeignKeyMetadata.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { RelationMetadataArgs } from '../metadata-args/RelationMetadataArgs.js';
 import type { DeferrableType } from './types/DeferrableType.js';
 import type { OnDeleteType } from './types/OnDeleteType.js';
 import type { OnUpdateType } from './types/OnUpdateType.js';
 import type { PropertyTypeFactory } from './types/PropertyTypeInFunction.js';
 import type { RelationType } from './types/RelationTypes.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Contains all information about some entity's relation.
@@ -309,23 +309,23 @@ export class RelationMetadata {
     this.isCascadeInsert =
       args.options.cascade === true ||
       (Array.isArray(args.options.cascade) &&
-        args.options.cascade.indexOf('insert') !== -1);
+        args.options.cascade.includes('insert'));
     this.isCascadeUpdate =
       args.options.cascade === true ||
       (Array.isArray(args.options.cascade) &&
-        args.options.cascade.indexOf('update') !== -1);
+        args.options.cascade.includes('update'));
     this.isCascadeRemove =
       args.options.cascade === true ||
       (Array.isArray(args.options.cascade) &&
-        args.options.cascade.indexOf('remove') !== -1);
+        args.options.cascade.includes('remove'));
     this.isCascadeSoftRemove =
       args.options.cascade === true ||
       (Array.isArray(args.options.cascade) &&
-        args.options.cascade.indexOf('soft-remove') !== -1);
+        args.options.cascade.includes('soft-remove'));
     this.isCascadeRecover =
       args.options.cascade === true ||
       (Array.isArray(args.options.cascade) &&
-        args.options.cascade.indexOf('recover') !== -1);
+        args.options.cascade.includes('recover'));
     // this.isPrimary = args.options.primary || false;
     this.isNullable =
       args.options.nullable === false || this.isPrimary ? false : true;
@@ -350,12 +350,12 @@ export class RelationMetadata {
         typeFactory.length === 0 ? typeFactory() : typeFactory
       ) as TFunction;
     } else if (InstanceChecker.isEntitySchema(args.type)) {
-      this.type = (args.type as EntitySchema<unknown>).options.name;
+      this.type = args.type.options.name;
     } else if (
       ObjectUtils.isObject(args.type) &&
       typeof (args.type as Record<string, string>).name === 'string'
     ) {
-      this.type = (args.type as Record<string, string>).name as string;
+      this.type = (args.type as Record<string, string>).name!;
     } else {
       this.type = args.type as string | TFunction;
     }
@@ -456,7 +456,7 @@ export class RelationMetadata {
             '__' + this.propertyName + '__'
           ] as ObjectLiteral;
 
-        if (getLazyRelationsPromiseValue === true)
+        if (getLazyRelationsPromiseValue)
           return embeddedObject[this.propertyName] as ObjectLiteral;
 
         return undefined;
@@ -472,7 +472,7 @@ export class RelationMetadata {
         if (entity['__' + this.propertyName + '__'] !== undefined)
           return entity['__' + this.propertyName + '__'] as ObjectLiteral;
 
-        if (getLazyRelationsPromiseValue === true)
+        if (getLazyRelationsPromiseValue)
           return entity[this.propertyName] as ObjectLiteral;
 
         return undefined;
@@ -654,10 +654,7 @@ export class RelationMetadata {
    * Builds relation's property path based on its embedded tree.
    */
   public buildPropertyPath(): string {
-    if (
-      !this.embeddedMetadata ||
-      !this.embeddedMetadata.parentPropertyNames.length
-    )
+    if (!this.embeddedMetadata?.parentPropertyNames.length)
       return this.propertyName;
 
     return (

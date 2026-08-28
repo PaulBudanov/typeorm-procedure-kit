@@ -1,14 +1,19 @@
-import oracledb, { type FetchTypeResponse } from 'oracledb';
+import oracledb from 'oracledb';
+
+import { ServerError } from '../../utils/server-error.js';
+import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
 import type {
   ISetSerializer,
   TOracleObjectDbTypeHandlerCast,
+  TSerializerType,
 } from '../../types/serializer.types.js';
-import { ServerError } from '../../utils/server-error.js';
-import { DatabaseSerializer } from '../abstract/database-serializer.js';
+import type { DbType, FetchTypeResponse } from 'oracledb';
 
 export class OracleSerializer extends DatabaseSerializer {
-  private readonly OBJECT_TYPE_CAST = {
+  private static readonly OBJECT_TYPE_CAST: Partial<
+    Record<TSerializerType, DbType>
+  > = {
     BINARY: oracledb.DB_TYPE_BLOB,
     BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
     CHAR: oracledb.DB_TYPE_CHAR,
@@ -20,8 +25,7 @@ export class OracleSerializer extends DatabaseSerializer {
     TIMESTAMP_LTZ: oracledb.DB_TYPE_TIMESTAMP_LTZ,
     XML: oracledb.DB_TYPE_XMLTYPE,
   };
-  private OBJECT_DB_TYPE_HANDLER_CAST: TOracleObjectDbTypeHandlerCast =
-    new Map();
+  private objectDbTypeHandlerCast: TOracleObjectDbTypeHandlerCast = new Map();
 
   /**
    * Registers a custom fetch handler for Oracle DB.
@@ -43,23 +47,20 @@ export class OracleSerializer extends DatabaseSerializer {
           metaData.name
         );
 
-      if (
-        metaData.dbType &&
-        this.OBJECT_DB_TYPE_HANDLER_CAST.has(metaData.dbType)
-      ) {
-        const serializeKey = this.OBJECT_DB_TYPE_HANDLER_CAST.get(
-          metaData.dbType
-        )!;
-        if (!this.hasSerializer(serializeKey)) return { type: metaData.dbType };
+      const dbType = metaData.dbType;
+      if (dbType !== undefined && this.objectDbTypeHandlerCast.has(dbType)) {
+        const serializeKey = this.objectDbTypeHandlerCast.get(dbType);
+        if (serializeKey === undefined) return;
+        if (!this.hasSerializer(serializeKey)) return { type: dbType };
         const converter = (value: unknown): unknown =>
           this.serializeValue(serializeKey, value, {
             source: 'fetch',
             database: 'oracle',
             name: metaData.name,
-            databaseType: metaData.dbType!.columnTypeName,
+            databaseType: dbType.columnTypeName,
           });
         return {
-          type: metaData.dbType,
+          type: dbType,
           converter: converter,
         };
       }
@@ -82,19 +83,20 @@ export class OracleSerializer extends DatabaseSerializer {
       );
       this.unregisterSerializer(options.serializerType);
     }
-    const dbTypeClass = this.OBJECT_TYPE_CAST[options.serializerType];
+    const dbTypeClass =
+      OracleSerializer.OBJECT_TYPE_CAST[options.serializerType];
     if (!dbTypeClass)
       throw new ServerError(
         `Unknown serializer type: ${options.serializerType}`
       );
-    if (this.OBJECT_DB_TYPE_HANDLER_CAST.has(dbTypeClass)) {
+    if (this.objectDbTypeHandlerCast.has(dbTypeClass)) {
       this.logger.warn(
         `Serializer with dbType ${dbTypeClass.columnTypeName} already exists, overriding...`
       );
-      this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
+      this.objectDbTypeHandlerCast.delete(dbTypeClass);
     }
     this.registerSerializer(options);
-    this.OBJECT_DB_TYPE_HANDLER_CAST.set(dbTypeClass, options.serializerType);
+    this.objectDbTypeHandlerCast.set(dbTypeClass, options.serializerType);
     this.logger.log(
       `Serializer with type ${options.serializerType} and dbType ${dbTypeClass.columnTypeName} set successfully`
     );
@@ -110,9 +112,11 @@ export class OracleSerializer extends DatabaseSerializer {
   ): void {
     if (this.hasSerializer(serializerType.serializerType))
       this.unregisterSerializer(serializerType.serializerType);
-    const dbTypeClass = this.OBJECT_TYPE_CAST[serializerType.serializerType];
-    if (this.OBJECT_DB_TYPE_HANDLER_CAST.has(dbTypeClass))
-      this.OBJECT_DB_TYPE_HANDLER_CAST.delete(dbTypeClass);
+    const dbTypeClass =
+      OracleSerializer.OBJECT_TYPE_CAST[serializerType.serializerType];
+    if (dbTypeClass === undefined) return;
+    if (this.objectDbTypeHandlerCast.has(dbTypeClass))
+      this.objectDbTypeHandlerCast.delete(dbTypeClass);
     return;
   }
 
@@ -123,7 +127,7 @@ export class OracleSerializer extends DatabaseSerializer {
    */
   public override deleteAllSerializers(): void {
     this.clearSerializerRegistry();
-    this.OBJECT_DB_TYPE_HANDLER_CAST.clear();
+    this.objectDbTypeHandlerCast.clear();
     return;
   }
 }

@@ -1,16 +1,17 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { getFromContainer } from '../container.js';
-import type { DataSource } from '../data-source/DataSource.js';
-import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { EntitySchemaTransformer } from '../entity-schema/EntitySchemaTransformer.js';
 import { getMetadataArgsStorage } from '../globals.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { EntityMetadataBuilder } from '../metadata-builder/EntityMetadataBuilder.js';
-import type { MigrationInterface } from '../migration/MigrationInterface.js';
-import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';
 import { importClassesFromDirectories } from '../util/DirectoryExportedClassesLoader.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { OrmUtils } from '../util/OrmUtils.js';
+
+import type { TFunction } from '../../types/utility.types.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { EntitySchema } from '../entity-schema/EntitySchema.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { MigrationInterface } from '../migration/MigrationInterface.js';
+import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';
 
 /**
  * Builds migration instances, subscriber instances and entity metadatas for the given classes.
@@ -51,7 +52,7 @@ export class ConnectionMetadataBuilder {
    */
   public async buildSubscribers(
     subscribers: Array<TFunction | string>
-  ): Promise<Array<EntitySubscriberInterface<unknown>>> {
+  ): Promise<Array<EntitySubscriberInterface>> {
     const [subscriberClasses, subscriberDirectories] =
       OrmUtils.splitClassesAndStrings(subscribers || []);
     const allSubscriberClasses = [
@@ -64,7 +65,7 @@ export class ConnectionMetadataBuilder {
     return getMetadataArgsStorage()
       .filterSubscribers(allSubscriberClasses)
       .map((metadata) =>
-        getFromContainer<EntitySubscriberInterface<unknown>>(metadata.target)
+        getFromContainer<EntitySubscriberInterface>(metadata.target)
       );
   }
 
@@ -72,7 +73,7 @@ export class ConnectionMetadataBuilder {
    * Builds entity metadatas for the given classes or directories.
    */
   public async buildEntityMetadatas(
-    entities: Array<TFunction | EntitySchema<unknown> | string>
+    entities: Array<TFunction | EntitySchema | string>
   ): Promise<Array<EntityMetadata>> {
     // todo: instead we need to merge multiple metadata args storages
 
@@ -81,12 +82,11 @@ export class ConnectionMetadataBuilder {
     const entityClasses: Array<TFunction> = entityClassesOrSchemas.filter(
       (entityClass): entityClass is TFunction =>
         !InstanceChecker.isEntitySchema(entityClass)
-    ) as Array<TFunction>;
-    const entitySchemas: Array<EntitySchema<unknown>> =
-      entityClassesOrSchemas.filter(
-        (entityClass): entityClass is EntitySchema<unknown> =>
-          InstanceChecker.isEntitySchema(entityClass)
-      );
+    );
+    const entitySchemas: Array<EntitySchema> = entityClassesOrSchemas.filter(
+      (entityClass): entityClass is EntitySchema =>
+        InstanceChecker.isEntitySchema(entityClass)
+    );
     const allEntityClasses = [
       ...entityClasses,
       ...(await importClassesFromDirectories(

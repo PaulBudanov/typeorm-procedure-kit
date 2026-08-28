@@ -1,7 +1,8 @@
-import type { ColumnOptions } from '../../typeorm/decorator/options/ColumnOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
+
+import type { ColumnOptions } from '../../typeorm/decorator/options/ColumnOptions.js';
 
 /**
  * Extends the @Column decorator with additional options.
@@ -33,11 +34,10 @@ export function ExtendColumn(
     );
     if (
       !columnMetadata.column ||
-      typeof columnMetadata.foundTarget !== 'function' ||
-      !columnMetadata.foundTarget
+      typeof columnMetadata.foundTarget !== 'function'
     )
       throw new ServerError(
-        `Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
+        `Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget?.constructor.name ?? 'unknown'}". ` +
           'Register column with @Column() decorator first.'
       );
     const targetRegister = isRegisterToParentTarget
@@ -54,17 +54,17 @@ export function ExtendColumn(
       targetRegister,
       propertyKey.toString(),
       columnMetadata.generation,
-      !overrideSource?.generated && overrideSource?.generated !== false
-        ? (columnMetadata.column.options.generated ?? undefined)
-        : overrideSource?.generated
+      overrideSource?.generated === undefined
+        ? columnMetadata.column.options.generated
+        : overrideSource.generated
     );
     TypeOrmHelpers.updateUniqueMetadata(
       storage,
       targetRegister,
       propertyKey.toString(),
-      overrideSource?.unique === false || overrideSource?.unique === true
-        ? overrideSource?.unique
-        : (columnMetadata.column.options.unique ?? false),
+      overrideSource?.unique === undefined
+        ? (columnMetadata.column.options.unique ?? false)
+        : overrideSource.unique,
       columnMetadata.unique
     );
   };

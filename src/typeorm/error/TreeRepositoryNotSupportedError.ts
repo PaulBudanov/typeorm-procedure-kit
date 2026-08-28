@@ -1,6 +1,6 @@
-import type { Driver } from '../driver/Driver.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { Driver } from '../driver/Driver.js';
 
 export class TreeRepositoryNotSupportedError extends TypeORMError {
   public constructor(driver: Driver) {

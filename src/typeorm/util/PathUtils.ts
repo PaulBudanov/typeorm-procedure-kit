@@ -6,9 +6,9 @@ const UNC_WINDOWS_PATH_REGEXP = /^\\\\(\.\\)?(.*)$/;
 export function toPortablePath(filepath: string): string {
   if (process.platform !== `win32`) return filepath;
 
-  if (filepath.match(WINDOWS_PATH_REGEXP))
+  if (WINDOWS_PATH_REGEXP.exec(filepath))
     filepath = filepath.replace(WINDOWS_PATH_REGEXP, `/$1`);
-  else if (filepath.match(UNC_WINDOWS_PATH_REGEXP))
+  else if (UNC_WINDOWS_PATH_REGEXP.exec(filepath))
     filepath = filepath.replace(
       UNC_WINDOWS_PATH_REGEXP,
       (_match, p1, p2) => `/unc/${p1 ? `.dot/` : ``}${p2}`
@@ -30,5 +30,5 @@ export function filepathToName(filepath: string): string {
  * Cross platform isAbsolute
  */
 export function isAbsolute(filepath: string): boolean {
-  return !!filepath.match(/^(?:[a-z]:|[\\]|[/])/i);
+  return !!/^(?:[a-z]:|[\\]|[/])/i.exec(filepath);
 }

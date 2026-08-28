@@ -1,8 +1,7 @@
+import type { EntitySchemaColumnForeignKeyOptions } from './EntitySchemaColumnForeignKeyOptions.js';
 import type { SpatialColumnOptions } from '../decorator/options/SpatialColumnOptions.js';
 import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
 import type { ColumnType } from '../driver/types/ColumnTypes.js';
-
-import type { EntitySchemaColumnForeignKeyOptions } from './EntitySchemaColumnForeignKeyOptions.js';
 
 export interface EntitySchemaColumnOptions extends SpatialColumnOptions {
   /**

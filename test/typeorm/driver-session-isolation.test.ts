@@ -2,12 +2,13 @@ import oracledb from 'oracledb';
 import pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { DataSource } from '../../src/typeorm/data-source/DataSource.js';
-import type { OracleConnectionOptions } from '../../src/typeorm/driver/oracle/OracleConnectionOptions.js';
 import { OracleDriver } from '../../src/typeorm/driver/oracle/OracleDriver.js';
-import type { PostgresConnectionOptions } from '../../src/typeorm/driver/postgres/PostgresConnectionOptions.js';
 import { PostgresDriver } from '../../src/typeorm/driver/postgres/PostgresDriver.js';
 import { normalizeSessionTimeZone } from '../../src/typeorm/driver/SessionTimeZone.js';
+
+import type { DataSource } from '../../src/typeorm/data-source/DataSource.js';
+import type { OracleConnectionOptions } from '../../src/typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { PostgresConnectionOptions } from '../../src/typeorm/driver/postgres/PostgresConnectionOptions.js';
 
 class TestOracleDriver extends OracleDriver {
   public createTestPool(): Promise<oracledb.Pool> {
@@ -81,7 +82,17 @@ describe('driver session isolation', (): void => {
       sessionCallback(
         { execute } as unknown as oracledb.Connection,
         '',
-        (error?: unknown) => (error ? reject(error) : resolve())
+        (error?: unknown) => {
+          if (error) {
+            reject(
+              error instanceof Error
+                ? error
+                : new Error('Oracle session callback failed', { cause: error })
+            );
+            return;
+          }
+          resolve();
+        }
       );
     });
 
@@ -110,13 +121,13 @@ describe('driver session isolation', (): void => {
         }
       ),
     } as unknown as pg.Pool;
-    const Pool = vi.fn(function (options: pg.PoolConfig): pg.Pool {
+    const poolConstructor = vi.fn(function (options: pg.PoolConfig): pg.Pool {
       poolOptions = options;
       return pool;
     });
     const postgresDriver = new Proxy(pg, {
       get(target, property, receiver): unknown {
-        if (property === 'Pool') return Pool;
+        if (property === 'Pool') return poolConstructor;
         return Reflect.get(target, property, receiver);
       },
     });
@@ -148,7 +159,7 @@ describe('driver session isolation', (): void => {
     );
 
     const createPoolOptions = async (
-      parseInt8: boolean
+      shouldParseInt8: boolean
     ): Promise<pg.PoolConfig> => {
       let poolOptions: pg.PoolConfig | undefined;
       const pool = {
@@ -169,13 +180,13 @@ describe('driver session isolation', (): void => {
           }
         ),
       } as unknown as pg.Pool;
-      const Pool = vi.fn(function (options: pg.PoolConfig): pg.Pool {
+      const poolConstructor = vi.fn(function (options: pg.PoolConfig): pg.Pool {
         poolOptions = options;
         return pool;
       });
       const postgresDriver = new Proxy(pg, {
         get(target, property, receiver): unknown {
-          if (property === 'Pool') return Pool;
+          if (property === 'Pool') return poolConstructor;
           return Reflect.get(target, property, receiver);
         },
       });
@@ -184,7 +195,7 @@ describe('driver session isolation', (): void => {
           type: 'postgres',
           driver: postgresDriver,
           database: 'database',
-          parseInt8,
+          parseInt8: shouldParseInt8,
         } satisfies PostgresConnectionOptions,
         logger: { log: vi.fn() },
       } as unknown as DataSource);

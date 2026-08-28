@@ -1,9 +1,4 @@
-import type { Readable } from 'stream';
-
-import type oracledb from 'oracledb';
-import type { PoolClient } from 'pg';
-
-import type { TFunction } from '../../types/utility.types.js';
+import type { QueryResult } from './QueryResult.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { QueryParameterValues } from '../driver/QueryParameters.js';
@@ -20,8 +15,9 @@ import type { TableIndex } from '../schema-builder/table/TableIndex.js';
 import type { TableUnique } from '../schema-builder/table/TableUnique.js';
 import type { View } from '../schema-builder/view/View.js';
 import type { Broadcaster } from '../subscriber/Broadcaster.js';
-
-import type { QueryResult } from './QueryResult.js';
+import type oracledb from 'oracledb';
+import type { PoolClient } from 'pg';
+import type { Readable } from 'stream';
 
 /**
  * Runs queries on a single database connection.
@@ -93,7 +89,7 @@ export interface QueryRunner {
    * Releases used database connection.
    * You cannot use query runner methods after connection is released.
    */
-  release(): Promise<void>;
+  release(error?: Error): Promise<void>;
 
   /**
    * Removes all tables from the currently connected database.
@@ -154,8 +150,8 @@ export interface QueryRunner {
   stream(
     query: string,
     parameters?: Array<unknown>,
-    onEnd?: TFunction,
-    onError?: TFunction
+    onEnd?: () => void | Promise<void>,
+    onError?: (error: Error) => void | Promise<void>
   ): Promise<Readable>;
 
   /**

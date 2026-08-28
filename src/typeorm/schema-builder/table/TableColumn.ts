@@ -223,6 +223,6 @@ export class TableColumn {
       comment: this.comment,
       spatialFeatureType: this.spatialFeatureType,
       srid: this.srid,
-    } as TableColumnOptions);
+    });
   }
 }

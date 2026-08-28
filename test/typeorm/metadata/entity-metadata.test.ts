@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ColumnMetadata } from '../../../src/typeorm/metadata/ColumnMetadata.js';
 import { EntityMetadata } from '../../../src/typeorm/metadata/EntityMetadata.js';
+
 import type { RelationMetadata } from '../../../src/typeorm/metadata/RelationMetadata.js';
 import type { EntityPropertiesMap } from '../../../src/typeorm/metadata/types/EntityPropertiesMap.js';
 
@@ -27,12 +28,12 @@ const createColumn = (options: {
     createValueMap: function (
       this: ColumnMetadata,
       value: unknown,
-      useDatabaseName = false
+      shouldUseDatabaseName = false
     ) {
       return ColumnMetadata.prototype.createValueMap.call(
         this,
         value,
-        useDatabaseName
+        shouldUseDatabaseName
       );
     },
   } as ColumnMetadata;
@@ -94,27 +95,27 @@ describe('EntityMetadata property maps', (): void => {
   });
 
   it('types property maps from entity keys', (): void => {
-    interface Profile {
+    interface IProfile {
       firstName: string;
     }
 
-    interface Post {
+    interface IPost {
       id: number;
     }
 
-    interface User {
+    interface IUser {
       userId: number;
       createdAt: Date;
-      profile: Profile;
-      posts: Array<Post>;
+      profile: IProfile;
+      posts: Array<IPost>;
     }
 
     const assertString = <T extends string>(_value?: T): void => undefined;
 
-    assertString<EntityPropertiesMap<User>['userId']>();
-    assertString<EntityPropertiesMap<User>['createdAt']>();
-    assertString<EntityPropertiesMap<User>['profile']['firstName']>();
-    assertString<EntityPropertiesMap<User>['posts']['id']>();
+    assertString<EntityPropertiesMap<IUser>['userId']>();
+    assertString<EntityPropertiesMap<IUser>['createdAt']>();
+    assertString<EntityPropertiesMap<IUser>['profile']['firstName']>();
+    assertString<EntityPropertiesMap<IUser>['posts']['id']>();
 
     expect(true).toBe(true);
   });

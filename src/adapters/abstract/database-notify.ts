@@ -1,3 +1,5 @@
+import { ServerError } from '../../utils/server-error.js';
+
 import type { TConnectionTypes } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
@@ -7,20 +9,24 @@ import type {
   IRestoreState,
   TNotifyCallbackGeneric,
 } from '../../types/notification.types.js';
-import { ServerError } from '../../utils/server-error.js';
 
 export abstract class DatabaseNotify<
   T extends TConnectionTypes,
   TOptions extends INotifyRetryOptions = INotifyRetryOptions,
 > {
-  protected readonly CONNECTION_HEALTH_CHECK_INTERVAL_MS = 1000 * 15;
-  protected readonly RESTORE_RETRY_DELAY_MS: number = 1000 * 30;
-  protected readonly RESTORE_RETRY_AFTER_MAX_DELAY_MS: number = 1000 * 60 * 30;
-  protected readonly RESTORE_MAX_RETRIES: number = 5;
-  protected readonly RESTORE_CURRENT_RETRY: number = 1;
-  protected readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
+  protected static readonly CONNECTION_HEALTH_CHECK_INTERVAL_MS = 1000 * 15;
+  protected static readonly RESTORE_RETRY_DELAY_MS: number = 1000 * 30;
+  protected static readonly RESTORE_RETRY_AFTER_MAX_DELAY_MS: number =
+    1000 * 60 * 30;
+  protected static readonly RESTORE_MAX_RETRIES: number = 5;
+  protected static readonly RESTORE_CURRENT_RETRY: number = 1;
+  protected static readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
 
-  private readonly IRestoreStates = new Map<string, IRestoreState>();
+  private readonly restoreStates = new Map<string, IRestoreState>();
+  private readonly notificationClosePromises = new Map<string, Promise<void>>();
+  private readonly pendingNotificationRegistrations = new Set<
+    Promise<unknown>
+  >();
   private isDestroyed = false;
   private destroyPromise?: Promise<void>;
   protected readonly notificationPool = new Map<string, T>();
@@ -50,30 +56,38 @@ export abstract class DatabaseNotify<
   private async destroyNotifications(): Promise<void> {
     this.stopAllConnectionHealthChecks();
     const activeRestores = this.getActiveRestores();
+    const pendingRegistrations = Array.from(
+      this.pendingNotificationRegistrations
+    );
     const channels = new Set([
       ...this.notificationPool.keys(),
       ...activeRestores.map(([channel]) => channel),
     ]);
-    if (channels.size === 0) {
+    if (channels.size === 0 && pendingRegistrations.length === 0) {
       this.logger.log('No active notifications to cleanup');
     }
-    channels.forEach((channel) => this.cancelNotificationRestore(channel));
+    channels.forEach((channel) => {
+      this.cancelNotificationRestore(channel);
+    });
 
     await Promise.allSettled([
       ...this.unsubscribeChannels(this.notificationPool.keys()),
       ...activeRestores.map(([channel, restore]) =>
         this.waitForActiveRestore(channel, restore)
       ),
+      ...pendingRegistrations.map((registration, index) =>
+        this.waitForPendingRegistration(index, registration)
+      ),
     ]);
 
     const remainingChannels = Array.from(this.notificationPool.keys());
-    remainingChannels.forEach((channel) =>
-      this.cancelNotificationRestore(channel)
-    );
+    remainingChannels.forEach((channel) => {
+      this.cancelNotificationRestore(channel);
+    });
     await Promise.allSettled(this.unsubscribeChannels(remainingChannels));
 
     this.notificationPool.clear();
-    this.IRestoreStates.clear();
+    this.restoreStates.clear();
     this.logger.log('DatabaseNotify shutdown completed');
   }
 
@@ -99,6 +113,54 @@ export abstract class DatabaseNotify<
    * @param channel - channel or subscription name returned by listenNotify.
    */
   public abstract unlistenNotify(channel: string): Promise<void>;
+
+  /**
+   * Marks one vendor queue as closing and returns its current tail snapshot.
+   * Concrete adapters reject new queue entries synchronously in this hook.
+   */
+  protected beginNotificationQueueClose(
+    _channelName: string
+  ): Promise<void> | undefined {
+    return undefined;
+  }
+
+  /** Removes vendor queue state after its connection cleanup has completed. */
+  protected completeNotificationQueueClose(_channelName: string): void {
+    return;
+  }
+
+  /**
+   * Runs per-channel unsubscribe exactly once after draining the callback tail.
+   * A bounded timeout prevents a hung user callback (including one awaiting
+   * unlisten itself) from blocking connection cleanup forever.
+   */
+  protected closeNotificationChannel(
+    channelName: string,
+    closeConnection: () => Promise<void>
+  ): Promise<void> {
+    const activeClose = this.notificationClosePromises.get(channelName);
+    if (activeClose) return activeClose;
+
+    const queueTail = this.beginNotificationQueueClose(channelName);
+    const closePromise = (async (): Promise<void> => {
+      try {
+        if (queueTail) {
+          await this.waitForNotificationQueueTail(channelName, queueTail);
+        }
+        await closeConnection();
+      } finally {
+        this.completeNotificationQueueClose(channelName);
+      }
+    })();
+    this.notificationClosePromises.set(channelName, closePromise);
+    const clearClosePromise = (): void => {
+      if (this.notificationClosePromises.get(channelName) === closePromise) {
+        this.notificationClosePromises.delete(channelName);
+      }
+    };
+    void closePromise.then(clearClosePromise, clearClosePromise);
+    return closePromise;
+  }
 
   /**
    * Registers one notification subscription.
@@ -127,7 +189,7 @@ export abstract class DatabaseNotify<
     this.stopConnectionHealthCheck(options.channelName);
     const timer = setInterval(() => {
       void this.checkConnection(options);
-    }, options.intervalMs ?? this.CONNECTION_HEALTH_CHECK_INTERVAL_MS);
+    }, options.intervalMs);
     timer.unref();
     this.getOrCreateIRestoreState(options.channelName).healthCheckTimer = timer;
   }
@@ -137,7 +199,7 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected stopConnectionHealthCheck(channelName: string): void {
-    const state = this.IRestoreStates.get(channelName);
+    const state = this.restoreStates.get(channelName);
     if (!state?.healthCheckTimer) return;
     clearInterval(state.healthCheckTimer);
     delete state.healthCheckTimer;
@@ -155,7 +217,7 @@ export abstract class DatabaseNotify<
       this.cancelNotificationRestore(channelName);
       return;
     }
-    const state = this.IRestoreStates.get(channelName);
+    const state = this.restoreStates.get(channelName);
     if (!state) return;
     if (state.activeRestore) return;
     state.isCancelled = false;
@@ -166,6 +228,27 @@ export abstract class DatabaseNotify<
     if (this.isDestroyed) {
       throw new ServerError('Database notification adapter is shutting down');
     }
+  }
+
+  /**
+   * Registers an in-flight subscription attempt before it can yield. Shutdown
+   * waits for the attempt (with the same bounded timeout as restore work), and
+   * the destroyed guard prevents a late attempt from publishing into the pool.
+   */
+  protected trackNotificationRegistration<TResult>(
+    register: () => Promise<TResult>
+  ): Promise<TResult> {
+    this.assertCanRegisterNotification();
+    const registration = Promise.resolve().then(() => {
+      this.assertCanRegisterNotification();
+      return register();
+    });
+    this.pendingNotificationRegistrations.add(registration);
+    const clear = (): void => {
+      this.pendingNotificationRegistrations.delete(registration);
+    };
+    void registration.then(clear, clear);
+    return registration;
   }
 
   /**
@@ -181,7 +264,7 @@ export abstract class DatabaseNotify<
   protected isNotificationRestoreCancelled(channelName: string): boolean {
     return (
       this.isDestroyed ||
-      this.IRestoreStates.get(channelName)?.isCancelled === true
+      this.restoreStates.get(channelName)?.isCancelled === true
     );
   }
 
@@ -190,7 +273,7 @@ export abstract class DatabaseNotify<
    * @param channelName - channel or subscription name.
    */
   protected clearNotificationRestoreState(channelName: string): void {
-    const state = this.IRestoreStates.get(channelName);
+    const state = this.restoreStates.get(channelName);
     if (!state) return;
     state.isHealthCheckInProgress = false;
     if (!this.isDestroyed && !state.activeRestore) state.isCancelled = false;
@@ -226,7 +309,7 @@ export abstract class DatabaseNotify<
     options: INotifyHealthCheckOptions<T>
   ): Promise<void> {
     const { channelName, connection } = options;
-    const state = this.IRestoreStates.get(channelName);
+    const state = this.restoreStates.get(channelName);
     if (
       this.isDestroyed ||
       this.notificationPool.get(channelName) !== connection ||
@@ -237,7 +320,7 @@ export abstract class DatabaseNotify<
     activeState.isHealthCheckInProgress = true;
     try {
       const isHealthy = await options.isHealthy(connection);
-      if (this.isDestroyed || isHealthy) return;
+      if (isHealthy) return;
       if (this.notificationPool.get(channelName) !== connection) return;
       await options.restore();
     } finally {
@@ -254,11 +337,14 @@ export abstract class DatabaseNotify<
   private async restoreNotificationWithRetry<TSettings>(
     options: INotifyRestoreOptions<TSettings>
   ): Promise<void> {
-    const maxRetries = options.maxRetries ?? this.RESTORE_MAX_RETRIES;
-    const retryDelayMs = options.retryDelayMs ?? this.RESTORE_RETRY_DELAY_MS;
+    const maxRetries = options.maxRetries ?? DatabaseNotify.RESTORE_MAX_RETRIES;
+    const retryDelayMs =
+      options.retryDelayMs ?? DatabaseNotify.RESTORE_RETRY_DELAY_MS;
     const retryAfterMaxDelayMs =
-      options.retryAfterMaxDelayMs ?? this.RESTORE_RETRY_AFTER_MAX_DELAY_MS;
-    let currentRetry = options.currentRetry ?? this.RESTORE_CURRENT_RETRY;
+      options.retryAfterMaxDelayMs ??
+      DatabaseNotify.RESTORE_RETRY_AFTER_MAX_DELAY_MS;
+    let currentRetry =
+      options.currentRetry ?? DatabaseNotify.RESTORE_CURRENT_RETRY;
 
     while (currentRetry <= maxRetries) {
       if (this.isNotificationRestoreCancelled(options.channelName)) return;
@@ -285,7 +371,7 @@ export abstract class DatabaseNotify<
             retryAfterMaxDelayMs
           );
           if (this.isNotificationRestoreCancelled(options.channelName)) return;
-          currentRetry = this.RESTORE_CURRENT_RETRY;
+          currentRetry = DatabaseNotify.RESTORE_CURRENT_RETRY;
           continue;
         }
         this.logger.warn(
@@ -323,16 +409,16 @@ export abstract class DatabaseNotify<
   }
 
   private cancelRestoreRetryDelay(channelName: string): void {
-    this.IRestoreStates.get(channelName)?.cancelRetryDelay?.();
+    this.restoreStates.get(channelName)?.cancelRetryDelay?.();
   }
 
   private cancelRestoreRetryDelays(): void {
-    this.IRestoreStates.forEach((state) => state.cancelRetryDelay?.());
+    this.restoreStates.forEach((state) => state.cancelRetryDelay?.());
   }
 
   private getActiveRestores(): Array<[string, Promise<void>]> {
     const activeRestores: Array<[string, Promise<void>]> = [];
-    this.IRestoreStates.forEach((state, channelName) => {
+    this.restoreStates.forEach((state, channelName) => {
       if (state.activeRestore)
         activeRestores.push([channelName, state.activeRestore]);
     });
@@ -347,10 +433,10 @@ export abstract class DatabaseNotify<
       let isSettled = false;
       const timer: NodeJS.Timeout = setTimeout(() => {
         this.logger.warn(
-          `Timed out waiting ${this.DESTROY_RESTORE_WAIT_TIMEOUT_MS}ms for notification restore ${channelName} during shutdown; continuing cleanup`
+          `Timed out waiting ${DatabaseNotify.DESTROY_RESTORE_WAIT_TIMEOUT_MS}ms for notification restore ${channelName} during shutdown; continuing cleanup`
         );
         complete();
-      }, this.DESTROY_RESTORE_WAIT_TIMEOUT_MS);
+      }, DatabaseNotify.DESTROY_RESTORE_WAIT_TIMEOUT_MS);
       const complete = (): void => {
         if (isSettled) return;
         isSettled = true;
@@ -362,8 +448,51 @@ export abstract class DatabaseNotify<
     });
   }
 
+  private waitForPendingRegistration(
+    index: number,
+    registration: Promise<unknown>
+  ): Promise<void> {
+    return this.waitForShutdownTask(
+      registration,
+      `notification registration ${index + 1}`
+    );
+  }
+
+  private waitForNotificationQueueTail(
+    channelName: string,
+    queueTail: Promise<void>
+  ): Promise<void> {
+    return this.waitForShutdownTask(
+      queueTail,
+      `notification callbacks on channel ${channelName}`
+    );
+  }
+
+  private waitForShutdownTask(
+    task: Promise<unknown>,
+    description: string
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      let isSettled = false;
+      const timer = setTimeout(() => {
+        this.logger.warn(
+          `Timed out waiting ${DatabaseNotify.DESTROY_RESTORE_WAIT_TIMEOUT_MS}ms for ${description} during shutdown; continuing cleanup`
+        );
+        complete();
+      }, DatabaseNotify.DESTROY_RESTORE_WAIT_TIMEOUT_MS);
+      const complete = (): void => {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      timer.unref();
+      void task.then(complete, complete);
+    });
+  }
+
   private stopAllConnectionHealthChecks(): void {
-    this.IRestoreStates.forEach((state, channelName) => {
+    this.restoreStates.forEach((state, channelName) => {
       if (!state.healthCheckTimer) return;
       clearInterval(state.healthCheckTimer);
       delete state.healthCheckTimer;
@@ -372,13 +501,13 @@ export abstract class DatabaseNotify<
   }
 
   private getOrCreateIRestoreState(channelName: string): IRestoreState {
-    const existingState = this.IRestoreStates.get(channelName);
+    const existingState = this.restoreStates.get(channelName);
     if (existingState) return existingState;
     const state: IRestoreState = {
       isCancelled: false,
       isHealthCheckInProgress: false,
     };
-    this.IRestoreStates.set(channelName, state);
+    this.restoreStates.set(channelName, state);
     return state;
   }
 
@@ -394,6 +523,6 @@ export abstract class DatabaseNotify<
       state.healthCheckTimer
     )
       return;
-    this.IRestoreStates.delete(channelName);
+    this.restoreStates.delete(channelName);
   }
 }

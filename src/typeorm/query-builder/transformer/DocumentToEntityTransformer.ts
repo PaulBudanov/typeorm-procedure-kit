@@ -126,19 +126,17 @@ export class DocumentToEntityTransformer {
                 fromDeserializer: true,
               }) as ObjectLiteral;
               embedded.columns.forEach((column) => {
-                const val = (subValue as ObjectLiteral)[
-                  column.databaseNameWithoutPrefixes
-                ];
+                const val = subValue[column.databaseNameWithoutPrefixes];
                 newItem[column.propertyName] = val;
               });
               addEmbeddedValuesRecursively(
                 newItem,
-                embeddedArray[index] as ObjectLiteral,
+                embeddedArray[index]!,
                 embedded.embeddeds
               );
               return newItem;
             }
-          ) as Array<ObjectLiteral>;
+          );
         } else {
           if (embedded.embeddeds.length && !entity[embedded.propertyName])
             entity[embedded.propertyName] = embedded.create({
@@ -171,7 +169,7 @@ export class DocumentToEntityTransformer {
     };
 
     addEmbeddedValuesRecursively(
-      entity as ObjectLiteral,
+      entity,
       document as ObjectLiteral,
       metadata.embeddeds
     );

@@ -1,8 +1,8 @@
 export interface ISqlError {
-  error_code?: number;
-  err_code?: number;
-  errorCode?: number;
-  errCode?: number;
+  error_code?: number | string;
+  err_code?: number | string;
+  errorCode?: number | string;
+  errCode?: number | string;
   err_text?: string;
   error_text?: string;
   errText?: string;

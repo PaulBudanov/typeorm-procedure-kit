@@ -1,6 +1,5 @@
-import type { TFunction } from '../../types/utility.types.js';
-
 import type { JoinColumnMetadataArgs } from './JoinColumnMetadataArgs.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Arguments for JoinTableMetadata class.

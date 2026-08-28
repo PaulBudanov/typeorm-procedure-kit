@@ -1,6 +1,3 @@
-import type { Driver } from '../../driver/Driver.js';
-import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import type { TableOptions } from '../options/TableOptions.js';
 import { TableUtils } from '../util/TableUtils.js';
 
 import { TableCheck } from './TableCheck.js';
@@ -9,6 +6,10 @@ import { TableExclusion } from './TableExclusion.js';
 import { TableForeignKey } from './TableForeignKey.js';
 import { TableIndex } from './TableIndex.js';
 import { TableUnique } from './TableUnique.js';
+
+import type { Driver } from '../../driver/Driver.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { TableOptions } from '../options/TableOptions.js';
 
 /**
  * Table in the database represented in this class.
@@ -387,7 +388,7 @@ export class Table {
         .filter((column) => column && !column.isVirtualProperty)
         .map((column) => TableUtils.createTableColumnOptions(column, driver)),
       indices: entityMetadata.indices
-        .filter((index) => index.synchronize === true)
+        .filter((index) => index.synchronize)
         .map((index) => TableIndex.create(index)),
       uniques: entityMetadata.uniques.map((unique) =>
         TableUnique.create(unique)

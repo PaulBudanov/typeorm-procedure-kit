@@ -39,7 +39,7 @@ function sanitizeForLog(
   if (value instanceof Date) return value.toISOString();
   if (Buffer.isBuffer(value)) return `[Buffer:${value.length}]`;
 
-  if (typeof value !== 'object') return String(value);
+  if (typeof value !== 'object') return Object.prototype.toString.call(value);
   if (seen.has(value)) return '[Circular]';
   if (depth >= options.maxDepth) return '[MaxDepth]';
 
@@ -85,7 +85,7 @@ export function safeStringify(
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
   try {
     return JSON.stringify(
-      sanitizeForLog(value, mergedOptions, 0, new WeakSet<object>())
+      sanitizeForLog(value, mergedOptions, 0, new WeakSet())
     );
   } catch {
     return '[Unserializable value]';

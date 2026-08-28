@@ -1,9 +1,11 @@
+import { ServerError } from '../utils/server-error.js';
+
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { QueryRunner } from '../typeorm/query-runner/QueryRunner.js';
 import type { TConnectionMode } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
-import { ServerError } from '../utils/server-error.js';
+
 export class ConnectionBase {
   public constructor(
     private readonly appDataSource: DataSource,
@@ -23,11 +25,11 @@ export class ConnectionBase {
   public async getEntityManager(
     mode: TConnectionMode = 'master'
   ): Promise<EntityManager> {
+    let queryRunner: QueryRunner | undefined;
     try {
       if (this.appDataSource.isInitialized) {
         this.warnWhenSlaveModeFallsBackToMaster(mode);
-        const queryRunner: QueryRunner =
-          this.appDataSource.createQueryRunner(mode);
+        queryRunner = this.appDataSource.createQueryRunner(mode);
         await queryRunner.connect();
         const entityManager: EntityManager = queryRunner.manager;
         if (!entityManager.connection.isInitialized)
@@ -40,6 +42,22 @@ export class ConnectionBase {
         'Error getting connection from pool',
         (e as Error).stack
       );
+      if (queryRunner && !queryRunner.isReleased) {
+        try {
+          await queryRunner.release(
+            e instanceof Error ? e : new Error(String(e))
+          );
+        } catch (releaseError: unknown) {
+          this.logger.error(
+            `Connection cleanup after acquisition failure also failed: ${
+              releaseError instanceof Error
+                ? releaseError.message
+                : String(releaseError)
+            }`,
+            releaseError instanceof Error ? releaseError.stack : undefined
+          );
+        }
+      }
       throw e;
     }
   }
@@ -75,7 +93,7 @@ export class ConnectionBase {
    */
   public async releaseEntityManager(connection: EntityManager): Promise<void> {
     try {
-      if (connection) await connection.release();
+      await connection.release();
       return;
     } catch (error: unknown) {
       this.logger.error(

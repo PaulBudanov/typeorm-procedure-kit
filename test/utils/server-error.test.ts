@@ -18,6 +18,14 @@ describe('ServerError', (): void => {
       payload: true,
     });
     expect(error.timestamp).toBeInstanceOf(Date);
+    expect(JSON.parse(JSON.stringify(error))).toEqual({
+      name: 'ServerError',
+      message: 'broken',
+      errorId: 'err-1',
+      timestamp: error.timestamp.toISOString(),
+    });
+    expect(Object.keys(error)).not.toContain('errorContext');
+    expect(Object.keys(error)).not.toContain('options');
   });
 
   it('returns existing ServerError instances', (): void => {

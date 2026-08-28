@@ -2,8 +2,9 @@ import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js
 import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serializer.js';
 import { CaseStrategyFactory } from '../../src/case-strategy/case-strategy-factory.js';
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
-import type { DataSourceOptions } from '../../src/typeorm/data-source/DataSourceOptions.js';
 import { EntitySchema } from '../../src/typeorm/entity-schema/EntitySchema.js';
+
+import type { DataSourceOptions } from '../../src/typeorm/data-source/DataSourceOptions.js';
 import type { ObjectLiteral } from '../../src/typeorm/index.js';
 import type { ILoggerModule } from '../../src/types/logger.types.js';
 import type { TFunction } from '../../src/types/utility.types.js';
@@ -195,7 +196,7 @@ export function createQueryBuilderIntegrationDataSource(
   return new DataSource({
     ...options,
     entities: createQueryBuilderIntegrationSchemas(),
-    isQuotingDisabled: true,
+    identifierQuoting: 'disabled',
     namingStrategy: strategy,
     synchronize: false,
   } as DataSourceOptions);

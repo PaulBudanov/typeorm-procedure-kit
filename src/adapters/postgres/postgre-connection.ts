@@ -1,9 +1,11 @@
-import { Client, type ClientConfig } from 'pg';
+import { Client } from 'pg';
+
+import { DatabaseConnection } from '../abstract/database-connection.js';
 
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { PostgresConnectionOptions } from '../../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import { DatabaseConnection } from '../abstract/database-connection.js';
+import type { ClientConfig } from 'pg';
 
 export class PostgreConnection extends DatabaseConnection<
   PostgresConnectionOptions,
@@ -18,8 +20,8 @@ export class PostgreConnection extends DatabaseConnection<
    * @param logger - logger used by connection operations.
    */
   public constructor(
-    protected readonly appDataSource: DataSource,
-    protected readonly logger: ILoggerModule
+    protected override readonly appDataSource: DataSource,
+    protected override readonly logger: ILoggerModule
   ) {
     super(appDataSource, logger);
   }

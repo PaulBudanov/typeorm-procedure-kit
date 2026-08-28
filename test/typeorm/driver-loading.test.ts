@@ -4,13 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { DatabaseInitializerBase } from '../../src/core/database-initializer-base.js';
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
-import type { OracleConnectionOptions } from '../../src/typeorm/driver/oracle/OracleConnectionOptions.js';
 import { OracleDriver } from '../../src/typeorm/driver/oracle/OracleDriver.js';
 import { PostgresDriver } from '../../src/typeorm/driver/postgres/PostgresDriver.js';
 import { TypeORMError } from '../../src/typeorm/error/TypeORMError.js';
 import { PlatformTools } from '../../src/typeorm/platform/PlatformTools.js';
-import type { TOracleDbConfig } from '../../src/types/config.types.js';
 import { createLogger } from '../support/helpers.js';
+
+import type { OracleConnectionOptions } from '../../src/typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { TOracleDbConfig } from '../../src/types/config.types.js';
 
 interface IOracleOptionsFactory {
   getOracleOptions(

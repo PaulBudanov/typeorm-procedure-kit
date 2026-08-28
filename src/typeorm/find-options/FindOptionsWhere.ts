@@ -1,7 +1,6 @@
-import type { TFunction } from '../../types/utility.types.js';
-
 import type { EqualOperator } from './EqualOperator.js';
 import type { FindOperator } from './FindOperator.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * A single property handler for FindOptionsWhere.

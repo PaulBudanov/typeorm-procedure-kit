@@ -15,12 +15,12 @@ describe('AsyncUtils', (): void => {
     const promise = AsyncUtils.delay(100);
 
     await vi.advanceTimersByTimeAsync(99);
-    let resolved = false;
-    promise.then((): void => {
-      resolved = true;
+    let isResolved = false;
+    void promise.then((): void => {
+      isResolved = true;
     });
     await Promise.resolve();
-    expect(resolved).toBe(false);
+    expect(isResolved).toBe(false);
 
     await vi.advanceTimersByTimeAsync(1);
     await expect(promise).resolves.toBeUndefined();
@@ -95,18 +95,28 @@ describe('AsyncUtils', (): void => {
 
   it('does not imply cancellation of work after a timeout', async (): Promise<void> => {
     vi.useFakeTimers();
-    let operationCompleted = false;
+    let isOperationCompleted = false;
     const promise = AsyncUtils.timeout(async (): Promise<void> => {
       await AsyncUtils.delay(20);
-      operationCompleted = true;
+      isOperationCompleted = true;
     }, 10);
-    promise.catch((): void => undefined);
+    void promise.catch((): void => undefined);
 
     await vi.advanceTimersByTimeAsync(10);
     await expect(promise).rejects.toBeInstanceOf(ServerError);
-    expect(operationCompleted).toBe(false);
+    expect(isOperationCompleted).toBe(false);
 
     await vi.advanceTimersByTimeAsync(10);
-    expect(operationCompleted).toBe(true);
+    expect(isOperationCompleted).toBe(true);
+  });
+
+  it('rejects invalid retry and timer bounds', async (): Promise<void> => {
+    expect(() => AsyncUtils.delay(-1)).toThrow(RangeError);
+    await expect(AsyncUtils.retry(async () => 'ok', 0)).rejects.toThrow(
+      RangeError
+    );
+    await expect(AsyncUtils.timeout(async () => 'ok', 0)).rejects.toThrow(
+      RangeError
+    );
   });
 });

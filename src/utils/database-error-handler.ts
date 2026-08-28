@@ -1,7 +1,7 @@
+import { ServerError } from './server-error.js';
+
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ISqlError } from '../types/utility.types.js';
-
-import { ServerError } from './server-error.js';
 
 export abstract class DatabaseErrorHandler {
   /**
@@ -56,15 +56,19 @@ export abstract class DatabaseErrorHandler {
           ? errorData.errorText
           : errorData.errText;
 
-    if (errorCode && errorCode !== 0) {
+    const isFailureCode =
+      typeof errorCode === 'number'
+        ? errorCode !== 0
+        : typeof errorCode === 'string'
+          ? errorCode.trim() !== '' && !/^0+$/.test(errorCode.trim())
+          : Boolean(errorCode);
+
+    if (isFailureCode) {
       const errorMessage = errorText
         ? `Database error: ${errorText}`
         : `Database error code: ${errorCode}`;
 
-      if (logger) {
-        logger.error(`Detected database error: ${errorMessage}`);
-      }
-
+      if (logger) logger.error(`Detected database error: ${errorMessage}`);
       throw new ServerError(errorMessage, null, {
         errorId: queryId,
       });
