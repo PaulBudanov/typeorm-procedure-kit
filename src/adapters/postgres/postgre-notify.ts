@@ -229,7 +229,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     }
 
     try {
-      DatabaseErrorHandler.checkForDatabaseError(payload);
+      DatabaseErrorHandler.checkForDatabaseError<T>(payload);
       await notifyCallback(payload);
     } catch (error) {
       this.logger.error(

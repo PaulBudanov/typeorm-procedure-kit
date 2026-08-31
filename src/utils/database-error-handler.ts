@@ -4,6 +4,18 @@ import type { ILoggerModule } from '../types/logger.types.js';
 import type { ISqlError } from '../types/utility.types.js';
 
 export abstract class DatabaseErrorHandler {
+  private static ERROR_CODE_KEYS = [
+    'error_code',
+    'err_code',
+    'errorCode',
+    'errCode',
+  ] as const;
+  private static ERROR_TEXT_KEYS = [
+    'error_text',
+    'err_text',
+    'errorText',
+    'errText',
+  ] as const;
   /**
    * Checks if the response data has an error code and throws an error if it does.
    * Useful for catching database errors.
@@ -29,50 +41,37 @@ export abstract class DatabaseErrorHandler {
     if (Array.isArray(responseData)) return;
 
     const errorData = responseData as ISqlError;
-    const hasErrorCode =
-      Object.hasOwn(errorData, 'error_code') ||
-      Object.hasOwn(errorData, 'err_code') ||
-      Object.hasOwn(errorData, 'errorCode') ||
-      Object.hasOwn(errorData, 'errCode');
-    const hasErrorText =
-      Object.hasOwn(errorData, 'error_text') ||
-      Object.hasOwn(errorData, 'err_text') ||
-      Object.hasOwn(errorData, 'errorText') ||
-      Object.hasOwn(errorData, 'errText');
-    if (!hasErrorCode || !hasErrorText) return;
+    const errorCodeKey = DatabaseErrorHandler.ERROR_CODE_KEYS.find((key) =>
+      Object.hasOwn(errorData, key)
+    );
+    const errorTextKey = DatabaseErrorHandler.ERROR_TEXT_KEYS.find((key) =>
+      Object.hasOwn(errorData, key)
+    );
+    if (!errorCodeKey || !errorTextKey) return;
 
-    const errorCode = Object.hasOwn(errorData, 'error_code')
-      ? errorData.error_code
-      : Object.hasOwn(errorData, 'err_code')
-        ? errorData.err_code
-        : Object.hasOwn(errorData, 'errorCode')
-          ? errorData.errorCode
-          : errorData.errCode;
-    const errorText = Object.hasOwn(errorData, 'error_text')
-      ? errorData.error_text
-      : Object.hasOwn(errorData, 'err_text')
-        ? errorData.err_text
-        : Object.hasOwn(errorData, 'errorText')
-          ? errorData.errorText
-          : errorData.errText;
+    const errorCode = errorData[errorCodeKey];
+    const errorText = errorData[errorTextKey];
 
-    const isFailureCode =
-      typeof errorCode === 'number'
-        ? errorCode !== 0
-        : typeof errorCode === 'string'
-          ? errorCode.trim() !== '' && !/^0+$/.test(errorCode.trim())
-          : Boolean(errorCode);
+    const normalizedErrorCode =
+      typeof errorCode === 'string' ? errorCode.trim() : errorCode;
 
-    if (isFailureCode) {
-      const errorMessage = errorText
-        ? `Database error: ${errorText}`
-        : `Database error code: ${errorCode}`;
+    const isFailure =
+      typeof normalizedErrorCode === 'number'
+        ? normalizedErrorCode !== 0
+        : typeof normalizedErrorCode === 'string'
+          ? normalizedErrorCode !== '' && !/^0+$/.test(normalizedErrorCode)
+          : Boolean(normalizedErrorCode);
 
-      if (logger) logger.error(`Detected database error: ${errorMessage}`);
-      throw new ServerError(errorMessage, null, {
-        errorId: queryId,
-      });
-    }
-    return;
+    if (!isFailure) return;
+
+    const errorMessage = errorText
+      ? `Database error: ${errorText}`
+      : `Database error code: ${errorCode?.toString()}`;
+
+    logger?.error(`Detected database error: ${errorMessage}`);
+
+    throw new ServerError(errorMessage, null, {
+      errorId: queryId,
+    });
   }
 }
