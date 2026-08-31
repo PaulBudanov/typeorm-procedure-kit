@@ -203,6 +203,9 @@ export class OracleAdapter extends DatabaseAdapter<
       maxMetadataRows + 1,
       Number.MAX_SAFE_INTEGER
     );
+    const oracleVersion = this.appDataSource.driver.version;
+    if (oracleVersion && parseInt(oracleVersion, 10) < 12)
+      return `SELECT * FROM (${query.trimEnd()}) WHERE ROWNUM <= ${detectionLimit}`;
     return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
   }
 

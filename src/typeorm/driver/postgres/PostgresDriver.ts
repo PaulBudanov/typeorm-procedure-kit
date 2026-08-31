@@ -444,9 +444,7 @@ export class PostgresDriver implements Driver {
       const queryRunner = this.createQueryRunner('master');
 
       if (!this.version) {
-        this.version = await (
-          queryRunner as unknown as PostgresQueryRunner
-        ).getVersion();
+        this.version = await queryRunner.getVersion();
       }
 
       if (!this.database) {

@@ -14,9 +14,13 @@ import type {
   TProcedureArgumentList,
 } from '../types/procedure.types.js';
 
-interface IPackageFetchState {
-  promise: Promise<void>;
+interface IPackageFetchControl {
   rerunRequested: boolean;
+}
+
+interface IPackageFetchState {
+  control: IPackageFetchControl;
+  promise: Promise<void>;
 }
 
 export class ProcedureListBase {
@@ -48,56 +52,67 @@ export class ProcedureListBase {
    * @param packageName - name of package in lowercase
    * @returns Promise<void> - promise that resolves when procedure list is fetched
    */
-  public fetchProcedureListWithArguments(
+  public async fetchProcedureListWithArguments(
     packageName: Lowercase<string>
   ): Promise<void> {
     if (this.isDestroyed) {
-      return Promise.reject(new ServerError('ProcedureListBase is destroyed'));
+      throw new ServerError('ProcedureListBase is destroyed');
     }
 
     const activeState = this.packageFetchStates.get(packageName);
     if (activeState) {
-      activeState.rerunRequested = true;
-      return activeState.promise;
+      activeState.control.rerunRequested = true;
+      await activeState.promise;
+      return;
     }
 
-    const state = {
-      promise: Promise.resolve(),
+    const control: IPackageFetchControl = {
       rerunRequested: false,
     };
-    const fetchPromise = (async (): Promise<void> => {
-      let lastError: unknown;
-      do {
-        state.rerunRequested = false;
-        try {
-          await this.fetchProcedureListInternal(packageName);
-          lastError = undefined;
-        } catch (error: unknown) {
-          lastError = error;
-        }
-      } while (this.shouldRerunFetch(state));
-      if (lastError !== undefined) {
-        throw lastError instanceof Error
-          ? lastError
-          : ServerError.ENSURE_SERVER_ERROR({ error: lastError });
-      }
-    })();
-    state.promise = fetchPromise;
+    const fetchPromise = this.runPackageFetch(packageName, control);
+    const state: IPackageFetchState = { control, promise: fetchPromise };
     this.packageFetchStates.set(packageName, state);
     this.activeFetchPromises.add(fetchPromise);
-    const clearFetch = (): void => {
+
+    try {
+      await fetchPromise;
+    } finally {
       this.activeFetchPromises.delete(fetchPromise);
       if (this.packageFetchStates.get(packageName) === state) {
         this.packageFetchStates.delete(packageName);
       }
-    };
-    void fetchPromise.then(clearFetch, clearFetch);
-    return fetchPromise;
+    }
+  }
+
+  private async runPackageFetch(
+    packageName: Lowercase<string>,
+    control: IPackageFetchControl
+  ): Promise<void> {
+    let lastError: unknown;
+    for (
+      let shouldFetch = true;
+      shouldFetch;
+      shouldFetch = this.shouldRerunFetch(control)
+    ) {
+      control.rerunRequested = false;
+      try {
+        await this.fetchProcedureListInternal(packageName);
+        lastError = undefined;
+      } catch (error: unknown) {
+        lastError = error;
+      }
+    }
+
+    if (lastError !== undefined) {
+      throw lastError instanceof Error
+        ? lastError
+        : ServerError.ENSURE_SERVER_ERROR({ error: lastError });
+    }
   }
 
   /** Re-reads fetch state that callers may mutate while the request is awaited. */
-  private shouldRerunFetch(state: IPackageFetchState): boolean {
-    return state.rerunRequested && !this.isDestroyed;
+  private shouldRerunFetch(control: IPackageFetchControl): boolean {
+    return control.rerunRequested && !this.isDestroyed;
   }
 
   private async fetchProcedureListInternal(

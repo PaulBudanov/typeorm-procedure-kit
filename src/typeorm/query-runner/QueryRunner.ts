@@ -76,6 +76,10 @@ export interface QueryRunner {
   connect(): Promise<PoolClient | oracledb.Connection>;
 
   /**
+   * Get Database version method.
+   */
+  getVersion(): Promise<string>;
+  /**
    * Called before migrations are run.
    */
   beforeMigration(): Promise<void>;

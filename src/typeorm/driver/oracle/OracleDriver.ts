@@ -142,6 +142,11 @@ export class OracleDriver implements Driver {
   public oracle!: typeof oracledb;
 
   /**
+   * Version of Oracle Database.
+   */
+  public version?: string;
+
+  /**
    * Pool for master database.
    */
   public master: oracledb.Pool | undefined;
@@ -417,10 +422,11 @@ export class OracleDriver implements Driver {
       this.master = await this.createPool(this.options, this.options);
     }
 
-    if (!this.schema) {
+    if (!this.version && !this.schema) {
       const queryRunner = this.createQueryRunner('master');
 
-      this.schema = await queryRunner.getCurrentSchema();
+      if (!this.schema) this.schema = await queryRunner.getCurrentSchema();
+      if (!this.version) this.version = await queryRunner.getVersion();
 
       await queryRunner.release();
     }

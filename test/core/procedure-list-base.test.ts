@@ -322,7 +322,6 @@ describe('ProcedureListBase', (): void => {
 
     const first = procedureList.fetchProcedureListWithArguments('pkg');
     const concurrent = procedureList.fetchProcedureListWithArguments('pkg');
-    expect(concurrent).toBe(first);
     expect(execute).toHaveBeenCalledOnce();
 
     resolvers[0]!([
@@ -346,6 +345,7 @@ describe('ProcedureListBase', (): void => {
     ]);
 
     await expect(first).resolves.toBeUndefined();
+    await expect(concurrent).resolves.toBeUndefined();
     expect(procedureList.packagesWithProceduresList.get('pkg')).toEqual({
       latest: [],
     });
