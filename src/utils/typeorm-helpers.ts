@@ -9,7 +9,7 @@ import type { UniqueMetadataArgs } from '../typeorm/metadata-args/UniqueMetadata
 import type { TFunction } from '../types/utility.types.js';
 
 //TODO: In the future need to be refactored, because deep clone is not a good idea. After start write new ORM should be refactored.
-export abstract class TypeOrmHelpers {
+class TypeOrmHelpersApi {
   /**
    * Finds a column in a hierarchy of objects.
    * @param metadataArgs Metadata storage containing TypeORM column, generation, and unique metadata.
@@ -17,7 +17,7 @@ export abstract class TypeOrmHelpers {
    * @param propertyKey The key to search for.
    * @returns An object with the found target and the column if found, otherwise undefined.
    */
-  public static findColumnInHierarchy(
+  public findColumnInHierarchy(
     metadataArgs: MetadataArgsStorage,
     target: object,
     propertyKey: string
@@ -69,7 +69,7 @@ export abstract class TypeOrmHelpers {
    * @param target - Object to find the entity metadata for.
    * @returns An object containing the found target and the entity metadata for the given target if found, otherwise undefined.
    */
-  public static findEntityMetadata(
+  public findEntityMetadata(
     tables: Array<TableMetadataArgs>,
     target: TFunction
   ): {
@@ -100,7 +100,7 @@ export abstract class TypeOrmHelpers {
    * @param targetRegister - Target class where the updated metadata should be registered.
    * @param overrideSource - Column options merged over the existing options.
    */
-  public static updateColumnMetadata(
+  public updateColumnMetadata(
     storage: MetadataArgsStorage,
     column: ColumnMetadataArgs,
     targetRegister: object,
@@ -134,7 +134,7 @@ export abstract class TypeOrmHelpers {
    * @param existingGeneration - Generation metadata inherited from the source column.
    * @param generated - Override generation setting.
    */
-  public static updateGenerationMetadata(
+  public updateGenerationMetadata(
     storage: MetadataArgsStorage,
     targetRegister: object,
     propertyKey: string,
@@ -185,7 +185,7 @@ export abstract class TypeOrmHelpers {
    * @param isUnique - Whether the column should be unique.
    * @param unique - Existing unique metadata inherited from the source column.
    */
-  public static updateUniqueMetadata(
+  public updateUniqueMetadata(
     storage: MetadataArgsStorage,
     targetRegister: object,
     propertyKey: string,
@@ -227,3 +227,7 @@ export abstract class TypeOrmHelpers {
     return;
   }
 }
+
+const typeOrmHelpers = new TypeOrmHelpersApi();
+
+export { typeOrmHelpers as TypeOrmHelpers };

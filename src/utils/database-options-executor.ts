@@ -1,23 +1,17 @@
 import { ServerError } from './server-error.js';
 
+import type { IValidatedOptionCommand } from '../interfaces/database-options-executor.interfaces.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 
 const POSTGRES_IDENTIFIER = String.raw`(?:[A-Za-z_][A-Za-z0-9_$]*|"[A-Za-z_$][A-Za-z0-9_$]*")`;
 const SQL_STRING_LITERAL = String.raw`'(?:[^']|'')*'`;
-type TOptionCommandDialect = 'postgres' | 'oracle';
 const INVALIDATE_CONNECTION = Symbol.for(
   'typeorm-procedure-kit.invalidate-connection'
 );
 
-interface IValidatedOptionCommand {
-  command: string;
-  dialect: TOptionCommandDialect;
-  oracleParameter?: string;
-}
-
-export abstract class DatabaseOptionsExecutor {
-  private static readonly SAFE_POSTGRES_COMMANDS = [
+class DatabaseOptionsExecutorApi {
+  private readonly safePostgresCommands = [
     new RegExp(String.raw`^SET\s+LOCAL\s+ROLE\s+${POSTGRES_IDENTIFIER}$`, 'i'),
     new RegExp(
       String.raw`^SET\s+LOCAL\s+search_path\s+(?:TO|=)\s+${POSTGRES_IDENTIFIER}(?:\s*,\s*${POSTGRES_IDENTIFIER})*$`,
@@ -33,7 +27,7 @@ export abstract class DatabaseOptionsExecutor {
     ),
     /^SET\s+TRANSACTION\s+(?:ISOLATION\s+LEVEL\s+(?:READ\s+UNCOMMITTED|READ\s+COMMITTED|REPEATABLE\s+READ|SERIALIZABLE)|READ\s+ONLY|READ\s+WRITE|DEFERRABLE|NOT\s+DEFERRABLE)$/i,
   ];
-  private static readonly SAFE_ORACLE_COMMAND = new RegExp(
+  private readonly safeOracleCommand = new RegExp(
     String.raw`^ALTER\s+SESSION\s+SET\s+(NLS_DATE_FORMAT|NLS_TIMESTAMP_FORMAT|NLS_TIMESTAMP_TZ_FORMAT|NLS_NUMERIC_CHARACTERS)\s*=\s*(${SQL_STRING_LITERAL})$`,
     'i'
   );
@@ -46,7 +40,7 @@ export abstract class DatabaseOptionsExecutor {
    * @returns {Promise<void>} - a promise that resolves when all commands are executed successfully
    * @throws {Error} - if an error occurs during the execution of commands
    */
-  public static async executeCommands(
+  public async executeCommands(
     commands: Array<string>,
     connection: EntityManager,
     logger: ILoggerModule
@@ -79,7 +73,7 @@ export abstract class DatabaseOptionsExecutor {
    * commands are transaction-local. Oracle session values are captured before
    * mutation and restored even when setup or the operation fails.
    */
-  public static async executeWithCommands<T>(
+  public async executeWithCommands<T>(
     commands: Array<string>,
     connection: EntityManager,
     logger: ILoggerModule,
@@ -103,7 +97,7 @@ export abstract class DatabaseOptionsExecutor {
     );
   }
 
-  private static validateCommands(
+  private validateCommands(
     commands: Array<string>
   ): Array<IValidatedOptionCommand> {
     const validated = commands.map((command) => this.validateCommand(command));
@@ -116,7 +110,7 @@ export abstract class DatabaseOptionsExecutor {
     return validated;
   }
 
-  private static validateCommand(command: string): IValidatedOptionCommand {
+  private validateCommand(command: string): IValidatedOptionCommand {
     const trimmed = command.trim();
     if (
       trimmed.length === 0 ||
@@ -127,10 +121,10 @@ export abstract class DatabaseOptionsExecutor {
     ) {
       return this.throwUnsafeCommand();
     }
-    if (this.SAFE_POSTGRES_COMMANDS.some((pattern) => pattern.test(trimmed))) {
+    if (this.safePostgresCommands.some((pattern) => pattern.test(trimmed))) {
       return { command: trimmed, dialect: 'postgres' };
     }
-    const oracleMatch = this.SAFE_ORACLE_COMMAND.exec(trimmed);
+    const oracleMatch = this.safeOracleCommand.exec(trimmed);
     if (oracleMatch) {
       const value = oracleMatch[2];
       if (!value || value.length > 258) return this.throwUnsafeCommand();
@@ -143,13 +137,13 @@ export abstract class DatabaseOptionsExecutor {
     return this.throwUnsafeCommand();
   }
 
-  private static throwUnsafeCommand(): never {
+  private throwUnsafeCommand(): never {
     throw new ServerError(
       'Unsafe database option command. Only transaction-local PostgreSQL options and explicitly supported Oracle NLS formats are accepted.'
     );
   }
 
-  private static async executeValidatedCommands(
+  private async executeValidatedCommands(
     commands: Array<IValidatedOptionCommand>,
     connection: EntityManager,
     logger: ILoggerModule
@@ -162,7 +156,7 @@ export abstract class DatabaseOptionsExecutor {
     }
   }
 
-  private static async executeWithRestoredOracleSession<T>(
+  private async executeWithRestoredOracleSession<T>(
     commands: Array<IValidatedOptionCommand>,
     connection: EntityManager,
     logger: ILoggerModule,
@@ -232,7 +226,7 @@ export abstract class DatabaseOptionsExecutor {
     return result as T;
   }
 
-  private static markConnectionForInvalidation<T extends Error>(error: T): T {
+  private markConnectionForInvalidation<T extends Error>(error: T): T {
     Object.defineProperty(error, INVALIDATE_CONNECTION, {
       value: true,
       enumerable: false,
@@ -242,3 +236,7 @@ export abstract class DatabaseOptionsExecutor {
     return error;
   }
 }
+
+const databaseOptionsExecutor = new DatabaseOptionsExecutorApi();
+
+export { databaseOptionsExecutor as DatabaseOptionsExecutor };

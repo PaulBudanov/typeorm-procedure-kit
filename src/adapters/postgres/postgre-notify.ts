@@ -62,6 +62,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     options: INotifyRetryOptions = {}
   ): Promise<string> {
     this.assertCanRegisterNotification();
+    this.assertNotificationRetryOptions(options);
     const channelName = this.parseListenChannel(sqlCommand);
     const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
       channelName
@@ -348,9 +349,11 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   ): Promise<void> {
     await this.closeListenerConnection(channelName);
     if (this.isNotificationRestoreCancelled(channelName)) return;
-    if (!channelName.includes('LISTEN ')) channelName = `LISTEN ${channelName}`;
+    const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
+      channelName
+    )}`;
     const restoredChannelName = await this.listenNotify(
-      channelName,
+      listenSql,
       notifyCallback,
       options
     );

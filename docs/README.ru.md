@@ -114,7 +114,7 @@ const settings: IModuleConfig = {
   logger: { module: logger },
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -246,7 +246,7 @@ const settings: IModuleConfig = {
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -317,22 +317,22 @@ const settings: IModuleConfig = {
   CQN ROWID на событие. `maxProcedureBytes` использует приблизительный подсчет
   логического payload, а не точное измерение heap, wire size или allocations
   database driver.
-- `callTimeout`: deprecated alias для `maxQueryExecutionTime`.
 - `outKeyTransformCase`: `camelCase`, `lowerCase` или `snakeCase`; default
   значение `camelCase`.
 - `isNeedRegisterDefaultSerializers`: opt-in flag для default temporal
   serializers; default — `false`.
 - `entity`: entity discovery и optional synchronization settings.
 - `migration`: migration discovery и optional startup execution settings.
-- `isRegisterShutdownHandlers`: регистрирует process signal handlers, которые
-  вызывают `destroy()`.
+- `isRegisterShutdownHandlers`: регистрирует signal handlers для standalone
+  process. Первый signal снимает handlers библиотеки, ожидает `destroy()` и
+  повторно отправляет тот же signal, сохраняя стандартную семантику завершения.
 
 PostgreSQL опции:
 
-- `parseInt8AsBigInt`: обязательная опция PostgreSQL config type, передается во
+- `parseInt8AsNumber`: обязательная опция PostgreSQL config type, передается во
   встроенный driver как `parseInt8`. Когда значение `true`, `node-postgres`
   парсит `int8` как JavaScript numbers вместо strings; значения выше
-  `Number.MAX_SAFE_INTEGER` могут потерять точность, несмотря на имя опции.
+  `Number.MAX_SAFE_INTEGER` могут потерять точность.
 - `packagesSettings.listenEventName`: обязательна, когда
   `isNeedDynamicallyUpdatePackagesInfo` равно `true`; переопределяет
   notification channel для package updates.
@@ -392,6 +392,13 @@ configured packages/schemas. `call()` нельзя использовать бе
 
 Procedure payload может быть object, array, `null` или `undefined`. Scalar
 strings и numbers отклоняются runtime-ом.
+
+Именованные structured arguments принимают plain object для `IN`/`INOUT` и
+возвращают plain object в `outBinds`. Поддерживаются package-spec Oracle PL/SQL
+`RECORD` и PostgreSQL named composite/table-row types. Для Oracle `RECORD`
+требуется Oracle Database 12.1 или новее; в Thick mode также требуется Oracle
+Client 12.1 или новее. Неизвестные или конфликтующие поля отклоняются, а
+отсутствующие поля передаются как SQL `NULL`.
 
 В v3 `call()` всегда возвращает envelope `IProcedureResult`:
 
@@ -602,7 +609,7 @@ import type { IModuleConfig } from 'typeorm-procedure-kit';
 
 const config: IModuleConfig['config'] = {
   type: 'postgres',
-  parseInt8AsBigInt: true,
+  parseInt8AsNumber: true,
   master: {
     host: 'localhost',
     port: 5432,
@@ -639,6 +646,9 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 Для synchronous setup передайте `true` вторым аргументом `forRoot()`, чтобы
 сделать module global. Nest service инициализирует database во время
 `onModuleInit()` и вызывает `destroy()` при application shutdown.
+В Nest applications используйте `app.enableShutdownHooks()` и оставляйте
+`isRegisterShutdownHandlers` выключенным: два владельца lifecycle могут
+завершить process до окончания cleanup других Nest providers.
 
 NestJS entry point также экспортирует decorators для injection отдельных
 methods и lazy-доступа к DataSource:
@@ -810,6 +820,10 @@ procedure and naming caches и бросает `AggregateError`, если час�
 завершилась ошибкой. Установите `isRegisterShutdownHandlers: true`, чтобы
 зарегистрировать process signal handlers автоматически, или вызовите
 `db.registerShutdownHandlers()` самостоятельно.
+Эти handlers предназначены для standalone process: после cleanup исходный
+signal отправляется повторно, а второй signal во время cleanup обрабатывается
+стандартным механизмом Node.js. В framework-managed application вызывайте
+`destroy()` из lifecycle hook самого framework.
 
 ## Ручной benchmark materialization
 

@@ -22,7 +22,7 @@ import type {
   TDeleteSerializer,
   TGetDataSource,
   TMakeNotify,
-  TSetSerializer,
+  TSetSerializerHandler,
   TUnlistenNotify,
 } from '../../src/types/nest-decorator.types.js';
 import type { FactoryProvider, Provider } from '@nestjs/common';
@@ -96,7 +96,7 @@ describe('core method Nest providers', (): void => {
     ) as TUnlistenNotify;
     const setSerializer = getFactoryProvider(SET_SERIALIZER).useFactory(
       service
-    ) as TSetSerializer;
+    ) as TSetSerializerHandler;
     const deleteSerializer = getFactoryProvider(DELETE_SERIALIZER).useFactory(
       service
     ) as TDeleteSerializer;

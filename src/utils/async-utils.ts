@@ -1,6 +1,6 @@
 import { ServerError } from './server-error.js';
 
-export abstract class AsyncUtils {
+class AsyncUtilsApi {
   /**
    * Returns a promise that resolves after a specified delay in milliseconds.
    * @param {number} ms - delay time in milliseconds
@@ -8,8 +8,8 @@ export abstract class AsyncUtils {
    * @example
    * const result = await AsyncUtils.delay(1000);
    */
-  public static delay(ms: number): Promise<void> {
-    AsyncUtils.assertNonNegativeDelay(ms, 'delay');
+  public delay(ms: number): Promise<void> {
+    this.assertNonNegativeDelay(ms, 'delay');
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
@@ -31,7 +31,7 @@ export abstract class AsyncUtils {
    *   logger
    * );
    */
-  public static async retry<T>(
+  public async retry<T>(
     fn: () => Promise<T>,
     maxRetries = 3,
     delayMs = 1000,
@@ -40,7 +40,7 @@ export abstract class AsyncUtils {
     if (!Number.isSafeInteger(maxRetries) || maxRetries <= 0) {
       throw new RangeError('maxRetries must be a positive safe integer');
     }
-    AsyncUtils.assertNonNegativeDelay(delayMs, 'retry delay');
+    this.assertNonNegativeDelay(delayMs, 'retry delay');
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -59,7 +59,7 @@ export abstract class AsyncUtils {
         }
 
         if (attempt < maxRetries) {
-          await AsyncUtils.delay(delayMs * attempt); // exponential backoff
+          await this.delay(delayMs * attempt); // exponential backoff
         }
       }
     }
@@ -81,7 +81,7 @@ export abstract class AsyncUtils {
    * @returns {Promise<T>} - promise that resolves or rejects when the first promise resolves or rejects
    * or the timeout error occurs
    */
-  public static async timeout<T>(
+  public async timeout<T>(
     fn: () => Promise<T>,
     timeoutMs: number,
     timeoutMessage = 'Operation timeout'
@@ -104,9 +104,13 @@ export abstract class AsyncUtils {
     }
   }
 
-  private static assertNonNegativeDelay(ms: number, name: string): void {
+  private assertNonNegativeDelay(ms: number, name: string): void {
     if (!Number.isSafeInteger(ms) || ms < 0) {
       throw new RangeError(`${name} must be a non-negative safe integer`);
     }
   }
 }
+
+const asyncUtils = new AsyncUtilsApi();
+
+export { asyncUtils as AsyncUtils };

@@ -68,7 +68,7 @@ export function createPostgresIntegrationSettings(): IIntegrationTestSettings<TP
     logger: { module: createLogger() },
     config: {
       type: 'postgres',
-      parseInt8AsBigInt: false,
+      parseInt8AsNumber: false,
       poolSize: 2,
       outKeyTransformCase: 'lowerCase',
       master: {

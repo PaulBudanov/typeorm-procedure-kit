@@ -2,27 +2,20 @@ import { DateTime } from 'luxon';
 
 import { ServerError } from './server-error.js';
 
-export interface IDateTimeZoneOptions {
-  /** Zone assigned to strings which do not contain an offset. Defaults to local. */
-  sourceZone?: string;
-  /** Zone used for the returned value. Omit it to preserve the parsed zone. */
-  targetZone?: string;
-  /** Require a string input to end in `Z` or a numeric UTC offset. */
-  requireZone?: boolean;
-}
+import type { IDateTimeZoneOptions } from '../interfaces/date-formatter.interfaces.js';
+import type { TLegacyLocalZoneOption } from '../types/date-formatter.types.js';
 
-type TLegacyLocalZoneOption = boolean;
+export type { IDateTimeZoneOptions } from '../interfaces/date-formatter.interfaces.js';
 
-export abstract class DateFormatter {
-  private static readonly CALENDAR_DATE_FORMAT = 'yyyy-MM-dd';
-  private static readonly DEFAULT_DATE_FORMAT = 'yyyy-MM-dd HH:mm:ss';
-  private static readonly DEFAULT_TIMESTAMP_FORMAT = 'yyyy-MM-dd HH:mm:ss.SSS';
-  private static readonly DEFAULT_TIMESTAMP_TZ_FORMAT =
-    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
-  private static readonly DEFAULT_TIME_FORMAT = 'HH:mm:ss';
-  private static readonly STRICT_SQL_OR_ISO_PATTERN =
+class DateFormatterApi {
+  private readonly calendarDateFormat = 'yyyy-MM-dd';
+  private readonly defaultDateFormat = 'yyyy-MM-dd HH:mm:ss';
+  private readonly defaultTimestampFormat = 'yyyy-MM-dd HH:mm:ss.SSS';
+  private readonly defaultTimestampTzFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+  private readonly defaultTimeFormat = 'HH:mm:ss';
+  private readonly strictSqlOrIsoPattern =
     /^(?:\d{4}-\d{2}-\d{2}(?:(?:T| )\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)?|\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)(?: ?(?:Z|[+-]\d{2}(?::?\d{2})?))?$/i;
-  private static readonly EXPLICIT_ZONE_PATTERN =
+  private readonly explicitZonePattern =
     /(?:^|T| )\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)? ?(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
   /**
@@ -31,7 +24,7 @@ export abstract class DateFormatter {
    * `sourceZone` applies only to strings without an explicit offset.
    * `targetZone` performs an explicit zone conversion after parsing.
    */
-  public static formatSqlDate(
+  public formatSqlDate(
     input: string | Date,
     outputFormat?: string,
     options?: IDateTimeZoneOptions
@@ -41,15 +34,15 @@ export abstract class DateFormatter {
    * @deprecated Pass `{ targetZone: 'local' }` instead. `true` converts to the
    * local zone and `false` preserves the parsed source zone.
    */
-  public static formatSqlDate(
+  public formatSqlDate(
     input: string | Date,
     outputFormat: string,
     shouldSetLocalZone: TLegacyLocalZoneOption
   ): string;
 
-  public static formatSqlDate(
+  public formatSqlDate(
     input: string | Date,
-    outputFormat: string = this.DEFAULT_DATE_FORMAT,
+    outputFormat: string = this.defaultDateFormat,
     options: IDateTimeZoneOptions | TLegacyLocalZoneOption = {}
   ): string {
     try {
@@ -67,21 +60,18 @@ export abstract class DateFormatter {
   }
 
   /** Parses a strict SQL/ISO date string and optionally converts its zone. */
-  public static parseSqlDate(
-    input: string,
-    options?: IDateTimeZoneOptions
-  ): DateTime;
+  public parseSqlDate(input: string, options?: IDateTimeZoneOptions): DateTime;
 
   /**
    * @deprecated Pass `{ targetZone: 'local' }` instead. `true` converts to the
    * local zone and `false` preserves the parsed source zone.
    */
-  public static parseSqlDate(
+  public parseSqlDate(
     input: string,
     shouldSetLocalZone: TLegacyLocalZoneOption
   ): DateTime;
 
-  public static parseSqlDate(
+  public parseSqlDate(
     input: string,
     options: IDateTimeZoneOptions | TLegacyLocalZoneOption = {}
   ): DateTime {
@@ -89,47 +79,43 @@ export abstract class DateFormatter {
   }
 
   /** Formats a calendar date without a time component. */
-  public static formatCalendarDate(input: string | Date): string {
-    return this.formatSqlDate(input, this.CALENDAR_DATE_FORMAT);
+  public formatCalendarDate(input: string | Date): string {
+    return this.formatSqlDate(input, this.calendarDateFormat);
   }
 
   /** Formats a database DATE while preserving time to whole seconds. */
-  public static formatDefaultDate(input: string | Date): string {
-    return this.formatSqlDate(input, this.DEFAULT_DATE_FORMAT);
+  public formatDefaultDate(input: string | Date): string {
+    return this.formatSqlDate(input, this.defaultDateFormat);
   }
 
   /** Formats a timezone-less TIMESTAMP while preserving milliseconds. */
-  public static formatDefaultDateTime(input: string | Date): string {
-    return this.formatSqlDate(input, this.DEFAULT_TIMESTAMP_FORMAT);
+  public formatDefaultDateTime(input: string | Date): string {
+    return this.formatSqlDate(input, this.defaultTimestampFormat);
   }
 
   /** Formats a zoned timestamp as a UTC ISO value. */
-  public static formatDefaultDateTimeWithTimezone(
-    input: string | Date
-  ): string {
-    return this.formatSqlDate(input, this.DEFAULT_TIMESTAMP_TZ_FORMAT, {
+  public formatDefaultDateTimeWithTimezone(input: string | Date): string {
+    return this.formatSqlDate(input, this.defaultTimestampTzFormat, {
       targetZone: 'UTC',
       requireZone: typeof input === 'string',
     });
   }
 
   /** Formats a local-time-zone timestamp as a UTC ISO value. */
-  public static formatDefaultDateTimeWithLocalTimezone(
-    input: string | Date
-  ): string {
+  public formatDefaultDateTimeWithLocalTimezone(input: string | Date): string {
     return this.formatDefaultDateTimeWithTimezone(input);
   }
 
   /** Formats the time component of a strict SQL/ISO string or native Date. */
-  public static formatTime(input: string | Date): string {
-    return this.formatSqlDate(input, this.DEFAULT_TIME_FORMAT);
+  public formatTime(input: string | Date): string {
+    return this.formatSqlDate(input, this.defaultTimeFormat);
   }
 
   /** Converts a date from its explicit/source zone into `timeZone`. */
-  public static convertTimeZone(
+  public convertTimeZone(
     input: string | Date,
     timeZone: string,
-    format: string = this.DEFAULT_TIMESTAMP_TZ_FORMAT,
+    format: string = this.defaultTimestampTzFormat,
     sourceZone?: string
   ): string {
     try {
@@ -147,7 +133,7 @@ export abstract class DateFormatter {
   }
 
   /** Calculates the absolute difference between two valid date values. */
-  public static diff(
+  public diff(
     date1: string | Date,
     date2: string | Date,
     unit: 'days' | 'hours' | 'minutes' | 'seconds' = 'days'
@@ -158,7 +144,7 @@ export abstract class DateFormatter {
   }
 
   /** Checks whether a value is a strict, in-range date. */
-  public static isValid(input: string | Date): boolean {
+  public isValid(input: string | Date): boolean {
     try {
       this.parseInput(input, {});
       return true;
@@ -168,8 +154,8 @@ export abstract class DateFormatter {
   }
 
   /** Returns the current datetime in the requested format and timezone. */
-  public static now(
-    format: string = this.DEFAULT_TIMESTAMP_FORMAT,
+  public now(
+    format: string = this.defaultTimestampFormat,
     timeZone?: string
   ): string {
     const dateTime = timeZone
@@ -179,7 +165,7 @@ export abstract class DateFormatter {
     return dateTime.toFormat(format);
   }
 
-  private static parseInput(
+  private parseInput(
     input: string | Date,
     options: IDateTimeZoneOptions
   ): DateTime {
@@ -187,12 +173,12 @@ export abstract class DateFormatter {
 
     if (typeof input === 'string') {
       const normalizedInput = input.trim();
-      if (!this.STRICT_SQL_OR_ISO_PATTERN.test(normalizedInput)) {
+      if (!this.strictSqlOrIsoPattern.test(normalizedInput)) {
         throw new ServerError(`Invalid date syntax: ${input}`);
       }
       if (
         options.requireZone === true &&
-        !this.EXPLICIT_ZONE_PATTERN.test(normalizedInput)
+        !this.explicitZonePattern.test(normalizedInput)
       ) {
         throw new ServerError(
           'Zoned date strings must end in Z or a numeric UTC offset'
@@ -223,7 +209,7 @@ export abstract class DateFormatter {
     return dateTime;
   }
 
-  private static assertValidDateTime(dateTime: DateTime): void {
+  private assertValidDateTime(dateTime: DateTime): void {
     if (!dateTime.isValid) {
       throw new ServerError(
         `Invalid date: ${dateTime.invalidReason ?? 'unknown reason'}`
@@ -236,8 +222,8 @@ export abstract class DateFormatter {
    * Reject them before parsing so Oracle temporal inputs stay inside the
    * supported numeric offset range.
    */
-  private static assertValidNumericOffset(input: string): void {
-    if (!this.EXPLICIT_ZONE_PATTERN.test(input) || /Z$/i.test(input)) return;
+  private assertValidNumericOffset(input: string): void {
+    if (!this.explicitZonePattern.test(input) || /Z$/i.test(input)) return;
 
     const offset = /([+-])(\d{2})(?::?(\d{2}))?$/.exec(input);
     if (!offset) return;
@@ -249,7 +235,7 @@ export abstract class DateFormatter {
     }
   }
 
-  private static normalizeZoneOptions(
+  private normalizeZoneOptions(
     options: IDateTimeZoneOptions | TLegacyLocalZoneOption
   ): IDateTimeZoneOptions {
     if (typeof options === 'boolean') {
@@ -258,7 +244,11 @@ export abstract class DateFormatter {
     return options;
   }
 
-  private static errorMessage(error: unknown): string {
+  private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
   }
 }
+
+const dateFormatter = new DateFormatterApi();
+
+export { dateFormatter as DateFormatter };

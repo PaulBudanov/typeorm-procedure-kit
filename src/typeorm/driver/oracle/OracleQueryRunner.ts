@@ -284,11 +284,8 @@ export class OracleQueryRunner extends BaseQueryRunner implements QueryRunner {
     await this.broadcaster.broadcast('AfterTransactionRollback');
   }
   public async getVersion(): Promise<string> {
-    const result = await this.query<Array<{ version: string }>>(
-      `SELECT version FROM v$instance`
-    );
-
-    return result[0]?.version ?? 'UNKNOWN';
+    const connection = await this.connect();
+    return connection.oracleServerVersionString || 'UNKNOWN';
   }
 
   /**

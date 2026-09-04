@@ -3,14 +3,14 @@ import { ServerError } from './server-error.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ISqlError } from '../types/utility.types.js';
 
-export abstract class DatabaseErrorHandler {
-  private static ERROR_CODE_KEYS = [
+class DatabaseErrorHandlerApi {
+  private readonly errorCodeKeys = [
     'error_code',
     'err_code',
     'errorCode',
     'errCode',
   ] as const;
-  private static ERROR_TEXT_KEYS = [
+  private readonly errorTextKeys = [
     'error_text',
     'err_text',
     'errorText',
@@ -25,7 +25,7 @@ export abstract class DatabaseErrorHandler {
    * @param {ILoggerModule} [logger] - logger module to log the error message.
    * @throws {DatabaseError} if the response data has an error code.
    */
-  public static checkForDatabaseError<T>(
+  public checkForDatabaseError<T>(
     responseData: T | Buffer | string | Array<T>,
     queryId?: string,
     logger?: ILoggerModule
@@ -33,20 +33,21 @@ export abstract class DatabaseErrorHandler {
     if (
       responseData instanceof Buffer ||
       typeof responseData !== 'object' ||
-      responseData === null
+      !responseData
     ) {
       return;
     }
 
-    if (Array.isArray(responseData)) return;
+    if (Array.isArray(responseData)) {
+      if (responseData.length > 1) return;
+      const checkDataObject = responseData[0];
+      this.checkForDatabaseError<typeof checkDataObject>(checkDataObject);
+      return;
+    }
 
     const errorData = responseData as ISqlError;
-    const errorCodeKey = DatabaseErrorHandler.ERROR_CODE_KEYS.find((key) =>
-      Object.hasOwn(errorData, key)
-    );
-    const errorTextKey = DatabaseErrorHandler.ERROR_TEXT_KEYS.find((key) =>
-      Object.hasOwn(errorData, key)
-    );
+    const errorCodeKey = this.errorCodeKeys.find((key) => key in errorData);
+    const errorTextKey = this.errorTextKeys.find((key) => key in errorData);
     if (!errorCodeKey || !errorTextKey) return;
 
     const errorCode = errorData[errorCodeKey];
@@ -75,3 +76,7 @@ export abstract class DatabaseErrorHandler {
     });
   }
 }
+
+const databaseErrorHandler = new DatabaseErrorHandlerApi();
+
+export { databaseErrorHandler as DatabaseErrorHandler };

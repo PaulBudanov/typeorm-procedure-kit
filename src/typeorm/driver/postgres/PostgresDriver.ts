@@ -764,14 +764,39 @@ export class PostgresDriver implements Driver {
    * Closes connection with database.
    */
   public async disconnect(): Promise<void> {
-    if (!this.master) {
+    const master = this.master;
+    const slaves = [...this.slaves];
+    if (!master && slaves.length === 0) {
       throw new ConnectionIsNotSetError('postgres');
     }
 
-    await this.closePool(this.master);
-    await Promise.all(this.slaves.map((slave) => this.closePool(slave)));
-    this.master = undefined;
-    this.slaves = [];
+    const errors: Array<unknown> = [];
+    if (master) {
+      try {
+        await this.closePool(master);
+        if (this.master === master) this.master = undefined;
+      } catch (error: unknown) {
+        errors.push(error);
+      }
+    }
+
+    const failedSlaves: Array<Pool> = [];
+    for (const slave of slaves) {
+      try {
+        await this.closePool(slave);
+      } catch (error: unknown) {
+        errors.push(error);
+        failedSlaves.push(slave);
+      }
+    }
+    this.slaves = failedSlaves;
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Failed to close PostgreSQL pools', {
+        cause: errors[0],
+      });
+    }
   }
 
   /**

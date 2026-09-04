@@ -29,9 +29,7 @@ function restoreEnvValue(name: string, value: string | undefined): void {
 }
 
 async function getMaxQueryExecutionTime(
-  timeoutConfig: Partial<
-    Pick<IBaseConfig, 'callTimeout' | 'maxQueryExecutionTime'>
-  >
+  timeoutConfig: Partial<Pick<IBaseConfig, 'maxQueryExecutionTime'>>
 ): Promise<number | undefined> {
   const config: TPostgresDbConfig = {
     type: 'postgres',
@@ -43,7 +41,7 @@ async function getMaxQueryExecutionTime(
       password: 'pass',
     },
     poolSize: 1,
-    parseInt8AsBigInt: false,
+    parseInt8AsNumber: false,
     ...timeoutConfig,
   };
   const initializer = new DatabaseInitializerBase(config, {
@@ -70,7 +68,7 @@ async function getPostgresConnectionOptions(
       password: 'pass',
     },
     poolSize: 1,
-    parseInt8AsBigInt: false,
+    parseInt8AsNumber: false,
     ...configPatch,
   };
   const initializer = new DatabaseInitializerBase(config, {
@@ -98,7 +96,7 @@ async function getPostgresDataSourceOptions(
       password: 'pass',
     },
     poolSize: 1,
-    parseInt8AsBigInt: false,
+    parseInt8AsNumber: false,
   };
   const initializer = new DatabaseInitializerBase(config, {
     module: createLogger(),
@@ -142,16 +140,19 @@ describe('DatabaseInitializerBase slow-query threshold config', (): void => {
   it('uses maxQueryExecutionTime as the slow-query threshold', async (): Promise<void> => {
     await expect(
       getMaxQueryExecutionTime({
-        callTimeout: 100,
         maxQueryExecutionTime: 200,
       })
     ).resolves.toBe(200);
   });
+});
 
-  it('keeps callTimeout as a deprecated slow-query threshold alias', async (): Promise<void> => {
-    await expect(getMaxQueryExecutionTime({ callTimeout: 100 })).resolves.toBe(
-      100
-    );
+describe('DatabaseInitializerBase PostgreSQL int8 config', (): void => {
+  it('maps parseInt8AsNumber to the driver parseInt8 option', async (): Promise<void> => {
+    const options = await getPostgresConnectionOptions({
+      parseInt8AsNumber: true,
+    });
+
+    expect(options.parseInt8).toBe(true);
   });
 });
 
@@ -180,7 +181,7 @@ describe('DatabaseInitializerBase TypeORM logger config', (): void => {
               password: 'pass',
             },
             poolSize: 1,
-            parseInt8AsBigInt: false,
+            parseInt8AsNumber: false,
           },
           {
             module: createLogger(),
@@ -325,7 +326,7 @@ describe('DatabaseInitializerBase resource config', (): void => {
         password: 'pass',
       },
       poolSize: 1,
-      parseInt8AsBigInt: false,
+      parseInt8AsNumber: false,
       resourceLimits: { maxProcedureRows: 25 },
     };
     const initializer = new DatabaseInitializerBase(config, {
@@ -380,7 +381,7 @@ describe('DatabaseInitializerBase resource config', (): void => {
               password: 'pass',
             },
             poolSize: 1,
-            parseInt8AsBigInt: false,
+            parseInt8AsNumber: false,
             ...patch,
           },
           { module: createLogger() }
@@ -402,7 +403,7 @@ describe('DatabaseInitializerBase rollback reset', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
       },
       { module: createLogger() }
     );

@@ -104,4 +104,25 @@ describe('ProcedureResourceTracker', (): void => {
       ).addRow(row);
     }).toThrow('resourceLimits.maxProcedureBytes');
   });
+
+  it('measures a graph deeper than the JavaScript call stack', (): void => {
+    const root: Record<string, unknown> = {};
+    let current = root;
+    for (let depth = 0; depth < 20_000; depth += 1) {
+      const next: Record<string, unknown> = {};
+      current.next = next;
+      current = next;
+    }
+    current.value = 'done';
+    const expectedBytes =
+      20_000 * Buffer.byteLength('next') +
+      Buffer.byteLength('value') +
+      Buffer.byteLength('done');
+
+    expect(() => {
+      new ProcedureResourceTracker('Oracle', limits(expectedBytes)).addValue(
+        root
+      );
+    }).not.toThrow();
+  });
 });

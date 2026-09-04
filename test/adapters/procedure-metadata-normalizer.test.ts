@@ -57,12 +57,11 @@ describe('ProcedureMetadataNormalizer', (): void => {
     ).toEqual({});
   });
 
-  it('preserves the public single-package compatibility behavior', (): void => {
+  it('keeps a strict allowlist for a single package', (): void => {
     expect(
       normalizer.normalize(metadata, ['pkg.run'], 'pkg', 1, {
         vendor: 'Database',
-        includeAllWhenSinglePackage: true,
       })
-    ).toHaveProperty('skip');
+    ).not.toHaveProperty('skip');
   });
 });

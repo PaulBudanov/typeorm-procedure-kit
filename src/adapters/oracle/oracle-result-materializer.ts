@@ -4,24 +4,18 @@ import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { ProcedureResourceTracker } from '../abstract/procedure-resource-tracker.js';
 
+import type { IOracleValueSerializer } from '../../interfaces/oracle-result-materializer.interfaces.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
+import type { IProcedureStructuredField } from '../../types/procedure.types.js';
 import type {
-  ISerializerContext,
+  TSerializerType,
   TTemporalSerializerType,
 } from '../../types/serializer.types.js';
 import type {
   IProcedureOutBinding,
   IProcedureResult,
 } from '../../types/utility.types.js';
-
-interface IOracleValueSerializer {
-  serializeValue(
-    serializerType: TTemporalSerializerType,
-    value: unknown,
-    context?: ISerializerContext
-  ): unknown;
-}
 
 /** Materializes Oracle scalar OUT values, LOBs, and REF CURSOR result sets. */
 export class OracleProcedureResultMaterializer {
@@ -69,6 +63,16 @@ export class OracleProcedureResultMaterializer {
         const rawKey = rawKeys.get(outBinding.name.toLowerCase());
         const rawValue = rawRecord[rawKey ?? outBinding.name];
         if (!cursorSet.has(outBinding.name)) {
+          if (outBinding.structuredType) {
+            const objectValue = await this.materializeStructuredOut(
+              rawValue,
+              outBinding,
+              outputName
+            );
+            tracker.addValue(objectValue);
+            outBinds[outputName] = objectValue;
+            continue;
+          }
           const materializedValue = await this.materializeLobValue(rawValue);
           if (this.isLob(rawValue)) pendingLobs.delete(rawValue);
           const scalarValue = this.serializeScalarOut(
@@ -338,6 +342,141 @@ export class OracleProcedureResultMaterializer {
       name: outputName,
       databaseType: outBinding.databaseType,
     });
+  }
+
+  private async materializeStructuredOut(
+    value: unknown,
+    outBinding: IProcedureOutBinding,
+    outputName: string
+  ): Promise<Record<string, unknown> | null> {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(
+        `Oracle RECORD "${outBinding.name}" was not returned as an object`
+      );
+    }
+    const structuredType = outBinding.structuredType;
+    if (structuredType?.kind !== 'oracle-record') {
+      throw new ServerError(
+        `Oracle RECORD "${outBinding.name}" has invalid structured metadata`
+      );
+    }
+
+    const record = value as Record<string, unknown>;
+    this.assertStructuredOutputFields(
+      record,
+      structuredType.fields,
+      outBinding.name
+    );
+    const keys = this.indexOutputKeys(record);
+    const materialized: Record<string, unknown> = {};
+    for (const field of structuredType.fields) {
+      const fieldOutputName = this.options.caseStrategy.transformColumnName(
+        field.name
+      );
+      if (Object.hasOwn(materialized, fieldOutputName)) {
+        throw new ServerError(
+          `Oracle RECORD "${outBinding.name}" has conflicting transformed field "${fieldOutputName}"`
+        );
+      }
+      const rawKey = keys.get(field.name.toLowerCase());
+      let rawFieldValue: unknown = null;
+      if (field.name in record) rawFieldValue = record[field.name];
+      else if (rawKey !== undefined) rawFieldValue = record[rawKey];
+      if (Array.isArray(rawFieldValue)) {
+        throw new ServerError(
+          `Oracle RECORD field "${outBinding.name}.${field.name}" returned an unsupported array`
+        );
+      }
+      const fieldValue = await this.materializeLobValue(rawFieldValue);
+      const serializerType = this.getRecordSerializerType(field.argumentType);
+      materialized[fieldOutputName] = serializerType
+        ? this.serializer.serializeValue(serializerType, fieldValue, {
+            source: 'scalar-out',
+            database: 'oracle',
+            name: `${outputName}.${fieldOutputName}`,
+            databaseType: field.argumentType,
+          })
+        : fieldValue;
+    }
+    return materialized;
+  }
+
+  private assertStructuredOutputFields(
+    record: Record<string, unknown>,
+    fields: Array<IProcedureStructuredField>,
+    bindingName: string
+  ): void {
+    const expectedNames = new Set(fields.map(({ name }) => name.toLowerCase()));
+    const returnedNames = this.getStructuredOutputFieldNames(record);
+    const seenNames = new Set<string>();
+    const unexpectedNames: Array<string> = [];
+
+    for (const name of returnedNames) {
+      const normalizedName = name.toLowerCase();
+      if (seenNames.has(normalizedName)) {
+        throw new ServerError(
+          `Oracle RECORD "${bindingName}" returned conflicting field "${name}"`
+        );
+      }
+      seenNames.add(normalizedName);
+      if (!expectedNames.has(normalizedName)) unexpectedNames.push(name);
+    }
+
+    if (unexpectedNames.length > 0) {
+      throw new ServerError(
+        `Oracle RECORD "${bindingName}" returned unknown fields: ${unexpectedNames.sort().join(', ')}`
+      );
+    }
+  }
+
+  private getStructuredOutputFieldNames(
+    record: Record<string, unknown>
+  ): Array<string> {
+    const attributes = record.attributes;
+    if (
+      typeof record.fqn === 'string' &&
+      typeof record.copy === 'function' &&
+      record.isCollection === false &&
+      attributes !== null &&
+      typeof attributes === 'object' &&
+      !Array.isArray(attributes)
+    ) {
+      return Object.keys(attributes);
+    }
+    return Object.keys(record);
+  }
+
+  private getRecordSerializerType(
+    databaseType: string
+  ): TSerializerType | undefined {
+    switch (databaseType.toUpperCase()) {
+      case 'DATE':
+        return 'DATE';
+      case 'TIMESTAMP':
+        return 'TIMESTAMP';
+      case 'TIMESTAMP WITH TIME ZONE':
+        return 'TIMESTAMP_TZ';
+      case 'TIMESTAMP WITH LOCAL TIME ZONE':
+        return 'TIMESTAMP_LTZ';
+      case 'BOOLEAN':
+        return 'BOOLEAN';
+      case 'CHAR':
+      case 'NCHAR':
+        return 'CHAR';
+      case 'VARCHAR':
+      case 'VARCHAR2':
+      case 'NVARCHAR2':
+        return 'VARCHAR';
+      case 'JSON':
+        return 'JSON';
+      case 'RAW':
+        return 'BINARY';
+      case 'XMLTYPE':
+        return 'XML';
+      default:
+        return undefined;
+    }
   }
 
   private getScalarTemporalSerializerType(

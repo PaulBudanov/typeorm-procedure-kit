@@ -112,7 +112,7 @@ const settings: IModuleConfig = {
   logger: { module: logger },
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -249,7 +249,7 @@ const settings: IModuleConfig = {
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -315,21 +315,22 @@ Gemeinsame Optionen:
   pro event. `maxProcedureBytes` verwendet eine approximative logische
   payload-Berechnung, keine exakte Messung von heap, wire size oder
   driver allocations.
-- `callTimeout`: deprecated alias fuer `maxQueryExecutionTime`.
 - `outKeyTransformCase`: `camelCase`, `lowerCase` oder `snakeCase`; default ist
   `camelCase`.
 - `isNeedRegisterDefaultSerializers`: registriert default date/time serializers.
 - `entity`: entity discovery und optionale synchronization settings.
 - `migration`: migration discovery und optionale startup execution settings.
-- `isRegisterShutdownHandlers`: registriert process signal handlers, die
-  `destroy()` aufrufen.
+- `isRegisterShutdownHandlers`: registriert signal handlers fuer standalone
+  processes. Das erste signal entfernt die Kit-handlers, wartet auf `destroy()`
+  und sendet dasselbe signal erneut, damit die standard exit semantics erhalten
+  bleiben.
 
 PostgreSQL-Optionen:
 
-- `parseInt8AsBigInt`: required by the PostgreSQL config type und wird an den
+- `parseInt8AsNumber`: required by the PostgreSQL config type und wird an den
   bundled driver als `parseInt8` uebergeben. Bei `true` parst `node-postgres`
   `int8` values als JavaScript numbers statt strings; Werte oberhalb von
-  `Number.MAX_SAFE_INTEGER` koennen trotz des Optionsnamens Praezision verlieren.
+  `Number.MAX_SAFE_INTEGER` koennen Praezision verlieren.
 - `packagesSettings.listenEventName`: erforderlich, wenn
   `isNeedDynamicallyUpdatePackagesInfo` `true` ist; ueberschreibt den
   notification channel fuer package updates.
@@ -390,6 +391,13 @@ werden.
 
 Procedure payloads koennen objects, arrays, `null` oder `undefined` sein. Scalar
 strings und numbers werden zur Laufzeit abgelehnt.
+
+Benannte strukturierte Argumente akzeptieren plain objects fuer `IN`/`INOUT`
+und liefern plain objects in `outBinds`. Unterstuetzt werden package-spec Oracle
+PL/SQL `RECORD` sowie benannte PostgreSQL composite/table-row types. Oracle
+`RECORD` erfordert Oracle Database 12.1 oder neuer; im Thick mode ist auch
+Oracle Client 12.1 oder neuer erforderlich. Unbekannte oder widerspruechliche
+Felder werden abgelehnt, fehlende Felder als SQL `NULL` gebunden.
 
 `rows` enthaelt alle REF-CURSOR rows in metadata order. `outBinds` behaelt jeden
 Cursor und jeden scalar `OUT`/`INOUT` value unter dem mit
@@ -584,7 +592,7 @@ import type { IModuleConfig } from 'typeorm-procedure-kit';
 
 const config: IModuleConfig['config'] = {
   type: 'postgres',
-  parseInt8AsBigInt: true,
+  parseInt8AsNumber: true,
   master: {
     host: 'localhost',
     port: 5432,
@@ -621,6 +629,9 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 Fuer synchronous setup uebergeben Sie `true` als zweiten `forRoot()`-Parameter,
 damit das module global wird. Der Nest service initialisiert die database in
 `onModuleInit()` und ruft `destroy()` beim application shutdown auf.
+In Nest applications sollte `app.enableShutdownHooks()` verwendet und
+`isRegisterShutdownHandlers` deaktiviert bleiben, damit nicht zwei lifecycle
+owners gleichzeitig den process beenden.
 
 Der NestJS entry point exportiert auch decorators fuer injection einzelner
 methods und lazy DataSource-Zugriff:
@@ -793,6 +804,10 @@ procedure and naming caches und wirft `AggregateError`, wenn ein Teil des
 cleanup fehlschlaegt. Setzen Sie `isRegisterShutdownHandlers: true`, um process
 signal handlers automatisch zu registrieren, oder rufen Sie
 `db.registerShutdownHandlers()` selbst auf.
+Diese handlers sind fuer standalone processes gedacht. Nach dem cleanup wird
+das urspruengliche signal erneut gesendet; ein zweites signal waehrend des
+cleanup folgt bereits dem Node.js default termination behavior. Frameworks
+sollten `destroy()` ueber ihren eigenen lifecycle hook aufrufen.
 
 ## Manueller materialization benchmark
 

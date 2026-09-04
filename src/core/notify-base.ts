@@ -1,5 +1,3 @@
-import { QueueManager } from '../utils/queue-manager.js';
-
 import type { ProcedureListBase } from './procedure-list-base.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
@@ -10,29 +8,16 @@ import type {
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
 
-interface IPackageRefreshState {
-  requestedGeneration: number;
-  completedGeneration: number;
-  promise: Promise<void>;
-}
-
 export class NotifyBase {
-  private queueManager = new QueueManager<string>('packageUpdateSet', 'set');
-  private queueCallback: ((data: { item: string }) => Promise<void>) | null =
-    null;
-  private readonly refreshStates = new Map<
-    Lowercase<string>,
-    IPackageRefreshState
-  >();
+  private readonly activeRefreshes = new Set<Promise<void>>();
   private destroyPromise: Promise<void> | null = null;
   private isDestroyed = false;
 
   /**
    * Creates the package notification coordinator.
    *
-   * The coordinator receives database package-change events, deduplicates them
-   * through an internal queue, and asks ProcedureListBase to refresh procedure
-   * metadata for configured packages.
+   * The coordinator receives database package-change events and delegates
+   * refresh coalescing to ProcedureListBase.
    *
    * @param databaseAdapter - Adapter used to create and manage database notifications.
    * @param procedureListBase - Procedure metadata registry to refresh after package changes.
@@ -44,31 +29,10 @@ export class NotifyBase {
     private readonly procedureListBase: ProcedureListBase,
     private readonly logger: ILoggerModule,
     private readonly packagesSettings?: TDbConfig['packagesSettings']
-  ) {
-    // Subscribe to queue and get packages from it
-    this.queueCallback = async (data: { item: string }): Promise<void> => {
-      if (typeof data.item === 'string') {
-        try {
-          await this.refreshPackage(
-            data.item.toLowerCase() as Lowercase<string>
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to refresh procedure metadata for package ${data.item}: ${
-              (error as Error).message
-            }`,
-            (error as Error).stack
-          );
-        } finally {
-          this.queueManager.dequeue(data.item);
-        }
-      }
-    };
-    this.queueManager.subscribeToEnqueue(this.queueCallback);
-  }
+  ) {}
 
   /**
-   * Gracefully shuts down all notification subscriptions and queue manager
+   * Gracefully waits for delegated refreshes and shuts down subscriptions.
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
   public destroy(): Promise<void> {
@@ -79,80 +43,21 @@ export class NotifyBase {
   }
 
   private async destroyInternal(): Promise<void> {
-    if (this.queueCallback) {
-      this.queueManager.unsubscribeFromEnqueue(this.queueCallback);
-      this.queueCallback = null;
-    }
-    this.queueManager.clear();
-    this.logger.log('QueueManager cleared');
-
-    await Promise.allSettled(
-      Array.from(this.refreshStates.values(), ({ promise }) => promise)
-    );
+    await Promise.allSettled(this.activeRefreshes);
     await this.databaseAdapter.destroyNotifications();
     this.logger.log('NotifyBase shutdown completed');
   }
 
   private refreshPackage(packageName: Lowercase<string>): Promise<void> {
-    const existingState = this.refreshStates.get(packageName);
-    if (existingState) {
-      existingState.requestedGeneration += 1;
-      return existingState.promise;
-    }
-
-    const refreshState: IPackageRefreshState = {
-      requestedGeneration: 1,
-      completedGeneration: 0,
-      promise: Promise.resolve(),
+    if (this.isDestroyed) return Promise.resolve();
+    const refresh =
+      this.procedureListBase.fetchProcedureListWithArguments(packageName);
+    this.activeRefreshes.add(refresh);
+    const clear = (): void => {
+      this.activeRefreshes.delete(refresh);
     };
-    this.refreshStates.set(packageName, refreshState);
-    refreshState.promise = Promise.resolve().then(() =>
-      this.runRefreshLoop(packageName, refreshState)
-    );
-    return refreshState.promise;
-  }
-
-  private async runRefreshLoop(
-    packageName: Lowercase<string>,
-    refreshState: IPackageRefreshState
-  ): Promise<void> {
-    try {
-      while (
-        !this.isDestroyed &&
-        refreshState.completedGeneration < refreshState.requestedGeneration
-      ) {
-        const requestedGeneration = refreshState.requestedGeneration;
-        try {
-          await this.procedureListBase.fetchProcedureListWithArguments(
-            packageName
-          );
-        } catch (error) {
-          refreshState.completedGeneration = requestedGeneration;
-          if (
-            this.shouldAbortRefreshAfterError(refreshState, requestedGeneration)
-          ) {
-            throw error;
-          }
-          continue;
-        }
-        refreshState.completedGeneration = requestedGeneration;
-      }
-    } finally {
-      if (this.refreshStates.get(packageName) === refreshState) {
-        this.refreshStates.delete(packageName);
-      }
-    }
-  }
-
-  /** Re-reads mutable refresh state after the awaited metadata request. */
-  private shouldAbortRefreshAfterError(
-    refreshState: IPackageRefreshState,
-    requestedGeneration: number
-  ): boolean {
-    return (
-      this.isDestroyed ||
-      refreshState.requestedGeneration === requestedGeneration
-    );
+    void refresh.then(clear, clear);
+    return refresh;
   }
 
   /**
@@ -198,11 +103,7 @@ export class NotifyBase {
         .trim()
         .toLowerCase() as Lowercase<string>;
       if (packageName.length > 0 && configuredPackages.has(packageName)) {
-        const wasEnqueued = await this.queueManager.enqueueAsync(
-          undefined,
-          packageName
-        );
-        if (!wasEnqueued) await this.refreshPackage(packageName);
+        await this.refreshPackage(packageName);
       }
     };
 
@@ -236,7 +137,7 @@ export class NotifyBase {
   /**
    * Starts metadata refresh work without holding the adapter's per-channel
    * notification queue until the database metadata query completes. Bursts are
-   * still coalesced by packageNotifyCallback and refreshPackage.
+   * coalesced by ProcedureListBase.
    */
   public schedulePackageNotifyCallback(
     notifyData: TNotifyPackageCallback

@@ -21,6 +21,10 @@ guide covers the changes that require application updates when moving from v2.
    transaction-local PostgreSQL or restored Oracle NLS forms.
 8. Run the application on Node.js 20, 22, or 24 and compile its ES2022 package
    consumption with `skipLibCheck: false` before deployment.
+9. Rename `parseInt8AsBigInt` to `parseInt8AsNumber` and replace the removed
+   `callTimeout` config alias with `maxQueryExecutionTime`.
+10. Remove imports of the deleted misspelled aliases `ISerialzerValues` and
+    `ICaseStratefyFactory`, and replace them with their correctly spelled types.
 
 ## Runtime and published output
 
@@ -252,6 +256,42 @@ Oracle procedure metadata now binds `DATE`, `TIMESTAMP`,
 native node-oracledb types. `IN` and `INOUT` values accept a valid native `Date`
 or a strict SQL/ISO string. Zoned strings require an offset. Temporal scalar
 outputs pass through the matching serializer and appear in `outBinds`.
+
+## Structured procedure arguments
+
+Named structured procedure arguments use plain JavaScript objects for `IN` and
+`INOUT` and return plain objects in `outBinds`. Missing declared fields bind as
+SQL `NULL`; unknown or conflicting field names fail before procedure execution.
+Output field names follow `outKeyTransformCase`, and the existing serializer
+registry remains global to the adapter.
+
+The first v3 release supports package-spec Oracle PL/SQL `RECORD` types and
+PostgreSQL named composite types created with `CREATE TYPE ... AS`, including
+table row types. It does not support anonymous/local Oracle records, `%ROWTYPE`,
+collections, dynamic PL/pgSQL `RECORD`, anonymous `ROW(...)`, nested structured
+types, or arrays of structured values.
+
+Oracle PL/SQL `RECORD` binding requires Oracle Database 12.1 or newer. Thick
+mode also requires Oracle Client 12.1 or newer.
+
+PostgreSQL scalar arrays are now passed to `node-postgres` as arrays. Code that
+relied on the old implicit comma-separated string conversion must serialize its
+value explicitly or change the stored procedure signature. Oracle array input
+is rejected until collection bindings have an explicit public contract.
+
+## Removed compatibility aliases
+
+- `callTimeout` was removed from library config; use
+  `maxQueryExecutionTime`. The node-oracledb connection property with the same
+  name remains an internal implementation detail of `queryTimeoutMs`.
+- `parseInt8AsBigInt` was renamed to `parseInt8AsNumber`; `true` asks the
+  PostgreSQL driver to return `int8` as JavaScript numbers.
+- `ISerialzerValues` and `ICaseStratefyFactory` were removed; use
+  `ISerializerValues` and `ICaseStrategyFactory`.
+- `TypeGuards.clone()` and `TypeGuards.deepEqual()` were removed. Use a
+  domain-specific comparison or clone operation with explicit semantics.
+- `procedureObjectList` is now a strict allowlist even when one package is
+  configured.
 
 ## NestJS peer dependency
 

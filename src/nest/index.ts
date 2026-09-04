@@ -9,6 +9,6 @@ export type {
   TDeleteSerializer,
   TGetDataSource,
   TMakeNotify,
-  TSetSerializer,
+  TSetSerializerHandler,
   TUnlistenNotify,
 } from '../types/nest-decorator.types.js';

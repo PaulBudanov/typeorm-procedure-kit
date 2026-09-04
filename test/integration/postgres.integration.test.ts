@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PostgreUnnamedPortalError } from '../../src/adapters/postgres/postgre-portal-name.js';
 import { TypeOrmProcedureKit } from '../../src/index.js';
 
 import {
@@ -56,6 +57,29 @@ async function createPostgresProcedureFixture(
     await client.query(`DROP SCHEMA IF EXISTS "${procedureSchema}" CASCADE`);
     await client.query(`CREATE SCHEMA "${procedureSchema}"`);
     await client.query(`
+      CREATE TYPE "${procedureSchema}".profile_type AS (
+        first_name text,
+        created_at timestamp with time zone,
+        tags text[]
+      )
+    `);
+    await client.query(`
+      CREATE TABLE "${procedureSchema}".account_row (
+        account_id integer,
+        display_name text
+      )
+    `);
+    await client.query(`
+      CREATE TYPE "${procedureSchema}".child_type AS (
+        value text
+      )
+    `);
+    await client.query(`
+      CREATE TYPE "${procedureSchema}".nested_profile_type AS (
+        child "${procedureSchema}".child_type
+      )
+    `);
+    await client.query(`
       CREATE PROCEDURE "${procedureSchema}".echo_values(
         IN p_value integer,
         IN p_label text,
@@ -109,6 +133,58 @@ async function createPostgresProcedureFixture(
       AS $$
       BEGIN
         OPEN out_cursor FOR SELECT 42::integer AS result;
+      END;
+      $$;
+    `);
+    await client.query(`
+      CREATE PROCEDURE "${procedureSchema}".transform_profiles(
+        IN p_input "${procedureSchema}".profile_type,
+        INOUT p_state "${procedureSchema}".profile_type,
+        OUT out_profile "${procedureSchema}".profile_type,
+        OUT out_account "${procedureSchema}".account_row,
+        IN p_values text[]
+      )
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        previous_name text;
+      BEGIN
+        IF p_input IS NULL THEN
+          p_state := NULL;
+          out_profile := NULL;
+          out_account := NULL;
+          RETURN;
+        END IF;
+
+        previous_name := p_state.first_name;
+        p_state := p_input;
+        p_state.first_name := p_input.first_name || ':' || previous_name;
+        p_state.tags := p_values;
+        out_profile := p_input;
+        out_account.account_id := 42;
+        out_account.display_name := p_input.first_name;
+      END;
+      $$;
+    `);
+    await client.query(`
+      CREATE PROCEDURE "${procedureSchema}".consume_profile_array(
+        IN profiles "${procedureSchema}".profile_type[]
+      )
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        NULL;
+      END;
+      $$;
+    `);
+    await client.query(`
+      CREATE PROCEDURE "${procedureSchema}".consume_nested_profile(
+        IN p_value "${procedureSchema}".nested_profile_type
+      )
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        NULL;
       END;
       $$;
     `);
@@ -350,8 +426,160 @@ describe.skipIf(!settings)('PostgreSQL integration', (): void => {
       await kit.initDatabase();
       await expect(
         kit.call(`${procedureSchema}.unnamed_out_cursor`)
-      ).rejects.toThrow('Unsafe PostgreSQL portal name');
+      ).rejects.toThrow(PostgreUnnamedPortalError);
     } finally {
+      await kit.destroy();
+      await dropPostgresProcedureFixture(settings!);
+    }
+  });
+
+  it('binds, materializes, and refreshes named composite metadata', async (): Promise<void> => {
+    await createPostgresProcedureFixture(settings!);
+    const kit = new TypeOrmProcedureKit({
+      ...settings!,
+      config: {
+        ...settings!.config,
+        outKeyTransformCase: 'camelCase',
+        packagesSettings: {
+          packages: [procedureSchema],
+          procedureObjectList: {
+            transformProfiles: `${procedureSchema}.transform_profiles`,
+            consumeProfileArray: `${procedureSchema}.consume_profile_array`,
+            consumeNestedProfile: `${procedureSchema}.consume_nested_profile`,
+          },
+          isNeedDynamicallyUpdatePackagesInfo: true,
+        },
+      },
+    });
+    let isSerializerRegistered = false;
+
+    try {
+      await kit.initDatabase();
+      kit.setSerializer({
+        serializerType: 'TIMESTAMP_TZ',
+        strategy: ({ context }) => `serialized:${context?.name ?? 'unknown'}`,
+      });
+      isSerializerRegistered = true;
+
+      const injectionPayload = `O'Reilly, (safe) $1; SELECT pg_sleep(10); --`;
+      const result = await kit.call(`${procedureSchema}.transform_profiles`, {
+        input: {
+          firstName: injectionPayload,
+          createdAt: new Date('2026-01-02T03:04:05.678Z'),
+          tags: ['input,tag', '(input)'],
+        },
+        state: {
+          firstName: 'before',
+          createdAt: null,
+          tags: [],
+        },
+        values: ['native,array', '(value)', '"quoted"'],
+      });
+
+      expect(result).toEqual({
+        rows: [],
+        outBinds: {
+          pState: {
+            firstName: `${injectionPayload}:before`,
+            createdAt: 'serialized:createdAt',
+            tags: ['native,array', '(value)', '"quoted"'],
+          },
+          outProfile: {
+            firstName: injectionPayload,
+            createdAt: 'serialized:createdAt',
+            tags: ['input,tag', '(input)'],
+          },
+          outAccount: {
+            accountId: 42,
+            displayName: injectionPayload,
+          },
+        },
+      });
+
+      await expect(
+        kit.call(`${procedureSchema}.transform_profiles`, {
+          input: null,
+          state: null,
+          values: [],
+        })
+      ).resolves.toEqual({
+        rows: [],
+        outBinds: {
+          pState: null,
+          outProfile: null,
+          outAccount: null,
+        },
+      });
+      await expect(
+        kit.call(`${procedureSchema}.transform_profiles`, {
+          input: { firstName: 'invalid', unknownField: true },
+          state: null,
+          values: [],
+        })
+      ).rejects.toThrow('Unknown field "unknownField"');
+      await expect(
+        kit.call(`${procedureSchema}.consume_profile_array`, { profiles: [] })
+      ).rejects.toThrow('PostgreSQL composite arrays are not supported');
+      await expect(
+        kit.call(`${procedureSchema}.consume_nested_profile`, {
+          value: { child: { value: 'nested' } },
+        })
+      ).rejects.toThrow('Nested PostgreSQL composites are not supported');
+
+      const refreshedPayload = {
+        input: {
+          firstName: 'refreshed',
+          createdAt: new Date('2026-02-03T04:05:06.789Z'),
+          tags: ['after'],
+          extraNote: 'new metadata field',
+        },
+        state: { firstName: 'before refresh' },
+        values: ['refreshed array'],
+      };
+      await expect(
+        kit.call(`${procedureSchema}.transform_profiles`, refreshedPayload)
+      ).rejects.toThrow('Unknown field "extraNote"');
+
+      await withPostgresClient(settings!, async (client) => {
+        await client.query(
+          `ALTER TYPE "${procedureSchema}".profile_type ADD ATTRIBUTE extra_note text`
+        );
+        await client.query('SELECT pg_notify($1, $2)', [
+          'db_object_event',
+          JSON.stringify({ event: 'CREATE', object: procedureSchema }),
+        ]);
+      });
+
+      await vi.waitFor(
+        async () => {
+          await expect(
+            kit.call(`${procedureSchema}.transform_profiles`, refreshedPayload)
+          ).resolves.toEqual({
+            rows: [],
+            outBinds: {
+              pState: {
+                firstName: 'refreshed:before refresh',
+                createdAt: 'serialized:createdAt',
+                tags: ['refreshed array'],
+                extraNote: 'new metadata field',
+              },
+              outProfile: {
+                firstName: 'refreshed',
+                createdAt: 'serialized:createdAt',
+                tags: ['after'],
+                extraNote: 'new metadata field',
+              },
+              outAccount: {
+                accountId: 42,
+                displayName: 'refreshed',
+              },
+            },
+          });
+        },
+        { timeout: 5000, interval: 50 }
+      );
+    } finally {
+      if (isSerializerRegistered) kit.deleteAllSerializers();
       await kit.destroy();
       await dropPostgresProcedureFixture(settings!);
     }

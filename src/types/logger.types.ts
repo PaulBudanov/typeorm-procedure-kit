@@ -1,10 +1,4 @@
-export interface ILoggerModule {
-  error(message: unknown, stack?: string, context?: string): void;
-
-  log(message: unknown, context?: string): void;
-
-  warn(message: unknown, context?: string): void;
-}
+export type { ILoggerModule } from '../interfaces/logger.interfaces.js';
 
 export type TTypeOrmLoggerLevel =
   | 'query'

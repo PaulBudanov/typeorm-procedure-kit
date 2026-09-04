@@ -1,13 +1,7 @@
+import type { ISafeStringifyOptions } from '../interfaces/safe-stringify.interfaces.js';
+
 const DEFAULT_REDACT_KEYS =
   /password|passwd|pwd|pass|secret|token|authorization|auth|cookie|credential|apikey|api_key|privatekey|private_key/i;
-
-interface ISafeStringifyOptions {
-  maxArrayLength?: number;
-  maxDepth?: number;
-  maxObjectKeys?: number;
-  maxStringLength?: number;
-  redactKeys?: RegExp;
-}
 
 const DEFAULT_OPTIONS: Required<ISafeStringifyOptions> = {
   maxArrayLength: 50,

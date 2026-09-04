@@ -6,8 +6,8 @@ import type { EntityMetadata } from '../../typeorm/metadata/EntityMetadata.js';
 import type { Repository } from '../../typeorm/repository/Repository.js';
 import type {
   IBuildBaseQueryContext,
-  IEntityTargets,
   IRepositoryContext,
+  TEntityTargets,
   TRepositoryPropertyMap,
   TRepositoryPropertyPathsMap,
   TEntityTargetFactory,
@@ -41,7 +41,7 @@ export abstract class AbstractTypeormRepository<
    * Creates an entity target factory keyed by DataSourceOptions.type.
    */
   public static createEntityTargetFactory<TEntityTarget>(
-    entityTargets: IEntityTargets<TEntityTarget>
+    entityTargets: TEntityTargets<TEntityTarget>
   ): TEntityTargetFactory<TEntityTarget> {
     return (dataSource: DataSource): TEntityTarget =>
       entityTargets[dataSource.options.type];

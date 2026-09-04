@@ -1,12 +1,8 @@
 import { DatabaseNamingCache } from './database-naming-cache.js';
 import { ServerError } from './server-error.js';
 
+import type { IProcedureNameParser } from '../interfaces/procedure-name-parser.interfaces.js';
 import type { TDBMapStructure } from '../types/procedure.types.js';
-
-interface IProcedureNameParser extends Record<string, unknown> {
-  processName: Lowercase<string>;
-  packageName: Lowercase<string>;
-}
 
 export class ProcedureNameParser {
   private databaseNamingCache = new DatabaseNamingCache<IProcedureNameParser>();

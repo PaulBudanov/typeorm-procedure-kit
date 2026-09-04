@@ -159,8 +159,7 @@ export class DatabaseInitializerBase {
         this.loggerConfig.bindingLogMode
       ),
       poolSize: this.dbConfig.poolSize,
-      maxQueryExecutionTime:
-        this.dbConfig.maxQueryExecutionTime ?? this.dbConfig.callTimeout,
+      maxQueryExecutionTime: this.dbConfig.maxQueryExecutionTime,
       namingStrategy: this.caseSettings.strategy,
       isolateWhereStatements: true,
       invalidWhereValuesBehavior: {
@@ -285,7 +284,7 @@ export class DatabaseInitializerBase {
     const defaultObject: PostgresConnectionOptions = {
       type: 'postgres',
       driver,
-      parseInt8: config.parseInt8AsBigInt,
+      parseInt8: config.parseInt8AsNumber,
       installExtensions: true,
       uuidExtension: 'uuid-ossp',
       applicationName: config.appName,

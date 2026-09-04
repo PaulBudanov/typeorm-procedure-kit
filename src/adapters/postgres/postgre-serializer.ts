@@ -4,8 +4,8 @@ import { ServerError } from '../../utils/server-error.js';
 import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
 import type {
-  ISetSerializer,
   TSerializerType,
+  TSetSerializer,
 } from '../../types/serializer.types.js';
 import type { CustomTypesConfig, FieldDef } from 'pg';
 
@@ -81,7 +81,7 @@ export class PostgreSerializer extends DatabaseSerializer {
    * @throws Error - If the serializer type is unknown.
    */
 
-  public override setSerializer(options: ISetSerializer): void {
+  public override setSerializer(options: TSetSerializer): void {
     if (this.hasSerializer(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
@@ -107,7 +107,7 @@ export class PostgreSerializer extends DatabaseSerializer {
    * @param serializerType - The type of the serializer to delete.
    */
   public override deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
     if (this.hasSerializer(serializerType.serializerType))
       this.unregisterSerializer(serializerType.serializerType);

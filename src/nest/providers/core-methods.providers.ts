@@ -18,7 +18,7 @@ import type {
   TDeleteSerializer,
   TGetDataSource,
   TMakeNotify,
-  TSetSerializer,
+  TSetSerializerHandler,
   TUnlistenNotify,
 } from '../../types/nest-decorator.types.js';
 import type {
@@ -92,8 +92,10 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   },
   {
     provide: SET_SERIALIZER,
-    useFactory: (service: TypeOrmProcedureKitNestService): TSetSerializer => {
-      return (serializer: Parameters<TSetSerializer>[0]): void => {
+    useFactory: (
+      service: TypeOrmProcedureKitNestService
+    ): TSetSerializerHandler => {
+      return (serializer: Parameters<TSetSerializerHandler>[0]): void => {
         service.setSerializer(serializer);
       };
     },

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotifyBase } from '../../src/core/notify-base.js';
+import { ProcedureListBase } from '../../src/core/procedure-list-base.js';
 import { createAdapterMock, createLogger } from '../support/helpers.js';
 
 describe('NotifyBase', (): void => {
@@ -121,7 +122,7 @@ describe('NotifyBase', (): void => {
     });
   });
 
-  it('coalesces concurrent refreshes for the same package', async (): Promise<void> => {
+  it('delegates every concurrent event to ProcedureListBase for coalescing', async (): Promise<void> => {
     let resolveRefresh!: () => void;
     const refresh = new Promise<void>((resolve) => {
       resolveRefresh = resolve;
@@ -149,23 +150,116 @@ describe('NotifyBase', (): void => {
     });
     await Promise.resolve();
 
-    expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
+    expect(fetchProcedureListWithArguments).toHaveBeenCalledTimes(2);
     resolveRefresh();
     await Promise.all([first, second]);
   });
 
-  it('reruns a package refresh when an event arrives during an in-flight refresh', async (): Promise<void> => {
-    const refreshResolvers: Array<() => void> = [];
-    const fetchProcedureListWithArguments = vi
-      .fn<(_packageName: Lowercase<string>) => Promise<void>>()
-      .mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            refreshResolvers.push(resolve);
-          })
+  it('lets ProcedureListBase recover a failed refresh when a rerun was requested', async (): Promise<void> => {
+    let rejectFirst!: (error: Error) => void;
+    let resolveSecond!: (rows: Array<Record<string, unknown>>) => void;
+    const execute = vi
+      .fn<() => Promise<Array<Record<string, unknown>>>>()
+      .mockReturnValueOnce(
+        new Promise<Array<Record<string, unknown>>>((_, reject) => {
+          rejectFirst = reject;
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise<Array<Record<string, unknown>>>((resolve) => {
+          resolveSecond = resolve;
+        })
       );
+    const logger = createLogger();
+    const adapter = createAdapterMock({
+      generatePackageInfoSql: vi.fn(() => 'select args'),
+      sortArgumentsAlgorithm: vi.fn(() => ({ run: [] })),
+    });
+    const procedureList = new ProcedureListBase(
+      logger,
+      adapter,
+      { execute } as never,
+      {
+        packages: ['pkg'],
+        procedureObjectList: { run: 'pkg.run' },
+      }
+    );
+    const notifyBase = new NotifyBase(adapter, procedureList, logger, {
+      packages: ['pkg'],
+      procedureObjectList: { run: 'pkg.run' },
+    });
+
+    const first = notifyBase.packageNotifyCallback({
+      event: 'CREATE',
+      object: 'PKG',
+    });
+    await vi.waitFor(() => {
+      expect(execute).toHaveBeenCalledOnce();
+    });
+    const second = notifyBase.packageNotifyCallback({
+      event: 'CREATE',
+      object: 'PKG',
+    });
+
+    rejectFirst(new Error('metadata unavailable'));
+    await vi.waitFor(() => {
+      expect(execute).toHaveBeenCalledTimes(2);
+    });
+    resolveSecond([
+      {
+        procedure_name: 'run',
+        argument_name: 'p_id',
+        argument_type: 'NUMBER',
+        order: 1,
+        mode: 'IN',
+      },
+    ]);
+    await Promise.all([first, second]);
+    expect(procedureList.packagesWithProceduresList.get('pkg')).toEqual({
+      run: [],
+    });
+    await notifyBase.destroy();
+    await procedureList.destroy();
+  });
+
+  it('logs failed scheduled refreshes without an unhandled rejection', async (): Promise<void> => {
+    const logger = createLogger();
     const notifyBase = new NotifyBase(
       createAdapterMock(),
+      {
+        fetchProcedureListWithArguments: vi
+          .fn()
+          .mockRejectedValue(new Error('refresh failed')),
+      } as never,
+      logger,
+      {
+        packages: ['pkg'],
+        procedureObjectList: {},
+      }
+    );
+
+    notifyBase.schedulePackageNotifyCallback({
+      event: 'CREATE',
+      object: 'PKG',
+    });
+
+    await vi.waitFor(() => {
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to process package notification: refresh failed',
+        expect.any(String)
+      );
+    });
+  });
+
+  it('waits for an active refresh during destroy and rejects later work', async (): Promise<void> => {
+    let resolveRefresh!: () => void;
+    const refresh = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const fetchProcedureListWithArguments = vi.fn().mockReturnValue(refresh);
+    const destroyNotifications = vi.fn().mockResolvedValue(undefined);
+    const notifyBase = new NotifyBase(
+      createAdapterMock({ destroyNotifications }),
       { fetchProcedureListWithArguments } as never,
       createLogger(),
       {
@@ -173,24 +267,25 @@ describe('NotifyBase', (): void => {
         procedureObjectList: {},
       }
     );
-
-    const first = notifyBase.packageNotifyCallback({
+    notifyBase.schedulePackageNotifyCallback({
       event: 'CREATE',
       object: 'PKG',
     });
     await vi.waitFor(() => {
       expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
     });
-    const second = notifyBase.packageNotifyCallback({
+
+    const destroy = notifyBase.destroy();
+    notifyBase.schedulePackageNotifyCallback({
       event: 'CREATE',
       object: 'PKG',
     });
+    await Promise.resolve();
 
-    refreshResolvers[0]!();
-    await vi.waitFor(() => {
-      expect(fetchProcedureListWithArguments).toHaveBeenCalledTimes(2);
-    });
-    refreshResolvers[1]!();
-    await Promise.all([first, second]);
+    expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
+    expect(destroyNotifications).not.toHaveBeenCalled();
+    resolveRefresh();
+    await destroy;
+    expect(destroyNotifications).toHaveBeenCalledOnce();
   });
 });

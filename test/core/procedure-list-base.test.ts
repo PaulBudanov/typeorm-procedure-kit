@@ -170,6 +170,75 @@ describe('ProcedureListBase', (): void => {
     );
   });
 
+  it('publishes validated structured metadata from the vendor preparation hook', async (): Promise<void> => {
+    const sortArgumentsAlgorithm = vi.fn(() => ({ run: [] }));
+    const prepareProcedureMetadataRows = vi.fn(() => [
+      {
+        procedureName: 'RUN',
+        argumentName: 'P_ADDRESS',
+        argumentType: 'ADDRESS_TYPE',
+        order: 1,
+        mode: 'IN/OUT',
+        structuredType: {
+          kind: 'postgres-composite',
+          schema: 'app',
+          typeName: 'address_type',
+          typeOid: '1234',
+          fields: [
+            { name: 'ZIP', argumentType: 'int4', order: '2' },
+            { name: 'CITY', argumentType: 'text', order: 1 },
+          ],
+        },
+      },
+    ]);
+    const procedureList = new ProcedureListBase(
+      createLogger(),
+      createAdapterMock({
+        generatePackageInfoSql: vi.fn(() => 'select args'),
+        prepareProcedureMetadataRows,
+        sortArgumentsAlgorithm,
+      }),
+      {
+        execute: vi.fn().mockResolvedValue([
+          {
+            PROCEDURE_NAME: 'RUN',
+            ARGUMENT_NAME: 'P_ADDRESS',
+            ARGUMENT_TYPE: 'record',
+            ORDER: 1,
+            MODE: 'INOUT',
+          },
+        ]),
+      } as never,
+      {
+        packages: ['app'],
+        procedureObjectList: { run: 'app.run' },
+      }
+    );
+
+    await procedureList.initPackagesMap();
+
+    expect(prepareProcedureMetadataRows).toHaveBeenCalledOnce();
+    expect(sortArgumentsAlgorithm).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          structuredType: {
+            kind: 'postgres-composite',
+            schema: 'app',
+            typeName: 'address_type',
+            typeOid: 1234,
+            fields: [
+              { name: 'CITY', argumentType: 'text', order: 1 },
+              { name: 'ZIP', argumentType: 'int4', order: 2 },
+            ],
+          },
+        }),
+      ],
+      ['app.run'],
+      'app',
+      1
+    );
+  });
+
   it.each([
     { MODE: 'SIDEWAYS', ORDER: 1, SIZE: 128 },
     { MODE: 'IN', ORDER: Number.NaN, SIZE: 128 },
@@ -376,6 +445,57 @@ describe('ProcedureListBase', (): void => {
     ).rejects.toThrow('resourceLimits.maxMetadataRows (1)');
     expect(sortArgumentsAlgorithm).not.toHaveBeenCalled();
     void procedureList.destroy();
+  });
+
+  it('counts structured fields toward the metadata resource limit', async (): Promise<void> => {
+    const sortArgumentsAlgorithm = vi.fn();
+    const procedureList = new ProcedureListBase(
+      createLogger(),
+      createAdapterMock({
+        generatePackageInfoSql: vi.fn(() => 'select args'),
+        prepareProcedureMetadataRows: vi.fn(() => [
+          {
+            procedureName: 'RUN',
+            argumentName: 'P_VALUE',
+            argumentType: 'VALUE_TYPE',
+            order: 1,
+            mode: 'IN',
+            structuredType: {
+              kind: 'postgres-composite',
+              schema: 'app',
+              typeName: 'value_type',
+              fields: [
+                { name: 'FIRST', argumentType: 'text', order: 1 },
+                { name: 'SECOND', argumentType: 'text', order: 2 },
+              ],
+            },
+          },
+        ]),
+        sortArgumentsAlgorithm,
+      }),
+      {
+        execute: vi.fn().mockResolvedValue([
+          {
+            PROCEDURE_NAME: 'RUN',
+            ARGUMENT_NAME: 'P_VALUE',
+            ARGUMENT_TYPE: 'record',
+            ORDER: 1,
+            MODE: 'IN',
+          },
+        ]),
+      } as never,
+      {
+        packages: ['app'],
+        procedureObjectList: { run: 'app.run' },
+      },
+      2
+    );
+
+    await expect(procedureList.initPackagesMap()).rejects.toThrow(
+      'resourceLimits.maxMetadataRows (2)'
+    );
+    expect(sortArgumentsAlgorithm).not.toHaveBeenCalled();
+    await procedureList.destroy();
   });
 
   it('waits for an in-flight background retry and never publishes after destroy', async (): Promise<void> => {

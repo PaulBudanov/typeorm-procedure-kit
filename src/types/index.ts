@@ -17,10 +17,14 @@ export type {
 // Procedures
 export type {
   IProcedureArgumentBase,
+  IProcedureStructuredField,
+  IProcedureStructuredType,
   TDBMapStructure,
   TProcedureArgumentList,
+  TProcedureArgumentMode,
   TProcedurePayload,
   TProcedurePayloadInput,
+  TProcedureStructuredTypeKind,
 } from './procedure.types.js';
 
 // Notification
@@ -43,14 +47,13 @@ export type {
 export type {
   ISerializerContext,
   ISerializerValues,
-  ISerialzerValues,
-  ISetSerializer,
   ISerializerNativeValueMap,
   TSerializerInput,
   TSerializerNativeValue,
   TSerializerStrategy,
   TSerializerType,
   TTemporalSerializerType,
+  TSetSerializer,
 } from './serializer.types.js';
 
 // Utility
@@ -83,7 +86,6 @@ export type {
 
 // Strategy
 export type {
-  ICaseStratefyFactory,
   ICaseStrategyFactory,
   IColumnNameTransformStrategy,
   TKeyTransformCase,
@@ -108,15 +110,15 @@ export type {
   TDeleteSerializer,
   TGetDataSource,
   TMakeNotify,
-  TSetSerializer,
+  TSetSerializerHandler,
   TUnlistenNotify,
 } from './nest-decorator.types.js';
 
 // TypeORM Extend
 export type {
   IBuildBaseQueryContext,
-  IEntityTargets,
   IRepositoryContext,
+  TEntityTargets,
   TEntityTargetFactory,
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,

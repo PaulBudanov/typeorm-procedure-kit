@@ -1,16 +1,20 @@
 import camelCase from 'lodash/camelCase.js';
 import snakeCase from 'lodash/snakeCase.js';
 
-export abstract class StringUtilities {
-  public static toCamelCase(input: string | undefined): string {
+class StringUtilitiesApi {
+  public toCamelCase(input: string | undefined): string {
     return camelCase(input);
   }
-  public static toSnakeCase(input: string | undefined): string {
+  public toSnakeCase(input: string | undefined): string {
     return snakeCase(input);
   }
 
-  public static toLowerCase(input: string | undefined): string {
+  public toLowerCase(input: string | undefined): string {
     if (!input) return '';
     return input.toLowerCase();
   }
 }
+
+const stringUtilities = new StringUtilitiesApi();
+
+export { stringUtilities as StringUtilities };

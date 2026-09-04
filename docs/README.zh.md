@@ -106,7 +106,7 @@ const settings: IModuleConfig = {
   logger: { module: logger },
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -241,7 +241,7 @@ const settings: IModuleConfig = {
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -300,20 +300,20 @@ const settings: IModuleConfig = {
   10000 行 metadata、每个 LOB 16 MiB、1000 个待处理通知事件，以及每个事件 10000
   个不同的 Oracle CQN ROWID。`maxProcedureBytes` 使用近似的逻辑 payload 计数，
   不是 heap、wire size 或 database driver allocation 的精确测量。
-- `callTimeout`：`maxQueryExecutionTime` 的 deprecated alias。
 - `outKeyTransformCase`：`camelCase`、`lowerCase` 或 `snakeCase`；默认值为
   `camelCase`。
 - `isNeedRegisterDefaultSerializers`：注册默认的日期和时间序列化器。
 - `entity`：实体发现和可选的同步设置。
 - `migration`：迁移发现和可选的启动时迁移执行设置。
-- `isRegisterShutdownHandlers`：注册进程信号处理器，以便调用 `destroy()`。
+- `isRegisterShutdownHandlers`：为独立进程注册信号处理器。第一个信号会移除
+  kit 自己的 handlers，等待 `destroy()`，然后重新发送同一信号，以保留标准退出语义。
 
 PostgreSQL 选项：
 
-- `parseInt8AsBigInt`：PostgreSQL 配置类型要求的选项，并作为 `parseInt8`
+- `parseInt8AsNumber`：PostgreSQL 配置类型要求的选项，并作为 `parseInt8`
   传递给内置驱动。为 `true` 时，`node-postgres` 会把 `int8` 值解析为
   JavaScript number，而不是 string；超过 `Number.MAX_SAFE_INTEGER` 的值可能
-  丢失精度，尽管该选项名称中包含 BigInt。
+  丢失精度。
 - `packagesSettings.listenEventName`：当
   `isNeedDynamicallyUpdatePackagesInfo` 为 `true` 时必填；用于覆盖包更新通知
   的 channel。
@@ -370,6 +370,12 @@ console.log(result.outBinds);
 
 过程负载可以是对象、数组、`null` 或 `undefined`。运行时会拒绝 string 和 number
 这类标量负载。
+
+命名结构化参数的 `IN`/`INOUT` 输入使用普通对象，输出则以普通对象形式返回到
+`outBinds`。目前支持 package-spec Oracle PL/SQL `RECORD` 以及 PostgreSQL 命名
+composite/table-row 类型。Oracle `RECORD` 要求 Oracle Database 12.1 或更高版本；
+Thick 模式还要求 Oracle Client 12.1 或更高版本。未知或冲突字段会被拒绝，缺失字段
+按 SQL `NULL` 绑定。
 
 `rows` 按 metadata 顺序包含所有 REF CURSOR rows。`outBinds` 使用
 `outKeyTransformCase` 转换后的 key 保留每个 cursor 和 scalar `OUT`/`INOUT`
@@ -548,7 +554,7 @@ import type { IModuleConfig } from 'typeorm-procedure-kit';
 
 const config: IModuleConfig['config'] = {
   type: 'postgres',
-  parseInt8AsBigInt: true,
+  parseInt8AsNumber: true,
   master: {
     host: 'localhost',
     port: 5432,
@@ -585,6 +591,9 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 同步设置时，将 `true` 作为 `forRoot()` 的第二个参数传入即可让 module 成为全局模块。
 Nest service 会在 `onModuleInit()` 中初始化数据库，并在应用关闭期间调用
 `destroy()`。
+Nest 应用应使用 `app.enableShutdownHooks()`，并保持
+`isRegisterShutdownHandlers` 关闭，避免两个 lifecycle owner 在其他 providers
+完成 cleanup 前终止进程。
 
 NestJS 入口还导出用于注入单个方法和 lazy DataSource access 的装饰器：
 
@@ -747,6 +756,9 @@ await db.destroy();
 部分清理失败，会抛出 `AggregateError`。设置
 `isRegisterShutdownHandlers: true` 可自动注册进程信号处理器，或者手动调用
 `db.registerShutdownHandlers()`。
+这些 handlers 面向独立进程：cleanup 后会重新发送原始信号；cleanup 期间的第二个
+信号使用 Node.js 默认终止行为。由 framework 管理的应用应从自身 lifecycle hook
+调用 `destroy()`。
 
 ## 手动 materialization benchmark
 

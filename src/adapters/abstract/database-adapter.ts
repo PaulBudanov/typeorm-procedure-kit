@@ -6,6 +6,7 @@ import type {
   IAdapterNotificationCapability,
   IAdapterSerializerCapability,
 } from './adapter-capabilities.js';
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type { IDatabaseAdapterContract } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
@@ -20,8 +21,8 @@ import type {
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type {
-  ISetSerializer,
   TSerializerTypeCastWithoutFormat,
+  TSetSerializer,
 } from '../../types/serializer.types.js';
 import type {
   IBindingsObjectReturn,
@@ -77,23 +78,16 @@ export abstract class DatabaseAdapter<
       procedureListBase,
       packageName,
       packagesLength,
-      { vendor: 'Database', includeAllWhenSinglePackage: true }
+      { vendor: 'Database' }
     );
   }
 
-  protected normalizeProcedureMetadata<TOverloadIdentity>(
+  protected normalizeProcedureMetadata(
     rawArguments: Array<IProcedureArgumentBase>,
     procedureListBase: Array<Lowercase<string>>,
     packageName: Lowercase<string>,
     packagesLength: number,
-    options: {
-      vendor: 'Database' | 'Oracle' | 'PostgreSQL';
-      noArgumentSentinel?: string;
-      includeAllWhenSinglePackage?: boolean;
-      getOverloadIdentity?: (
-        argument: IProcedureArgumentBase
-      ) => TOverloadIdentity | undefined;
-    }
+    options: IProcedureMetadataOptions
   ): TProcedureArgumentList {
     return this.procedureMetadataNormalizer.normalize(
       rawArguments,
@@ -182,6 +176,13 @@ export abstract class DatabaseAdapter<
     procedureMetadataSql?: string
   ): string;
 
+  /** Returns common metadata rows unchanged unless a vendor must collapse them. */
+  public prepareProcedureMetadataRows(
+    rows: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
+    return rows;
+  }
+
   /**
    * Converts named `:PARAM` placeholders and parameter values to the binding
    * format expected by the current database driver.
@@ -230,21 +231,10 @@ export abstract class DatabaseAdapter<
   ): Promise<IProcedureResult<TRow, TOut>>;
 
   /**
-   * Narrows the adapter-owned output record at the single generic boundary.
-   * Runtime keys and values have already been normalized before this helper;
-   * the caller supplies the public TOut shape.
-   */
-  protected asProcedureOut(
-    value: Record<string, unknown>
-  ): Record<string, unknown> {
-    return value;
-  }
-
-  /**
    * Registers or replaces a serializer for driver result values.
    * @param options - serializer type and conversion strategy.
    */
-  public setSerializer(options: ISetSerializer): void {
+  public setSerializer(options: TSetSerializer): void {
     this.serializer.setSerializer(options);
   }
 
@@ -253,7 +243,7 @@ export abstract class DatabaseAdapter<
    * @param serializerType - serializer type to remove.
    */
   public deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
     this.serializer.deleteSerializer(serializerType);
   }

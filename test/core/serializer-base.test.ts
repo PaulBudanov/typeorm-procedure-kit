@@ -5,9 +5,9 @@ import { ServerError } from '../../src/utils/server-error.js';
 import { createAdapterMock } from '../support/helpers.js';
 
 import type {
-  ISetSerializer,
   TSerializerInput,
   TSerializerType,
+  TSetSerializer,
 } from '../../src/types/serializer.types.js';
 
 describe('SerializerBase', (): void => {
@@ -40,7 +40,7 @@ describe('SerializerBase', (): void => {
     const readOnly = serializerBase.serializerReadOnlyMapping;
     const mutationAttempt = readOnly as unknown as Map<
       TSerializerType,
-      ISetSerializer
+      TSetSerializer
     >;
 
     expect(readOnly.get('DATE')).toBe(mapping.get('DATE'));

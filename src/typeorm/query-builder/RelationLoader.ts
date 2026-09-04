@@ -414,12 +414,16 @@ export class RelationLoader {
       delete entity[resolveIndex];
       delete entity[dataIndex];
       entity[promiseIndex] = value;
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      value.then(
-        // ensure different value is not assigned yet
-        (result) =>
-          entity[promiseIndex] === value ? setData(entity, result) : result
-      );
+      // Keep the original promise on the entity, but handle rejection on the
+      // discarded assignment child so lazy-load failures do not become a second
+      // unhandled rejection.
+      void value
+        .then(
+          // ensure different value is not assigned yet
+          (result) =>
+            entity[promiseIndex] === value ? setData(entity, result) : result
+        )
+        .catch(() => undefined);
       return value;
     };
 

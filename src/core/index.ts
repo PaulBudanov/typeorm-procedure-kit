@@ -24,22 +24,16 @@ import type {
   IOracleOptionsNotify,
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
+import type { TProcedureKitState } from '../types/procedure-kit.types.js';
 import type {
   TProcedurePayload,
   TProcedurePayloadInput,
 } from '../types/procedure.types.js';
 import type {
-  ISetSerializer,
   TSerializerTypeCastWithoutFormat,
+  TSetSerializer,
 } from '../types/serializer.types.js';
 import type { IProcedureResult } from '../types/utility.types.js';
-
-type TProcedureKitState =
-  | 'new'
-  | 'initializing'
-  | 'ready'
-  | 'destroying'
-  | 'destroyed';
 
 export class TypeOrmProcedureKit {
   private readonly databaseInitializerBase: DatabaseInitializerBase;
@@ -164,14 +158,10 @@ export class TypeOrmProcedureKit {
     this.state = 'initializing';
     const initPromise = this.initDatabaseInternal();
     this.initPromise = initPromise;
-    void initPromise.then(
-      () => {
-        if (this.initPromise === initPromise) this.initPromise = null;
-      },
-      () => {
-        if (this.initPromise === initPromise) this.initPromise = null;
-      }
-    );
+    const clearInitPromise = (): void => {
+      if (this.initPromise === initPromise) this.initPromise = null;
+    };
+    void initPromise.then(clearInitPromise, clearInitPromise);
     return initPromise;
   }
 
@@ -213,12 +203,11 @@ export class TypeOrmProcedureKit {
           } catch (error) {
             rollbackErrors.push(ServerError.ENSURE_SERVER_ERROR({ error }));
             this.state = 'destroyed';
-            this.removeShutdownHandlers();
           }
         } else {
           this.state = 'destroyed';
-          this.removeShutdownHandlers();
         }
+        if (this.state === 'destroyed') this.removeShutdownHandlers();
       }
 
       if (rollbackErrors.length > 0) {
@@ -369,12 +358,12 @@ export class TypeOrmProcedureKit {
   /**
    * Registers a custom serializer for the given type.
    * If a serializer with the same type already exists, it will be overridden.
-   * @param {ISetSerializer} serializer - an object with the following properties:
+   * @param {TSetSerializer} serializer - an object with the following properties:
    *   serializerType - The type of the data to be serialized (e.g. 'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ').
    *   strategy - A function that takes a value of the given type and returns a serialized string.
    * @throws {Error} - If the serializer type is unknown.
    */
-  public setSerializer(serializer: ISetSerializer): void {
+  public setSerializer(serializer: TSetSerializer): void {
     this.requireSerializerBase().setSerializer(serializer);
   }
 
@@ -383,7 +372,7 @@ export class TypeOrmProcedureKit {
    * @param serializerType - The type of the serializer to delete.
    */
   public deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
     this.requireSerializerBase().deleteSerializer(serializerType);
   }
@@ -565,15 +554,33 @@ export class TypeOrmProcedureKit {
 
     SHUTDOWN_SIGNALS.forEach((signal) => {
       const shutdownHandler = (): void => {
+        // Restore the process default immediately so a second signal can force
+        // termination while graceful cleanup is still running.
+        this.removeShutdownHandlers();
         this.logger.log(`Received ${signal}, initiating shutdown...`);
-        void this.destroy().catch((error: unknown) => {
-          const shutdownError = ServerError.ENSURE_SERVER_ERROR({ error });
-          this.logger.error(`Shutdown error: ${shutdownError.message}`);
-        });
+        void this.shutdownFromSignal(signal);
       };
       this.shutdownHandlers.set(signal, shutdownHandler);
       process.once(signal, shutdownHandler);
     });
+  }
+
+  private async shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
+    try {
+      await this.destroy();
+    } catch (error: unknown) {
+      const shutdownError = ServerError.ENSURE_SERVER_ERROR({ error });
+      this.logger.error(`Shutdown error: ${shutdownError.message}`);
+    } finally {
+      try {
+        process.kill(process.pid, signal);
+      } catch (error: unknown) {
+        const signalError = ServerError.ENSURE_SERVER_ERROR({ error });
+        this.logger.error(
+          `Failed to re-send ${signal} after shutdown: ${signalError.message}`
+        );
+      }
+    }
   }
 
   private removeShutdownHandlers(): void {

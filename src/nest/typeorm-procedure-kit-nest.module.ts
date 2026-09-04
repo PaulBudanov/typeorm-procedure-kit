@@ -89,7 +89,7 @@ export class TypeOrmProcedureKitNestModule {
     };
     return {
       module: TypeOrmProcedureKitNestModule,
-      global: options.isGlobal !== undefined ? options.isGlobal : false,
+      global: options.isGlobal ?? false,
       imports: options.imports ?? [],
       providers: [
         configProvider,

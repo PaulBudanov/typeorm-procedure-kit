@@ -10,36 +10,6 @@ const ownedFiles = ['src/**/*.ts'];
 const typeormFiles = ['src/typeorm/**/*.ts'];
 const testFiles = ['test/**/*.ts', 'vitest.config.ts'];
 const typeormIgnores = ['src/typeorm/**/*.ts'];
-const staticApiCompatibilityFiles = [
-  'src/adapters/oracle/oracle-sql.ts',
-  'src/adapters/postgres/postgre-sql.ts',
-  'src/case-strategy/case-strategy-factory.ts',
-  'src/utils/async-utils.ts',
-  'src/utils/database-error-handler.ts',
-  'src/utils/database-options-executor.ts',
-  'src/utils/date-formatter.ts',
-  'src/utils/query-log-context-builder.ts',
-  'src/utils/query-log-context.ts',
-  'src/utils/sql-identifier.ts',
-  'src/utils/string-utilities.ts',
-  'src/utils/type-guards.ts',
-  'src/utils/typeorm-helpers.ts',
-];
-const genericContractCompatibilityFiles = [
-  'src/adapters/abstract/database-adapter.ts',
-  'src/types/adapter.types.ts',
-  'src/types/utility.types.ts',
-  'src/utils/event-bus.ts',
-  'src/utils/server-error.ts',
-];
-const callbackContractCompatibilityFiles = [
-  'src/types/utility.types.ts',
-  'src/utils/event-bus.ts',
-];
-const deprecatedCompatibilityFiles = [
-  'src/core/database-initializer-base.ts',
-  'src/types/index.ts',
-];
 
 function scopeConfigs(configs, files, ignores = []) {
   return configs.map((config) => ({
@@ -97,15 +67,6 @@ const namingConventionRule = [
     selector: 'interface',
     format: ['PascalCase'],
     custom: { regex: '^I[A-Z]', match: true },
-  },
-  {
-    selector: 'typeAlias',
-    filter: {
-      regex:
-        '^(ISerialzerValues|ISetSerializer|ICaseStratefyFactory|IEntityTargets)$',
-      match: true,
-    },
-    format: null,
   },
   {
     selector: 'typeAlias',
@@ -297,6 +258,7 @@ export default defineConfig(
       '@typescript-eslint/no-import-type-side-effects': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/only-throw-error': 'error',
+      '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/return-await': ['error', 'in-try-catch'],
       '@typescript-eslint/restrict-template-expressions': [
@@ -326,6 +288,8 @@ export default defineConfig(
   {
     files: typeormFiles,
     rules: {
+      // TODO: Bring vendored TypeORM up to the OWNED lint profile while
+      // preserving its upstream-compatible public and runtime contracts.
       ...compatibilityRules,
       'no-console': 'warn',
     },
@@ -341,6 +305,8 @@ export default defineConfig(
       },
     },
     rules: {
+      // TODO: Bring tests up to the OWNED lint profile as fixtures and mocks
+      // are migrated to the same strict type-safety requirements.
       ...importRules,
       '@typescript-eslint/consistent-type-imports': [
         'error',
@@ -353,12 +319,8 @@ export default defineConfig(
         { checksVoidReturn: false },
       ],
       '@typescript-eslint/naming-convention': namingConventionRule,
-      // Test doubles intentionally keep async signatures and Vitest methods
-      // are designed to be passed to expect without preserving `this`.
       '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/unbound-method': 'off',
-      // Type-shaping fixtures exercise declaration surfaces that are erased at
-      // runtime; simplifying their assertions would remove that coverage.
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
@@ -382,8 +344,6 @@ export default defineConfig(
   {
     files: [...ownedFiles, ...typeormFiles, ...testFiles],
     rules: {
-      // typescript-eslint does not expose a decorator selector; enforce the
-      // same PascalCase contract on direct and called decorator identifiers.
       'no-restricted-syntax': [
         'error',
         {
@@ -427,45 +387,56 @@ export default defineConfig(
   {
     files: ['src/index.ts'],
     rules: {
-      // Bootstrap exports are intentionally live bindings initialized after
-      // the worker/primary process split.
       'import-x/no-mutable-exports': 'off',
     },
   },
 
   {
-    files: staticApiCompatibilityFiles,
+    files: ownedFiles,
+    ignores: [
+      ...typeormIgnores,
+      '**/*.d.ts',
+      'src/interfaces/**/*.ts',
+      'src/types/**/*.ts',
+    ],
     rules: {
-      // These classes are existing namespace-style runtime APIs. Converting
-      // them to objects or free functions would change their public shape.
-      '@typescript-eslint/no-extraneous-class': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'TSInterfaceDeclaration',
+          message: 'Move interfaces to src/interfaces/*.interfaces.ts.',
+        },
+        {
+          selector: 'TSTypeAliasDeclaration',
+          message: 'Move type aliases to src/types/*.types.ts.',
+        },
+      ],
     },
   },
 
   {
-    files: genericContractCompatibilityFiles,
+    files: ['src/interfaces/**/*.ts'],
     rules: {
-      // These generics preserve inference and overload compatibility for the
-      // published callback and adapter contracts.
-      '@typescript-eslint/no-unnecessary-type-parameters': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'TSTypeAliasDeclaration',
+          message: 'Type aliases belong in src/types/*.types.ts.',
+        },
+      ],
     },
   },
 
   {
-    files: callbackContractCompatibilityFiles,
+    files: ['src/types/**/*.ts'],
     rules: {
-      // Public listeners deliberately accept synchronous void and asynchronous
-      // callbacks; replacing void with undefined would narrow compatibility.
-      '@typescript-eslint/no-invalid-void-type': 'off',
-    },
-  },
-
-  {
-    files: deprecatedCompatibilityFiles,
-    rules: {
-      // Deprecated names remain referenced only to implement and re-export the
-      // documented backwards-compatible aliases.
-      '@typescript-eslint/no-deprecated': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'TSInterfaceDeclaration',
+          message: 'Interfaces belong in src/interfaces/*.interfaces.ts.',
+        },
+      ],
     },
   }
 );

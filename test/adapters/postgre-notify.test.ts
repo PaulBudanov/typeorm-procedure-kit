@@ -33,6 +33,28 @@ describe('PostgreNotify', (): void => {
     ).toBe('LISTEN "custom_event"');
   });
 
+  it.each([
+    { maxRetries: 0 },
+    { maxRetries: Number.NaN },
+    { retryDelayMs: -1 },
+    { retryDelayMs: Infinity },
+    { retryAfterMaxDelayMs: 1.5 },
+  ])(
+    'rejects invalid retry options before opening a connection',
+    async (options) => {
+      const createSingleConnection = vi.fn();
+      const notify = new PostgreNotify(
+        { createSingleConnection } as never,
+        createLogger()
+      );
+
+      await expect(
+        notify.listenNotify('LISTEN channel_name', vi.fn(), options)
+      ).rejects.toThrow(RangeError);
+      expect(createSingleConnection).not.toHaveBeenCalled();
+    }
+  );
+
   it('registers, receives, and unregisters notifications', async (): Promise<void> => {
     const client = new FakePgClient();
     client.query.mockResolvedValue(undefined);
@@ -511,6 +533,39 @@ describe('PostgreNotify', (): void => {
     expect(connection.closeSingleConnection).not.toHaveBeenCalledWith(
       secondClient
     );
+  });
+
+  it('preserves a quoted mixed-case channel when restoring a listener', async (): Promise<void> => {
+    const firstClient = new FakePgClient();
+    firstClient.query.mockResolvedValue(undefined);
+    const secondClient = new FakePgClient();
+    secondClient.query.mockResolvedValue(undefined);
+    let connectionLossCallback!: () => void | Promise<void>;
+    const connection = {
+      createSingleConnection: vi
+        .fn<() => Promise<FakePgClient>>()
+        .mockResolvedValueOnce(firstClient)
+        .mockResolvedValueOnce(secondClient),
+      closeSingleConnection: vi.fn().mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(
+        (_client: FakePgClient, callback: () => void | Promise<void>) => {
+          connectionLossCallback = callback;
+        }
+      ),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+
+    await notify.listenNotify('LISTEN "MixedCase"', vi.fn());
+    await connectionLossCallback();
+
+    await vi.waitFor(() => {
+      expect(notify.getNotificationPool().get('MixedCase')).toBe(secondClient);
+    });
+
+    expect(firstClient.query).toHaveBeenCalledWith('LISTEN "MixedCase"');
+    expect(secondClient.query).toHaveBeenCalledWith('LISTEN "MixedCase"');
+    await notify.unlistenNotify('MixedCase');
   });
 
   it('waits for an in-flight restore and closes the restored listener during destroy', async (): Promise<void> => {

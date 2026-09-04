@@ -114,7 +114,7 @@ const settings: IModuleConfig = {
   logger: { module: logger },
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -247,7 +247,7 @@ const settings: IModuleConfig = {
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -316,22 +316,22 @@ Common options:
   Oracle CQN ROWIDs per event. `maxProcedureBytes` uses approximate logical
   payload accounting; it is not an exact heap, wire, or driver-allocation
   measurement.
-- `callTimeout`: deprecated alias for `maxQueryExecutionTime`.
 - `outKeyTransformCase`: `camelCase`, `lowerCase`, or `snakeCase`; defaults to
   `camelCase`.
 - `isNeedRegisterDefaultSerializers`: opt-in flag for the default temporal
   serializers; it defaults to `false`.
 - `entity`: entity discovery and optional synchronization settings.
 - `migration`: migration discovery and optional startup execution settings.
-- `isRegisterShutdownHandlers`: registers process signal handlers that call
-  `destroy()`.
+- `isRegisterShutdownHandlers`: registers standalone-process signal handlers.
+  The first signal removes the kit handlers, awaits `destroy()`, and re-sends
+  the same signal so the process keeps its standard signal exit semantics.
 
 PostgreSQL options:
 
-- `parseInt8AsBigInt`: required by the PostgreSQL config type and passed to the
+- `parseInt8AsNumber`: required by the PostgreSQL config type and passed to the
   bundled driver as `parseInt8`. When `true`, `node-postgres` parses `int8`
   values as JavaScript numbers instead of strings; values above
-  `Number.MAX_SAFE_INTEGER` can lose precision despite the option name.
+  `Number.MAX_SAFE_INTEGER` can lose precision.
 - `packagesSettings.listenEventName`: required when
   `isNeedDynamicallyUpdatePackagesInfo` is `true`; overrides the package update
   notification channel.
@@ -391,6 +391,21 @@ configured packages/schemas. `call()` cannot be used without
 
 Procedure payloads can be objects, arrays, `null`, or `undefined`. Scalar
 strings and numbers are rejected at runtime.
+
+Named structured arguments use plain objects. Oracle package-spec PL/SQL
+`RECORD` arguments and PostgreSQL named composite/table-row arguments support
+`IN`, `OUT`, and `INOUT`. Missing declared fields bind as SQL `NULL`; unknown or
+conflicting field names are rejected. Structured outputs are plain objects in
+`outBinds`, with field names transformed by `outKeyTransformCase`.
+
+Oracle PL/SQL `RECORD` binding requires Oracle Database 12.1 or newer. Thick
+mode also requires Oracle Client 12.1 or newer.
+
+The first structured-type implementation excludes nested structured values,
+structured arrays, Oracle collections, anonymous/local records and `%ROWTYPE`,
+and dynamic PL/pgSQL `RECORD`/anonymous `ROW(...)`. PostgreSQL scalar arrays are
+passed to the driver as native arrays; Oracle arrays are rejected until
+collection binding is supported explicitly.
 
 In v3, `call()` always resolves to an `IProcedureResult` envelope:
 
@@ -599,7 +614,7 @@ import type { IModuleConfig } from 'typeorm-procedure-kit';
 
 const config: IModuleConfig['config'] = {
   type: 'postgres',
-  parseInt8AsBigInt: true,
+  parseInt8AsNumber: true,
   master: {
     host: 'localhost',
     port: 5432,
@@ -636,6 +651,9 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 For synchronous setup, pass `true` as the second `forRoot()` argument to make
 the module global. The Nest service initializes the database during
 `onModuleInit()` and calls `destroy()` during application shutdown.
+Use Nest's `app.enableShutdownHooks()` and leave `isRegisterShutdownHandlers`
+disabled in Nest applications; enabling both lifecycle owners can terminate the
+process before unrelated Nest providers finish cleanup.
 
 The NestJS entry point also exports decorators for injecting individual methods
 and lazy DataSource access:
@@ -803,6 +821,10 @@ await db.destroy();
 procedure and naming caches, and throws `AggregateError` if part of cleanup
 fails. Set `isRegisterShutdownHandlers: true` to register process signal
 handlers automatically, or call `db.registerShutdownHandlers()` yourself.
+These handlers are intended for standalone processes: after cleanup the
+original signal is re-sent, while a second signal during cleanup uses Node.js's
+default termination behavior. Framework-managed applications should call
+`destroy()` from their own lifecycle hook instead.
 
 ## Manual materialization benchmark
 

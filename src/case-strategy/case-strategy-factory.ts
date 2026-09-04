@@ -8,8 +8,8 @@ import type {
   TKeyTransformCase,
 } from '../types/strategy.types.js';
 
-export abstract class CaseStrategyFactory {
-  private static readonly TRANSFORM_STRATEGIES: Record<
+class CaseStrategyFactoryApi {
+  private readonly transformStrategies: Record<
     TKeyTransformCase,
     (str: string) => string
   > = {
@@ -25,11 +25,10 @@ export abstract class CaseStrategyFactory {
    * @param {TKeyTransformCase} [outKeyTransformCase='camelCase'] - The key to the transformation function.
    * @returns {ICaseStrategyFactory} - An instance of ICaseStrategyFactory with the specified transformation function.
    */
-  public static caseStrategyFactory(
+  public caseStrategyFactory(
     outKeyTransformCase: TKeyTransformCase = 'camelCase'
   ): ICaseStrategyFactory {
-    const transformFn =
-      CaseStrategyFactory.TRANSFORM_STRATEGIES[outKeyTransformCase];
+    const transformFn = this.transformStrategies[outKeyTransformCase];
     const cacheKey = Symbol('columnNameCacheKey');
     const cache = new DatabaseNamingCache<string>();
     cache.createCache(cacheKey);
@@ -37,3 +36,7 @@ export abstract class CaseStrategyFactory {
     return { strategy: new OrmStrategy(cacheKey, transformFn, cache) };
   }
 }
+
+const caseStrategyFactory = new CaseStrategyFactoryApi();
+
+export { caseStrategyFactory as CaseStrategyFactory };

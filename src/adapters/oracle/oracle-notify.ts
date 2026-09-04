@@ -11,6 +11,7 @@ import { DatabaseNotify } from '../abstract/database-notify.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
 import type { OracleConnection } from './oracle-connection.js';
+import type { IOracleCqnRefetchPlan } from '../../interfaces/oracle-notify.interfaces.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   IOracleNotifyMsg,
@@ -19,13 +20,6 @@ import type {
   TNotifyCallbackGeneric,
   TOracleNormilizeOptionsNotify,
 } from '../../types/notification.types.js';
-
-interface IOracleCqnRefetchPlan {
-  projection: string;
-  tableName: string;
-  alias?: string;
-  predicate?: string;
-}
 
 export class OracleNotify extends DatabaseNotify<
   oracledb.Connection,
@@ -176,6 +170,7 @@ export class OracleNotify extends DatabaseNotify<
     options: IOracleOptionsNotify = {}
   ): Promise<string> {
     this.assertCanRegisterNotification();
+    this.assertNotificationRetryOptions(options);
     this.parseCqnRefetchPlan(sqlCommand);
     if (Array.isArray(options.operations)) {
       if (options.operations.length === 0) {
@@ -270,8 +265,7 @@ export class OracleNotify extends DatabaseNotify<
       retryDelayMs: settings.retryDelayMs,
       retryAfterMaxDelayMs: settings.retryAfterMaxDelayMs,
     };
-    const isClientInitiated =
-      settings.clientInitiated === undefined ? true : settings.clientInitiated;
+    const isClientInitiated = settings.clientInitiated ?? true;
     const subscribeOptions = {
       sql,
       clientInitiated: isClientInitiated,

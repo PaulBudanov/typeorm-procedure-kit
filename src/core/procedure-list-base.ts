@@ -4,24 +4,21 @@ import { ServerError } from '../utils/server-error.js';
 import { StringUtilities } from '../utils/string-utilities.js';
 
 import type { ExecuteBase } from './execute-base.js';
+import type {
+  IPackageFetchControl,
+  IPackageFetchState,
+} from '../interfaces/procedure-list.interfaces.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type {
   IProcedureArgumentBase,
+  IProcedureStructuredField,
+  IProcedureStructuredType,
   TProcedureArgumentMode,
   TDBMapStructure,
   TProcedureArgumentList,
 } from '../types/procedure.types.js';
-
-interface IPackageFetchControl {
-  rerunRequested: boolean;
-}
-
-interface IPackageFetchState {
-  control: IPackageFetchControl;
-  promise: Promise<void>;
-}
 
 export class ProcedureListBase {
   public packagesWithProceduresList: TDBMapStructure = new Map();
@@ -30,7 +27,6 @@ export class ProcedureListBase {
     Lowercase<string>,
     ReturnType<typeof setTimeout>
   >();
-  private readonly activeFetchPromises = new Set<Promise<void>>();
   private readonly packageFetchStates = new Map<
     Lowercase<string>,
     IPackageFetchState
@@ -72,12 +68,10 @@ export class ProcedureListBase {
     const fetchPromise = this.runPackageFetch(packageName, control);
     const state: IPackageFetchState = { control, promise: fetchPromise };
     this.packageFetchStates.set(packageName, state);
-    this.activeFetchPromises.add(fetchPromise);
 
     try {
       await fetchPromise;
     } finally {
-      this.activeFetchPromises.delete(fetchPromise);
       if (this.packageFetchStates.get(packageName) === state) {
         this.packageFetchStates.delete(packageName);
       }
@@ -279,7 +273,7 @@ export class ProcedureListBase {
         `Procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
       );
     }
-    const rawArguments = metadataRows.map((item, index) => {
+    const normalizedRows = metadataRows.map((item, index) => {
       const normalizedItem =
         item !== null && typeof item === 'object' && !Array.isArray(item)
           ? Object.fromEntries(
@@ -289,8 +283,37 @@ export class ProcedureListBase {
               ])
             )
           : item;
-      return this.decodeProcedureArgument(normalizedItem, index);
+      if (
+        normalizedItem === null ||
+        typeof normalizedItem !== 'object' ||
+        Array.isArray(normalizedItem)
+      ) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: expected an object`
+        );
+      }
+      return normalizedItem as Record<string, unknown>;
     });
+    const preparedRows =
+      this.databaseAdapter.prepareProcedureMetadataRows(normalizedRows);
+    if (preparedRows.length > this.maxMetadataRows) {
+      throw new ServerError(
+        `Prepared procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
+    const rawArguments = preparedRows.map((item, index) =>
+      this.decodeProcedureArgument(item, index)
+    );
+    const preparedMetadataCount = rawArguments.reduce(
+      (count, argument) =>
+        count + 1 + (argument.structuredType?.fields.length ?? 0),
+      0
+    );
+    if (preparedMetadataCount > this.maxMetadataRows) {
+      throw new ServerError(
+        `Prepared procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
 
     if (rawArguments.length < 1) {
       throw new ServerError(
@@ -397,6 +420,10 @@ export class ProcedureListBase {
     const specificName = readOptionalString('specificName');
     const owner = readOptionalString('owner');
     const overload = readOptionalString('overload');
+    const structuredType = this.decodeStructuredType(
+      record.structuredType,
+      index
+    );
 
     return {
       procedureName: readString('procedureName'),
@@ -409,7 +436,157 @@ export class ProcedureListBase {
       ...(owner === undefined ? {} : { owner }),
       ...(subprogramId === undefined ? {} : { subprogramId }),
       ...(overload === undefined ? {} : { overload }),
+      ...(structuredType === undefined ? {} : { structuredType }),
     };
+  }
+
+  private decodeStructuredType(
+    value: unknown,
+    rowIndex: number
+  ): IProcedureStructuredType | undefined {
+    if (value === undefined || value === null) return undefined;
+    const path = `Invalid procedure metadata row ${rowIndex + 1}: structuredType`;
+    if (typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(`${path} must be an object when provided`);
+    }
+    const record = value as Record<string, unknown>;
+    const kind = record.kind;
+    if (kind !== 'oracle-record' && kind !== 'postgres-composite') {
+      throw new ServerError(`${path}.kind is unsupported`);
+    }
+    const typeName = this.readRequiredStructuredString(
+      record,
+      'typeName',
+      path
+    );
+    const rawFields = record.fields;
+    if (!Array.isArray(rawFields) || rawFields.length === 0) {
+      throw new ServerError(`${path}.fields must be a non-empty array`);
+    }
+    if (rawFields.length > this.maxMetadataRows) {
+      throw new ServerError(
+        `${path}.fields exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
+    const fields = rawFields.map((field, fieldIndex) =>
+      this.decodeStructuredField(field, `${path}.fields[${fieldIndex}]`)
+    );
+    const orders = new Set<number>();
+    const names = new Set<string>();
+    for (const field of fields) {
+      const normalizedName = field.name.toLowerCase();
+      if (names.has(normalizedName) || orders.has(field.order)) {
+        throw new ServerError(
+          `${path}.fields must have unique names and order`
+        );
+      }
+      names.add(normalizedName);
+      orders.add(field.order);
+    }
+    fields.sort((left, right) => left.order - right.order);
+    const typeOid = this.readStructuredInteger(record, 'typeOid', path);
+    return {
+      kind,
+      typeName,
+      fields,
+      ...this.readStructuredOptionalNames(record, path),
+      ...(typeOid === undefined ? {} : { typeOid }),
+    };
+  }
+
+  private decodeStructuredField(
+    value: unknown,
+    path: string
+  ): IProcedureStructuredField {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(`${path} must be an object`);
+    }
+    const record = value as Record<string, unknown>;
+    const order = this.readRequiredStructuredInteger(record, 'order', path);
+    const typeOid = this.readStructuredInteger(record, 'typeOid', path);
+    const typeName = this.readStructuredString(record, 'typeName', path);
+    return {
+      name: this.readRequiredStructuredString(record, 'name', path),
+      argumentType: this.readRequiredStructuredString(
+        record,
+        'argumentType',
+        path
+      ),
+      order,
+      ...this.readStructuredOptionalNames(record, path),
+      ...(typeName === undefined ? {} : { typeName }),
+      ...(typeOid === undefined ? {} : { typeOid }),
+    };
+  }
+
+  private readStructuredOptionalNames(
+    record: Record<string, unknown>,
+    path: string
+  ): Pick<IProcedureStructuredType, 'owner' | 'schema' | 'packageName'> {
+    const owner = this.readStructuredString(record, 'owner', path);
+    const schema = this.readStructuredString(record, 'schema', path);
+    const packageName = this.readStructuredString(record, 'packageName', path);
+    return {
+      ...(owner === undefined ? {} : { owner }),
+      ...(schema === undefined ? {} : { schema }),
+      ...(packageName === undefined ? {} : { packageName }),
+    };
+  }
+
+  private readRequiredStructuredString(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): string {
+    const value = this.readStructuredString(record, key, path);
+    if (value === undefined) {
+      throw new ServerError(`${path}.${key} is required`);
+    }
+    return value;
+  }
+
+  private readStructuredString(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): string | undefined {
+    const value = record[key];
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new ServerError(`${path}.${key} must be a non-empty string`);
+    }
+    return value.trim();
+  }
+
+  private readRequiredStructuredInteger(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): number {
+    const value = this.readStructuredInteger(record, key, path);
+    if (value === undefined) {
+      throw new ServerError(`${path}.${key} is required`);
+    }
+    return value;
+  }
+
+  private readStructuredInteger(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): number | undefined {
+    const value = record[key];
+    if (value === undefined || value === null) return undefined;
+    const parsed =
+      typeof value === 'number' || typeof value === 'string'
+        ? Number(value)
+        : Number.NaN;
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw new ServerError(
+        `${path}.${key} must be a non-negative safe integer`
+      );
+    }
+    return parsed;
   }
 
   public async initPackagesMap(): Promise<void> {
@@ -435,7 +612,9 @@ export class ProcedureListBase {
   }
 
   private async destroyInternal(): Promise<void> {
-    await Promise.allSettled(this.activeFetchPromises);
+    await Promise.allSettled(
+      Array.from(this.packageFetchStates.values(), ({ promise }) => promise)
+    );
     this.packageFetchStates.clear();
     this.procedureNameParser.destroy();
     this.packagesWithProceduresList = new Map();

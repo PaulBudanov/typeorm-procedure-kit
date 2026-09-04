@@ -21,7 +21,7 @@ function createKit(): TypeOrmProcedureKit {
         password: 'pass',
       },
       poolSize: 1,
-      parseInt8AsBigInt: false,
+      parseInt8AsNumber: false,
     },
     logger: { module: createLogger() },
   });
@@ -52,7 +52,7 @@ function createMetadataNotificationHarness(
         password: 'pass',
       },
       poolSize: 1,
-      parseInt8AsBigInt: false,
+      parseInt8AsNumber: false,
       packagesSettings: {
         packages: ['pkg'],
         procedureObjectList: { run: 'pkg.run' },
@@ -133,7 +133,7 @@ describe('TypeOrmProcedureKit', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
       },
       logger: { module: createLogger() },
       isRegisterShutdownHandlers: true,
@@ -146,6 +146,48 @@ describe('TypeOrmProcedureKit', (): void => {
     expect(off).toHaveBeenCalledTimes(SHUTDOWN_SIGNALS.length);
     once.mockRestore();
     off.mockRestore();
+  });
+
+  it('restores default signal handling during cleanup and re-sends the signal afterwards', async (): Promise<void> => {
+    let signalHandler: (() => void) | undefined;
+    const once = vi
+      .spyOn(process, 'once')
+      .mockImplementation(
+        (
+          event: string | symbol,
+          listener: (...args: Array<unknown>) => void
+        ): NodeJS.Process => {
+          if (event === 'SIGTERM') signalHandler = listener;
+          return process;
+        }
+      );
+    const off = vi.spyOn(process, 'off').mockReturnValue(process);
+    const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
+    try {
+      const kit = createKit();
+      let resolveNotificationDestroy!: () => void;
+      const notificationDestroy = new Promise<void>((resolve) => {
+        resolveNotificationDestroy = resolve;
+      });
+      Reflect.set(kit, 'notifyBase', {
+        destroy: vi.fn(() => notificationDestroy),
+      });
+      kit.registerShutdownHandlers();
+
+      signalHandler?.();
+
+      expect(off).toHaveBeenCalledTimes(SHUTDOWN_SIGNALS.length);
+      expect(kill).not.toHaveBeenCalled();
+
+      resolveNotificationDestroy();
+      await vi.waitFor(() => {
+        expect(kill).toHaveBeenCalledWith(process.pid, 'SIGTERM');
+      });
+    } finally {
+      once.mockRestore();
+      off.mockRestore();
+      kill.mockRestore();
+    }
   });
 
   it('rejects public operations as soon as shutdown begins', async (): Promise<void> => {
@@ -284,7 +326,7 @@ describe('TypeOrmProcedureKit', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
         packagesSettings: settings,
       },
       logger: { module: createLogger() },
@@ -333,7 +375,7 @@ describe('TypeOrmProcedureKit', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
         packagesSettings: {
           packages: ['pkg'],
           procedureObjectList: { run: 'pkg.run' },

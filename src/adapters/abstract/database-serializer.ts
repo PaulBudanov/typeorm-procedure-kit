@@ -5,11 +5,11 @@ import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.j
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   ISerializerContext,
-  ISetSerializer,
   TSerializerNativeValue,
   TSerializerRegistry,
   TSerializerType,
   TSerializerTypeCastWithoutFormat,
+  TSetSerializer,
 } from '../../types/serializer.types.js';
 
 export abstract class DatabaseSerializer {
@@ -132,14 +132,14 @@ export abstract class DatabaseSerializer {
     options?: IRegisteredFetchHandlerOptions
   ): void;
 
-  public abstract setSerializer(options: ISetSerializer): void;
+  public abstract setSerializer(options: TSetSerializer): void;
   public abstract deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void;
   public abstract deleteAllSerializers(): void;
 
   public get serializerMapping(): TSerializerTypeCastWithoutFormat {
-    const snapshot = new Map<TSerializerType, ISetSerializer>();
+    const snapshot = new Map<TSerializerType, TSetSerializer>();
     const registry = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY;
 
     if (registry.DATE) snapshot.set('DATE', registry.DATE);
@@ -194,7 +194,7 @@ export abstract class DatabaseSerializer {
     }
   }
 
-  protected registerSerializer(options: ISetSerializer): void {
+  protected registerSerializer(options: TSetSerializer): void {
     switch (options.serializerType) {
       case 'DATE':
         DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.DATE = options;

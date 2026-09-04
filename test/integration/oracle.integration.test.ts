@@ -1,5 +1,5 @@
 import oracledb from 'oracledb';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { TypeOrmProcedureKit } from '../../src/index.js';
 
@@ -62,6 +62,12 @@ async function createOracleProcedureFixture(
   await withOracleConnection(integrationSettings, async (connection) => {
     await connection.execute(`
       CREATE OR REPLACE PACKAGE ${procedurePackage.toUpperCase()} AS
+        TYPE SHIP_RECORD IS RECORD (
+          SHIP_NAME VARCHAR2(40),
+          WEIGHT NUMBER,
+          SAILED_AT TIMESTAMP WITH TIME ZONE,
+          TOKEN RAW(4)
+        );
         PROCEDURE ECHO_VALUES(
           P_VALUE IN NUMBER,
           P_LABEL IN VARCHAR2,
@@ -86,6 +92,11 @@ async function createOracleProcedureFixture(
           P_TIMESTAMP_IN_OUT IN OUT TIMESTAMP,
           P_TSTZ_IN_OUT IN OUT TIMESTAMP WITH TIME ZONE,
           P_TSLTZ_IN_OUT IN OUT TIMESTAMP WITH LOCAL TIME ZONE
+        );
+        PROCEDURE TRANSFORM_RECORD(
+          P_INPUT IN SHIP_RECORD,
+          P_IN_OUT IN OUT SHIP_RECORD,
+          P_OUTPUT OUT SHIP_RECORD
         );
       END ${procedurePackage.toUpperCase()};
     `);
@@ -172,6 +183,20 @@ async function createOracleProcedureFixture(
           P_TSTZ_IN_OUT := P_TSTZ_IN_OUT + NUMTODSINTERVAL(2, 'SECOND');
           P_TSLTZ_IN_OUT := P_TSLTZ_IN_OUT + NUMTODSINTERVAL(2, 'SECOND');
         END ECHO_TEMPORALS;
+        PROCEDURE TRANSFORM_RECORD(
+          P_INPUT IN SHIP_RECORD,
+          P_IN_OUT IN OUT SHIP_RECORD,
+          P_OUTPUT OUT SHIP_RECORD
+        ) AS
+        BEGIN
+          P_OUTPUT := P_INPUT;
+          P_OUTPUT.SHIP_NAME := P_INPUT.SHIP_NAME || '-out';
+          P_OUTPUT.WEIGHT := NVL(P_INPUT.WEIGHT, 0) + 10;
+          P_IN_OUT.SHIP_NAME := P_IN_OUT.SHIP_NAME || '-inout';
+          P_IN_OUT.WEIGHT := NVL(P_IN_OUT.WEIGHT, 0) + 1;
+          P_IN_OUT.SAILED_AT := P_INPUT.SAILED_AT;
+          P_IN_OUT.TOKEN := P_INPUT.TOKEN;
+        END TRANSFORM_RECORD;
       END ${procedurePackage.toUpperCase()};
     `);
   });
@@ -326,6 +351,14 @@ async function createOracleQueryBuilderFixture(
 }
 
 describe.skipIf(!settings)('Oracle integration', (): void => {
+  beforeAll((): void => {
+    const libraryPath = settings?.config.libraryPath;
+    if (!libraryPath || !oracledb.thin) return;
+
+    // Thick mode must be selected before the first standalone connection.
+    oracledb.initOracleClient({ libDir: libraryPath });
+  });
+
   it('initializes the library and executes real SQL through public methods', async (): Promise<void> => {
     const kit = new TypeOrmProcedureKit(settings!);
 
@@ -498,6 +531,86 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
           p_timestamp_in_out: '2026-07-16 12:30:47.678',
           p_tstz_in_out: '2026-07-16T12:30:47.678Z',
           p_tsltz_in_out: '2026-07-16T12:30:47.678Z',
+        },
+      });
+    } finally {
+      await kit.destroy();
+      await dropOracleProcedureFixture(settings!);
+    }
+  });
+
+  it('binds and materializes a package-spec PL/SQL RECORD', async (): Promise<void> => {
+    await createOracleProcedureFixture(settings!);
+
+    const kit = new TypeOrmProcedureKit({
+      ...settings!,
+      config: {
+        ...settings!.config,
+        isNeedRegisterDefaultSerializers: true,
+        sessionTimeZone: 'UTC',
+        packagesSettings: {
+          packages: [procedurePackage],
+          procedureObjectList: {
+            transformRecord: `${procedurePackage}.transform_record`,
+          },
+        },
+      },
+    });
+    const token = Buffer.from([1, 2, 3, 4]);
+
+    try {
+      await kit.initDatabase();
+
+      const result = await kit.call<
+        never,
+        {
+          input: {
+            ship_name: string;
+            weight: number;
+            sailed_at: string;
+            token: Buffer;
+          };
+          in_out: { ship_name: string };
+        },
+        {
+          p_in_out: {
+            ship_name: string;
+            weight: number;
+            sailed_at: string;
+            token: Buffer;
+          };
+          p_output: {
+            ship_name: string;
+            weight: number;
+            sailed_at: string;
+            token: Buffer;
+          };
+        }
+      >(`${procedurePackage}.transform_record`, {
+        input: {
+          ship_name: 'Aurora',
+          weight: 1200,
+          sailed_at: '2026-07-16 12:30:45.123 +03:00',
+          token,
+        },
+        in_out: { ship_name: 'Before' },
+      });
+
+      expect(result).toEqual({
+        rows: [],
+        outBinds: {
+          p_in_out: {
+            ship_name: 'Before-inout',
+            weight: 1,
+            sailed_at: '2026-07-16T09:30:45.123Z',
+            token,
+          },
+          p_output: {
+            ship_name: 'Aurora-out',
+            weight: 1210,
+            sailed_at: '2026-07-16T09:30:45.123Z',
+            token,
+          },
         },
       });
     } finally {

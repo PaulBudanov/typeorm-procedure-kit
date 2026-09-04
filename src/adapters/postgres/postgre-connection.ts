@@ -94,6 +94,19 @@ export class PostgreConnection extends DatabaseConnection<
   ): void {
     let isHandled = false;
 
+    const invokeCallback = async (): Promise<void> => {
+      try {
+        await callback();
+      } catch (error: unknown) {
+        this.logger.error(
+          `Callback error: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          error instanceof Error ? error.stack : undefined
+        );
+      }
+    };
+
     const handleConnectionLoss = (reason: string, error?: Error): void => {
       if (isHandled) return;
       isHandled = true;
@@ -105,14 +118,7 @@ export class PostgreConnection extends DatabaseConnection<
           error.stack
         );
       else this.logger.error(`Postgres client ${reason}`);
-      try {
-        void callback();
-      } catch (callbackError: unknown) {
-        this.logger.error(
-          `Callback error: ${(callbackError as Error).message}`,
-          (callbackError as Error).stack
-        );
-      }
+      void invokeCallback();
     };
 
     const onError = (err: Error): void => {

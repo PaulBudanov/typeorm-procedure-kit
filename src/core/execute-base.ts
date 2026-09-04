@@ -59,6 +59,7 @@ export class ExecuteBase {
     );
     const client: EntityManager =
       await this.connectionBase.getEntityManager(mode);
+    let operationError: ServerError | undefined;
     try {
       const result: Awaited<Array<T> | T> =
         await this.databaseAdapter.execute<T>(
@@ -77,9 +78,10 @@ export class ExecuteBase {
         errorId: queryId,
       });
       queryTimer.error(serverError);
+      operationError = serverError;
       throw serverError;
     } finally {
-      await this.connectionBase.releaseEntityManager(client);
+      await this.releaseEntityManager(client, operationError);
     }
   }
 
@@ -111,6 +113,7 @@ export class ExecuteBase {
     );
     const client: EntityManager =
       await this.connectionBase.getEntityManager(mode);
+    let operationError: ServerError | undefined;
     try {
       const result = await this.databaseAdapter.executeProcedure<TRow, TOut>(
         sql,
@@ -138,9 +141,33 @@ export class ExecuteBase {
         errorId: queryId,
       });
       queryTimer.error(serverError);
+      operationError = serverError;
       throw serverError;
     } finally {
+      await this.releaseEntityManager(client, operationError);
+    }
+  }
+
+  /** Preserves both failures when an operation and its mandatory release fail. */
+  private async releaseEntityManager(
+    client: EntityManager,
+    operationError: ServerError | undefined
+  ): Promise<void> {
+    let capturedReleaseError: unknown;
+    let hasReleaseFailed = false;
+    try {
       await this.connectionBase.releaseEntityManager(client);
+    } catch (releaseError: unknown) {
+      if (!operationError) throw releaseError;
+      capturedReleaseError = releaseError;
+      hasReleaseFailed = true;
+    }
+    if (hasReleaseFailed) {
+      throw new AggregateError(
+        [operationError, capturedReleaseError],
+        'Database operation and connection release both failed',
+        { cause: operationError }
+      );
     }
   }
 }

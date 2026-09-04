@@ -32,6 +32,7 @@ export function createAdapterMock(
     execute: vi.fn(),
     executeProcedure: vi.fn(),
     generatePackageInfoSql: vi.fn(),
+    prepareProcedureMetadataRows: vi.fn((rows) => rows),
     makeSqlBindings: vi.fn(),
     makeBindings: vi.fn(),
     setSerializer: vi.fn(),

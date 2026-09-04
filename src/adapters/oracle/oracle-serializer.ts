@@ -4,9 +4,9 @@ import { ServerError } from '../../utils/server-error.js';
 import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
 import type {
-  ISetSerializer,
   TOracleObjectDbTypeHandlerCast,
   TSerializerType,
+  TSetSerializer,
 } from '../../types/serializer.types.js';
 import type { DbType, FetchTypeResponse } from 'oracledb';
 
@@ -76,7 +76,7 @@ export class OracleSerializer extends DatabaseSerializer {
    *   strategy - A function that takes a value of the given type and returns a serialized string.
    * @throws Error - If the serializer type is unknown.
    */
-  public override setSerializer(options: ISetSerializer): void {
+  public override setSerializer(options: TSetSerializer): void {
     if (this.hasSerializer(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
@@ -108,7 +108,7 @@ export class OracleSerializer extends DatabaseSerializer {
    * @param serializerType - The type of the serializer to delete.
    */
   public override deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
     if (this.hasSerializer(serializerType.serializerType))
       this.unregisterSerializer(serializerType.serializerType);

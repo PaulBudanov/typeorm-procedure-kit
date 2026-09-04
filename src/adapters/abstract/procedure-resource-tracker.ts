@@ -126,7 +126,7 @@ export class ProcedureResourceTracker {
     return bytes;
   }
 
-  private measureValue(value: unknown, visited?: Set<object>): number {
+  private measureValue(value: unknown): number {
     if (value === null || value === undefined) return 0;
     if (Buffer.isBuffer(value)) return value.byteLength;
     if (typeof value === 'string') return this.measureUtf8(value);
@@ -135,45 +135,45 @@ export class ProcedureResourceTracker {
     if (typeof value === 'boolean') return 1;
     if (value instanceof Date) return value.toISOString().length;
     if (typeof value !== 'object') return 0;
-    if (visited?.has(value)) return 0;
-    visited?.add(value);
 
     let bytes = 0;
-    let objectGraph = visited;
-    for (const key in value) {
-      if (!Object.hasOwn(value, key)) continue;
-      bytes += this.measureKey(key);
-      const nestedValue = (value as Record<string, unknown>)[key];
-      if (nestedValue === null || nestedValue === undefined) continue;
-      if (Buffer.isBuffer(nestedValue)) {
-        bytes += nestedValue.byteLength;
-        continue;
-      }
-      if (typeof nestedValue === 'string') {
-        bytes += this.measureUtf8(nestedValue);
-        continue;
-      }
-      if (typeof nestedValue === 'number') {
-        bytes += this.measureNumber(nestedValue);
-        continue;
-      }
-      if (typeof nestedValue === 'bigint') {
-        bytes += String(nestedValue).length;
-        continue;
-      }
-      if (typeof nestedValue === 'boolean') {
-        bytes += 1;
-        continue;
-      }
-      if (nestedValue instanceof Date) {
-        bytes += nestedValue.toISOString().length;
-        continue;
-      }
-      if (typeof nestedValue === 'object') {
-        if (objectGraph === undefined) {
-          objectGraph = new Set<object>([value]);
+    const objectGraph = new WeakSet();
+    const pendingObjects: Array<object> = [value];
+    while (pendingObjects.length > 0) {
+      const current = pendingObjects.pop();
+      if (current === undefined || objectGraph.has(current)) continue;
+      objectGraph.add(current);
+
+      for (const key in current) {
+        if (!Object.hasOwn(current, key)) continue;
+        bytes += this.measureKey(key);
+        const nestedValue = (current as Record<string, unknown>)[key];
+        if (nestedValue === null || nestedValue === undefined) continue;
+        if (Buffer.isBuffer(nestedValue)) {
+          bytes += nestedValue.byteLength;
+          continue;
         }
-        bytes += this.measureValue(nestedValue, objectGraph);
+        if (typeof nestedValue === 'string') {
+          bytes += this.measureUtf8(nestedValue);
+          continue;
+        }
+        if (typeof nestedValue === 'number') {
+          bytes += this.measureNumber(nestedValue);
+          continue;
+        }
+        if (typeof nestedValue === 'bigint') {
+          bytes += String(nestedValue).length;
+          continue;
+        }
+        if (typeof nestedValue === 'boolean') {
+          bytes += 1;
+          continue;
+        }
+        if (nestedValue instanceof Date) {
+          bytes += nestedValue.toISOString().length;
+          continue;
+        }
+        if (typeof nestedValue === 'object') pendingObjects.push(nestedValue);
       }
     }
     return bytes;

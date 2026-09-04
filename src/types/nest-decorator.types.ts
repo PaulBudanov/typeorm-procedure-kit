@@ -7,7 +7,7 @@ import type {
   TProcedurePayload,
   TProcedurePayloadInput,
 } from './procedure.types.js';
-import type { ISetSerializer } from './serializer.types.js';
+import type { TSetSerializer } from './serializer.types.js';
 import type { IProcedureResult } from './utility.types.js';
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 
@@ -36,10 +36,10 @@ export type TMakeNotify = <T>(
 
 export type TUnlistenNotify = (channel: string) => Promise<void>;
 
-export type TSetSerializer = (serializer: ISetSerializer) => void;
+export type TSetSerializerHandler = (serializer: TSetSerializer) => void;
 
 export type TDeleteSerializer = (
-  serializerType: Pick<ISetSerializer, 'serializerType'>
+  serializerType: Pick<TSetSerializer, 'serializerType'>
 ) => void;
 
 export type TDeleteAllSerializers = () => void;

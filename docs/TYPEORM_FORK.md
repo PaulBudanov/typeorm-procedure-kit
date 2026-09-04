@@ -51,16 +51,16 @@ publishing attaches provenance to the published version.
 The following is a category-level patch log. Git history and regression tests
 remain the source of truth for individual changes.
 
-| Patch family            | Local behavior maintained by this project                                                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Packaging and runtime   | ESM/CJS dual output targeting ES2022 on Node.js 20+, no published source/declaration maps, package-owned TypeORM entry point, circular-import fixes.  |
-| Oracle/PostgreSQL focus | Reduced driver surface focused on Oracle and PostgreSQL, custom pool/config wiring, optional `pg-native` handling, query-runner release fixes.        |
-| Session isolation       | Validated per-connection `sessionTimeZone`, default UTC sessions, per-pool result parser/fetch-handler configuration.                                 |
-| Query builders          | Configurable identifier quoting, database-column/property-path resolution, compound count fixes, Oracle/PostgreSQL `RETURNING`, safe SQL-tag helpers. |
-| Metadata and typing     | Generic-aware entity metadata, relation-aware property maps, stricter repository/entity manager/query builder/find option types.                      |
-| Naming and results      | Shared case strategy for ORM metadata and native rows, explicit custom database column maps, structured Oracle out-bind handling.                     |
-| Logging and lifecycle   | ProcedureKit logger routing, slow-query reporting, connection cleanup, query runner and cache resource ownership.                                     |
-| Security                | SHA-256 internal alias hashing, identifier validation, removal of callback-based raw SQL shortcuts in favor of explicit trusted fragments.            |
+| Patch family            | Local behavior maintained by this project                                                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Packaging and runtime   | ESM/CJS dual output targeting ES2022 on Node.js 20+, no published source/declaration maps, package-owned TypeORM entry point, circular-import fixes.      |
+| Oracle/PostgreSQL focus | Reduced driver surface focused on Oracle and PostgreSQL, custom pool/config wiring, optional `pg-native` handling, query-runner release fixes.            |
+| Session isolation       | Validated per-connection `sessionTimeZone`, default UTC sessions, per-pool result parser/fetch-handler configuration.                                     |
+| Query builders          | Configurable identifier quoting, database-column/property-path resolution, compound count fixes, Oracle/PostgreSQL `RETURNING`, safe SQL-tag helpers.     |
+| Metadata and typing     | Generic-aware entity metadata, relation-aware property maps, stricter repository/entity manager/query builder/find option types.                          |
+| Naming and results      | Shared case strategy for ORM metadata and native rows, explicit custom database column maps, structured Oracle out-bind handling.                         |
+| Logging and lifecycle   | ProcedureKit logger routing, slow-query reporting, connection cleanup, query runner and cache resource ownership, lazy-relation child rejection handling. |
+| Security                | SHA-256 internal alias hashing, identifier validation, removal of callback-based raw SQL shortcuts in favor of explicit trusted fragments.                |
 
 ### Intentional identifier-quoting divergence
 
@@ -105,6 +105,19 @@ metadata property maps), `f4235f7` (logging/circular/security work), `8ecde11`
 column paths), `f6ea9fc` (count distinct quoting), and `b248b9c` (SHA-256 alias
 hashing). This list is intentionally descriptive, not a substitute for the
 complete Git log.
+
+The lazy-relation patch in `RelationLoader.enableLazyLoad()` deliberately keeps
+the original loading promise on the entity. It only handles rejection on the
+discarded child created to cache a fulfilled value, preventing a second
+`unhandledRejection` without changing the promise observed by callers. Reapply
+this regression test explicitly during an upstream synchronization.
+
+Oracle bootstrap reads `oracleServerVersionString` from its physical
+connection, always releases the metadata query runner, and closes every pool
+created before a bootstrap failure. Oracle and PostgreSQL disconnect paths also
+attempt every pool sequentially, retain only failed pools for a cleanup retry,
+and aggregate multiple close errors. The sequential order is intentional:
+PostgreSQL pool cleanup shares query-runner state across pools.
 
 ## Upstream synchronization policy
 

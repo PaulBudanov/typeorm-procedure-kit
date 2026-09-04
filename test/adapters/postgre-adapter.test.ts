@@ -6,16 +6,46 @@ import { PostgresQueryRunner } from '../../src/typeorm/driver/postgres/PostgresQ
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
+import type { IProcedureStructuredType } from '../../src/types/procedure.types.js';
 import type { FieldDef } from 'pg';
 
-function createPostgreAdapter(): PostgreAdapter {
+const profileStructuredType = {
+  kind: 'postgres-composite',
+  schema: 'pkg',
+  typeName: 'profile_type',
+  typeOid: 16_384,
+  fields: [
+    {
+      name: 'first_name',
+      argumentType: 'text',
+      order: 1,
+      typeOid: pgTypes.builtins.TEXT,
+    },
+    {
+      name: 'created_at',
+      argumentType: 'timestamp with time zone',
+      order: 2,
+      typeOid: pgTypes.builtins.TIMESTAMPTZ,
+    },
+    {
+      name: 'tags',
+      argumentType: 'text[]',
+      order: 3,
+      typeOid: 1009,
+    },
+  ],
+} satisfies IProcedureStructuredType;
+
+function createPostgreAdapter(
+  transformColumnName: (value: string) => string = (value) => value
+): PostgreAdapter {
   return new PostgreAdapter(
     { options: { replication: { master: {} } } } as never,
     createLogger(),
     {
       isNeedRegisterDefaultSerializers: false,
       caseStrategy: {
-        transformColumnName: (value: string): string => value,
+        transformColumnName,
       },
     }
   );
@@ -27,9 +57,12 @@ describe('PostgreAdapter', (): void => {
 
     const sql = adapter.generatePackageInfoSql('Public');
 
-    expect(sql).toContain("proc.specific_schema = 'public'");
-    expect(sql).toContain("proc.routine_type = 'PROCEDURE'");
-    expect(sql).toContain('proc.specific_name AS "specific_name"');
+    expect(sql).toContain("procedure_namespace.nspname = 'public'");
+    expect(sql).toContain("proc.prokind = 'p'");
+    expect(sql).toContain(`proc.proname || '_' || proc.oid AS "specific_name"`);
+    expect(sql).toContain('pg_catalog.pg_type composite_type');
+    expect(sql).toContain('pg_catalog.pg_attribute field');
+    expect(sql).toContain(`'postgres-composite'`);
     expect(sql).toContain("'__tpk_no_argument__'");
     expect(sql).toContain('LIMIT 10001');
     expect(sql).not.toContain(':PACKAGE_NAME');
@@ -52,6 +85,95 @@ describe('PostgreAdapter', (): void => {
     expect((): void => {
       adapter.generatePackageInfoSql('public', 'select * from custom_args');
     }).toThrow(ServerError);
+  });
+
+  it('prepares named composite and table-row metadata for the shared decoder', (): void => {
+    const adapter = createPostgreAdapter();
+    const fields = profileStructuredType.fields;
+
+    expect(
+      adapter.prepareProcedureMetadataRows([
+        {
+          order: 1,
+          argumentName: 'p_profile',
+          argumentType: 'pkg.profile_type',
+          mode: 'IN',
+          procedureName: 'consume_profile',
+          specificName: 'consume_profile_10',
+          structuredKind: 'postgres-composite',
+          structuredSchema: 'pkg',
+          structuredTypeName: 'profile_type',
+          structuredTypeOid: '16384',
+          structuredFields: fields,
+        },
+        {
+          order: 2,
+          argumentName: 'out_row',
+          argumentType: 'pkg.account_row',
+          mode: 'OUT',
+          procedureName: 'consume_profile',
+          specificName: 'consume_profile_10',
+          structuredKind: 'postgres-composite',
+          structuredSchema: 'pkg',
+          structuredTypeName: 'account_row',
+          structuredTypeOid: '16385',
+          structuredFields: [
+            {
+              name: 'id',
+              argumentType: 'integer',
+              order: 1,
+              typeOid: String(pgTypes.builtins.INT4),
+            },
+          ],
+        },
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        structuredType: {
+          kind: 'postgres-composite',
+          schema: 'pkg',
+          typeName: 'profile_type',
+          typeOid: '16384',
+          fields,
+        },
+      }),
+      expect.objectContaining({
+        structuredType: {
+          kind: 'postgres-composite',
+          schema: 'pkg',
+          typeName: 'account_row',
+          typeOid: '16385',
+          fields: [
+            {
+              name: 'id',
+              argumentType: 'integer',
+              order: 1,
+              typeOid: String(pgTypes.builtins.INT4),
+            },
+          ],
+        },
+      }),
+    ]);
+  });
+
+  it('rejects dynamic RECORD metadata', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect(() =>
+      adapter.prepareProcedureMetadataRows([
+        {
+          order: 1,
+          argumentName: 'p_value',
+          argumentType: 'record',
+          mode: 'IN',
+          procedureName: 'consume_record',
+          specificName: 'consume_record_10',
+          structuredKind: null,
+        },
+      ])
+    ).toThrow(
+      'Dynamic PostgreSQL RECORD arguments are not supported; use a named composite type'
+    );
   });
 
   it('sorts procedure arguments and skips unrelated packages', (): void => {
@@ -99,7 +221,7 @@ describe('PostgreAdapter', (): void => {
     });
   });
 
-  it('preserves all single-package routines and filters multi-package metadata', (): void => {
+  it('strictly filters procedure metadata by the configured allowlist', (): void => {
     const adapter = createPostgreAdapter();
 
     const procedures = adapter.sortArgumentsAlgorithm(
@@ -125,7 +247,7 @@ describe('PostgreAdapter', (): void => {
       'pkg',
       1
     );
-    expect(procedures).toEqual({ ping: [], unlisted: [] });
+    expect(procedures).toEqual({ ping: [] });
     expect(
       adapter.sortArgumentsAlgorithm(
         [
@@ -194,7 +316,7 @@ describe('PostgreAdapter', (): void => {
           { argumentName: 'p_id', argumentType: 'int', order: 1, mode: 'IN' },
           {
             argumentName: 'items',
-            argumentType: 'varchar',
+            argumentType: 'varchar[]',
             order: 2,
             mode: 'IN',
           },
@@ -213,7 +335,7 @@ describe('PostgreAdapter', (): void => {
     );
     expect(result).toMatchObject({
       paramExecuteString: 'CALL "pkg"."run"($1,$2,$3)',
-      bindings: [7, 'a,b', null],
+      bindings: [7, ['a', 'b'], null],
       cursorsNames: ['out_cursor'],
       outNames: ['out_cursor'],
       outBindings: [
@@ -224,6 +346,229 @@ describe('PostgreAdapter', (): void => {
         },
       ],
     });
+    expect(
+      adapter.makeBindings(
+        'pkg',
+        'run',
+        {
+          run: [
+            { argumentName: 'p_id', argumentType: 'int', order: 1, mode: 'IN' },
+          ],
+        },
+        { id: undefined, p_id: 8 }
+      ).bindings
+    ).toEqual([8]);
+  });
+
+  it('builds parameterized named-composite bindings for IN, INOUT, and OUT', (): void => {
+    const adapter = createPostgreAdapter();
+    const createdAt = new Date('2026-01-02T03:04:05.678Z');
+
+    const result = adapter.makeBindings(
+      'pkg',
+      'transform_profile',
+      {
+        transform_profile: [
+          {
+            argumentName: 'p_input',
+            argumentType: 'pkg.profile_type',
+            order: 1,
+            mode: 'IN',
+            structuredType: profileStructuredType,
+          },
+          {
+            argumentName: 'p_state',
+            argumentType: 'pkg.profile_type',
+            order: 2,
+            mode: 'IN/OUT',
+            structuredType: profileStructuredType,
+          },
+          {
+            argumentName: 'out_profile',
+            argumentType: 'pkg.profile_type',
+            order: 3,
+            mode: 'OUT',
+            structuredType: profileStructuredType,
+          },
+        ],
+      },
+      {
+        input: {
+          first_name: `O'Reilly, (safe) $1`,
+          created_at: createdAt,
+          tags: ['one', 'two,three'],
+        },
+        state: { first_name: 'before' },
+      }
+    );
+
+    expect(result.paramExecuteString).toContain(
+      'jsonb_populate_record(NULL::"pkg"."profile_type", $1::jsonb)'
+    );
+    expect(result.paramExecuteString).toContain(
+      'jsonb_populate_record(NULL::"pkg"."profile_type", $2::jsonb)'
+    );
+    expect(result.paramExecuteString).toContain('NULL::"pkg"."profile_type")');
+    expect(result.paramExecuteString).not.toContain("O'Reilly");
+    expect(
+      (result.bindings as Array<string>).map((value) => JSON.parse(value))
+    ).toEqual([
+      {
+        first_name: `O'Reilly, (safe) $1`,
+        created_at: createdAt.toISOString(),
+        tags: ['one', 'two,three'],
+      },
+      { first_name: 'before', created_at: null, tags: null },
+    ]);
+    expect(result.outBindings).toEqual([
+      {
+        name: 'p_state',
+        type: 'object',
+        databaseType: 'pkg.profile_type',
+        structuredType: profileStructuredType,
+      },
+      {
+        name: 'out_profile',
+        type: 'object',
+        databaseType: 'pkg.profile_type',
+        structuredType: profileStructuredType,
+      },
+    ]);
+  });
+
+  it('normalizes composite nulls and rejects unknown or conflicting fields', (): void => {
+    const adapter = createPostgreAdapter((value) =>
+      value.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      )
+    );
+    const procedures = {
+      run: [
+        {
+          argumentName: 'p_profile',
+          argumentType: 'pkg.profile_type',
+          order: 1,
+          mode: 'IN' as const,
+          structuredType: profileStructuredType,
+        },
+      ],
+    };
+
+    expect(adapter.makeBindings('pkg', 'run', procedures, null)).toMatchObject({
+      bindings: [null],
+    });
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { firstName: 'safe', unknown: true },
+      })
+    ).toThrow('Unknown field "unknown"');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { first_name: 'raw', firstName: 'transformed' },
+      })
+    ).toThrow('Conflicting fields');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { firstName: 'one' },
+        p_profile: { firstName: 'two' },
+      })
+    ).toThrow('Conflicting PostgreSQL procedure payload keys');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, { profile: [] })
+    ).toThrow('must be a plain object or null');
+  });
+
+  it('passes scalar arrays natively and rejects unsupported composite shapes', (): void => {
+    const adapter = createPostgreAdapter();
+    const scalarArrayProcedures = {
+      run: [
+        {
+          argumentName: 'items',
+          argumentType: 'text[]',
+          order: 1,
+          mode: 'IN' as const,
+        },
+      ],
+    };
+
+    const values = ['a,b', '(quoted)', '"value"'];
+    expect(
+      adapter.makeBindings('pkg', 'run', scalarArrayProcedures, {
+        items: values,
+      }).bindings
+    ).toEqual([values]);
+
+    const compositeArrayProcedures = {
+      run: [
+        {
+          argumentName: 'profiles',
+          argumentType: 'pkg.profile_type[]',
+          order: 1,
+          mode: 'IN' as const,
+          structuredType: profileStructuredType,
+        },
+      ],
+    };
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', compositeArrayProcedures, {
+        profiles: [],
+      })
+    ).toThrow('PostgreSQL composite arrays are not supported');
+
+    const nestedType = {
+      ...profileStructuredType,
+      fields: [
+        {
+          name: 'nested',
+          argumentType: 'pkg.child_type',
+          order: 1,
+          schema: 'pkg',
+          typeName: 'child_type',
+        },
+      ],
+    } satisfies IProcedureStructuredType;
+    expect(() =>
+      adapter.makeBindings(
+        'pkg',
+        'run',
+        {
+          run: [
+            {
+              argumentName: 'profile',
+              argumentType: 'pkg.profile_type',
+              order: 1,
+              mode: 'IN',
+              structuredType: nestedType,
+            },
+          ],
+        },
+        { profile: { nested: {} } }
+      )
+    ).toThrow('Nested PostgreSQL composites are not supported');
+  });
+
+  it('rejects unsafe metadata-derived composite identifiers', (): void => {
+    const adapter = createPostgreAdapter();
+    const procedures = {
+      run: [
+        {
+          argumentName: 'profile',
+          argumentType: 'pkg.profile_type',
+          order: 1,
+          mode: 'IN' as const,
+          structuredType: {
+            ...profileStructuredType,
+            schema: 'pkg"; SELECT pg_sleep(10); --',
+          },
+        },
+      ],
+    };
+
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { first_name: 'safe' },
+      })
+    ).toThrow('Unsafe SQL identifier');
   });
 
   it('generates missing IN/OUT cursor names, preserves explicit names, and rejects unnamed portals', (): void => {
@@ -366,6 +711,251 @@ describe('PostgreAdapter', (): void => {
       'FETCH FORWARD 1000 FROM "out_cursor"'
     );
     expect(query).toHaveBeenNthCalledWith(3, 'CLOSE "out_cursor"');
+  });
+
+  it('materializes multiple composite outputs in one typed JSON batch', async (): Promise<void> => {
+    const adapter = createPostgreAdapter((value) =>
+      value.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      )
+    );
+    adapter.setSerializer({
+      serializerType: 'TIMESTAMP_TZ',
+      strategy: ({ value, context }) =>
+        `${value.toString()}:${context?.name ?? 'unknown'}`,
+    });
+    const accountStructuredType = {
+      kind: 'postgres-composite',
+      schema: 'pkg',
+      typeName: 'account_row',
+      typeOid: 16_385,
+      fields: [
+        {
+          name: 'account_id',
+          argumentType: 'integer',
+          order: 1,
+          typeOid: pgTypes.builtins.INT4,
+        },
+        {
+          name: 'display_name',
+          argumentType: 'text',
+          order: 2,
+          typeOid: pgTypes.builtins.TEXT,
+        },
+      ],
+    } satisfies IProcedureStructuredType;
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { p_state: '(raw-profile)', out_row: '(raw-table-row)' },
+      ])
+      .mockResolvedValueOnce([
+        {
+          tpk_composite_0: JSON.stringify({
+            first_name: 'Ada',
+            created_at: '2026-01-02T03:04:05.678+00:00',
+            tags: ['one', 'two'],
+          }),
+          tpk_composite_1: JSON.stringify({
+            account_id: 42,
+            display_name: 'table row',
+          }),
+        },
+      ]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    try {
+      await expect(
+        adapter.executeProcedure(
+          'CALL "pkg"."transform_profile"($1,NULL::"pkg"."account_row")',
+          manager as never,
+          [],
+          ['input'],
+          [],
+          [
+            {
+              name: 'p_state',
+              type: 'object',
+              databaseType: 'pkg.profile_type',
+              structuredType: profileStructuredType,
+            },
+            {
+              name: 'out_row',
+              type: 'object',
+              databaseType: 'pkg.account_row',
+              structuredType: accountStructuredType,
+            },
+          ]
+        )
+      ).resolves.toEqual({
+        rows: [],
+        outBinds: {
+          pState: {
+            firstName: 'Ada',
+            createdAt: '2026-01-02T03:04:05.678+00:00:createdAt',
+            tags: ['one', 'two'],
+          },
+          outRow: { accountId: 42, displayName: 'table row' },
+        },
+      });
+      expect(query).toHaveBeenNthCalledWith(
+        2,
+        'SELECT to_jsonb($1::"pkg"."profile_type")::text AS "tpk_composite_0", to_jsonb($2::"pkg"."account_row")::text AS "tpk_composite_1"',
+        ['(raw-profile)', '(raw-table-row)']
+      );
+    } finally {
+      adapter.deleteAllSerializers();
+    }
+  });
+
+  it('preserves composite nulls and applies output resource limits', async (): Promise<void> => {
+    const nullAdapter = createPostgreAdapter();
+    const nullQuery = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_profile: null }])
+      .mockResolvedValueOnce([{ tpk_composite_0: null }]);
+    const nullManager = {
+      query: nullQuery,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(nullManager)
+      ),
+    };
+    const compositeBinding = {
+      name: 'out_profile',
+      type: 'object' as const,
+      databaseType: 'pkg.profile_type',
+      structuredType: profileStructuredType,
+    };
+
+    await expect(
+      nullAdapter.executeProcedure(
+        'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
+        nullManager as never,
+        [],
+        [],
+        [],
+        [compositeBinding]
+      )
+    ).resolves.toEqual({ rows: [], outBinds: { out_profile: null } });
+    expect(nullQuery).toHaveBeenNthCalledWith(
+      2,
+      'SELECT to_jsonb($1::"pkg"."profile_type")::text AS "tpk_composite_0"',
+      [null]
+    );
+
+    const limitedAdapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      createLogger(),
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: { transformColumnName: (value: string) => value },
+        resourceLimits: {
+          maxProcedureRows: 10,
+          maxProcedureBytes: 8,
+          maxMetadataRows: 100,
+          maxLobBytes: 100,
+          maxNotificationQueue: 10,
+          maxNotificationRows: 10,
+        },
+      }
+    );
+    const limitedQuery = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_profile: '(large)' }])
+      .mockResolvedValueOnce([
+        {
+          tpk_composite_0: JSON.stringify({
+            first_name: 'too large',
+            created_at: null,
+            tags: null,
+          }),
+        },
+      ]);
+    const limitedManager = {
+      query: limitedQuery,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(limitedManager)
+      ),
+    };
+
+    await expect(
+      limitedAdapter.executeProcedure(
+        'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
+        limitedManager as never,
+        [],
+        [],
+        [],
+        [compositeBinding]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureBytes (8)');
+  });
+
+  it('rejects unexpected and case-colliding composite output fields', async (): Promise<void> => {
+    const adapter = createPostgreAdapter((value) =>
+      value.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      )
+    );
+    const executeWithFields = async (
+      structuredType: IProcedureStructuredType,
+      fields: Record<string, unknown>
+    ): Promise<unknown> => {
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce([{ out_profile: '(raw)' }])
+        .mockResolvedValueOnce([{ tpk_composite_0: JSON.stringify(fields) }]);
+      const manager = {
+        query,
+        transaction: vi.fn(
+          async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+            execute(manager)
+        ),
+      };
+      return adapter.executeProcedure(
+        'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
+        manager as never,
+        [],
+        [],
+        [],
+        [
+          {
+            name: 'out_profile',
+            type: 'object',
+            databaseType: 'pkg.profile_type',
+            structuredType,
+          },
+        ]
+      );
+    };
+
+    await expect(
+      executeWithFields(profileStructuredType, {
+        first_name: 'Ada',
+        created_at: null,
+        tags: [],
+        unexpected: true,
+      })
+    ).rejects.toThrow('Unknown field "unexpected"');
+    await expect(
+      executeWithFields(
+        {
+          ...profileStructuredType,
+          fields: [
+            { name: 'first_name', argumentType: 'text', order: 1 },
+            { name: 'firstName', argumentType: 'text', order: 2 },
+          ],
+        },
+        { first_name: 'first', firstName: 'second' }
+      )
+    ).rejects.toThrow('conflicting transformed field "firstName"');
   });
 
   it('preserves a QueryRunner refcursor field through adapter FETCH and CLOSE', async (): Promise<void> => {

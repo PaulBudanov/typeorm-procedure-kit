@@ -408,28 +408,93 @@ export class OracleDriver implements Driver {
     const oracleLib = this.oracle;
     oracleLib.fetchAsString = [oracleLib.DB_TYPE_CLOB];
     oracleLib.fetchAsBuffer = [oracleLib.DB_TYPE_BLOB];
-    if (this.options.replication) {
-      this.slaves = await Promise.all(
-        this.options.replication.slaves.map((slave) => {
-          return this.createPool(this.options, slave);
-        })
-      );
-      this.master = await this.createPool(
-        this.options,
-        this.options.replication.master
-      );
-    } else {
-      this.master = await this.createPool(this.options, this.options);
+    const createdPools: Array<oracledb.Pool> = [];
+    try {
+      if (this.options.replication) {
+        const slaves: Array<oracledb.Pool> = [];
+        for (const slave of this.options.replication.slaves) {
+          const pool = await this.createPool(this.options, slave);
+          createdPools.push(pool);
+          slaves.push(pool);
+        }
+        this.slaves = slaves;
+        this.master = await this.createPool(
+          this.options,
+          this.options.replication.master
+        );
+        createdPools.push(this.master);
+      } else {
+        this.master = await this.createPool(this.options, this.options);
+        createdPools.push(this.master);
+      }
+
+      if (!this.version || !this.schema) {
+        await this.loadConnectionMetadata();
+      }
+    } catch (error: unknown) {
+      this.master = undefined;
+      this.slaves = [];
+      const [cleanupErrors, unclosedPools] =
+        await this.closeFailedConnectionPools(createdPools);
+      this.slaves = unclosedPools;
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          'Oracle connection initialization and pool cleanup failed',
+          { cause: error }
+        );
+      }
+      throw error;
     }
+  }
 
-    if (!this.version && !this.schema) {
-      const queryRunner = this.createQueryRunner('master');
-
+  /** Loads bootstrap metadata and preserves a simultaneous runner release error. */
+  private async loadConnectionMetadata(): Promise<void> {
+    const queryRunner = this.createQueryRunner('master');
+    let operationError: unknown;
+    let operationFailed = false;
+    try {
       if (!this.schema) this.schema = await queryRunner.getCurrentSchema();
       if (!this.version) this.version = await queryRunner.getVersion();
-
-      await queryRunner.release();
+    } catch (error: unknown) {
+      operationError = error;
+      operationFailed = true;
     }
+
+    let releaseError: unknown;
+    let releaseFailed = false;
+    try {
+      await queryRunner.release();
+    } catch (error: unknown) {
+      releaseError = error;
+      releaseFailed = true;
+    }
+
+    if (operationFailed && releaseFailed) {
+      throw new AggregateError(
+        [operationError, releaseError],
+        'Oracle connection metadata loading and runner release failed',
+        { cause: operationError }
+      );
+    }
+    if (operationFailed) throw operationError;
+    if (releaseFailed) throw releaseError;
+  }
+
+  private async closeFailedConnectionPools(
+    pools: ReadonlyArray<oracledb.Pool>
+  ): Promise<[errors: Array<unknown>, unclosedPools: Array<oracledb.Pool>]> {
+    const errors: Array<unknown> = [];
+    const unclosedPools: Array<oracledb.Pool> = [];
+    for (const pool of [...pools].reverse()) {
+      try {
+        await this.closePool(pool);
+      } catch (error: unknown) {
+        errors.push(error);
+        unclosedPools.unshift(pool);
+      }
+    }
+    return [errors, unclosedPools];
   }
 
   /**
@@ -443,14 +508,39 @@ export class OracleDriver implements Driver {
    * Closes connection with the database.
    */
   public async disconnect(): Promise<void> {
-    if (!this.master) {
+    const master = this.master;
+    const slaves = [...this.slaves];
+    if (!master && slaves.length === 0) {
       throw new ConnectionIsNotSetError('oracle');
     }
 
-    await this.closePool(this.master);
-    await Promise.all(this.slaves.map((slave) => this.closePool(slave)));
-    this.master = undefined;
-    this.slaves = [];
+    const errors: Array<unknown> = [];
+    if (master) {
+      try {
+        await this.closePool(master);
+        if (this.master === master) this.master = undefined;
+      } catch (error: unknown) {
+        errors.push(error);
+      }
+    }
+
+    const failedSlaves: Array<oracledb.Pool> = [];
+    for (const slave of slaves) {
+      try {
+        await this.closePool(slave);
+      } catch (error: unknown) {
+        errors.push(error);
+        failedSlaves.push(slave);
+      }
+    }
+    this.slaves = failedSlaves;
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Failed to close Oracle pools', {
+        cause: errors[0],
+      });
+    }
   }
 
   /**

@@ -73,7 +73,7 @@ export abstract class DatabaseNotify<
     await Promise.allSettled([
       ...this.unsubscribeChannels(this.notificationPool.keys()),
       ...activeRestores.map(([channel, restore]) =>
-        this.waitForActiveRestore(channel, restore)
+        this.waitForShutdownTask(restore, `notification restore ${channel}`)
       ),
       ...pendingRegistrations.map((registration, index) =>
         this.waitForPendingRegistration(index, registration)
@@ -288,6 +288,7 @@ export abstract class DatabaseNotify<
   protected restoreNotification<TSettings>(
     options: INotifyRestoreOptions<TSettings>
   ): Promise<void> {
+    this.assertNotificationRetryOptions(options);
     if (this.isNotificationRestoreCancelled(options.channelName))
       return Promise.resolve();
     const state = this.getOrCreateIRestoreState(options.channelName);
@@ -303,6 +304,35 @@ export abstract class DatabaseNotify<
       });
     state.activeRestore = restorePromise;
     return restorePromise;
+  }
+
+  /** Rejects retry values that would make restore loops skip work or spin. */
+  protected assertNotificationRetryOptions(
+    options: Readonly<INotifyRetryOptions>
+  ): void {
+    if (
+      options.maxRetries !== undefined &&
+      (!Number.isSafeInteger(options.maxRetries) || options.maxRetries <= 0)
+    ) {
+      throw new RangeError('maxRetries must be a positive safe integer');
+    }
+    this.assertNotificationDelay(options.retryDelayMs, 'retryDelayMs');
+    this.assertNotificationDelay(
+      options.retryAfterMaxDelayMs,
+      'retryAfterMaxDelayMs'
+    );
+  }
+
+  private assertNotificationDelay(
+    delayMs: number | undefined,
+    optionName: string
+  ): void {
+    if (
+      delayMs !== undefined &&
+      (!Number.isSafeInteger(delayMs) || delayMs < 0)
+    ) {
+      throw new RangeError(`${optionName} must be a non-negative safe integer`);
+    }
   }
 
   private async checkConnection(
@@ -423,29 +453,6 @@ export abstract class DatabaseNotify<
         activeRestores.push([channelName, state.activeRestore]);
     });
     return activeRestores;
-  }
-
-  private waitForActiveRestore(
-    channelName: string,
-    restore: Promise<void>
-  ): Promise<void> {
-    return new Promise((resolve) => {
-      let isSettled = false;
-      const timer: NodeJS.Timeout = setTimeout(() => {
-        this.logger.warn(
-          `Timed out waiting ${DatabaseNotify.DESTROY_RESTORE_WAIT_TIMEOUT_MS}ms for notification restore ${channelName} during shutdown; continuing cleanup`
-        );
-        complete();
-      }, DatabaseNotify.DESTROY_RESTORE_WAIT_TIMEOUT_MS);
-      const complete = (): void => {
-        if (isSettled) return;
-        isSettled = true;
-        clearTimeout(timer);
-        resolve();
-      };
-      timer.unref();
-      void restore.then(complete, complete);
-    });
   }
 
   private waitForPendingRegistration(

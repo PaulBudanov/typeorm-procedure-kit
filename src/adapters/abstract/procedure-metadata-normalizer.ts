@@ -1,32 +1,24 @@
 import { ServerError } from '../../utils/server-error.js';
 
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
 } from '../../types/procedure.types.js';
 
-interface IProcedureMetadataOptions<TOverloadIdentity> {
-  vendor: 'Database' | 'Oracle' | 'PostgreSQL';
-  noArgumentSentinel?: string;
-  includeAllWhenSinglePackage?: boolean;
-  getOverloadIdentity?: (
-    argument: IProcedureArgumentBase
-  ) => TOverloadIdentity | undefined;
-}
-
 /** Normalizes metadata once, then sorts each procedure once. */
 export class ProcedureMetadataNormalizer {
-  public normalize<TOverloadIdentity>(
+  public normalize(
     rawArguments: Array<IProcedureArgumentBase>,
     procedureListBase: Array<Lowercase<string>>,
     packageName: Lowercase<string>,
     packagesLength: number,
-    options: IProcedureMetadataOptions<TOverloadIdentity>
+    options: IProcedureMetadataOptions
   ): TProcedureArgumentList {
     const configuredNames = new Set<string>(procedureListBase);
     const normalizedPackage = packageName.toLowerCase();
     const procedures: TProcedureArgumentList = {};
-    const overloads = new Map<string, TOverloadIdentity>();
+    const overloads = new Map<string, unknown>();
 
     for (const item of rawArguments) {
       const procedureName =
@@ -35,12 +27,7 @@ export class ProcedureMetadataNormalizer {
       const isConfigured =
         configuredNames.has(qualifiedName) ||
         (packagesLength === 1 && configuredNames.has(procedureName));
-      if (
-        !isConfigured &&
-        !(packagesLength === 1 && options.includeAllWhenSinglePackage)
-      ) {
-        continue;
-      }
+      if (!isConfigured) continue;
 
       const overloadIdentity = options.getOverloadIdentity?.(item);
       if (overloadIdentity !== undefined) {
@@ -78,6 +65,9 @@ export class ProcedureMetadataNormalizer {
           ? {}
           : { subprogramId: item.subprogramId }),
         ...(item.overload === undefined ? {} : { overload: item.overload }),
+        ...(item.structuredType === undefined
+          ? {}
+          : { structuredType: item.structuredType }),
       };
       argumentsList.push(argument);
     }

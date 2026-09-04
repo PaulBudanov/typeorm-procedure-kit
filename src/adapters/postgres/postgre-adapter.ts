@@ -56,7 +56,6 @@ export class PostgreAdapter extends DatabaseAdapter<
       {
         vendor: 'PostgreSQL',
         noArgumentSentinel: PostgreAdapter.NO_ARGUMENT_SENTINEL,
-        includeAllWhenSinglePackage: true,
         getOverloadIdentity: ({ specificName }) => specificName,
       }
     );
@@ -101,11 +100,15 @@ export class PostgreAdapter extends DatabaseAdapter<
     );
     super(logger, postgreSerializer, postgreNotify);
     const portalNames = new PostgrePortalName();
-    this.procedureBindings = new PostgreProcedureBindings(portalNames);
+    this.procedureBindings = new PostgreProcedureBindings(
+      portalNames,
+      handlerOptions.caseStrategy
+    );
     this.resultMaterializer = new PostgreProcedureResultMaterializer(
       logger,
       handlerOptions,
-      portalNames
+      portalNames,
+      postgreSerializer
     );
   }
 
@@ -147,6 +150,35 @@ export class PostgreAdapter extends DatabaseAdapter<
       );
     }
     return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
+  }
+
+  /** Builds the shared structured-type contract from PostgreSQL catalog rows. */
+  public override prepareProcedureMetadataRows(
+    rows: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
+    return rows.map((row) => {
+      if (row.structuredKind === null || row.structuredKind === undefined) {
+        if (
+          typeof row.argumentType === 'string' &&
+          row.argumentType.trim().toLowerCase() === 'record'
+        ) {
+          throw new ServerError(
+            'Dynamic PostgreSQL RECORD arguments are not supported; use a named composite type'
+          );
+        }
+        return row;
+      }
+      return {
+        ...row,
+        structuredType: {
+          kind: row.structuredKind,
+          schema: row.structuredSchema,
+          typeName: row.structuredTypeName,
+          typeOid: row.structuredTypeOid,
+          fields: row.structuredFields,
+        },
+      };
+    });
   }
 
   /**

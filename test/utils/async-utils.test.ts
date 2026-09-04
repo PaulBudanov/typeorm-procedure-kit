@@ -110,11 +110,28 @@ describe('AsyncUtils', (): void => {
     expect(isOperationCompleted).toBe(true);
   });
 
-  it('rejects invalid retry and timer bounds', async (): Promise<void> => {
-    expect(() => AsyncUtils.delay(-1)).toThrow(RangeError);
-    await expect(AsyncUtils.retry(async () => 'ok', 0)).rejects.toThrow(
-      RangeError
-    );
+  it.each([0, -1, 1.5, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid maxRetries value %s',
+    async (maxRetries): Promise<void> => {
+      await expect(
+        AsyncUtils.retry(async () => 'ok', maxRetries)
+      ).rejects.toThrow('maxRetries must be a positive safe integer');
+    }
+  );
+
+  it.each([-1, 1.5, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid delay value %s',
+    async (delayMs): Promise<void> => {
+      expect(() => AsyncUtils.delay(delayMs)).toThrow(
+        'delay must be a non-negative safe integer'
+      );
+      await expect(
+        AsyncUtils.retry(async () => 'ok', 1, delayMs)
+      ).rejects.toThrow('retry delay must be a non-negative safe integer');
+    }
+  );
+
+  it('rejects invalid timeout bounds', async (): Promise<void> => {
     await expect(AsyncUtils.timeout(async () => 'ok', 0)).rejects.toThrow(
       RangeError
     );

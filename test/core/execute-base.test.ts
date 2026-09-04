@@ -139,4 +139,52 @@ describe('ExecuteBase', (): void => {
     ).rejects.toThrow('bad query');
     expect(connectionBase.releaseEntityManager).toHaveBeenCalledTimes(2);
   });
+
+  it('surfaces release failure after a successful operation', async (): Promise<void> => {
+    const manager = {};
+    const releaseError = new Error('release failed');
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockRejectedValue(releaseError),
+    };
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi.fn().mockResolvedValue([{ id: 1 }]),
+      }),
+      createLogger()
+    );
+
+    await expect(executeBase.execute('select 1')).rejects.toBe(releaseError);
+  });
+
+  it('preserves operation and release failures in an AggregateError', async (): Promise<void> => {
+    const manager = {};
+    const operationError = new Error('query failed');
+    const releaseError = new Error('release failed');
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockRejectedValue(releaseError),
+    };
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi.fn().mockRejectedValue(operationError),
+      }),
+      createLogger()
+    );
+
+    const result = executeBase.execute('select 1', [], [], {
+      queryId: 'query-aggregate',
+    });
+
+    await expect(result).rejects.toBeInstanceOf(AggregateError);
+    await expect(result).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({ message: 'query failed' }),
+        releaseError,
+      ],
+      cause: expect.objectContaining({ message: 'query failed' }),
+    });
+  });
 });

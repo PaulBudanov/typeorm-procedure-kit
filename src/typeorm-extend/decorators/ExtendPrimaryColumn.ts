@@ -55,9 +55,7 @@ export function ExtendPrimaryColumn(
       targetRegister,
       propertyKey.toString(),
       columnMetadata.generation,
-      overrideSource?.generated === undefined
-        ? columnMetadata.column.options.generated
-        : overrideSource.generated
+      overrideSource?.generated ?? columnMetadata.column.options.generated
     );
   };
 }

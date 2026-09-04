@@ -1,11 +1,22 @@
+import type {
+  IPrimaryGeneratedColumnNumeric,
+  IPrimaryGeneratedColumnUuid,
+  IRepositoryPropertyMapRecord,
+  IRepositoryPropertyPathsMapNode,
+  IRepositoryPropertyPathsMapRecord,
+} from '../interfaces/typeorm-extend.interfaces.js';
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { DataSourceOptions } from '../typeorm/data-source/DataSourceOptions.js';
 import type { PrimaryGeneratedColumnNumericOptions } from '../typeorm/decorator/options/PrimaryGeneratedColumnNumericOptions.js';
 import type { PrimaryGeneratedColumnUUIDOptions } from '../typeorm/decorator/options/PrimaryGeneratedColumnUUIDOptions.js';
-import type { SelectQueryBuilder } from '../typeorm/query-builder/SelectQueryBuilder.js';
-import type { Repository } from '../typeorm/repository/Repository.js';
 
-export type IEntityTargets<TEntityTarget> = Readonly<
+export type {
+  IBuildBaseQueryContext,
+  IRepositoryContext,
+  IRepositoryPropertyMapRecord,
+} from '../interfaces/typeorm-extend.interfaces.js';
+
+export type TEntityTargets<TEntityTarget> = Readonly<
   Record<DataSourceOptions['type'], TEntityTarget>
 >;
 
@@ -14,18 +25,6 @@ type TRepositoryPropertyMapScalar =
   | RegExp
   | Uint8Array
   | ((...args: Array<unknown>) => unknown);
-
-interface IRepositoryPropertyPathsMapRecord {
-  [propertyName: string]:
-    | string
-    | IRepositoryPropertyPathsMapRecord
-    | undefined;
-  $path?: string;
-}
-
-interface IRepositoryPropertyPathsMapNode extends IRepositoryPropertyPathsMapRecord {
-  $path: string;
-}
 
 type TRepositoryPropertyPathsValueMap<TValue> =
   NonNullable<Awaited<TValue>> extends TRepositoryPropertyMapScalar
@@ -62,32 +61,9 @@ export type TRepositoryPropertyMap<TEntity> = string extends keyof TEntity
       >;
     };
 
-export interface IRepositoryContext<TEntity> {
-  readonly propertyPaths: TRepositoryPropertyPathsMap<TEntity>;
-  readonly property: TRepositoryPropertyMap<TEntity>;
-  readonly repository: Repository<TEntity>;
-}
-
-export interface IBuildBaseQueryContext<
-  TEntity,
-> extends IRepositoryContext<TEntity> {
-  readonly builder: SelectQueryBuilder<TEntity>;
-  readonly alias: string;
-}
-
 export type TEntityTargetFactory<TEntityTarget> = (
   dataSource: DataSource
 ) => TEntityTarget;
-
-interface IPrimaryGeneratedColumnUuid {
-  strategy?: 'uuid';
-  options?: PrimaryGeneratedColumnUUIDOptions;
-}
-
-interface IPrimaryGeneratedColumnNumeric {
-  strategy?: 'increment';
-  options?: PrimaryGeneratedColumnNumericOptions;
-}
 
 export type TExtendPrimaryGeneratedColumnOptions =
   | IPrimaryGeneratedColumnUuid
@@ -103,8 +79,3 @@ export type TPrimaryGeneratedColumnOverrideDescriptor =
       strategy?: 'uuid';
       options?: PrimaryGeneratedColumnUUIDOptions;
     };
-
-export interface IRepositoryPropertyMapRecord {
-  [propertyName: string]: string | IRepositoryPropertyMapRecord | undefined;
-  $path?: string;
-}

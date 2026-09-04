@@ -54,17 +54,13 @@ export function ExtendColumn(
       targetRegister,
       propertyKey.toString(),
       columnMetadata.generation,
-      overrideSource?.generated === undefined
-        ? columnMetadata.column.options.generated
-        : overrideSource.generated
+      overrideSource?.generated ?? columnMetadata.column.options.generated
     );
     TypeOrmHelpers.updateUniqueMetadata(
       storage,
       targetRegister,
       propertyKey.toString(),
-      overrideSource?.unique === undefined
-        ? (columnMetadata.column.options.unique ?? false)
-        : overrideSource.unique,
+      overrideSource?.unique ?? columnMetadata.column.options.unique ?? false,
       columnMetadata.unique
     );
   };

@@ -4,7 +4,7 @@ import { DateTime } from 'luxon';
 
 import { safeStringify } from './safe-stringify.js';
 
-export class ServerError extends Error {
+export class ServerError<TContext = unknown> extends Error {
   public readonly errorId: string;
   public readonly timestamp: Date = DateTime.now().toLocal().toJSDate();
   /**
@@ -18,7 +18,7 @@ export class ServerError extends Error {
    */
   public constructor(
     public override readonly message: string,
-    public readonly errorContext?: unknown,
+    public readonly errorContext?: TContext,
     public readonly options?: {
       cause?: unknown;
       errorId?: string;
@@ -104,13 +104,11 @@ export class ServerError extends Error {
   }
 
   /**
-   * Retrieves the error context as the given type. This method does not perform any type checks,
-   * so it is up to the caller to ensure that the type is correct.
-   * @template T The type of the error context.
+   * Retrieves the error context type inferred when this error was constructed.
    * @returns The error context as the given type.
    */
-  public unsafeGetContextAs<T>(): T {
-    return this.errorContext as T;
+  public unsafeGetContextAs(): TContext | undefined {
+    return this.errorContext;
   }
 
   /**

@@ -8,9 +8,9 @@ import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
 import type {
-  ISetSerializer,
   TSerializerInput,
   TSerializerType,
+  TSetSerializer,
 } from '../../src/types/serializer.types.js';
 
 const caseStrategy = {
@@ -262,7 +262,7 @@ describe('database serializers', (): void => {
     const snapshot = serializer.serializerMapping;
     const mutationAttempt = snapshot as unknown as Map<
       TSerializerType,
-      ISetSerializer
+      TSetSerializer
     >;
     mutationAttempt.clear();
 
