@@ -1,12 +1,13 @@
 import * as glob from 'glob';
 
-import type { TFunction } from '../../types/utility.types.js';
-import type { Logger } from '../logger/Logger.js';
 import { PlatformTools } from '../platform/PlatformTools.js';
 
 import { importOrRequireFile } from './ImportUtils.js';
 import { InstanceChecker } from './InstanceChecker.js';
 import { ObjectUtils } from './ObjectUtils.js';
+
+import type { TFunction } from '../../types/utility.types.js';
+import type { Logger } from '../logger/Logger.js';
 
 /**
  * Loads all exported classes from the given directory.
@@ -41,9 +42,9 @@ export async function importClassesFromDirectories(
     return allLoaded;
   }
 
-  const allFiles = directories.reduce((allDirs, dir) => {
+  const allFiles = directories.reduce<Array<string>>((allDirs, dir) => {
     return allDirs.concat(glob.sync(PlatformTools.pathNormalize(dir)));
-  }, [] as Array<string>);
+  }, []);
 
   if (directories.length > 0 && allFiles.length === 0) {
     logger.log(logLevel, `${classesNotFoundMessage} "${directories}"`);
@@ -57,7 +58,7 @@ export async function importClassesFromDirectories(
     .filter((file) => {
       const dtsExtension = file.substring(file.length - 5, file.length);
       return (
-        formats.indexOf(PlatformTools.pathExtname(file)) !== -1 &&
+        formats.includes(PlatformTools.pathExtname(file)) &&
         dtsExtension !== '.d.ts'
       );
     })
@@ -80,9 +81,9 @@ export function importJsonsFromDirectories(
   directories: Array<string>,
   format = '.json'
 ): Array<unknown> {
-  const allFiles = directories.reduce((allDirs, dir) => {
+  const allFiles = directories.reduce<Array<string>>((allDirs, dir) => {
     return allDirs.concat(glob.sync(PlatformTools.pathNormalize(dir)));
-  }, [] as Array<string>);
+  }, []);
 
   return allFiles
     .filter((file) => PlatformTools.pathExtname(file) === format)

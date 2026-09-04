@@ -1,24 +1,3 @@
-import type { Provider } from '@nestjs/common';
-
-import type { IExecutionOptions } from '../../types/config.types.js';
-import type {
-  TCallProcedure,
-  TCallSql,
-  TDeleteAllSerializers,
-  TDeleteSerializer,
-  TGetDataSource,
-  TMakeNotify,
-  TSetSerializer,
-  TUnlistenNotify,
-} from '../../types/nest-decorator.types.js';
-import type {
-  ICreateNotify,
-  IOracleOptionsNotify,
-} from '../../types/notification.types.js';
-import type {
-  TProcedurePayload,
-  TProcedurePayloadInput,
-} from '../../types/procedure.types.js';
 import {
   CALL_PROCEDURE,
   CALL_SQL,
@@ -31,16 +10,46 @@ import {
 } from '../consts.js';
 import { TypeOrmProcedureKitNestService } from '../typeorm-procedure-kit-nest.service.js';
 
+import type { IExecutionOptions } from '../../types/config.types.js';
+import type {
+  TCallProcedure,
+  TCallSql,
+  TDeleteAllSerializers,
+  TDeleteSerializer,
+  TGetDataSource,
+  TMakeNotify,
+  TSetSerializerHandler,
+  TUnlistenNotify,
+} from '../../types/nest-decorator.types.js';
+import type {
+  ICreateNotify,
+  IOracleOptionsNotify,
+} from '../../types/notification.types.js';
+import type {
+  TProcedurePayload,
+  TProcedurePayloadInput,
+} from '../../types/procedure.types.js';
+import type { IProcedureResult } from '../../types/utility.types.js';
+import type { Provider } from '@nestjs/common';
+
 export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   {
     provide: CALL_PROCEDURE,
     useFactory: (service: TypeOrmProcedureKitNestService): TCallProcedure => {
-      return <T, U extends TProcedurePayload = TProcedurePayload>(
+      return <
+        TRow,
+        TPayload extends TProcedurePayload = TProcedurePayload,
+        TOut extends Record<string, unknown> = Record<string, unknown>,
+      >(
         executeString: string,
-        params?: TProcedurePayloadInput<U>,
+        params?: TProcedurePayloadInput<TPayload>,
         executionOptions?: IExecutionOptions
-      ): Promise<Array<T>> =>
-        service.call<T, U>(executeString, params, executionOptions);
+      ): Promise<IProcedureResult<TRow, TOut>> =>
+        service.call<TRow, TPayload, TOut>(
+          executeString,
+          params,
+          executionOptions
+        );
     },
     inject: [TypeOrmProcedureKitNestService],
   },
@@ -83,9 +92,12 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
   },
   {
     provide: SET_SERIALIZER,
-    useFactory: (service: TypeOrmProcedureKitNestService): TSetSerializer => {
-      return (serializer: Parameters<TSetSerializer>[0]): void =>
+    useFactory: (
+      service: TypeOrmProcedureKitNestService
+    ): TSetSerializerHandler => {
+      return (serializer: Parameters<TSetSerializerHandler>[0]): void => {
         service.setSerializer(serializer);
+      };
     },
     inject: [TypeOrmProcedureKitNestService],
   },
@@ -94,8 +106,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
     useFactory: (
       service: TypeOrmProcedureKitNestService
     ): TDeleteSerializer => {
-      return (serializerType: Parameters<TDeleteSerializer>[0]): void =>
+      return (serializerType: Parameters<TDeleteSerializer>[0]): void => {
         service.deleteSerializer(serializerType);
+      };
     },
     inject: [TypeOrmProcedureKitNestService],
   },
@@ -104,7 +117,9 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
     useFactory: (
       service: TypeOrmProcedureKitNestService
     ): TDeleteAllSerializers => {
-      return (): void => service.deleteAllSerializers();
+      return (): void => {
+        service.deleteAllSerializers();
+      };
     },
     inject: [TypeOrmProcedureKitNestService],
   },

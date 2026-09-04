@@ -4,7 +4,7 @@ import { DateTime } from 'luxon';
 
 import { safeStringify } from './safe-stringify.js';
 
-export class ServerError extends Error {
+export class ServerError<TContext = unknown> extends Error {
   public readonly errorId: string;
   public readonly timestamp: Date = DateTime.now().toLocal().toJSDate();
   /**
@@ -17,8 +17,8 @@ export class ServerError extends Error {
    *   stack - The stack trace of the error.
    */
   public constructor(
-    public readonly message: string,
-    public readonly errorContext?: unknown,
+    public override readonly message: string,
+    public readonly errorContext?: TContext,
     public readonly options?: {
       cause?: unknown;
       errorId?: string;
@@ -28,8 +28,41 @@ export class ServerError extends Error {
     super(message, options);
     this.name = 'ServerError';
     this.errorId = options?.errorId ?? randomUUID();
+    Object.defineProperties(this, {
+      errorContext: {
+        value: errorContext,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      },
+      options: {
+        value: options,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      },
+    });
     Object.setPrototypeOf(this, new.target.prototype);
-    if (!options?.stack) Error.captureStackTrace?.(this, this.constructor);
+    if (!options?.stack) Error.captureStackTrace(this, this.constructor);
+  }
+
+  /**
+   * Returns the intentionally small public representation of this error.
+   * Driver errors, bind values, credentials, and stack traces remain available
+   * through explicit error handling APIs but are not serialized accidentally.
+   */
+  public toJSON(): {
+    name: string;
+    message: string;
+    errorId: string;
+    timestamp: string;
+  } {
+    return {
+      name: this.name,
+      message: this.message,
+      errorId: this.errorId,
+      timestamp: this.timestamp.toISOString(),
+    };
   }
 
   /**
@@ -62,9 +95,7 @@ export class ServerError extends Error {
     const messageString =
       errorObject.error instanceof Error
         ? errorObject.error.message
-        : typeof errorObject.error === 'object'
-          ? safeStringify(errorObject.error)
-          : String(errorObject.error);
+        : safeStringify(errorObject.error);
     return new ServerError(
       errorObject.message ?? messageString,
       errorObject.error,
@@ -73,13 +104,11 @@ export class ServerError extends Error {
   }
 
   /**
-   * Retrieves the error context as the given type. This method does not perform any type checks,
-   * so it is up to the caller to ensure that the type is correct.
-   * @template T The type of the error context.
+   * Retrieves the error context type inferred when this error was constructed.
    * @returns The error context as the given type.
    */
-  public unsafeGetContextAs<T>(): T {
-    return this.errorContext as T;
+  public unsafeGetContextAs(): TContext | undefined {
+    return this.errorContext;
   }
 
   /**

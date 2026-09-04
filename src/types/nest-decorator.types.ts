@@ -1,5 +1,3 @@
-import type { DataSource } from '../typeorm/data-source/DataSource.js';
-
 import type { IExecutionOptions } from './config.types.js';
 import type {
   ICreateNotify,
@@ -9,16 +7,19 @@ import type {
   TProcedurePayload,
   TProcedurePayloadInput,
 } from './procedure.types.js';
-import type { ISetSerializer } from './serializer.types.js';
+import type { TSetSerializer } from './serializer.types.js';
+import type { IProcedureResult } from './utility.types.js';
+import type { DataSource } from '../typeorm/data-source/DataSource.js';
 
 export type TCallProcedure = <
-  T,
-  U extends TProcedurePayload = TProcedurePayload,
+  TRow,
+  TPayload extends TProcedurePayload = TProcedurePayload,
+  TOut extends Record<string, unknown> = Record<string, unknown>,
 >(
   executeString: string,
-  params?: TProcedurePayloadInput<U>,
+  params?: TProcedurePayloadInput<TPayload>,
   executionOptions?: IExecutionOptions
-) => Promise<Array<T>>;
+) => Promise<IProcedureResult<TRow, TOut>>;
 
 export type TCallSql = <T>(
   sql: string,
@@ -35,10 +36,10 @@ export type TMakeNotify = <T>(
 
 export type TUnlistenNotify = (channel: string) => Promise<void>;
 
-export type TSetSerializer = (serializer: ISetSerializer) => void;
+export type TSetSerializerHandler = (serializer: TSetSerializer) => void;
 
 export type TDeleteSerializer = (
-  serializerType: Pick<ISetSerializer, 'serializerType'>
+  serializerType: Pick<TSetSerializer, 'serializerType'>
 ) => void;
 
 export type TDeleteAllSerializers = () => void;

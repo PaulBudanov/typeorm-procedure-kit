@@ -1,12 +1,14 @@
-import type oracledb from 'oracledb';
+import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
 
-import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
+import { ProcedureMetadataNormalizer } from './procedure-metadata-normalizer.js';
+
 import type {
-  IDatabaseAdapterContract,
-  TConnectionClassTypes,
-  TNotifyClassTypes,
-  TSerializerClassTypes,
-} from '../../types/adapter.types.js';
+  IAdapterNotificationCapability,
+  IAdapterSerializerCapability,
+} from './adapter-capabilities.js';
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
+import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
+import type { IDatabaseAdapterContract } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   INotifyRetryOptions,
@@ -19,21 +21,27 @@ import type {
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type {
-  ISetSerializer,
   TSerializerTypeCastWithoutFormat,
+  TSetSerializer,
 } from '../../types/serializer.types.js';
 import type {
   IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
-import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
 
 export abstract class DatabaseAdapter<
-  TSerializerClass extends TSerializerClassTypes,
-  TNotificationClass extends TNotifyClassTypes,
-  TConnectionClass extends TConnectionClassTypes,
+  TSerializerClass extends IAdapterSerializerCapability,
+  TNotificationClass extends IAdapterNotificationCapability<
+    TNotifyOptions,
+    TNotificationConnection
+  >,
   TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
+  TNotificationConnection = unknown,
 > implements IDatabaseAdapterContract<TNotifyOptions> {
+  private readonly procedureMetadataNormalizer =
+    new ProcedureMetadataNormalizer();
   /**
    * Creates a database adapter facade around serializer, notification, and
    * single-connection helpers for one database vendor.
@@ -45,8 +53,7 @@ export abstract class DatabaseAdapter<
   public constructor(
     protected readonly logger: ILoggerModule,
     protected readonly serializer: TSerializerClass,
-    protected readonly notifier: TNotificationClass,
-    protected readonly connection: TConnectionClass
+    protected readonly notifier: TNotificationClass
   ) {}
   /**
    * Sorts the arguments for a given procedure in a package.
@@ -66,33 +73,29 @@ export abstract class DatabaseAdapter<
     packageName: Lowercase<string>,
     packagesLength: number
   ): TProcedureArgumentList {
-    const sortedProcedures = rawArguments.reduce(
-      (acc: TProcedureArgumentList, item: IProcedureArgumentBase) => {
-        const itemObjectNameToLowerCase =
-          item.procedureName.toLowerCase() as Lowercase<string>;
-        if (
-          item.argumentName === undefined ||
-          item.argumentName === null ||
-          (!procedureListBase.includes(
-            `${packageName}.${itemObjectNameToLowerCase}` as Lowercase<string>
-          ) &&
-            packagesLength > 1)
-        )
-          return acc;
-        acc[itemObjectNameToLowerCase] = acc[itemObjectNameToLowerCase] ?? [];
-        acc[itemObjectNameToLowerCase].push({
-          argumentName: item.argumentName.toLowerCase(),
-          argumentType: item.argumentType,
-          order: item.order,
-          mode: item.mode,
-        });
-        acc[itemObjectNameToLowerCase].sort((a, b) => a.order - b.order);
-
-        return acc;
-      },
-      {} as TProcedureArgumentList
+    return this.normalizeProcedureMetadata(
+      rawArguments,
+      procedureListBase,
+      packageName,
+      packagesLength,
+      { vendor: 'Database' }
     );
-    return sortedProcedures;
+  }
+
+  protected normalizeProcedureMetadata(
+    rawArguments: Array<IProcedureArgumentBase>,
+    procedureListBase: Array<Lowercase<string>>,
+    packageName: Lowercase<string>,
+    packagesLength: number,
+    options: IProcedureMetadataOptions
+  ): TProcedureArgumentList {
+    return this.procedureMetadataNormalizer.normalize(
+      rawArguments,
+      procedureListBase,
+      packageName,
+      packagesLength,
+      options
+    );
   }
 
   /**
@@ -112,29 +115,52 @@ export abstract class DatabaseAdapter<
     client: EntityManager,
     optionsCommands: Array<string>,
     bindings: IBindingsObjectReturn['bindings'] = [],
-    cursorsNames: Array<string> = []
+    _cursorsNames: Array<string> = []
   ): Promise<Awaited<Array<T>>> {
     return client.transaction(async (manager) => {
-      const setupCommands = optionsCommands ?? [];
-      if (setupCommands.length > 0) {
-        await DatabaseOptionsExecutor.executeCommands(
-          setupCommands,
-          manager,
-          this.logger
-        );
-      }
-      const result = await manager.query<
-        | Array<T | oracledb.ResultSet<T>>
-        | Record<string, T | oracledb.ResultSet<T>>
-      >(sql, bindings);
-      const isCursorResult =
-        result !== null &&
-        typeof result === 'object' &&
-        cursorsNames.length > 0;
-      if (isCursorResult) {
-        return this.fetchAllCursors<T>(cursorsNames, { result, manager });
-      }
-      return result as Array<T>;
+      const setupCommands = optionsCommands;
+      return DatabaseOptionsExecutor.executeWithCommands(
+        setupCommands,
+        manager,
+        this.logger,
+        () => manager.query<Array<T>>(sql, bindings)
+      );
+    });
+  }
+
+  /**
+   * Executes a stored procedure inside a transaction and delegates vendor
+   * output-bind normalization to the concrete adapter.
+   */
+  public async executeProcedure<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
+    sql: string,
+    client: EntityManager,
+    optionsCommands: Array<string>,
+    bindings: IBindingsObjectReturn['bindings'] = [],
+    cursorsNames: Array<string> = [],
+    outBindings: Array<IProcedureOutBinding> = []
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    return client.transaction(async (manager) => {
+      const setupCommands = optionsCommands;
+      return DatabaseOptionsExecutor.executeWithCommands(
+        setupCommands,
+        manager,
+        this.logger,
+        async () => {
+          const result = await manager.query(sql, bindings);
+          return this.createProcedureResult<TRow, TOut>(
+            cursorsNames,
+            outBindings,
+            {
+              result,
+              manager,
+            }
+          );
+        }
+      );
     });
   }
 
@@ -150,6 +176,13 @@ export abstract class DatabaseAdapter<
     procedureMetadataSql?: string
   ): string;
 
+  /** Returns common metadata rows unchanged unless a vendor must collapse them. */
+  public prepareProcedureMetadataRows(
+    rows: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
+    return rows;
+  }
+
   /**
    * Converts named `:PARAM` placeholders and parameter values to the binding
    * format expected by the current database driver.
@@ -157,9 +190,9 @@ export abstract class DatabaseAdapter<
    * @param params - object with values for placeholders.
    * @returns rewritten SQL and ordered binding values.
    */
-  public abstract makeSqlBindings<U extends Record<string, unknown>>(
+  public abstract makeSqlBindings(
     sqlQuery: string,
-    params?: U
+    params?: Record<string, unknown>
   ): ISqlBindingsObjectReturn;
 
   /**
@@ -178,29 +211,30 @@ export abstract class DatabaseAdapter<
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn;
 
-  //TODO: Add in the future support for another out bindings
   /**
-   * Reads all output cursors returned by a procedure call.
+   * Normalizes scalar and cursor output bindings returned by a procedure call.
    * @param cursorNames - output cursor names from procedure metadata.
    * @param result - raw driver result containing cursor handles when required.
    * @param manager - entity manager used by adapters that fetch cursors by SQL.
-   * @returns rows read from all cursors.
+   * @returns procedure result envelope.
    */
-  protected abstract fetchAllCursors<T>(
+  protected abstract createProcedureResult<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
     cursorNames: Array<string>,
+    outBindings: Array<IProcedureOutBinding>,
     executeResult: {
-      result?:
-        | Array<oracledb.ResultSet<T> | T>
-        | Record<string, oracledb.ResultSet<T> | T>;
-      manager?: EntityManager;
+      result?: unknown;
+      manager: EntityManager;
     }
-  ): Promise<Array<T>>;
+  ): Promise<IProcedureResult<TRow, TOut>>;
 
   /**
    * Registers or replaces a serializer for driver result values.
    * @param options - serializer type and conversion strategy.
    */
-  public setSerializer(options: ISetSerializer): void {
+  public setSerializer(options: TSetSerializer): void {
     this.serializer.setSerializer(options);
   }
 
@@ -209,7 +243,7 @@ export abstract class DatabaseAdapter<
    * @param serializerType - serializer type to remove.
    */
   public deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
     this.serializer.deleteSerializer(serializerType);
   }
@@ -238,8 +272,8 @@ export abstract class DatabaseAdapter<
    */
   public listenNotify<T>(
     sqlCommand: string,
-    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void,
-    options?: TNotifyOptions | undefined
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    options?: TNotifyOptions
   ): Promise<string> {
     return this.notifier.listenNotify<T>(sqlCommand, notifyCallback, options);
   }

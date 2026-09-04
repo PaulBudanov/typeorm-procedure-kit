@@ -1,7 +1,8 @@
-import type { NamingStrategyInterface } from '../typeorm/index.js';
 import { DefaultNamingStrategy } from '../typeorm/naming-strategy/DefaultNamingStrategy.js';
-import type { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { ServerError } from '../utils/server-error.js';
+
+import type { NamingStrategyInterface } from '../typeorm/index.js';
+import type { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 
 //TODO: Extend NamingStrategy Class.
 export class OrmStrategy
@@ -9,7 +10,7 @@ export class OrmStrategy
   implements NamingStrategyInterface
 {
   private databaseNamingCache: DatabaseNamingCache<string>;
-  private readonly COLUMN_NAME_CACHE_KEY_SEPARATOR = '\x1f';
+  private static readonly COLUMN_NAME_CACHE_KEY_SEPARATOR = '\x1f';
   /**
    * Constructor for the OrmStrategy class.
    * @param {symbol} columnNameCacheKey - Symbol to identify the cache key for the column name transformation.
@@ -40,27 +41,25 @@ export class OrmStrategy
    * @param embeddedPrefixes - Embedded prefixes supplied by TypeORM.
    * @returns Database column name for ORM-generated SQL.
    */
-  public columnName(
+  public override columnName(
     propertyName: string,
     customName: string,
     embeddedPrefixes: Array<string>
   ): string {
-    const columnName = propertyName ?? customName;
+    const columnName = propertyName;
     if (typeof columnName !== 'string')
       throw new ServerError('Column name must be a string');
     const name = this.stringTransformUtility(columnName);
-    let cacheName = `${name}${this.COLUMN_NAME_CACHE_KEY_SEPARATOR}${
-      customName ?? ''
-    }`;
+    let cacheName = `${name}${OrmStrategy.COLUMN_NAME_CACHE_KEY_SEPARATOR}${customName}`;
     if (embeddedPrefixes.length)
-      cacheName += `${this.COLUMN_NAME_CACHE_KEY_SEPARATOR}${embeddedPrefixes.join(
-        this.COLUMN_NAME_CACHE_KEY_SEPARATOR
+      cacheName += `${OrmStrategy.COLUMN_NAME_CACHE_KEY_SEPARATOR}${embeddedPrefixes.join(
+        OrmStrategy.COLUMN_NAME_CACHE_KEY_SEPARATOR
       )}`;
-    if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, cacheName))
-      return this.databaseNamingCache.cacheGet(
-        this.columnNameCacheKey,
-        cacheName
-      )!;
+    const cachedColumnName = this.databaseNamingCache.cacheGet(
+      this.columnNameCacheKey,
+      cacheName
+    );
+    if (cachedColumnName !== undefined) return cachedColumnName;
     const data = super.columnName(name, customName, embeddedPrefixes);
     this.databaseNamingCache.cacheSet(this.columnNameCacheKey, cacheName, data);
     return data;
@@ -69,14 +68,14 @@ export class OrmStrategy
   /**
    * Transforms raw column names and query aliases with the configured case utility.
    */
-  public transformColumnName(columnName: string): string {
+  public override transformColumnName(columnName: string): string {
     if (typeof columnName !== 'string')
       throw new ServerError('Column name must be a string');
-    if (this.databaseNamingCache.cacheHas(this.columnNameCacheKey, columnName))
-      return this.databaseNamingCache.cacheGet(
-        this.columnNameCacheKey,
-        columnName
-      )!;
+    const cachedColumnName = this.databaseNamingCache.cacheGet(
+      this.columnNameCacheKey,
+      columnName
+    );
+    if (cachedColumnName !== undefined) return cachedColumnName;
     const cacheData = this.stringTransformUtility(columnName);
     this.databaseNamingCache.cacheSet(
       this.columnNameCacheKey,

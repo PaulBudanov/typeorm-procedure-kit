@@ -1,38 +1,110 @@
-import type pg from 'pg';
-import type { Pool, PoolClient } from 'pg';
-
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import type { DataSource } from '../../data-source/DataSource.js';
 import { ConnectionIsNotSetError } from '../../error/ConnectionIsNotSetError.js';
 import { DriverPackageNotInstalledError } from '../../error/DriverPackageNotInstalledError.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
-import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import { PlatformTools } from '../../platform/PlatformTools.js';
-import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { RdbmsSchemaBuilder } from '../../schema-builder/RdbmsSchemaBuilder.js';
-import type { Table } from '../../schema-builder/table/Table.js';
-import type { TableColumn } from '../../schema-builder/table/TableColumn.js';
-import type { TableForeignKey } from '../../schema-builder/table/TableForeignKey.js';
-import type { View } from '../../schema-builder/view/View.js';
 import { ApplyValueTransformers } from '../../util/ApplyValueTransformers.js';
 import { DateUtils } from '../../util/DateUtils.js';
 import { InstanceChecker } from '../../util/InstanceChecker.js';
 import { replaceNamedParameters } from '../../util/NamedParameterUtils.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import { VersionUtils } from '../../util/VersionUtils.js';
-import type { Driver } from '../Driver.js';
 import { DriverUtils } from '../DriverUtils.js';
+import { normalizeSessionTimeZone } from '../SessionTimeZone.js';
+
+import { PostgresQueryRunner } from './PostgresQueryRunner.js';
+
+import type { PostgresConnectionCredentialsOptions } from './PostgresConnectionCredentialsOptions.js';
+import type { PostgresConnectionOptions } from './PostgresConnectionOptions.js';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
+import type { Table } from '../../schema-builder/table/Table.js';
+import type { TableColumn } from '../../schema-builder/table/TableColumn.js';
+import type { TableForeignKey } from '../../schema-builder/table/TableForeignKey.js';
+import type { View } from '../../schema-builder/view/View.js';
+import type { Driver } from '../Driver.js';
 import type { ColumnType } from '../types/ColumnTypes.js';
 import type { CteCapabilities } from '../types/CteCapabilities.js';
 import type { DataTypeDefaults } from '../types/DataTypeDefaults.js';
 import type { MappedColumnTypes } from '../types/MappedColumnTypes.js';
 import type { ReplicationMode } from '../types/ReplicationMode.js';
 import type { UpsertType } from '../types/UpsertType.js';
+import type { CustomTypesConfig, FieldDef, Pool, PoolClient } from 'pg';
+import type pg from 'pg';
 
-import type { PostgresConnectionCredentialsOptions } from './PostgresConnectionCredentialsOptions.js';
-import type { PostgresConnectionOptions } from './PostgresConnectionOptions.js';
-import { PostgresQueryRunner } from './PostgresQueryRunner.js';
+interface IMutableCustomTypesConfig extends CustomTypesConfig {
+  setTypeParser(oid: number, parseFn: (value: string) => unknown): void;
+}
+
+interface IPostgresTypeRegistry {
+  builtins: {
+    INT4: number;
+    INT8: number;
+  };
+  getTypeParser(oid: number): (value: string) => unknown;
+}
+
+interface IPostgresWithTypeOverrides {
+  TypeOverrides: new () => unknown;
+}
+
+function hasMutableTypeParsers(
+  value: unknown
+): value is IMutableCustomTypesConfig {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'setTypeParser' in value &&
+    typeof value.setTypeParser === 'function'
+  );
+}
+
+function hasTypeOverridesConstructor(
+  value: unknown
+): value is IPostgresWithTypeOverrides {
+  if (
+    (typeof value !== 'object' && typeof value !== 'function') ||
+    value === null ||
+    !('TypeOverrides' in value) ||
+    typeof value.TypeOverrides !== 'function'
+  )
+    return false;
+
+  try {
+    Reflect.construct(Object, [], value.TypeOverrides);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isPostgresTypeRegistry(
+  value: unknown
+): value is IPostgresTypeRegistry {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('builtins' in value) ||
+    typeof value.builtins !== 'object' ||
+    value.builtins === null ||
+    !('getTypeParser' in value) ||
+    typeof value.getTypeParser !== 'function'
+  )
+    return false;
+
+  return (
+    'INT4' in value.builtins &&
+    typeof value.builtins.INT4 === 'number' &&
+    'INT8' in value.builtins &&
+    typeof value.builtins.INT8 === 'number'
+  );
+}
+
+const POSTGRES_INT8_ARRAY_OID = 1016;
+const POSTGRES_INT4_ARRAY_OID = 1007;
 
 /**
  * Organizes communication with PostgreSQL DBMS.
@@ -76,6 +148,15 @@ export class PostgresDriver implements Driver {
    * Connection options.
    */
   public options!: PostgresConnectionOptions;
+
+  /** Validated session time zone applied through the connection startup packet. */
+  public readonly sessionTimeZone?: string;
+
+  private typeOverrides?: CustomTypesConfig;
+  private resultRowTransformer?: (
+    rows: Array<unknown>,
+    fields: Array<FieldDef>
+  ) => Array<unknown>;
 
   /**
    * Version of Postgres. Requires a SQL query to the DB, so it is set on the first
@@ -320,10 +401,9 @@ export class PostgresDriver implements Driver {
     this.connection = connection;
     this.options = connection.options as PostgresConnectionOptions;
     this.isReplicated = this.options.replication ? true : false;
-    const sessionTimeZone = this.options.sessionTimeZone?.trim();
-    if (sessionTimeZone) {
-      process.env.PGTZ = sessionTimeZone;
-    }
+    this.sessionTimeZone = normalizeSessionTimeZone(
+      this.options.sessionTimeZone
+    );
     // load postgres package
     this.loadDependencies();
 
@@ -364,9 +444,7 @@ export class PostgresDriver implements Driver {
       const queryRunner = this.createQueryRunner('master');
 
       if (!this.version) {
-        this.version = await (
-          queryRunner as unknown as PostgresQueryRunner
-        ).getVersion();
+        this.version = await queryRunner.getVersion();
       }
 
       if (!this.database) {
@@ -383,6 +461,63 @@ export class PostgresDriver implements Driver {
     if (!this.schema) {
       this.schema = this.searchSchema;
     }
+  }
+
+  public configureResultHandling(
+    typeOverrides: CustomTypesConfig,
+    rowTransformer: (
+      rows: Array<unknown>,
+      fields: Array<FieldDef>
+    ) => Array<unknown>
+  ): void {
+    this.typeOverrides = typeOverrides;
+    this.resultRowTransformer = rowTransformer;
+  }
+
+  /** Applies parseInt8 to this driver's pools without mutating pg globals. */
+  private configureInt8Parsing(parseInt8: boolean | undefined): void {
+    if (parseInt8 !== true) return;
+
+    if (!this.typeOverrides) {
+      if (!hasTypeOverridesConstructor(this.postgres))
+        throw new TypeORMError(
+          'PostgreSQL driver does not expose the TypeOverrides capability'
+        );
+      const typeOverrides: unknown = new this.postgres.TypeOverrides();
+      if (!hasMutableTypeParsers(typeOverrides))
+        throw new TypeORMError(
+          'PostgreSQL TypeOverrides does not support setTypeParser'
+        );
+      this.typeOverrides = typeOverrides;
+    }
+
+    const typeOverrides = this.typeOverrides;
+    if (!hasMutableTypeParsers(typeOverrides))
+      throw new TypeORMError(
+        'Configured PostgreSQL type overrides do not support setTypeParser'
+      );
+
+    const typeRegistry: unknown = this.postgres.types;
+    if (!isPostgresTypeRegistry(typeRegistry))
+      throw new TypeORMError(
+        'PostgreSQL driver does not expose the expected type parser registry'
+      );
+
+    typeOverrides.setTypeParser(
+      typeRegistry.builtins.INT8,
+      typeRegistry.getTypeParser(typeRegistry.builtins.INT4)
+    );
+    typeOverrides.setTypeParser(
+      POSTGRES_INT8_ARRAY_OID,
+      typeRegistry.getTypeParser(POSTGRES_INT4_ARRAY_OID)
+    );
+  }
+
+  public transformResultRows(
+    rows: Array<unknown>,
+    fields: Array<FieldDef>
+  ): Array<unknown> {
+    return this.resultRowTransformer?.(rows, fields) ?? rows;
   }
 
   /**
@@ -580,8 +715,8 @@ export class PostgresDriver implements Driver {
     const hasGeometryColumns = this.connection.entityMetadatas.some(
       (metadata) => {
         return (
-          metadata.columns.filter(
-            (column) => this.spatialTypes.indexOf(column.type) >= 0
+          metadata.columns.filter((column) =>
+            this.spatialTypes.includes(column.type)
           ).length > 0
         );
       }
@@ -629,14 +764,39 @@ export class PostgresDriver implements Driver {
    * Closes connection with database.
    */
   public async disconnect(): Promise<void> {
-    if (!this.master) {
+    const master = this.master;
+    const slaves = [...this.slaves];
+    if (!master && slaves.length === 0) {
       throw new ConnectionIsNotSetError('postgres');
     }
 
-    await this.closePool(this.master);
-    await Promise.all(this.slaves.map((slave) => this.closePool(slave)));
-    this.master = undefined;
-    this.slaves = [];
+    const errors: Array<unknown> = [];
+    if (master) {
+      try {
+        await this.closePool(master);
+        if (this.master === master) this.master = undefined;
+      } catch (error: unknown) {
+        errors.push(error);
+      }
+    }
+
+    const failedSlaves: Array<Pool> = [];
+    for (const slave of slaves) {
+      try {
+        await this.closePool(slave);
+      } catch (error: unknown) {
+        errors.push(error);
+        failedSlaves.push(slave);
+      }
+    }
+    this.slaves = failedSlaves;
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Failed to close PostgreSQL pools', {
+        cause: errors[0],
+      });
+    }
   }
 
   /**
@@ -650,7 +810,7 @@ export class PostgresDriver implements Driver {
    * Creates a query runner used to execute database queries.
    */
   public createQueryRunner(mode: ReplicationMode): QueryRunner {
-    return new PostgresQueryRunner(this, mode) as unknown as QueryRunner;
+    return new PostgresQueryRunner(this, mode);
   }
 
   /**
@@ -675,7 +835,7 @@ export class PostgresDriver implements Driver {
         utc: columnMetadata.utc,
       });
     } else if (columnMetadata.type === 'time') {
-      return DateUtils.mixedDateToTimeString(value as string | Date);
+      return DateUtils.mixedDateToTimeString(value);
     } else if (
       columnMetadata.type === Date ||
       columnMetadata.type === 'timestamp' ||
@@ -684,7 +844,7 @@ export class PostgresDriver implements Driver {
     ) {
       return DateUtils.mixedDateToDate(value as string | Date);
     } else if (
-      ['json', 'jsonb', ...this.spatialTypes].indexOf(columnMetadata.type) >= 0
+      ['json', 'jsonb', ...this.spatialTypes].includes(columnMetadata.type)
     ) {
       return JSON.stringify(value);
     } else if (
@@ -717,9 +877,9 @@ export class PostgresDriver implements Driver {
           .join(',');
       }
     } else if (columnMetadata.type === 'simple-array') {
-      return DateUtils.simpleArrayToString(value as string | Date);
+      return DateUtils.simpleArrayToString(value);
     } else if (columnMetadata.type === 'simple-json') {
-      return DateUtils.simpleJsonToString(value as string | Date);
+      return DateUtils.simpleJsonToString(value);
     } else if (columnMetadata.type === 'cube') {
       if (columnMetadata.isArray) {
         return `{${(value as Array<Array<number>>)
@@ -774,7 +934,7 @@ export class PostgresDriver implements Driver {
         utc: columnMetadata.utc,
       });
     } else if (columnMetadata.type === 'time') {
-      value = DateUtils.mixedTimeToString(value as string | Date);
+      value = DateUtils.mixedTimeToString(value);
     } else if (
       columnMetadata.type === 'vector' ||
       columnMetadata.type === 'halfvec'
@@ -804,9 +964,9 @@ export class PostgresDriver implements Driver {
         value = object;
       }
     } else if (columnMetadata.type === 'simple-array') {
-      value = DateUtils.stringToSimpleArray(value as string);
+      value = DateUtils.stringToSimpleArray(value);
     } else if (columnMetadata.type === 'simple-json') {
-      value = DateUtils.stringToSimpleJson(value as string);
+      value = DateUtils.stringToSimpleJson(value);
     } else if (columnMetadata.type === 'cube') {
       value = String(value).replace(/[()\s]+/g, ''); // remove whitespace
       if (columnMetadata.isArray) {
@@ -825,7 +985,7 @@ export class PostgresDriver implements Driver {
         while ((cube = regexp.exec(unparsedArrayString)) !== null) {
           if (cube[1] !== undefined) {
             (value as Array<Array<number>>).push(
-              cube[1]!.split(',').filter(Boolean).map(Number)
+              cube[1].split(',').filter(Boolean).map(Number)
             );
           } else {
             (value as Array<Array<number>>).push(
@@ -857,8 +1017,7 @@ export class PostgresDriver implements Driver {
 
         // convert to number if that exists in possible enum options
         value = (value as Array<string>).map((val: string) => {
-          return !isNaN(+val) &&
-            columnMetadata.enum!.indexOf(parseInt(val)) >= 0
+          return !isNaN(+val) && columnMetadata.enum!.includes(parseInt(val))
             ? parseInt(val)
             : val;
         });
@@ -866,7 +1025,7 @@ export class PostgresDriver implements Driver {
         // convert to number if that exists in possible enum options
         value =
           !isNaN(+(value as string)) &&
-          columnMetadata.enum!.indexOf(parseInt(value as string)) >= 0
+          columnMetadata.enum!.includes(parseInt(value as string))
             ? parseInt(value as string)
             : value;
       }
@@ -1193,7 +1352,7 @@ export class PostgresDriver implements Driver {
           ? '(' + column.precision + ')'
           : '') +
         ' WITH TIME ZONE';
-    } else if (this.spatialTypes.indexOf(column.type as ColumnType) >= 0) {
+    } else if (this.spatialTypes.includes(column.type as ColumnType)) {
       if (column.spatialFeatureType != null && column.srid != null) {
         type = `${column.type}(${column.spatialFeatureType},${column.srid})`;
       } else if (column.spatialFeatureType != null) {
@@ -1255,7 +1414,7 @@ export class PostgresDriver implements Driver {
     }
 
     return new Promise<[PoolClient, () => void]>((resolve, reject) => {
-      void slavePool.connect(
+      slavePool.connect(
         (
           err: Error | undefined,
           client: PoolClient | undefined,
@@ -1282,14 +1441,14 @@ export class PostgresDriver implements Driver {
   ): ObjectLiteral | undefined {
     if (!insertResult) return undefined;
 
-    return Object.keys(insertResult).reduce((map, key) => {
+    return Object.keys(insertResult).reduce<ObjectLiteral>((map, key) => {
       const column = metadata.findColumnWithDatabaseName(key);
       if (column) {
         OrmUtils.mergeDeep(map, column.createValueMap(insertResult[key]));
         // OrmUtils.mergeDeep(map, column.createValueMap(this.prepareHydratedValue(insertResult[key], column))); // TODO: probably should be like there, but fails on enums, fix later
       }
       return map;
-    }, {} as ObjectLiteral);
+    }, {});
   }
 
   public findChangedColumns(
@@ -1413,6 +1572,7 @@ export class PostgresDriver implements Driver {
   ): Promise<pg.Pool> {
     const { logger } = this.connection;
     credentials = Object.assign({}, credentials);
+    this.configureInt8Parsing(options.parseInt8);
 
     // build connection options for the driver
     // See: https://github.com/brianc/node-postgres/tree/master/packages/pg-pool#create
@@ -1430,32 +1590,20 @@ export class PostgresDriver implements Driver {
         statement_timeout: options.statement_timeout,
         application_name:
           options.applicationName ?? credentials.applicationName,
+        options: `-c timezone=${this.sessionTimeZone}`,
+        types: this.typeOverrides,
         max: options.poolSize,
       }
     );
-
-    if (options.parseInt8 !== undefined) {
-      if (
-        this.postgres?.defaults &&
-        Object.getOwnPropertyDescriptor(this.postgres.defaults, 'parseInt8')
-          ?.set
-      ) {
-        this.postgres.defaults.parseInt8 = options.parseInt8;
-      } else {
-        logger.log(
-          'warn',
-          'Attempted to set parseInt8 option, but the postgres driver does not support setting defaults.parseInt8. This option will be ignored.'
-        );
-      }
-    }
 
     // create a connection pool
     const pool = new this.postgres.Pool(connectionOptions as pg.PoolConfig);
 
     const poolErrorHandler =
       options.poolErrorHandler ||
-      ((error: unknown): unknown =>
-        logger.log('warn', `Postgres pool raised an error. ${error}`));
+      ((error: unknown): void => {
+        logger.log('warn', `Postgres pool raised an error. ${error}`);
+      });
 
     /*
           Attaching an error handler to pool errors is essential, as, otherwise, errors raised will go unhandled and
@@ -1470,13 +1618,15 @@ export class PostgresDriver implements Driver {
           client: pg.PoolClient | undefined,
           done: (release?: pg.PoolClient['release']) => void
         ) => {
-          if (err || !client) return fail(err);
+          if (err || !client) {
+            fail(err);
+            return;
+          }
 
           if (options.logNotifications) {
             client.on('notice', (msg: unknown) => {
               const message = msg as Record<string, unknown>;
-              if (message)
-                this.connection.logger.log('info', message.message as string);
+              if (message) this.connection.logger.log('info', message.message);
             });
             client.on('notification', (msg: unknown) => {
               const message = msg as Record<string, unknown>;
@@ -1507,7 +1657,13 @@ export class PostgresDriver implements Driver {
         | ((callback?: (err?: Error) => void) => void)
         | undefined;
       if (end) {
-        end.call(pool, (err?: Error) => (err ? fail(err) : ok()));
+        end.call(pool, (err?: Error) => {
+          if (err) {
+            fail(err);
+          } else {
+            ok();
+          }
+        });
       } else {
         ok();
       }
@@ -1526,8 +1682,13 @@ export class PostgresDriver implements Driver {
     return new Promise((ok, fail) => {
       connection.query(
         query,
-        (err: Error | undefined, result: pg.QueryResult) =>
-          err ? fail(err) : ok(result)
+        (err: Error | undefined, result: pg.QueryResult) => {
+          if (err) {
+            fail(err);
+          } else {
+            ok(result);
+          }
+        }
       );
     });
   }
@@ -1543,31 +1704,31 @@ export class PostgresDriver implements Driver {
     // check if input is datetime function
     const upperCaseValue = value.toUpperCase();
     const isDatetimeFunction =
-      upperCaseValue.indexOf('CURRENT_TIMESTAMP') !== -1 ||
-      upperCaseValue.indexOf('CURRENT_DATE') !== -1 ||
-      upperCaseValue.indexOf('CURRENT_TIME') !== -1 ||
-      upperCaseValue.indexOf('LOCALTIMESTAMP') !== -1 ||
-      upperCaseValue.indexOf('LOCALTIME') !== -1;
+      upperCaseValue.includes('CURRENT_TIMESTAMP') ||
+      upperCaseValue.includes('CURRENT_DATE') ||
+      upperCaseValue.includes('CURRENT_TIME') ||
+      upperCaseValue.includes('LOCALTIMESTAMP') ||
+      upperCaseValue.includes('LOCALTIME');
 
     if (isDatetimeFunction) {
       // extract precision, e.g. "(3)"
-      const precision = value.match(/\(\d+\)/);
+      const precision = /\(\d+\)/.exec(value);
 
-      if (upperCaseValue.indexOf('CURRENT_TIMESTAMP') !== -1) {
+      if (upperCaseValue.includes('CURRENT_TIMESTAMP')) {
         return precision
           ? `('now'::text)::timestamp${precision[0]} with time zone`
           : 'now()';
       } else if (upperCaseValue === 'CURRENT_DATE') {
         return "('now'::text)::date";
-      } else if (upperCaseValue.indexOf('CURRENT_TIME') !== -1) {
+      } else if (upperCaseValue.includes('CURRENT_TIME')) {
         return precision
           ? `('now'::text)::time${precision[0]} with time zone`
           : "('now'::text)::time with time zone";
-      } else if (upperCaseValue.indexOf('LOCALTIMESTAMP') !== -1) {
+      } else if (upperCaseValue.includes('LOCALTIMESTAMP')) {
         return precision
           ? `('now'::text)::timestamp${precision[0]} without time zone`
           : "('now'::text)::timestamp without time zone";
-      } else if (upperCaseValue.indexOf('LOCALTIME') !== -1) {
+      } else if (upperCaseValue.includes('LOCALTIME')) {
         return precision
           ? `('now'::text)::time${precision[0]} without time zone`
           : "('now'::text)::time without time zone";

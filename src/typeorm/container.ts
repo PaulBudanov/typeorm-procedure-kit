@@ -38,7 +38,7 @@ export function getFromContainer<T>(
   }
   // If container is not set, create a new instance
   if (typeof someClass === 'function') {
-    return new (someClass as new (...args: Array<unknown>) => T)();
+    return new someClass();
   }
   throw new ServerError(
     'Cannot instantiate class from prototype. Container is required.'

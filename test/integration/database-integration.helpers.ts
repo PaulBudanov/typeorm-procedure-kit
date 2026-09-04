@@ -1,22 +1,27 @@
-import {
-  ServerError,
-  type IModuleConfig,
-  type TOracleDbConfig,
-  type TPostgresDbConfig,
-} from '../../src/index.js';
-import { createLogger, type TestLogger } from '../support/helpers.js';
+import { ServerError } from '../../src/index.js';
+import { createLogger } from '../support/helpers.js';
 
-interface IntegrationTestSettings<TConfig extends IModuleConfig['config']> {
+import type {
+  IModuleConfig,
+  TOracleDbConfig,
+  TPostgresDbConfig,
+} from '../../src/index.js';
+import type { ITestLogger } from '../support/helpers.js';
+
+interface IIntegrationTestSettings<TConfig extends IModuleConfig['config']> {
   config: TConfig;
-  logger: { module: TestLogger };
+  logger: { module: ITestLogger };
 }
 
-function isIntegrationRequired(): boolean {
-  return process.env.RUN_INTEGRATION_TESTS === '1';
+function isIntegrationRequired(database: string): boolean {
+  return (
+    process.env.RUN_INTEGRATION_TESTS === '1' ||
+    (database === 'Oracle' && process.env.ORACLE_INTEGRATION === '1')
+  );
 }
 
 function handleMissingEnv(database: string): null {
-  if (isIntegrationRequired()) {
+  if (isIntegrationRequired(database)) {
     throw new ServerError(`${database} integration test env is incomplete`);
   }
   return null;
@@ -49,7 +54,7 @@ function getPostgresSlaveCredentials(
   };
 }
 
-export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPostgresDbConfig> | null {
+export function createPostgresIntegrationSettings(): IIntegrationTestSettings<TPostgresDbConfig> | null {
   const host = process.env.POSTGRES_HOST;
   const port = process.env.POSTGRES_PORT;
   const database = process.env.POSTGRES_DATABASE;
@@ -63,7 +68,7 @@ export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPo
     logger: { module: createLogger() },
     config: {
       type: 'postgres',
-      parseInt8AsBigInt: false,
+      parseInt8AsNumber: false,
       poolSize: 2,
       outKeyTransformCase: 'lowerCase',
       master: {
@@ -77,7 +82,7 @@ export function createPostgresIntegrationSettings(): IntegrationTestSettings<TPo
   };
 }
 
-export function createPostgresReplicationIntegrationSettings(): IntegrationTestSettings<TPostgresDbConfig> | null {
+export function createPostgresReplicationIntegrationSettings(): IIntegrationTestSettings<TPostgresDbConfig> | null {
   const settings = createPostgresIntegrationSettings();
 
   if (!settings) return null;
@@ -91,12 +96,13 @@ export function createPostgresReplicationIntegrationSettings(): IntegrationTestS
   };
 }
 
-export function createOracleIntegrationSettings(): IntegrationTestSettings<TOracleDbConfig> | null {
+export function createOracleIntegrationSettings(): IIntegrationTestSettings<TOracleDbConfig> | null {
   const host = process.env.ORACLE_HOST;
   const port = process.env.ORACLE_PORT;
   const database = process.env.ORACLE_DATABASE;
   const username = process.env.ORACLE_USERNAME;
   const password = process.env.ORACLE_PASSWORD;
+  const libraryPath = process.env.ORACLE_CLIENT_LIB_DIR;
 
   if (!host || !port || !database || !username || !password)
     return handleMissingEnv('Oracle');
@@ -107,6 +113,7 @@ export function createOracleIntegrationSettings(): IntegrationTestSettings<TOrac
       type: 'oracle',
       poolSize: 2,
       outKeyTransformCase: 'lowerCase',
+      ...(libraryPath ? { libraryPath } : {}),
       master: {
         host,
         port: Number(port),

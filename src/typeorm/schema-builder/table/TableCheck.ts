@@ -48,7 +48,7 @@ export class TableCheck {
       name: this.name,
       columnNames: this.columnNames ? [...this.columnNames] : [],
       expression: this.expression,
-    } as TableCheckOptions);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -62,6 +62,6 @@ export class TableCheck {
     return new TableCheck({
       name: checkMetadata.name,
       expression: checkMetadata.expression,
-    } as TableCheckOptions);
+    });
   }
 }

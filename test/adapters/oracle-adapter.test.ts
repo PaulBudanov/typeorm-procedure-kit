@@ -1,22 +1,67 @@
 import { Readable } from 'stream';
 
+import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OracleAdapter } from '../../src/adapters/oracle/oracle-adapter.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../src/utils/resource-limits.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
-function createOracleAdapter(): OracleAdapter {
+import type { IResourceLimits } from '../../src/types/config.types.js';
+import type {
+  IProcedureStructuredType,
+  TProcedureArgumentList,
+} from '../../src/types/procedure.types.js';
+
+function createOracleAdapter(
+  shouldRegisterDefaults = false,
+  resourceLimits?: Partial<IResourceLimits>,
+  databaseVersion = '19.0.0.0.0',
+  transformColumnName: (value: string) => string = (value) =>
+    value.toLowerCase()
+): OracleAdapter {
   return new OracleAdapter(
-    { options: { replication: { master: {} } } } as never,
+    {
+      options: { replication: { master: {} } },
+      driver: {
+        version: databaseVersion,
+        setFetchTypeHandler: vi.fn(),
+      },
+    } as never,
     createLogger(),
     {
-      isNeedRegisterDefaultSerializers: false,
+      isNeedRegisterDefaultSerializers: shouldRegisterDefaults,
       caseStrategy: {
-        transformColumnName: (value: string): string => value,
+        transformColumnName,
+      },
+      resourceLimits: {
+        ...DEFAULT_RESOURCE_LIMITS,
+        ...resourceLimits,
       },
     }
   );
+}
+
+function createTrackedLob(
+  type: oracledb.DbType,
+  chunks: Array<string | Buffer>
+): { lob: oracledb.Lob; destroy: ReturnType<typeof vi.fn> } {
+  let isDestroyed = false;
+  const destroy = vi.fn((): void => {
+    isDestroyed = true;
+  });
+  const lob = {
+    type,
+    get destroyed(): boolean {
+      return isDestroyed;
+    },
+    destroy,
+    async *[Symbol.asyncIterator](): AsyncGenerator<string | Buffer> {
+      yield* chunks;
+    },
+  } as unknown as oracledb.Lob;
+  return { lob, destroy };
 }
 
 describe('OracleAdapter', (): void => {
@@ -25,12 +70,325 @@ describe('OracleAdapter', (): void => {
 
     const sql = adapter.generatePackageInfoSql('pkg');
 
-    expect(sql).toContain("a.PACKAGE_NAME = 'PKG'");
+    expect(sql).toContain("p.OBJECT_NAME = 'PKG'");
+    expect(sql).toContain("p.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')");
+    expect(sql).toContain('p.SUBPROGRAM_ID AS "subprogram_id"');
+    expect(sql).toContain('a.TYPE_OWNER AS "type_owner"');
+    expect(sql).toContain('a.TYPE_NAME AS "type_name"');
+    expect(sql).toContain('a.TYPE_SUBNAME AS "type_subname"');
+    expect(sql).toContain('COALESCE(a.DATA_LEVEL, 0) AS "data_level"');
+    expect(sql).toContain('a.SEQUENCE AS "sequence"');
+    expect(sql).toContain('ALL_PLSQL_TYPE_ATTRS');
+    expect(sql).toContain('argument_rows."plsql_typecode" = \'RECORD\'');
+    expect(sql).toContain("'__TPK_NO_ARGUMENT__'");
+    expect(sql).toContain('FETCH FIRST 10001 ROWS ONLY');
     expect(sql).not.toContain(':PACKAGE_NAME');
     expect(sql).not.toContain('package_name');
     expect((): void => {
       adapter.generatePackageInfoSql('pkg;drop');
     }).toThrow(ServerError);
+  });
+
+  it('collapses Oracle package RECORD metadata into one top-level argument', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect(
+      adapter.prepareProcedureMetadataRows([
+        {
+          procedureName: 'TRANSFORM_SHIP',
+          argumentName: 'P_SHIP',
+          argumentType: 'OBJECT',
+          order: 1,
+          mode: 'IN/OUT',
+          dataLevel: 0,
+          sequence: 1,
+          typeOwner: 'APP',
+          typeName: 'TPK_IT_PKG',
+          typeSubname: 'SHIP_RECORD',
+          plsqlTypecode: 'RECORD',
+        },
+        {
+          procedureName: 'TRANSFORM_SHIP',
+          argumentName: 'SHIP_NAME',
+          argumentType: 'VARCHAR2',
+          order: 1,
+          mode: 'IN/OUT',
+          dataLevel: 1,
+          sequence: 2,
+          typeOwner: null,
+          typeName: null,
+          typeSubname: null,
+        },
+        {
+          procedureName: 'TRANSFORM_SHIP',
+          argumentName: 'SAILED_AT',
+          argumentType: 'TIMESTAMP WITH TIME ZONE',
+          order: 2,
+          mode: 'IN/OUT',
+          dataLevel: 1,
+          sequence: 3,
+          typeOwner: null,
+          typeName: null,
+          typeSubname: null,
+        },
+        {
+          procedureName: 'TRANSFORM_SHIP',
+          argumentName: 'OUT_COUNT',
+          argumentType: 'NUMBER',
+          order: 2,
+          mode: 'OUT',
+          dataLevel: 0,
+          sequence: 4,
+          typeOwner: null,
+          typeName: null,
+          typeSubname: null,
+        },
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        argumentName: 'P_SHIP',
+        structuredType: {
+          kind: 'oracle-record',
+          owner: 'APP',
+          packageName: 'TPK_IT_PKG',
+          typeName: 'SHIP_RECORD',
+          fields: [
+            { name: 'SHIP_NAME', argumentType: 'VARCHAR2', order: 2 },
+            {
+              name: 'SAILED_AT',
+              argumentType: 'TIMESTAMP WITH TIME ZONE',
+              order: 3,
+            },
+          ],
+        },
+      }),
+      expect.objectContaining({ argumentName: 'OUT_COUNT' }),
+    ]);
+  });
+
+  it('rejects unsupported Oracle collection and nested RECORD metadata', (): void => {
+    const adapter = createOracleAdapter();
+    const topLevelRecord = {
+      procedureName: 'RUN',
+      argumentName: 'P_RECORD',
+      argumentType: 'PL/SQL RECORD',
+      order: 1,
+      mode: 'IN',
+      dataLevel: 0,
+      sequence: 1,
+      typeOwner: 'APP',
+      typeName: 'PKG',
+      typeSubname: 'RECORD_TYPE',
+      plsqlTypecode: 'RECORD',
+    };
+
+    expect(() =>
+      adapter.prepareProcedureMetadataRows([
+        { ...topLevelRecord, argumentType: 'PL/SQL TABLE' },
+      ])
+    ).toThrow('Oracle collection argument');
+    expect(() =>
+      adapter.prepareProcedureMetadataRows([
+        topLevelRecord,
+        {
+          ...topLevelRecord,
+          argumentName: 'NESTED_VALUE',
+          dataLevel: 2,
+          sequence: 2,
+        },
+      ])
+    ).toThrow('nested RECORD fields are not supported');
+    expect(() =>
+      adapter.prepareProcedureMetadataRows([
+        topLevelRecord,
+        {
+          ...topLevelRecord,
+          argumentName: 'LOB_VALUE',
+          argumentType: 'CLOB',
+          dataLevel: 1,
+          sequence: 2,
+          typeOwner: null,
+          typeName: null,
+          typeSubname: null,
+        },
+      ])
+    ).toThrow('uses unsupported type CLOB');
+    expect(() =>
+      createOracleAdapter(
+        false,
+        undefined,
+        '12.0.0.2.0'
+      ).prepareProcedureMetadataRows([topLevelRecord])
+    ).toThrow('requires Oracle Database 12.1 or newer');
+    expect(() =>
+      createOracleAdapter(
+        false,
+        undefined,
+        '12.1.0.1.0'
+      ).prepareProcedureMetadataRows([
+        topLevelRecord,
+        {
+          ...topLevelRecord,
+          argumentName: 'NAME',
+          argumentType: 'VARCHAR2',
+          dataLevel: 1,
+          sequence: 1,
+          typeOwner: null,
+          typeName: null,
+          typeSubname: null,
+        },
+      ])
+    ).not.toThrow();
+  });
+
+  it('does not classify a schema SQL object as a package RECORD', (): void => {
+    const adapter = createOracleAdapter();
+    const sqlObjectArgument = {
+      procedureName: 'RUN',
+      argumentName: 'P_OBJECT',
+      argumentType: 'OBJECT',
+      order: 1,
+      mode: 'IN',
+      dataLevel: 0,
+      sequence: 1,
+      typeOwner: 'APP',
+      typeName: 'SHIP_OBJECT',
+      typeSubname: null,
+      plsqlTypecode: null,
+    };
+
+    expect(adapter.prepareProcedureMetadataRows([sqlObjectArgument])).toEqual([
+      sqlObjectArgument,
+    ]);
+  });
+
+  it('requires an Oracle 12.1+ client for Thick RECORD binds', (): void => {
+    const thinSpy = vi.spyOn(oracledb, 'thin', 'get').mockReturnValue(false);
+    const clientVersionSpy = vi
+      .spyOn(oracledb, 'oracleClientVersionString', 'get')
+      .mockReturnValue('12.0.0.2.0');
+    const structuredType: IProcedureStructuredType = {
+      kind: 'oracle-record',
+      owner: 'APP',
+      packageName: 'PKG',
+      typeName: 'SHIP_RECORD',
+      fields: [{ name: 'NAME', argumentType: 'VARCHAR2', order: 1 }],
+    };
+
+    try {
+      expect(() =>
+        createOracleAdapter().makeBindings(
+          'pkg',
+          'run',
+          {
+            run: [
+              {
+                argumentName: 'p_record',
+                argumentType: 'OBJECT',
+                order: 1,
+                mode: 'IN',
+                structuredType,
+              },
+            ],
+          },
+          { record: { name: 'Aurora' } }
+        )
+      ).toThrow('requires Oracle Client 12.1 or newer');
+    } finally {
+      clientVersionSpy.mockRestore();
+      thinSpy.mockRestore();
+    }
+  });
+
+  it('strictly filters procedure metadata for every package count', (): void => {
+    const adapter = createOracleAdapter();
+
+    const procedures = adapter.sortArgumentsAlgorithm(
+      [
+        {
+          procedureName: 'Ping',
+          argumentName: '__TPK_NO_ARGUMENT__',
+          argumentType: 'VOID',
+          order: 0,
+          mode: 'IN',
+          owner: 'APP',
+          subprogramId: 1,
+        },
+        {
+          procedureName: 'Unlisted',
+          argumentName: '__TPK_NO_ARGUMENT__',
+          argumentType: 'VOID',
+          order: 0,
+          mode: 'IN',
+          owner: 'APP',
+          subprogramId: 2,
+        },
+      ],
+      ['pkg.ping'],
+      'pkg',
+      1
+    );
+    expect(procedures).toEqual({ ping: [] });
+    expect(
+      adapter.sortArgumentsAlgorithm(
+        [
+          {
+            procedureName: 'Ping',
+            argumentName: '__TPK_NO_ARGUMENT__',
+            argumentType: 'VOID',
+            order: 0,
+            mode: 'IN',
+            owner: 'APP',
+            subprogramId: 1,
+          },
+          {
+            procedureName: 'Unlisted',
+            argumentName: '__TPK_NO_ARGUMENT__',
+            argumentType: 'VOID',
+            order: 0,
+            mode: 'IN',
+            owner: 'APP',
+            subprogramId: 2,
+          },
+        ],
+        ['pkg.ping'],
+        'pkg',
+        2
+      )
+    ).toEqual({ ping: [] });
+    expect(adapter.makeBindings('pkg', 'ping', procedures)).toMatchObject({
+      paramExecuteString: 'BEGIN PKG.PING (); END;',
+      bindings: {},
+      cursorsNames: [],
+    });
+
+    expect(() =>
+      adapter.sortArgumentsAlgorithm(
+        [
+          {
+            procedureName: 'Run',
+            argumentName: 'p_value',
+            argumentType: 'NUMBER',
+            order: 1,
+            mode: 'IN',
+            subprogramId: 10,
+            overload: '1',
+          },
+          {
+            procedureName: 'Run',
+            argumentName: 'p_value',
+            argumentType: 'VARCHAR2',
+            order: 1,
+            mode: 'IN',
+            subprogramId: 11,
+            overload: '2',
+          },
+        ],
+        ['pkg.run'],
+        'pkg',
+        1
+      )
+    ).toThrow('is overloaded');
   });
 
   it('generates package info SQL from a custom template', (): void => {
@@ -76,7 +434,7 @@ describe('OracleAdapter', (): void => {
       },
       {
         id: 7,
-        names: ['a', 'b'],
+        names: 'a,b',
       }
     );
 
@@ -84,6 +442,13 @@ describe('OracleAdapter', (): void => {
       'BEGIN PKG.RUN (:p_id,:p_names,:out_cursor); END;'
     );
     expect(result.cursorsNames).toEqual(['out_cursor']);
+    expect(result.outBindings).toEqual([
+      {
+        name: 'out_cursor',
+        type: 'cursor',
+        databaseType: 'REF CURSOR',
+      },
+    ]);
     expect(result.bindings).toMatchObject({
       p_id: { val: 7 },
       p_names: { val: 'a,b' },
@@ -91,11 +456,186 @@ describe('OracleAdapter', (): void => {
     });
   });
 
+  it('rejects implicit Oracle array coercion', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect(() =>
+      adapter.makeBindings(
+        'pkg',
+        'run',
+        {
+          run: [
+            {
+              argumentName: 'p_names',
+              argumentType: 'VARCHAR2',
+              order: 1,
+              mode: 'IN',
+            },
+          ],
+        },
+        { names: ['a', 'b'] }
+      )
+    ).toThrow('Oracle array bind "p_names" is not supported');
+  });
+
+  it('binds Oracle package RECORD values for IN, OUT, and IN/OUT', (): void => {
+    const adapter = createOracleAdapter();
+    const structuredType: IProcedureStructuredType = {
+      kind: 'oracle-record',
+      owner: 'APP',
+      packageName: 'PKG',
+      typeName: 'SHIP_RECORD',
+      fields: [
+        { name: 'SHIP_NAME', argumentType: 'VARCHAR2', order: 1 },
+        { name: 'WEIGHT', argumentType: 'NUMBER', order: 2 },
+        {
+          name: 'SAILED_AT',
+          argumentType: 'TIMESTAMP WITH TIME ZONE',
+          order: 3,
+        },
+        { name: 'TOKEN', argumentType: 'RAW', order: 4 },
+      ],
+    };
+    const procedures: TProcedureArgumentList = {
+      run: [
+        {
+          argumentName: 'p_input',
+          argumentType: 'OBJECT',
+          order: 1,
+          mode: 'IN',
+          structuredType,
+        },
+        {
+          argumentName: 'p_output',
+          argumentType: 'OBJECT',
+          order: 2,
+          mode: 'OUT',
+          structuredType,
+        },
+        {
+          argumentName: 'p_in_out',
+          argumentType: 'OBJECT',
+          order: 3,
+          mode: 'IN/OUT',
+          structuredType,
+        },
+      ],
+    };
+    const token = Buffer.from([1, 2, 3, 4]);
+
+    const result = adapter.makeBindings('pkg', 'run', procedures, {
+      input: {
+        ship_name: 'Aurora',
+        weight: 1200,
+        sailed_at: '2026-07-16 12:30:45 +03:00',
+        token,
+      },
+      in_out: { SHIP_NAME: 'Before' },
+    });
+
+    expect(result.paramExecuteString).toBe(
+      'BEGIN PKG.RUN (:p_input,:p_output,:p_in_out); END;'
+    );
+    expect(result.bindings).toMatchObject({
+      p_input: {
+        dir: oracledb.BIND_IN,
+        type: 'APP.PKG.SHIP_RECORD',
+        val: {
+          SHIP_NAME: 'Aurora',
+          WEIGHT: 1200,
+          SAILED_AT: expect.any(Date),
+          TOKEN: token,
+        },
+      },
+      p_output: {
+        dir: oracledb.BIND_OUT,
+        type: 'APP.PKG.SHIP_RECORD',
+      },
+      p_in_out: {
+        dir: oracledb.BIND_INOUT,
+        type: 'APP.PKG.SHIP_RECORD',
+        val: {
+          SHIP_NAME: 'Before',
+          WEIGHT: null,
+          SAILED_AT: null,
+          TOKEN: null,
+        },
+      },
+    });
+    expect(result.outBindings).toEqual([
+      {
+        name: 'p_output',
+        type: 'object',
+        databaseType: 'APP.PKG.SHIP_RECORD',
+        structuredType,
+      },
+      {
+        name: 'p_in_out',
+        type: 'object',
+        databaseType: 'APP.PKG.SHIP_RECORD',
+        structuredType,
+      },
+    ]);
+  });
+
+  it('validates Oracle package RECORD object fields and null binds', (): void => {
+    const adapter = createOracleAdapter();
+    const procedures: TProcedureArgumentList = {
+      run: [
+        {
+          argumentName: 'p_record',
+          argumentType: 'OBJECT',
+          order: 1,
+          mode: 'IN/OUT',
+          structuredType: {
+            kind: 'oracle-record',
+            owner: 'APP',
+            packageName: 'PKG',
+            typeName: 'RECORD_TYPE',
+            fields: [
+              { name: 'NAME', argumentType: 'VARCHAR2', order: 1 },
+              { name: 'TOKEN', argumentType: 'RAW', order: 2 },
+            ],
+          },
+        },
+      ],
+    };
+
+    expect(
+      adapter.makeBindings('pkg', 'run', procedures, { record: null }).bindings
+    ).toMatchObject({ p_record: { val: null } });
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        record: { name: 'known', extra: true },
+      })
+    ).toThrow('contains unknown fields: extra');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        record: { name: 'first', NAME: 'second' },
+      })
+    ).toThrow('contains conflicting field "NAME"');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        record: { token: 'not-a-buffer' },
+      })
+    ).toThrow('Invalid RAW value');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        record: { name: ['not', 'a', 'collection'] },
+      })
+    ).toThrow('Oracle array bind "p_record.NAME" is not supported');
+  });
+
   it('rejects missing procedures, scalar payloads, and unsafe bind names', (): void => {
     const adapter = createOracleAdapter();
     const procedures = {
       run: [
-        { argumentName: 'p_id', argumentType: 'NUMBER', order: 1, mode: 'IN' },
+        {
+          argumentName: 'p_id',
+          argumentType: 'NUMBER',
+          order: 1,
+          mode: 'IN' as const,
+        },
       ],
     };
 
@@ -117,6 +657,381 @@ describe('OracleAdapter', (): void => {
         ],
       });
     }).toThrow(ServerError);
+  });
+
+  it('uses exact Oracle temporal bind types and validates temporal inputs', (): void => {
+    const adapter = createOracleAdapter();
+    const result = adapter.makeBindings(
+      'pkg',
+      'run',
+      {
+        run: [
+          {
+            argumentName: 'p_date',
+            argumentType: 'DATE',
+            order: 1,
+            mode: 'IN',
+          },
+          {
+            argumentName: 'p_timestamp',
+            argumentType: 'TIMESTAMP',
+            order: 2,
+            mode: 'IN',
+          },
+          {
+            argumentName: 'p_tstz',
+            argumentType: 'TIMESTAMP WITH TIME ZONE',
+            order: 3,
+            mode: 'IN',
+          },
+          {
+            argumentName: 'p_tsltz',
+            argumentType: 'TIMESTAMP WITH LOCAL TIME ZONE',
+            order: 4,
+            mode: 'IN',
+          },
+        ],
+      },
+      {
+        date: '2026-07-16 12:30:00',
+        timestamp: new Date('2026-07-16T12:30:00.123Z'),
+        tstz: '2026-07-16 12:30:00 +03:00',
+        tsltz: '2026-07-16 12:30:00 +03:00',
+      }
+    );
+
+    const bindings = result.bindings as Record<
+      string,
+      { type: unknown; val: unknown }
+    >;
+    expect(bindings.p_date!.type).toBe(oracledb.DB_TYPE_DATE);
+    expect(bindings.p_timestamp!.type).toBe(oracledb.DB_TYPE_TIMESTAMP);
+    expect(bindings.p_tstz!.type).toBe(oracledb.DB_TYPE_TIMESTAMP_TZ);
+    expect(bindings.p_tsltz!.type).toBe(oracledb.DB_TYPE_TIMESTAMP_LTZ);
+    expect(bindings.p_date!.val).toBeInstanceOf(Date);
+    expect(() =>
+      adapter.makeBindings(
+        'pkg',
+        'run',
+        {
+          run: [
+            {
+              argumentName: 'p_tstz',
+              argumentType: 'TIMESTAMP WITH TIME ZONE',
+              order: 1,
+              mode: 'IN',
+            },
+          ],
+        },
+        { tstz: '2026-07-16 12:30:00' }
+      )
+    ).toThrow(ServerError);
+    expect(() =>
+      adapter.makeBindings(
+        'pkg',
+        'run',
+        {
+          run: [
+            {
+              argumentName: 'p_date',
+              argumentType: 'DATE',
+              order: 1,
+              mode: 'IN',
+            },
+          ],
+        },
+        { date: ['2026-07-16 12:30:00'] }
+      )
+    ).toThrow(ServerError);
+  });
+
+  it('allocates metadata-aware OUT and IN/OUT buffers above 200 bytes', (): void => {
+    const adapter = createOracleAdapter();
+    const procedures = adapter.sortArgumentsAlgorithm(
+      [
+        {
+          procedureName: 'RUN',
+          argumentName: 'OUT_TEXT',
+          argumentType: 'VARCHAR2',
+          order: 1,
+          mode: 'OUT',
+          size: 512,
+          owner: 'APP',
+          subprogramId: 7,
+        },
+        {
+          procedureName: 'RUN',
+          argumentName: 'P_RAW',
+          argumentType: 'RAW',
+          order: 2,
+          mode: 'IN/OUT',
+          owner: 'APP',
+          subprogramId: 7,
+        },
+      ],
+      ['pkg.run'],
+      'pkg',
+      1
+    );
+    expect(procedures.run?.[0]).toMatchObject({
+      size: 512,
+      owner: 'APP',
+      subprogramId: 7,
+    });
+
+    const result = adapter.makeBindings('pkg', 'run', procedures, {
+      raw: Buffer.from('input'),
+    });
+    const bindings = result.bindings as Record<
+      string,
+      { type: unknown; val?: unknown; maxSize?: number }
+    >;
+
+    expect(bindings.out_text).toMatchObject({
+      type: oracledb.STRING,
+      maxSize: 512,
+    });
+    expect(bindings.p_raw).toMatchObject({
+      type: oracledb.BUFFER,
+      val: Buffer.from('input'),
+      maxSize: 32_767,
+    });
+    expect(bindings.out_text!.maxSize).toBeGreaterThan(200);
+    expect(bindings.p_raw!.maxSize).toBeGreaterThan(200);
+  });
+
+  it('rejects persistent Oracle TIME_ZONE overrides in optionsCommands', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const manager = {
+      transaction: vi.fn(),
+      query: vi.fn(),
+    };
+
+    await expect(
+      adapter.execute('select 1 from dual', manager as never, [
+        "/* audit */ ALTER SESSION SET TIME_ZONE = '+03:00'",
+      ])
+    ).rejects.toThrow('Configure sessionTimeZone instead');
+    await expect(
+      adapter.executeProcedure('begin pkg.run; end;', manager as never, [
+        "-- audit\nALTER SESSION SET TIME_ZONE = 'UTC'",
+      ])
+    ).rejects.toThrow('Configure sessionTimeZone instead');
+    expect(manager.transaction).not.toHaveBeenCalled();
+    expect(manager.query).not.toHaveBeenCalled();
+  });
+
+  it('preserves scalar-only Oracle out binds in the result envelope', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const outDate = new Date('2026-07-16T12:30:00.000Z');
+    const manager = {
+      query: vi.fn().mockResolvedValue({ out_date: outDate, out_count: 2 }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_date, :out_count); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          { name: 'out_date', type: 'scalar', databaseType: 'DATE' },
+          { name: 'out_count', type: 'scalar', databaseType: 'NUMBER' },
+        ]
+      )
+    ).resolves.toEqual({
+      rows: [],
+      outBinds: { out_date: outDate, out_count: 2 },
+    });
+  });
+
+  it('materializes Oracle RECORD output with case and field serializers', async (): Promise<void> => {
+    const adapter = createOracleAdapter(true);
+    adapter.registerFetchHandlerHook();
+    const sailedAt = new Date('2026-07-16T09:30:45.123Z');
+    const token = Buffer.from([1, 2, 3, 4]);
+    const dbObject = Object.create({
+      SHIP_NAME: 'Aurora',
+      WEIGHT: 1200,
+      SAILED_AT: sailedAt,
+      TOKEN: token,
+    }) as Record<string, unknown>;
+    const structuredType: IProcedureStructuredType = {
+      kind: 'oracle-record',
+      owner: 'APP',
+      packageName: 'PKG',
+      typeName: 'SHIP_RECORD',
+      fields: [
+        { name: 'SHIP_NAME', argumentType: 'VARCHAR2', order: 1 },
+        { name: 'WEIGHT', argumentType: 'NUMBER', order: 2 },
+        {
+          name: 'SAILED_AT',
+          argumentType: 'TIMESTAMP WITH TIME ZONE',
+          order: 3,
+        },
+        { name: 'TOKEN', argumentType: 'RAW', order: 4 },
+      ],
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({ P_RECORD: dbObject }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:p_record); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          {
+            name: 'p_record',
+            type: 'object',
+            databaseType: 'APP.PKG.SHIP_RECORD',
+            structuredType,
+          },
+        ]
+      )
+    ).resolves.toEqual({
+      rows: [],
+      outBinds: {
+        p_record: {
+          ship_name: 'Aurora',
+          weight: 1200,
+          sailed_at: '2026-07-16T09:30:45.123Z',
+          token,
+        },
+      },
+    });
+  });
+
+  it('applies procedure resource limits to Oracle RECORD output', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxProcedureBytes: 4 });
+    const manager = {
+      query: vi.fn().mockResolvedValue({ P_RECORD: { NAME: 'value' } }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:p_record); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          {
+            name: 'p_record',
+            type: 'object',
+            structuredType: {
+              kind: 'oracle-record',
+              owner: 'APP',
+              packageName: 'PKG',
+              typeName: 'RECORD_TYPE',
+              fields: [{ name: 'NAME', argumentType: 'VARCHAR2', order: 1 }],
+            },
+          },
+        ]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureBytes (4)');
+  });
+
+  it('rejects Oracle RECORD fields missing from the metadata snapshot', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const dbObject = Object.create({
+      fqn: 'APP.PKG.RECORD_TYPE',
+      copy: vi.fn(),
+      isCollection: false,
+      attributes: { NAME: {}, STALE_FIELD: {} },
+      NAME: 'value',
+      STALE_FIELD: 'stale',
+    }) as Record<string, unknown>;
+    const manager = {
+      query: vi.fn().mockResolvedValue({ P_RECORD: dbObject }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:p_record); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          {
+            name: 'p_record',
+            type: 'object',
+            structuredType: {
+              kind: 'oracle-record',
+              owner: 'APP',
+              packageName: 'PKG',
+              typeName: 'RECORD_TYPE',
+              fields: [{ name: 'NAME', argumentType: 'VARCHAR2', order: 1 }],
+            },
+          },
+        ]
+      )
+    ).rejects.toThrow('returned unknown fields: STALE_FIELD');
+  });
+
+  it('rejects Oracle RECORD output field collisions after case transformation', async (): Promise<void> => {
+    const adapter = createOracleAdapter(
+      false,
+      undefined,
+      '19.0.0.0.0',
+      () => 'value'
+    );
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        P_RECORD: { FIRST_VALUE: 1, SECOND_VALUE: 2 },
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:p_record); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          {
+            name: 'p_record',
+            type: 'object',
+            structuredType: {
+              kind: 'oracle-record',
+              owner: 'APP',
+              packageName: 'PKG',
+              typeName: 'RECORD_TYPE',
+              fields: [
+                { name: 'FIRST_VALUE', argumentType: 'NUMBER', order: 1 },
+                { name: 'SECOND_VALUE', argumentType: 'NUMBER', order: 2 },
+              ],
+            },
+          },
+        ]
+      )
+    ).rejects.toThrow('conflicting transformed field "value"');
   });
 
   it('keeps Oracle named parameters and returns bindings in occurrence order', (): void => {
@@ -224,14 +1139,24 @@ describe('OracleAdapter', (): void => {
     };
 
     await expect(
-      adapter.execute<{ cursorName: string }>(
+      adapter.executeProcedure<{ cursorName: string }>(
         'begin pkg.run(:first, :second); end;',
         manager as never,
         [],
         [],
-        ['first', 'second']
+        ['first', 'second'],
+        [
+          { name: 'first', type: 'cursor', databaseType: 'REF CURSOR' },
+          { name: 'second', type: 'cursor', databaseType: 'REF CURSOR' },
+        ]
       )
-    ).resolves.toEqual([{ cursorName: 'first' }, { cursorName: 'second' }]);
+    ).resolves.toEqual({
+      rows: [{ cursorName: 'first' }, { cursorName: 'second' }],
+      outBinds: {
+        first: [{ cursorName: 'first' }],
+        second: [{ cursorName: 'second' }],
+      },
+    });
     expect(maxActiveStreams).toBe(1);
     expect(events).toEqual([
       'first:start',
@@ -239,6 +1164,94 @@ describe('OracleAdapter', (): void => {
       'second:start',
       'second:end',
     ]);
+  });
+
+  it('applies case and temporal serializers to REF CURSOR rows using metadata', async (): Promise<void> => {
+    const adapter = createOracleAdapter(true);
+    adapter.registerFetchHandlerHook();
+    const localDate = new Date(2026, 6, 16, 12, 30, 45, 123);
+    const absoluteDate = new Date('2026-07-16T09:30:45.123Z');
+    const resultSet = {
+      metaData: [
+        { name: 'DATE_VALUE', dbType: oracledb.DB_TYPE_DATE },
+        { name: 'TIMESTAMP_VALUE', dbType: oracledb.DB_TYPE_TIMESTAMP },
+        { name: 'TSTZ_VALUE', dbType: oracledb.DB_TYPE_TIMESTAMP_TZ },
+        { name: 'TSLTZ_VALUE', dbType: oracledb.DB_TYPE_TIMESTAMP_LTZ },
+      ],
+      toQueryStream: (): Readable =>
+        Readable.from([
+          {
+            DATE_VALUE: localDate,
+            TIMESTAMP_VALUE: localDate,
+            TSTZ_VALUE: absoluteDate,
+            TSLTZ_VALUE: absoluteDate,
+          },
+        ]),
+      close: vi.fn(),
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({ OUT_CURSOR: resultSet }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_cursor); end;',
+        manager as never,
+        [],
+        {},
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' }]
+      )
+    ).resolves.toEqual({
+      rows: [
+        {
+          date_value: '2026-07-16 12:30:45',
+          timestamp_value: '2026-07-16 12:30:45.123',
+          tstz_value: '2026-07-16T09:30:45.123Z',
+          tsltz_value: '2026-07-16T09:30:45.123Z',
+        },
+      ],
+      outBinds: {
+        out_cursor: [
+          {
+            date_value: '2026-07-16 12:30:45',
+            timestamp_value: '2026-07-16 12:30:45.123',
+            tstz_value: '2026-07-16T09:30:45.123Z',
+            tsltz_value: '2026-07-16T09:30:45.123Z',
+          },
+        ],
+      },
+    });
+  });
+
+  it('rejects cursor-like values without a close method', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_cursor: {
+          toQueryStream: (): Readable => Readable.from([{ id: 1 }]),
+        },
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_cursor); end;',
+        manager as never,
+        [],
+        {},
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' }]
+      )
+    ).rejects.toThrow('Oracle cursor "out_cursor" was not returned');
   });
 
   it('closes unstreamed Oracle result sets after cursor stream setup errors', async (): Promise<void> => {
@@ -282,12 +1295,17 @@ describe('OracleAdapter', (): void => {
     };
 
     await expect(
-      adapter.execute<{ cursorName: string }>(
+      adapter.executeProcedure<{ cursorName: string }>(
         'begin pkg.run(:first, :second, :third); end;',
         manager as never,
         [],
         [],
-        ['first', 'second', 'third']
+        ['first', 'second', 'third'],
+        [
+          { name: 'first', type: 'cursor', databaseType: 'REF CURSOR' },
+          { name: 'second', type: 'cursor', databaseType: 'REF CURSOR' },
+          { name: 'third', type: 'cursor', databaseType: 'REF CURSOR' },
+        ]
       )
     ).rejects.toThrow('second stream failed');
     expect(events).toEqual([
@@ -297,5 +1315,265 @@ describe('OracleAdapter', (): void => {
       'second:close',
       'third:close',
     ]);
+  });
+
+  it('materializes scalar and cursor CLOB/BLOB values', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const createLob = (
+      type: oracledb.DbType,
+      chunks: Array<string | Buffer>
+    ): oracledb.Lob => {
+      const lob = Readable.from(chunks) as unknown as oracledb.Lob;
+      Object.defineProperty(lob, 'type', { value: type });
+      return lob;
+    };
+    const cursorResultSet = {
+      metaData: [
+        { name: 'TEXT_VALUE', dbType: oracledb.DB_TYPE_CLOB },
+        { name: 'BINARY_VALUE', dbType: oracledb.DB_TYPE_BLOB },
+      ],
+      toQueryStream: (): Readable =>
+        Readable.from([
+          {
+            TEXT_VALUE: createLob(oracledb.DB_TYPE_CLOB, ['hello', ' world']),
+            BINARY_VALUE: createLob(oracledb.DB_TYPE_BLOB, [
+              Buffer.from([1, 2]),
+              Buffer.from([3]),
+            ]),
+          },
+        ]),
+      close: vi.fn(),
+    };
+    const multibyteText = Buffer.from('🙂');
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        OUT_CLOB: createLob(oracledb.DB_TYPE_CLOB, [
+          multibyteText.subarray(0, 2),
+          multibyteText.subarray(2),
+        ]),
+        OUT_BLOB: createLob(oracledb.DB_TYPE_BLOB, [Buffer.from([4, 5])]),
+        OUT_CURSOR: cursorResultSet,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    const result = await adapter.executeProcedure(
+      'begin pkg.run(:out_clob, :out_blob, :out_cursor); end;',
+      manager as never,
+      [],
+      {},
+      ['out_cursor'],
+      [
+        { name: 'out_clob', type: 'lob', databaseType: 'CLOB' },
+        { name: 'out_blob', type: 'lob', databaseType: 'BLOB' },
+        { name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' },
+      ]
+    );
+
+    expect(result.outBinds).toEqual({
+      out_clob: '🙂',
+      out_blob: Buffer.from([4, 5]),
+      out_cursor: [
+        {
+          text_value: 'hello world',
+          binary_value: Buffer.from([1, 2, 3]),
+        },
+      ],
+    });
+  });
+
+  it('aborts Oracle LOB materialization above the configured limit', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxLobBytes: 3 });
+    const lob = Readable.from(['abcd']) as unknown as oracledb.Lob;
+    Object.defineProperty(lob, 'type', { value: oracledb.DB_TYPE_CLOB });
+    const manager = {
+      query: vi.fn().mockResolvedValue({ out_clob: lob }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_clob); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [{ name: 'out_clob', type: 'lob', databaseType: 'CLOB' }]
+      )
+    ).rejects.toThrow('resourceLimits.maxLobBytes (3)');
+    expect(lob.destroyed).toBe(true);
+  });
+
+  it('destroys the active and later top-level LOBs exactly once after a LOB limit error', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxLobBytes: 3 });
+    const first = createTrackedLob(oracledb.DB_TYPE_CLOB, ['abcd']);
+    const second = createTrackedLob(oracledb.DB_TYPE_BLOB, [Buffer.from([1])]);
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_first: first.lob,
+        out_second: second.lob,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_first, :out_second); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          { name: 'out_first', type: 'lob', databaseType: 'CLOB' },
+          { name: 'out_second', type: 'lob', databaseType: 'BLOB' },
+        ]
+      )
+    ).rejects.toThrow('resourceLimits.maxLobBytes (3)');
+    expect(first.destroy).toHaveBeenCalledOnce();
+    expect(second.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('destroys a later top-level LOB when an earlier cursor fails', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    const later = createTrackedLob(oracledb.DB_TYPE_CLOB, ['later']);
+    const resultSet = {
+      toQueryStream: vi.fn(() => {
+        throw new Error('cursor setup failed');
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_cursor: resultSet,
+        out_lob: later.lob,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_cursor, :out_lob); end;',
+        manager as never,
+        [],
+        {},
+        ['out_cursor'],
+        [
+          { name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' },
+          { name: 'out_lob', type: 'lob', databaseType: 'CLOB' },
+        ]
+      )
+    ).rejects.toThrow('cursor setup failed');
+    expect(resultSet.close).toHaveBeenCalledOnce();
+    expect(later.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('destroys a later top-level LOB when an earlier scalar serializer fails', async (): Promise<void> => {
+    const adapter = createOracleAdapter();
+    adapter.setSerializer({
+      serializerType: 'DATE',
+      strategy: (): never => {
+        throw new Error('scalar serializer failed');
+      },
+    });
+    const later = createTrackedLob(oracledb.DB_TYPE_CLOB, ['later']);
+    const manager = {
+      query: vi.fn().mockResolvedValue({
+        out_date: new Date('2026-01-01T00:00:00.000Z'),
+        out_lob: later.lob,
+      }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_date, :out_lob); end;',
+        manager as never,
+        [],
+        {},
+        [],
+        [
+          { name: 'out_date', type: 'scalar', databaseType: 'DATE' },
+          { name: 'out_lob', type: 'lob', databaseType: 'CLOB' },
+        ]
+      )
+    ).rejects.toThrow('scalar serializer failed');
+    expect(later.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('flattens a 200k-row Oracle cursor without argument spreading when allowed', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxProcedureRows: 200_001 });
+    const resultSet = {
+      toQueryStream: (): Readable =>
+        Readable.from(
+          (function* (): Generator<number> {
+            for (let index = 0; index < 200_000; index += 1) yield index;
+          })()
+        ),
+      close: vi.fn(),
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({ out_cursor: resultSet }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    const result = await adapter.executeProcedure<number>(
+      'begin pkg.run(:out_cursor); end;',
+      manager as never,
+      [],
+      {},
+      ['out_cursor'],
+      [{ name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' }]
+    );
+
+    expect(result.rows).toHaveLength(200_000);
+    expect(
+      (result.outBinds as Record<string, Array<number>>).out_cursor
+    ).toHaveLength(200_000);
+  });
+
+  it('aborts and destroys an Oracle cursor stream above the row limit', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, { maxProcedureRows: 2 });
+    const stream = Readable.from([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    const resultSet = {
+      toQueryStream: (): Readable => stream,
+      close: vi.fn(),
+    };
+    const manager = {
+      query: vi.fn().mockResolvedValue({ out_cursor: resultSet }),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'begin pkg.run(:out_cursor); end;',
+        manager as never,
+        [],
+        {},
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'REF CURSOR' }]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureRows (2)');
+    expect(stream.destroyed).toBe(true);
   });
 });

@@ -17,13 +17,23 @@ export { QueryLogContextStorage } from './query-log-context.js';
 
 // Query timeout validate
 
-export { normalizeQueryTimeoutMs } from './query-timeout.js';
+export {
+  assertValidQueryTimeoutMs,
+  normalizeQueryTimeoutMs,
+} from './query-timeout.js';
+
+// Resource limits
+export {
+  DEFAULT_RESOURCE_LIMITS,
+  resolveResourceLimits,
+} from './resource-limits.js';
 
 // Safe log serialization
 export { safeStringify } from './safe-stringify.js';
 
 // formatter utils
 export { DateFormatter } from './date-formatter.js';
+export type { IDateTimeZoneOptions } from './date-formatter.js';
 
 // Database Naming cache
 export { DatabaseNamingCache } from './database-naming-cache.js';

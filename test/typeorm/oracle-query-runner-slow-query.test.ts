@@ -24,6 +24,7 @@ function createQueryRunner(
     connection: dataSource,
     options,
     oracle: { OUT_FORMAT_OBJECT: 1 },
+    getFetchTypeHandler: vi.fn().mockReturnValue(undefined),
     obtainMasterConnection: vi.fn().mockResolvedValue(oracleConnection),
   };
   Object.assign(dataSource, { driver });
@@ -35,9 +36,9 @@ describe('OracleQueryRunner slow-query threshold', (): void => {
   it('does not convert maxQueryExecutionTime into a hard timeout', async (): Promise<void> => {
     const oracleConnection = {
       callTimeout: 25,
-      execute: vi.fn(async (): Promise<{ rows: Array<unknown> }> => {
+      execute: vi.fn((): Promise<{ rows: Array<unknown> }> => {
         expect(oracleConnection.callTimeout).toBe(25);
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       }),
     };
     const queryRunner = createQueryRunner(oracleConnection, {
@@ -51,9 +52,9 @@ describe('OracleQueryRunner slow-query threshold', (): void => {
   it('applies queryTimeoutMs as Oracle connection callTimeout', async (): Promise<void> => {
     const oracleConnection = {
       callTimeout: 0,
-      execute: vi.fn(async (): Promise<{ rows: Array<unknown> }> => {
+      execute: vi.fn((): Promise<{ rows: Array<unknown> }> => {
         expect(oracleConnection.callTimeout).toBe(250);
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       }),
     };
     const queryRunner = createQueryRunner(oracleConnection, {
@@ -69,9 +70,9 @@ describe('OracleQueryRunner slow-query threshold', (): void => {
     async (queryTimeoutMs): Promise<void> => {
       const oracleConnection = {
         callTimeout: 25,
-        execute: vi.fn(async (): Promise<{ rows: Array<unknown> }> => {
+        execute: vi.fn((): Promise<{ rows: Array<unknown> }> => {
           expect(oracleConnection.callTimeout).toBe(25);
-          return { rows: [] };
+          return Promise.resolve({ rows: [] });
         }),
       };
       const queryRunner = createQueryRunner(oracleConnection, {

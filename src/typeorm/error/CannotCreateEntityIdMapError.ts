@@ -1,7 +1,7 @@
+import { TypeORMError } from './TypeORMError.js';
+
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-
-import { TypeORMError } from './TypeORMError.js';
 
 /**
  * Thrown when user tries to create entity id map from the mixed id value,
@@ -11,12 +11,12 @@ export class CannotCreateEntityIdMapError<T> extends TypeORMError {
   public constructor(metadata: EntityMetadata<T>, id: unknown) {
     super();
 
-    const objectExample = metadata.primaryColumns.reduce(
+    const objectExample = metadata.primaryColumns.reduce<ObjectLiteral>(
       (object, column, index) => {
         column.setEntityValue(object, index + 1);
         return object;
       },
-      {} as ObjectLiteral
+      {}
     );
     this.message = `Cannot use given entity id "${id}" because "${
       metadata.targetName

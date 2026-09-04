@@ -15,19 +15,17 @@ enhanced bundled TypeORM-compatible runtime.
 </p>
 
 <p align="center">
-  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
-  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml"><img alt="security" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/tests.yml/badge.svg"></a>
   <a href="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml"><img alt="release" src="https://github.com/PaulBudanov/typeorm-procedure-kit/actions/workflows/release.yml/badge.svg"></a>
-  <a href="https://github.com/semantic-release/semantic-release"><img alt="semantic-release" src="https://img.shields.io/badge/semantic--release-enabled-e10079?logo=semantic-release"></a>
   <a href="https://github.com/PaulBudanov/typeorm-procedure-kit"><img alt="last commit" src="https://img.shields.io/github/last-commit/PaulBudanov/typeorm-procedure-kit?color=64748b&logo=github"></a>
 </p>
 
 ## Translations
 
-- [English](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.md)
-- [Русский](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.ru.md)
-- [Deutsch](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.de.md)
-- [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/tree/master/docs/README.zh.md)
+- [English](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/README.md)
+- [Русский](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.ru.md)
+- [Deutsch](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.de.md)
+- [中文](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/README.zh.md)
 
 ---
 
@@ -66,11 +64,16 @@ adding:
 ## Requirements
 
 - Node.js `>=20`
+- Published ESM and CJS builds target ES2022. The npm package does not include
+  source maps or declaration maps.
 - TypeScript with decorators enabled when using entity decorators
 - PostgreSQL driver: `pg`
 - Oracle driver: `oracledb`
 - Optional PostgreSQL streaming dependency: `pg-query-stream`
-- Optional NestJS peer dependencies: `@nestjs/common` and `@nestjs/core`
+- Optional NestJS peer dependency: `@nestjs/common`
+  (`^10.4.16 || ^11.0.16`).
+  `@nestjs/core` is no longer a peer of this package; install it only when your
+  application itself needs the Nest runtime.
 
 ## Installation
 
@@ -111,7 +114,7 @@ const settings: IModuleConfig = {
   logger: { module: logger },
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -134,11 +137,11 @@ const db = new TypeOrmProcedureKit(settings);
 await db.initDatabase();
 
 try {
-  const invoices = await db.call<{ invoiceId: number }>(
+  const { rows: invoices, outBinds } = await db.call<{ invoiceId: number }>(
     'billing.find_invoices',
     { customerId: 42 }
   );
-  console.log(invoices);
+  console.log(invoices, outBinds);
 } finally {
   await db.destroy();
 }
@@ -200,6 +203,14 @@ Then gradually adopt advanced features:
 The package keeps a TypeORM-compatible developer experience while extending the
 runtime with Oracle/PostgreSQL-focused workflows and stricter typing support.
 
+## Upgrading to v3
+
+Version 3 changes the stored-procedure result and serializer contracts, makes
+temporal formatting explicit and opt-in, and configures a validated session
+time zone on every physical pooled connection. Read the
+[v3 migration guide](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/MIGRATION_V3.md)
+before upgrading from v2.
+
 ## API map
 
 | Task                               | API                                                                        |
@@ -236,7 +247,7 @@ const settings: IModuleConfig = {
   isRegisterShutdownHandlers: true,
   config: {
     type: 'postgres',
-    parseInt8AsBigInt: true,
+    parseInt8AsNumber: true,
     master: {
       host: 'localhost',
       port: 5432,
@@ -246,6 +257,7 @@ const settings: IModuleConfig = {
     },
     poolSize: 10,
     appName: 'procedure-service',
+    sessionTimeZone: 'UTC',
     maxQueryExecutionTime: 30_000,
     outKeyTransformCase: 'camelCase',
     isNeedRegisterDefaultSerializers: true,
@@ -276,33 +288,50 @@ Common options:
 - `slaves`: optional read replicas used by TypeORM replication.
 - `poolSize`: connection pool size.
 - `appName`: application name passed to supported drivers.
-- `sessionTimeZone`: optional database session time zone passed to supported
-  drivers, for example `UTC`, `Europe/Moscow`, or `+03:00`.
+- `sessionTimeZone`: validated database session time zone, for example `UTC`,
+  `Europe/Moscow`, or `+03:00`; it defaults to `UTC`. PostgreSQL includes it in
+  every pool connection's startup options. Oracle applies it through the pool
+  session callback when each physical connection is created. Reused pool
+  connections retain that state unless application SQL changes it.
 - `maxQueryExecutionTime`: slow-query threshold passed to the underlying
   DataSource; it logs slow queries without cancelling them.
 - `logger.typeormLogLevels`: TypeORM log levels routed through `logger.module`.
   Supported values are `query`, `error`, `schema`, `info`, `warn`, `migration`,
   or `all`.
+- `logger.bindingLogMode`: binding-value logging policy. The secure default,
+  `metadata-only`, hides every value. `redact-by-name` is a less strict
+  compatibility mode that exposes values whose names do not match its
+  sensitive-name heuristic. `unsafe-values` is an explicit opt-in that may
+  expose credentials and personal data.
 - `queryTimeoutMs`: optional positive integer query timeout in milliseconds.
   PostgreSQL passes it to the `pg` pool as `statement_timeout`, a statement-level
   timeout. Oracle applies it to each acquired physical connection as `oracledb`
   `connection.callTimeout`; this limits each database round-trip, not the total
-  statement duration.
-- `callTimeout`: deprecated alias for `maxQueryExecutionTime`.
+  statement duration. Invalid, fractional, or out-of-range values fail during
+  configuration instead of silently disabling the timeout.
+- `resourceLimits`: optional materialization bounds. Secure defaults are
+  `maxProcedureRows: 100000`, `maxProcedureBytes: 67108864` (64 MiB),
+  `maxMetadataRows: 10000`, `maxLobBytes: 16777216` (16 MiB),
+  `maxNotificationQueue: 1000`, and `maxNotificationRows: 10000` distinct
+  Oracle CQN ROWIDs per event. `maxProcedureBytes` uses approximate logical
+  payload accounting; it is not an exact heap, wire, or driver-allocation
+  measurement.
 - `outKeyTransformCase`: `camelCase`, `lowerCase`, or `snakeCase`; defaults to
   `camelCase`.
-- `isNeedRegisterDefaultSerializers`: registers default date/time serializers.
+- `isNeedRegisterDefaultSerializers`: opt-in flag for the default temporal
+  serializers; it defaults to `false`.
 - `entity`: entity discovery and optional synchronization settings.
 - `migration`: migration discovery and optional startup execution settings.
-- `isRegisterShutdownHandlers`: registers process signal handlers that call
-  `destroy()`.
+- `isRegisterShutdownHandlers`: registers standalone-process signal handlers.
+  The first signal removes the kit handlers, awaits `destroy()`, and re-sends
+  the same signal so the process keeps its standard signal exit semantics.
 
 PostgreSQL options:
 
-- `parseInt8AsBigInt`: required by the PostgreSQL config type and passed to the
+- `parseInt8AsNumber`: required by the PostgreSQL config type and passed to the
   bundled driver as `parseInt8`. When `true`, `node-postgres` parses `int8`
   values as JavaScript numbers instead of strings; values above
-  `Number.MAX_SAFE_INTEGER` can lose precision despite the option name.
+  `Number.MAX_SAFE_INTEGER` can lose precision.
 - `packagesSettings.listenEventName`: required when
   `isNeedDynamicallyUpdatePackagesInfo` is `true`; overrides the package update
   notification channel.
@@ -346,10 +375,13 @@ database is wrapped by this package.
 ## Stored procedures
 
 ```ts
-await db.call('billing.create_invoice', {
+const result = await db.call<InvoiceRow>('billing.create_invoice', {
   customerId: 42,
   amount: 1000,
 });
+
+console.log(result.rows);
+console.log(result.outBinds);
 ```
 
 Procedure metadata is loaded from the configured database packages/schemas
@@ -359,6 +391,43 @@ configured packages/schemas. `call()` cannot be used without
 
 Procedure payloads can be objects, arrays, `null`, or `undefined`. Scalar
 strings and numbers are rejected at runtime.
+
+Named structured arguments use plain objects. Oracle package-spec PL/SQL
+`RECORD` arguments and PostgreSQL named composite/table-row arguments support
+`IN`, `OUT`, and `INOUT`. Missing declared fields bind as SQL `NULL`; unknown or
+conflicting field names are rejected. Structured outputs are plain objects in
+`outBinds`, with field names transformed by `outKeyTransformCase`.
+
+Oracle PL/SQL `RECORD` binding requires Oracle Database 12.1 or newer. Thick
+mode also requires Oracle Client 12.1 or newer.
+
+The first structured-type implementation excludes nested structured values,
+structured arrays, Oracle collections, anonymous/local records and `%ROWTYPE`,
+and dynamic PL/pgSQL `RECORD`/anonymous `ROW(...)`. PostgreSQL scalar arrays are
+passed to the driver as native arrays; Oracle arrays are rejected until
+collection binding is supported explicitly.
+
+In v3, `call()` always resolves to an `IProcedureResult` envelope:
+
+```ts
+interface IProcedureResult<TRow, TOut extends Record<string, unknown>> {
+  rows: Array<TRow>;
+  outBinds: TOut;
+}
+```
+
+`rows` concatenates all REF CURSOR rows in procedure metadata order. `outBinds`
+preserves every cursor and scalar `OUT`/`INOUT` value under the configured
+`outKeyTransformCase`; scalar-only procedures return an empty `rows` array.
+`callSqlTransaction()` continues to return its row array directly.
+
+For PostgreSQL `refcursor` parameters, missing `IN`/`INOUT` portal names are
+generated automatically. A pure `OUT refcursor` is passed as `NULL`, as required
+by PostgreSQL, so the stored procedure must assign and open an explicit portal
+name. Any server result matching `<unnamed portal ...>` (including
+`<unnamed portal 1>`) is rejected; all accepted names are safely quoted before
+`FETCH` and `CLOSE` and must fit in 63 UTF-8 bytes. Cursor rows are fetched in
+batches of at most 1,000 so row and byte limits are enforced incrementally.
 
 ## Raw SQL transactions
 
@@ -380,8 +449,12 @@ Execution options:
 - `mode`: `master` or `slave`, default `master`.
 - `optionsCommands`: restricted setup commands executed in the same transaction
   before the main query. Each item must be one safe command without comments or
-  separators. PostgreSQL accepts supported `SET`, `SET LOCAL`, and
-  `SET TRANSACTION` forms; Oracle accepts `ALTER SESSION SET name = value`.
+  separators. PostgreSQL accepts `SET LOCAL ROLE`, `SET LOCAL search_path`,
+  `SET LOCAL TIME ZONE`, namespaced `SET LOCAL app.*`, and supported
+  `SET TRANSACTION` forms. Oracle accepts only the supported `NLS_*` format
+  settings. Their original values are captured and restored before the pooled
+  connection is released; a restoration failure drops that physical
+  connection. Configure Oracle time zones with `sessionTimeZone`.
 - `queryId`: custom id used in logs and wrapped database errors.
 
 ## Notifications
@@ -429,6 +502,10 @@ await db.unlistenNotify(channel);
 
 Oracle generates subscription names internally. When CQN reports changed
 ROWIDs, the adapter fetches changed rows and passes those rows to the callback.
+The refetch preserves the configured projection and predicate. To make ROWID
+refetch deterministic and bounded, Oracle CQN SQL must be a single-table
+`SELECT` with an optional alias and `WHERE`; joins, set operations, grouping,
+ordering, and nested queries are rejected before a connection is created.
 Oracle subscriptions are monitored and restored after CQN deregistration,
 shutdown events, connection errors, or silent connection loss.
 Use `clientInitiated: false` with legacy `cqnPort` only for server-initiated CQN
@@ -454,11 +531,20 @@ constants; never build them from user input.
 metadata query for both databases. The SQL must contain `:PACKAGE_NAME` and
 must return columns compatible with `IProcedureArgumentBase` after snake_case to
 camelCase conversion: `procedure_name`, `argument_name`, `argument_type`,
-`order`, and `mode`.
+`order`, `mode`, and optional `size`. Overloaded PostgreSQL routines must also
+return `specific_name`; Oracle routines should return `owner`, `subprogram_id`,
+and `overload`. Ambiguous overload metadata is rejected instead of merging
+signatures. Modes must be `IN`, `OUT`, or `INOUT`/`IN/OUT`; `order` and `size`
+must be valid integers. Built-in metadata SQL fetches at most
+`maxMetadataRows + 1` rows for overflow detection. A custom metadata query is
+still rejected after that limit, but should include its own database-side limit
+when it reads an unbounded source to avoid materializing an oversized result.
 
 `packagesSettings.metadataNotificationSql` can replace the default metadata
 refresh subscription SQL. PostgreSQL expects a full `LISTEN ...` command. Oracle
-expects a full CQN `SELECT ...` query.
+expects a CQN `SELECT ...` query subject to the single-table restrictions above.
+An absent, empty, or whitespace-only value uses the adapter default; a non-empty
+value is trimmed before use.
 
 ## Serializers
 
@@ -473,18 +559,30 @@ const settings = {
 };
 ```
 
-Built-in serializers format:
+Default serializers are not registered unless
+`isNeedRegisterDefaultSerializers` is `true`. Their v3 formats are:
 
-- `DATE` as `yyyy-MM-dd`
-- `TIMESTAMP` as `yyyy-MM-dd HH:mm:ss Z`
-- `TIMESTAMP_TZ` as `yyyy-MM-dd HH:mm:ss Z`
+- `DATE` as `yyyy-MM-dd HH:mm:ss` (whole-second precision)
+- `TIMESTAMP` as `yyyy-MM-dd HH:mm:ss.SSS` (millisecond precision)
+- `TIMESTAMP_TZ` as UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`
+- `TIMESTAMP_LTZ` as UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`
+
+Temporal strategies accept either the driver's native `Date` or a strict
+SQL/ISO string. Zoned string values must include `Z` or a numeric offset.
+Fractional input up to nanoseconds is validated, while JavaScript output is
+intentionally normalized to milliseconds. DST and offset conversion use the
+explicit input offset/session time zone; ambiguous unzoned values are not
+silently treated as zoned timestamps.
 
 Register and remove custom serializers:
 
 ```ts
 db.setSerializer({
   serializerType: 'JSON',
-  strategy: (value) => JSON.parse(value.toString()),
+  strategy: ({ serializerType, value, context }) => {
+    console.log(serializerType, context?.source, context?.databaseType);
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  },
 });
 
 const serializers = db.serializerReadOnlyMapping;
@@ -493,13 +591,18 @@ db.deleteSerializer({ serializerType: 'JSON' });
 db.deleteAllSerializers();
 ```
 
-Supported serializer keys are `DATE`, `TIMESTAMP`, `TIMESTAMP_TZ`, `BOOLEAN`,
-`CHAR`, `VARCHAR`, `JSON`, `BINARY`, and `XML`.
+Every strategy receives `{ serializerType, value, context? }`. Context can
+identify `source` (`fetch`, `scalar-out`, or `manual`), database, column/output
+name, and native database type. `null`/`undefined` values bypass the strategy
+and normalize to `null`.
 
-Runtime side effects:
+Supported serializer keys are `DATE`, `TIMESTAMP`, `TIMESTAMP_TZ`,
+`TIMESTAMP_LTZ`, `BOOLEAN`, `CHAR`, `VARCHAR`, `JSON`, `BINARY`, and `XML`.
 
-- the PostgreSQL serializer overrides `pg.Result.prototype.parseRow` globally;
-- the Oracle serializer sets `oracledb.fetchTypeHandler` globally;
+Runtime scope:
+
+- PostgreSQL type parsers are attached to each package-created pool;
+- Oracle fetch handlers are attached to the package DataSource execution path;
 - the Oracle adapter sets `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
 ## NestJS integration
@@ -511,7 +614,7 @@ import type { IModuleConfig } from 'typeorm-procedure-kit';
 
 const config: IModuleConfig['config'] = {
   type: 'postgres',
-  parseInt8AsBigInt: true,
+  parseInt8AsNumber: true,
   master: {
     host: 'localhost',
     port: 5432,
@@ -548,6 +651,9 @@ TypeOrmProcedureKitNestModule.forRootAsync({
 For synchronous setup, pass `true` as the second `forRoot()` argument to make
 the module global. The Nest service initializes the database during
 `onModuleInit()` and calls `destroy()` during application shutdown.
+Use Nest's `app.enableShutdownHooks()` and leave `isRegisterShutdownHandlers`
+disabled in Nest applications; enabling both lifecycle owners can terminate the
+process before unrelated Nest providers finish cleanup.
 
 The NestJS entry point also exports decorators for injecting individual methods
 and lazy DataSource access:
@@ -568,7 +674,10 @@ and lazy DataSource access:
 The `typeorm-procedure-kit/typeorm` entry point exports decorators, DataSource,
 EntityManager, repositories, query builders, and related types. The runtime is
 based on a maintained TypeORM-compatible fork optimized for Oracle and
-PostgreSQL workflows.
+PostgreSQL workflows. See the
+[fork provenance and synchronization policy](https://github.com/PaulBudanov/typeorm-procedure-kit/blob/master/docs/TYPEORM_FORK.md);
+the 0.3.28 baseline is inferred from the parent manifest because the original
+import did not record an exact upstream SHA.
 
 Use the documented entry points instead of deep imports into bundled TypeORM
 files. For SQL tagged templates, scalar values are parameterized automatically.
@@ -587,9 +696,11 @@ Enhancements include:
 - `EntityMetadata.propertiesMap` for TypeORM property paths, including
   relations, and `EntityMetadata.databasePropertiesMap` for database column
   names after explicit `@Column({ name })` options and naming strategy rules;
-- `isQuotingDisabled: true` during kit DataSource initialization, so query
-  builders keep identifiers unquoted by default. You can opt into quoting with
-  `enableEscaping()` or `escape(name, true)`.
+- `identifierQuoting: 'disabled'` by default for physical database, schema,
+  table, and column names, while generated aliases remain quoted. Set
+  `identifierQuoting: 'enabled'` on the kit config or direct `DataSource`, or
+  call `setIdentifierQuoting('enabled')` on one query builder. `escape(name)`
+  always performs explicit quoting regardless of this policy.
 
 ## TypeORM extension decorators
 
@@ -710,6 +821,29 @@ await db.destroy();
 procedure and naming caches, and throws `AggregateError` if part of cleanup
 fails. Set `isRegisterShutdownHandlers: true` to register process signal
 handlers automatically, or call `db.registerShutdownHandlers()` yourself.
+These handlers are intended for standalone processes: after cleanup the
+original signal is re-sent, while a second signal during cleanup uses Node.js's
+default termination behavior. Framework-managed applications should call
+`destroy()` from their own lifecycle hook instead.
+
+## Manual materialization benchmark
+
+Run `npm run benchmark:postgre-materialization` manually after closing noisy
+background workloads. The JSON output includes the median, raw samples,
+nanoseconds per row, and the Node.js version, platform, and architecture. It is
+a diagnostic tool and is intentionally outside CI; there is no built-in
+baseline.
+
+Comparison is enabled only when both positive, non-zero values are explicit:
+
+```bash
+npm run benchmark:postgre-materialization -- \
+  --baseline-ns 20000 \
+  --max-regression-percent 10
+```
+
+The command exits unsuccessfully when the measured median exceeds the permitted
+regression.
 
 ## Common errors
 
@@ -723,8 +857,11 @@ handlers automatically, or call `db.registerShutdownHandlers()` yourself.
   do not pass a scalar payload to `call()`.
 - `Unsafe SQL identifier for ...`: procedure, cursor, or notification channel
   names must match the supported identifier pattern.
-- Database result objects with nonzero `error_code` or `err_code` are converted
-  to `ServerError`.
+- A top-level procedure error envelope containing a code key
+  (`error_code`/`err_code` or case-transformed `errorCode`/`errCode`) and a text
+  key (`error_text`/`err_text` or `errorText`/`errText`), with a nonzero code,
+  is converted to `ServerError`. Business rows and nested objects are not
+  recursively scanned.
 
 ## License
 

@@ -1,14 +1,14 @@
+import { CustomRepositoryDoesNotHaveEntityError } from '../error/CustomRepositoryDoesNotHaveEntityError.js';
+import { CustomRepositoryNotFoundError } from '../error/CustomRepositoryNotFoundError.js';
+import { getMetadataArgsStorage } from '../globals.js';
+
+import type { Repository } from './Repository.js';
+import type { TreeRepository } from './TreeRepository.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { ObjectType } from '../common/ObjectType.js';
 import type { EntityManager } from '../entity-manager/EntityManager.js';
-import { CustomRepositoryDoesNotHaveEntityError } from '../error/CustomRepositoryDoesNotHaveEntityError.js';
-import { CustomRepositoryNotFoundError } from '../error/CustomRepositoryNotFoundError.js';
-import { getMetadataArgsStorage } from '../globals.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
-
-import type { Repository } from './Repository.js';
-import type { TreeRepository } from './TreeRepository.js';
 
 /**
  * Provides abstract class for custom repositories that do not inherit from original orm Repository.
@@ -36,7 +36,7 @@ export class AbstractRepository<Entity = unknown> {
    * If current repository does not manage any entity, then exception will be thrown.
    */
   protected get repository(): Repository<Entity> {
-    const target = this.getCustomRepositoryTarget(this as unknown);
+    const target = this.getCustomRepositoryTarget(this);
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
 
@@ -48,13 +48,13 @@ export class AbstractRepository<Entity = unknown> {
    * If current repository does not manage any entity, then exception will be thrown.
    */
   protected get treeRepository(): TreeRepository<ObjectLiteral> {
-    const target = this.getCustomRepositoryTarget(this as unknown);
+    const target = this.getCustomRepositoryTarget(this);
     if (!target)
       throw new CustomRepositoryDoesNotHaveEntityError(this.constructor);
 
     return this.manager.getTreeRepository<ObjectLiteral>(
       target as EntityTarget<ObjectLiteral>
-    ) as TreeRepository<ObjectLiteral>;
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -82,9 +82,7 @@ export class AbstractRepository<Entity = unknown> {
     entity: ObjectType<T>,
     alias: string
   ): SelectQueryBuilder<T> {
-    return this.getRepositoryFor(entity).createQueryBuilder(
-      alias
-    ) as SelectQueryBuilder<T>;
+    return this.getRepositoryFor(entity).createQueryBuilder(alias);
   }
 
   /**

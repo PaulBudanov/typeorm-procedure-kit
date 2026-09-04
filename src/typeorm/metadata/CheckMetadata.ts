@@ -1,8 +1,7 @@
+import type { EntityMetadata } from './EntityMetadata.js';
 import type { TFunction } from '../../types/utility.types.js';
 import type { CheckMetadataArgs } from '../metadata-args/CheckMetadataArgs.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
-
-import type { EntityMetadata } from './EntityMetadata.js';
 
 /**
  * Check metadata contains all information about table's check constraints.

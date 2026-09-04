@@ -1,25 +1,33 @@
-import type { Client } from 'pg';
+import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
+import { DatabaseNotify } from '../abstract/database-notify.js';
 
+import { PostgreSqlCommand } from './postgre-sql.js';
+
+import type { PostgreConnection } from './postgre-connection.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   INotifyRetryOptions,
   IPostgreNotifyRestoreSettings,
   TNotifyCallbackGeneric,
 } from '../../types/notification.types.js';
-import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
-import { ServerError } from '../../utils/server-error.js';
-import { SqlIdentifier } from '../../utils/sql-identifier.js';
-import { DatabaseNotify } from '../abstract/database-notify.js';
+import type { Client } from 'pg';
 
-import type { PostgreConnection } from './postgre-connection.js';
-import { PostgreSqlCommand } from './postgre-sql.js';
 export class PostgreNotify extends DatabaseNotify<Client> {
-  private readonly pendingRegistrations = new Set<string>();
+  private readonly pendingRegistrationChannels = new Set<string>();
+  private readonly notificationQueues = new Map<
+    string,
+    { tail: Promise<void>; size: number }
+  >();
+  private readonly closingNotificationChannels = new Set<string>();
 
   public constructor(
     private readonly postgreConnection: PostgreConnection,
-    protected readonly logger: ILoggerModule,
-    private readonly listenEventName?: string
+    protected override readonly logger: ILoggerModule,
+    private readonly listenEventName?: string,
+    private readonly maxNotificationQueue = DEFAULT_RESOURCE_LIMITS.maxNotificationQueue
   ) {
     super(logger);
   }
@@ -54,19 +62,39 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     options: INotifyRetryOptions = {}
   ): Promise<string> {
     this.assertCanRegisterNotification();
+    this.assertNotificationRetryOptions(options);
     const channelName = this.parseListenChannel(sqlCommand);
     const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
       channelName
     )}`;
     if (
       this.notificationPool.has(channelName) ||
-      this.pendingRegistrations.has(channelName)
+      this.pendingRegistrationChannels.has(channelName)
     ) {
       throw new ServerError(
         `Listener for channel "${channelName}" already registered`
       );
     }
-    this.pendingRegistrations.add(channelName);
+    return this.trackNotificationRegistration(() =>
+      this.registerListener(channelName, listenSql, notifyCallback, options)
+    );
+  }
+
+  private async registerListener<T>(
+    channelName: string,
+    listenSql: string,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
+    options: INotifyRetryOptions
+  ): Promise<string> {
+    if (
+      this.notificationPool.has(channelName) ||
+      this.pendingRegistrationChannels.has(channelName)
+    ) {
+      throw new ServerError(
+        `Listener for channel "${channelName}" already registered`
+      );
+    }
+    this.pendingRegistrationChannels.add(channelName);
 
     let client: Client | undefined;
     try {
@@ -74,30 +102,36 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       this.assertCanRegisterNotification();
       await client.query(listenSql);
       this.assertCanRegisterNotification();
-      this.postgreConnection.registerConnectionErrorHandler(client, () => {
-        if (this.notificationPool.get(channelName) !== client) return;
-        void this.restoreClientConnectionCallback<T>(
-          channelName,
-          notifyCallback,
-          options
-        );
-      });
-      client.on('notification', (msg) => {
-        if (msg.channel?.toLowerCase() === channelName.toLowerCase()) {
-          void this.handleNotificationPayload<T>(
+      const registeredClient = client;
+      this.postgreConnection.registerConnectionErrorHandler(
+        registeredClient,
+        () => {
+          if (this.notificationPool.get(channelName) !== registeredClient)
+            return;
+          void this.restoreClientConnectionCallback<T>(
             channelName,
+            notifyCallback,
+            options
+          );
+        }
+      );
+      registeredClient.on('notification', (msg) => {
+        if (msg.channel.toLowerCase() === channelName.toLowerCase()) {
+          void this.enqueueNotificationPayload<T>(
+            channelName,
+            registeredClient,
             msg.payload,
             notifyCallback
           );
         }
         return;
       });
-      this.notificationPool.set(channelName, client);
+      this.notificationPool.set(channelName, registeredClient);
       this.markNotificationActive(channelName);
       this.startConnectionHealthCheck({
         channelName,
-        connection: client,
-        intervalMs: this.CONNECTION_HEALTH_CHECK_INTERVAL_MS,
+        connection: registeredClient,
+        intervalMs: PostgreNotify.CONNECTION_HEALTH_CHECK_INTERVAL_MS,
         isHealthy: (connection) =>
           this.postgreConnection.isSingleConnectionHealthy(connection),
         restore: () =>
@@ -119,19 +153,61 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       if (client) await this.postgreConnection.closeSingleConnection(client);
       throw error;
     } finally {
-      this.pendingRegistrations.delete(channelName);
+      this.pendingRegistrationChannels.delete(channelName);
     }
   }
 
+  private enqueueNotificationPayload<T>(
+    channelName: string,
+    client: Client,
+    rawPayload: string | undefined,
+    notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>
+  ): Promise<void> {
+    if (this.closingNotificationChannels.has(channelName)) {
+      return Promise.resolve();
+    }
+    const queue = this.notificationQueues.get(channelName) ?? {
+      tail: Promise.resolve(),
+      size: 0,
+    };
+    if (queue.size >= this.maxNotificationQueue) {
+      this.logger.error(
+        `PostgreSQL notification queue limit (${this.maxNotificationQueue}) exceeded for channel ${channelName}; dropping event`
+      );
+      return Promise.resolve();
+    }
+    queue.size += 1;
+    const processPayload = (): void | Promise<void> => {
+      if (this.notificationPool.get(channelName) !== client) return;
+      return this.handleNotificationPayload(
+        channelName,
+        rawPayload,
+        notifyCallback
+      );
+    };
+    const current = queue.tail.then(processPayload, processPayload);
+    queue.tail = current;
+    this.notificationQueues.set(channelName, queue);
+    return current.finally(() => {
+      queue.size -= 1;
+      if (queue.size === 0 && queue.tail === current) {
+        this.notificationQueues.delete(channelName);
+      }
+    });
+  }
+
   private parseListenChannel(sqlCommand: string): string {
-    const match = sqlCommand
-      .trim()
-      .match(/^LISTEN\s+"?([A-Za-z_][A-Za-z0-9_$#]*)"?\s*;?$/i);
+    const match = /^LISTEN\s+"?([A-Za-z_][A-Za-z0-9_$#]*)"?\s*;?$/i.exec(
+      sqlCommand.trim()
+    );
     const channelName = match?.[1];
     if (!channelName) {
       throw new ServerError(
         'SQL command must contain LISTEN for notification, example: LISTEN'
       );
+    }
+    if (Buffer.byteLength(channelName, 'utf8') > 63) {
+      throw new ServerError('PostgreSQL LISTEN channel exceeds 63 UTF-8 bytes');
     }
     return channelName;
   }
@@ -148,13 +224,13 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       ) as TNotifyCallbackGeneric<T>;
     } catch {
       this.logger.error(
-        `Error parsing JSON payload in notification from channel ${channelName} : ${rawPayload} , returning as is.`
+        `Error parsing JSON payload in notification from channel ${channelName}; payload length: ${Buffer.byteLength(rawPayload ?? '')}`
       );
       payload = rawPayload as TNotifyCallbackGeneric<T>;
     }
 
     try {
-      DatabaseErrorHandler.checkForDatabaseError(payload);
+      DatabaseErrorHandler.checkForDatabaseError<T>(payload);
       await notifyCallback(payload);
     } catch (error) {
       this.logger.error(
@@ -179,6 +255,12 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   }
 
   private async closeListenerConnection(channel: string): Promise<void> {
+    return this.closeNotificationChannel(channel, () =>
+      this.performCloseListenerConnection(channel)
+    );
+  }
+
+  private async performCloseListenerConnection(channel: string): Promise<void> {
     const client = this.notificationPool.get(channel);
     this.notificationPool.delete(channel);
     this.stopConnectionHealthCheck(channel);
@@ -208,6 +290,18 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     }
   }
 
+  protected override beginNotificationQueueClose(
+    channelName: string
+  ): Promise<void> | undefined {
+    this.closingNotificationChannels.add(channelName);
+    return this.notificationQueues.get(channelName)?.tail;
+  }
+
+  protected override completeNotificationQueueClose(channelName: string): void {
+    this.notificationQueues.delete(channelName);
+    this.closingNotificationChannels.delete(channelName);
+  }
+
   /**
    * Schedules a guarded restore for a PostgreSQL listener.
    * Duplicate restore attempts for the same channel are ignored. Retry timing
@@ -223,9 +317,9 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     channelName: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: INotifyRetryOptions = {},
-    maxRetries = options.maxRetries ?? this.RESTORE_MAX_RETRIES,
-    retryDelayMs = options.retryDelayMs ?? this.RESTORE_RETRY_DELAY_MS,
-    currentRetry = this.RESTORE_CURRENT_RETRY
+    maxRetries = options.maxRetries ?? PostgreNotify.RESTORE_MAX_RETRIES,
+    retryDelayMs = options.retryDelayMs ?? PostgreNotify.RESTORE_RETRY_DELAY_MS,
+    currentRetry = PostgreNotify.RESTORE_CURRENT_RETRY
   ): Promise<void> {
     await this.restoreNotification<IPostgreNotifyRestoreSettings<T>>({
       channelName,
@@ -237,7 +331,8 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       retryDelayMs,
       currentRetry,
       retryAfterMaxDelayMs:
-        options.retryAfterMaxDelayMs ?? this.RESTORE_RETRY_AFTER_MAX_DELAY_MS,
+        options.retryAfterMaxDelayMs ??
+        PostgreNotify.RESTORE_RETRY_AFTER_MAX_DELAY_MS,
       restore: (settings) =>
         this.restoreClientConnection(
           channelName,
@@ -254,9 +349,11 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   ): Promise<void> {
     await this.closeListenerConnection(channelName);
     if (this.isNotificationRestoreCancelled(channelName)) return;
-    if (!channelName.includes('LISTEN ')) channelName = `LISTEN ${channelName}`;
+    const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
+      channelName
+    )}`;
     const restoredChannelName = await this.listenNotify(
-      channelName,
+      listenSql,
       notifyCallback,
       options
     );

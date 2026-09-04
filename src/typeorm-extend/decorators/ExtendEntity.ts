@@ -1,11 +1,12 @@
 import cloneDeep from 'lodash/cloneDeep.js';
 import merge from 'lodash/merge.js';
 
-import type { EntityOptions } from '../../typeorm/decorator/options/EntityOptions.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
-import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
+
+import type { EntityOptions } from '../../typeorm/decorator/options/EntityOptions.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Extends the @Entity decorator with additional options.
@@ -39,8 +40,12 @@ export function ExtendEntity(
       !entityMetadata.foundTarget ||
       typeof entityMetadata.foundTarget !== 'function'
     ) {
+      const originalTargetName =
+        typeof entityMetadata.foundTarget === 'function'
+          ? entityMetadata.foundTarget.name
+          : 'unknown';
       throw new ServerError(
-        `Entity "${target.toString()}" not registered. Original class target name: "${entityMetadata.foundTarget}". ` +
+        `Entity "${target.toString()}" not registered. Original class target name: "${originalTargetName}". ` +
           'Register entity with @Entity() decorator first.'
       );
     }

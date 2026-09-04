@@ -1,11 +1,13 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import { formatDataSourceIdentifier } from '../data-source/IdentifierQuoting.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { FindOptionsUtils } from '../find-options/FindOptionsUtils.js';
-import type { FindTreeOptions } from '../find-options/FindTreeOptions.js';
-import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import { TreeRepositoryUtils } from '../util/TreeRepositoryUtils.js';
 
 import { Repository } from './Repository.js';
+
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { FindTreeOptions } from '../find-options/FindTreeOptions.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 /**
  * Repository with additional functions to work with trees.
@@ -35,9 +37,9 @@ export class TreeRepository<
    */
   public findRoots(options?: FindTreeOptions): Promise<Array<Entity>> {
     const escapeAlias = (alias: string): string =>
-      this.manager.connection.driver.escape(alias, true);
+      this.manager.connection.driver.escape(alias);
     const escapeColumn = (column: string): string =>
-      this.manager.connection.driver.escape(column);
+      formatDataSourceIdentifier(column, this.manager.connection);
 
     const joinColumn = this.metadata.treeParentRelation!.joinColumns[0]!;
     const parentPropertyName =
@@ -52,7 +54,7 @@ export class TreeRepository<
           parentPropertyName
         )} IS NULL`
       )
-      .getMany() as Promise<Array<Entity>>;
+      .getMany();
   }
 
   /**
@@ -128,20 +130,22 @@ export class TreeRepository<
     entity: Entity
   ): SelectQueryBuilder<Entity> {
     // create shortcuts for better readability
-    const escape = (alias: string, isNeedQuote = false): string =>
-      this.manager.connection.driver.escape(alias, isNeedQuote);
+    const escapeAlias = (value: string): string =>
+      this.manager.connection.driver.escape(value);
+    const escapeColumn = (value: string): string =>
+      formatDataSourceIdentifier(value, this.manager.connection);
 
     if (this.metadata.treeType === 'closure-table') {
       const joinCondition = this.metadata.closureJunctionTable.descendantColumns
         .map((column) => {
           return (
-            escape(closureTableAlias, true) +
+            escapeAlias(closureTableAlias) +
             '.' +
-            escape(column.propertyPath) +
+            escapeColumn(column.databaseName) +
             ' = ' +
-            escape(alias, true) +
+            escapeAlias(alias) +
             '.' +
-            escape(column.referencedColumn!.propertyPath)
+            escapeColumn(column.referencedColumn!.databaseName)
           );
         })
         .join(' AND ');
@@ -152,9 +156,9 @@ export class TreeRepository<
           parameters[column.referencedColumn!.propertyName] =
             column.referencedColumn!.getEntityValue(entity);
           return (
-            escape(closureTableAlias, true) +
+            escapeAlias(closureTableAlias) +
             '.' +
-            escape(column.propertyPath) +
+            escapeColumn(column.databaseName) +
             ' = :' +
             column.referencedColumn!.propertyName
           );
@@ -168,17 +172,15 @@ export class TreeRepository<
           joinCondition
         )
         .where(whereCondition)
-        .setParameters(parameters) as SelectQueryBuilder<Entity>;
+        .setParameters(parameters);
     } else if (this.metadata.treeType === 'nested-set') {
-      const whereCondition =
-        alias +
-        '.' +
-        this.metadata.nestedSetLeftColumn!.propertyPath +
-        ' BETWEEN ' +
-        'joined.' +
-        this.metadata.nestedSetLeftColumn!.propertyPath +
-        ' AND joined.' +
-        this.metadata.nestedSetRightColumn!.propertyPath;
+      const whereCondition = `${escapeAlias(alias)}.${escapeColumn(
+        this.metadata.nestedSetLeftColumn!.databaseName
+      )} BETWEEN ${escapeAlias('joined')}.${escapeColumn(
+        this.metadata.nestedSetLeftColumn!.databaseName
+      )} AND ${escapeAlias('joined')}.${escapeColumn(
+        this.metadata.nestedSetRightColumn!.databaseName
+      )}`;
       const parameters: ObjectLiteral = {};
       const joinCondition = this.metadata
         .treeParentRelation!.joinColumns.map((joinColumn) => {
@@ -186,35 +188,32 @@ export class TreeRepository<
             joinColumn.referencedColumn!.propertyPath.replace('.', '_');
           parameters[parameterName] =
             joinColumn.referencedColumn!.getEntityValue(entity);
-          return (
-            'joined.' +
-            joinColumn.referencedColumn!.propertyPath +
-            ' = :' +
-            parameterName
-          );
+          return `${escapeAlias('joined')}.${escapeColumn(
+            joinColumn.referencedColumn!.databaseName
+          )} = :${parameterName}`;
         })
         .join(' AND ');
 
       return this.createQueryBuilder(alias)
         .innerJoin(this.metadata.targetName, 'joined', whereCondition)
-        .where(joinCondition, parameters) as SelectQueryBuilder<Entity>;
+        .where(joinCondition, parameters);
     } else if (this.metadata.treeType === 'materialized-path') {
       return this.createQueryBuilder(alias).where((qb) => {
         const subQuery = qb
           .subQuery()
           .select(
-            `${this.metadata.targetName}.${
-              this.metadata.materializedPathColumn!.propertyPath
-            }`,
+            `${escapeAlias(this.metadata.targetName)}.${escapeColumn(
+              this.metadata.materializedPathColumn!.databaseName
+            )}`,
             'path'
           )
           .from(this.metadata.target, this.metadata.targetName)
           .whereInIds(this.metadata.getEntityIdMap(entity));
 
-        return `${alias}.${
-          this.metadata.materializedPathColumn!.propertyPath
-        } LIKE NULLIF(CONCAT(${subQuery.getQuery()}, '%'), '%')`;
-      }) as SelectQueryBuilder<Entity>;
+        return `${escapeAlias(alias)}.${escapeColumn(
+          this.metadata.materializedPathColumn!.databaseName
+        )} LIKE NULLIF(CONCAT(${subQuery.getQuery()}, '%'), '%')`;
+      });
     }
 
     throw new TypeORMError(`Supported only in tree entities`);
@@ -286,20 +285,22 @@ export class TreeRepository<
     closureTableAlias: string,
     entity: Entity
   ): SelectQueryBuilder<Entity> {
-    // create shortcuts for better readability
-    // const escape = (alias: string) => this.manager.connection.driver.escape(alias);
+    const escapeAlias = (value: string): string =>
+      this.manager.connection.driver.escape(value);
+    const escapeColumn = (value: string): string =>
+      formatDataSourceIdentifier(value, this.manager.connection);
 
     if (this.metadata.treeType === 'closure-table') {
       const joinCondition = this.metadata.closureJunctionTable.ancestorColumns
         .map((column) => {
           return (
-            closureTableAlias +
+            escapeAlias(closureTableAlias) +
             '.' +
-            column.propertyPath +
+            escapeColumn(column.databaseName) +
             ' = ' +
-            alias +
+            escapeAlias(alias) +
             '.' +
-            column.referencedColumn!.propertyPath
+            escapeColumn(column.referencedColumn!.databaseName)
           );
         })
         .join(' AND ');
@@ -311,9 +312,9 @@ export class TreeRepository<
             parameters[column.referencedColumn!.propertyName] =
               column.referencedColumn!.getEntityValue(entity);
             return (
-              closureTableAlias +
+              escapeAlias(closureTableAlias) +
               '.' +
-              column.propertyPath +
+              escapeColumn(column.databaseName) +
               ' = :' +
               column.referencedColumn!.propertyName
             );
@@ -327,19 +328,15 @@ export class TreeRepository<
           joinCondition
         )
         .where(whereCondition)
-        .setParameters(parameters) as SelectQueryBuilder<Entity>;
+        .setParameters(parameters);
     } else if (this.metadata.treeType === 'nested-set') {
-      const joinCondition =
-        'joined.' +
-        this.metadata.nestedSetLeftColumn!.propertyPath +
-        ' BETWEEN ' +
-        alias +
-        '.' +
-        this.metadata.nestedSetLeftColumn!.propertyPath +
-        ' AND ' +
-        alias +
-        '.' +
-        this.metadata.nestedSetRightColumn!.propertyPath;
+      const joinCondition = `${escapeAlias('joined')}.${escapeColumn(
+        this.metadata.nestedSetLeftColumn!.databaseName
+      )} BETWEEN ${escapeAlias(alias)}.${escapeColumn(
+        this.metadata.nestedSetLeftColumn!.databaseName
+      )} AND ${escapeAlias(alias)}.${escapeColumn(
+        this.metadata.nestedSetRightColumn!.databaseName
+      )}`;
       const parameters: ObjectLiteral = {};
       const whereCondition = this.metadata
         .treeParentRelation!.joinColumns.map((joinColumn) => {
@@ -347,36 +344,35 @@ export class TreeRepository<
             joinColumn.referencedColumn!.propertyPath.replace('.', '_');
           parameters[parameterName] =
             joinColumn.referencedColumn!.getEntityValue(entity);
-          return (
-            'joined.' +
-            joinColumn.referencedColumn!.propertyPath +
-            ' = :' +
-            parameterName
-          );
+          return `${escapeAlias('joined')}.${escapeColumn(
+            joinColumn.referencedColumn!.databaseName
+          )} = :${parameterName}`;
         })
         .join(' AND ');
 
       return this.createQueryBuilder(alias)
         .innerJoin(this.metadata.targetName, 'joined', joinCondition)
-        .where(whereCondition, parameters) as SelectQueryBuilder<Entity>;
+        .where(whereCondition, parameters);
     } else if (this.metadata.treeType === 'materialized-path') {
       // example: SELECT * FROM category category WHERE (SELECT mpath FROM `category` WHERE id = 2) LIKE CONCAT(category.mpath, '%');
       return this.createQueryBuilder(alias).where((qb) => {
         const subQuery = qb
           .subQuery()
           .select(
-            `${this.metadata.targetName}.${
-              this.metadata.materializedPathColumn!.propertyPath
-            }`,
+            `${escapeAlias(this.metadata.targetName)}.${escapeColumn(
+              this.metadata.materializedPathColumn!.databaseName
+            )}`,
             'path'
           )
           .from(this.metadata.target, this.metadata.targetName)
           .whereInIds(this.metadata.getEntityIdMap(entity));
 
-        return `${subQuery.getQuery()} LIKE CONCAT(${alias}.${
-          this.metadata.materializedPathColumn!.propertyPath
-        }, '%')`;
-      }) as SelectQueryBuilder<Entity>;
+        return `${subQuery.getQuery()} LIKE CONCAT(${escapeAlias(
+          alias
+        )}.${escapeColumn(
+          this.metadata.materializedPathColumn!.databaseName
+        )}, '%')`;
+      });
     }
 
     throw new TypeORMError(`Supported only in tree entities`);

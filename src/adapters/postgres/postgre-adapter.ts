@@ -1,36 +1,92 @@
-import type { DataSource } from '../../typeorm/data-source/DataSource.js';
-import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
+import { DatabaseAdapter } from '../abstract/database-adapter.js';
+
+import { PostgreProcedureBindings } from './postgre-bindings.js';
+import { PostgreConnection } from './postgre-connection.js';
+import { PostgreNotify } from './postgre-notify.js';
+import { PostgrePortalName } from './postgre-portal-name.js';
+import { PostgreProcedureResultMaterializer } from './postgre-result-materializer.js';
+import { PostgreSerializer } from './postgre-serializer.js';
+import { PostgreSqlCommand } from './postgre-sql.js';
+
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { PostgresDriver } from '../../typeorm/driver/postgres/PostgresDriver.js';
+import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
+import type { INotifyRetryOptions } from '../../types/notification.types.js';
 import type {
+  IProcedureArgumentBase,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
-import { ServerError } from '../../utils/server-error.js';
-import { SqlIdentifier } from '../../utils/sql-identifier.js';
-import { TypeGuards } from '../../utils/type-guards.js';
-import { DatabaseAdapter } from '../abstract/database-adapter.js';
+import type { Client } from 'pg';
 
-import { PostgreConnection } from './postgre-connection.js';
-import { PostgreNotify } from './postgre-notify.js';
-import { PostgreSerializer } from './postgre-serializer.js';
-import { PostgreSqlCommand } from './postgre-sql.js';
 export class PostgreAdapter extends DatabaseAdapter<
   PostgreSerializer,
   PostgreNotify,
-  PostgreConnection
+  INotifyRetryOptions,
+  Client
 > {
-  private refCursorType = 'refcursor' as const;
+  private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
+  private readonly procedureBindings: PostgreProcedureBindings;
+  private readonly resultMaterializer: PostgreProcedureResultMaterializer;
+
+  public override sortArgumentsAlgorithm(
+    rawArguments: Array<IProcedureArgumentBase>,
+    procedureListBase: Array<Lowercase<string>>,
+    packageName: Lowercase<string>,
+    packagesLength: number
+  ): TProcedureArgumentList {
+    return this.normalizeProcedureMetadata(
+      rawArguments,
+      procedureListBase,
+      packageName,
+      packagesLength,
+      {
+        vendor: 'PostgreSQL',
+        noArgumentSentinel: PostgreAdapter.NO_ARGUMENT_SENTINEL,
+        getOverloadIdentity: ({ specificName }) => specificName,
+      }
+    );
+  }
+
+  public override registerFetchHandlerHook(): void {
+    super.registerFetchHandlerHook();
+    const driver = this.appDataSource.driver as unknown;
+    if (
+      driver === null ||
+      typeof driver !== 'object' ||
+      !('configureResultHandling' in driver) ||
+      typeof driver.configureResultHandling !== 'function'
+    ) {
+      throw new ServerError(
+        'PostgreSQL DataSource driver does not support instance result handling'
+      );
+    }
+    const resultHandlingDriver = driver as Pick<
+      PostgresDriver,
+      'configureResultHandling'
+    >;
+    resultHandlingDriver.configureResultHandling(
+      this.serializer.getTypeOverrides(),
+      (rows, fields) => this.serializer.transformRows(rows, fields)
+    );
+  }
 
   public constructor(
     protected readonly appDataSource: DataSource,
-    protected readonly logger: ILoggerModule,
+    protected override readonly logger: ILoggerModule,
     protected readonly handlerOptions: IRegisteredFetchHandlerOptions,
     protected readonly listenEventName?: string
   ) {
@@ -39,9 +95,21 @@ export class PostgreAdapter extends DatabaseAdapter<
     const postgreNotify = new PostgreNotify(
       postgreConnection,
       logger,
-      listenEventName
+      listenEventName,
+      handlerOptions.resourceLimits?.maxNotificationQueue
     );
-    super(logger, postgreSerializer, postgreNotify, postgreConnection);
+    super(logger, postgreSerializer, postgreNotify);
+    const portalNames = new PostgrePortalName();
+    this.procedureBindings = new PostgreProcedureBindings(
+      portalNames,
+      handlerOptions.caseStrategy
+    );
+    this.resultMaterializer = new PostgreProcedureResultMaterializer(
+      logger,
+      handlerOptions,
+      portalNames,
+      postgreSerializer
+    );
   }
 
   /**
@@ -57,10 +125,19 @@ export class PostgreAdapter extends DatabaseAdapter<
       packageName,
       'postgres package'
     ).toLowerCase();
-    return this.replacePackageNamePlaceholder(
+    const query = this.replacePackageNamePlaceholder(
       procedureMetadataSql ?? PostgreSqlCommand.SQL_GET_PACKAGE_INFO,
       `'${safePackageName}'`
     );
+    if (procedureMetadataSql) return query;
+    const maxMetadataRows =
+      this.handlerOptions.resourceLimits?.maxMetadataRows ??
+      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
+    const detectionLimit = Math.min(
+      maxMetadataRows + 1,
+      Number.MAX_SAFE_INTEGER
+    );
+    return `${query.trimEnd()}\nLIMIT ${detectionLimit}`;
   }
 
   private replacePackageNamePlaceholder(
@@ -75,6 +152,35 @@ export class PostgreAdapter extends DatabaseAdapter<
     return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
   }
 
+  /** Builds the shared structured-type contract from PostgreSQL catalog rows. */
+  public override prepareProcedureMetadataRows(
+    rows: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
+    return rows.map((row) => {
+      if (row.structuredKind === null || row.structuredKind === undefined) {
+        if (
+          typeof row.argumentType === 'string' &&
+          row.argumentType.trim().toLowerCase() === 'record'
+        ) {
+          throw new ServerError(
+            'Dynamic PostgreSQL RECORD arguments are not supported; use a named composite type'
+          );
+        }
+        return row;
+      }
+      return {
+        ...row,
+        structuredType: {
+          kind: row.structuredKind,
+          schema: row.structuredSchema,
+          typeName: row.structuredTypeName,
+          typeOid: row.structuredTypeOid,
+          fields: row.structuredFields,
+        },
+      };
+    });
+  }
+
   /**
    * Fetches all rows from PostgreSQL refcursors and closes those cursors.
    * @param cursorsNames - refcursor names to fetch.
@@ -82,25 +188,22 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param manager - entity manager that owns the active transaction.
    * @returns concatenated rows from all cursors.
    */
-  protected override async fetchAllCursors<T>(
+  protected override async createProcedureResult<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
     cursorsNames: Array<string>,
+    outBindings: Array<IProcedureOutBinding>,
     executeResult: {
       manager: EntityManager;
+      result?: unknown;
     }
-  ): Promise<Array<T>> {
-    let cursorResults: Array<T> = [];
-    await Promise.all(
-      cursorsNames.map(async (cursorName) => {
-        const cursorResult: Array<T> = await executeResult.manager.query<
-          Array<T>
-        >(`FETCH ALL IN ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`);
-        await executeResult.manager.query(
-          `CLOSE ${SqlIdentifier.quotePostgresIdentifier(cursorName)}`
-        );
-        cursorResults = cursorResults.concat(cursorResult);
-      })
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    return this.resultMaterializer.materialize<TRow, TOut>(
+      cursorsNames,
+      outBindings,
+      executeResult
     );
-    return cursorResults;
   }
 
   /**
@@ -125,56 +228,12 @@ export class PostgreAdapter extends DatabaseAdapter<
     procedures: TProcedureArgumentList | undefined,
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn {
-    // Проверка наличия пакета и процедуры в списках
-    if (!procedures?.[processName]) {
-      throw new ServerError(
-        `Package "${packageName}" or process "${processName}" not found`
-      );
-    }
-
-    const functionParams = procedures[processName];
-
-    const processBindings = (payload?: U): IBindingsObjectReturn => {
-      const bindings: Array<unknown> = [];
-      const cursorsNames: Array<string> = [];
-      functionParams.forEach((item, index) => {
-        if (item.argumentType === this.refCursorType) {
-          cursorsNames.push(item.argumentName);
-          bindings.push(item.argumentName);
-          return;
-        }
-        const normalizedName = item.argumentName.replace(/^p_/, '');
-        if (typeof payload === 'string' || typeof payload === 'number')
-          throw new TypeError(
-            'Payload for call procedure must be an object or array or undefined or null'
-          );
-        let value: unknown;
-        if (Array.isArray(payload)) {
-          value = payload[index] ?? null;
-        } else if (payload && typeof payload === 'object' && payload !== null) {
-          // TODO: In future fix types for payload.
-          value =
-            (payload as Record<string, unknown>)[normalizedName] ??
-            (payload as Record<string, unknown>)[item.argumentName] ??
-            null;
-        } else {
-          value = null;
-        }
-
-        if (Array.isArray(value)) {
-          bindings.push(value.length > 1 ? value.join(',') : value.toString());
-          return;
-        }
-        bindings.push(value);
-      });
-      const paramInputString = bindings.map((_, i) => `$${i + 1}`).join(',');
-      const paramExecuteString = `CALL ${SqlIdentifier.quotePostgresQualifiedIdentifier(
-        [packageName, processName]
-      )}(${paramInputString})`;
-      return { paramExecuteString, bindings, cursorsNames };
-    };
-    if (TypeGuards.isNullOrUndefined(payload)) payload = {} as U;
-    return processBindings(payload);
+    return this.procedureBindings.build(
+      packageName,
+      processName,
+      procedures,
+      payload
+    );
   }
   /**
    * Rewrites uppercase named placeholders to PostgreSQL positional bindings.
@@ -183,9 +242,9 @@ export class PostgreAdapter extends DatabaseAdapter<
    * @param params - values keyed by placeholder name, case-insensitive.
    * @returns rewritten SQL and ordered binding values.
    */
-  public override makeSqlBindings<U extends Record<string, unknown>>(
+  public override makeSqlBindings(
     sqlQuery: string,
-    params?: U
+    params?: Record<string, unknown>
   ): ISqlBindingsObjectReturn {
     const bindings: Array<unknown> = [];
     const paramsInUpperCase = Object.fromEntries(
@@ -198,10 +257,10 @@ export class PostgreAdapter extends DatabaseAdapter<
     let parameterIndex = 0;
     const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase?.[(key ?? '').toUpperCase()] ?? null);
+      bindings.push(paramsInUpperCase[key.toUpperCase()] ?? null);
       parameterIndex += 1;
       return `$${parameterIndex}`;
     });
-    return { bindings, sqlString: sqlString ?? '' };
+    return { bindings, sqlString: sqlString };
   }
 }

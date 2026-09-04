@@ -1,6 +1,5 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-
 import type { Brackets } from './Brackets.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 
 /**
  * Query Builders can implement this interface to support where expression

@@ -1,11 +1,3 @@
-import type { TFunction } from '../../types/utility.types.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
-import type { OrderByCondition } from '../find-options/OrderByCondition.js';
-import type { TableType } from '../metadata/types/TableTypes.js';
-import type { TreeMetadataArgs } from '../metadata-args/TreeMetadataArgs.js';
-import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
-
 import type { EntitySchemaCheckOptions } from './EntitySchemaCheckOptions.js';
 import type { EntitySchemaColumnOptions } from './EntitySchemaColumnOptions.js';
 import type { EntitySchemaEmbeddedColumnOptions } from './EntitySchemaEmbeddedColumnOptions.js';
@@ -16,6 +8,13 @@ import type { EntitySchemaInheritanceOptions } from './EntitySchemaInheritanceOp
 import type { EntitySchemaRelationIdOptions } from './EntitySchemaRelationIdOptions.js';
 import type { EntitySchemaRelationOptions } from './EntitySchemaRelationOptions.js';
 import type { EntitySchemaUniqueOptions } from './EntitySchemaUniqueOptions.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { OrderByCondition } from '../find-options/OrderByCondition.js';
+import type { TableType } from '../metadata/types/TableTypes.js';
+import type { TreeMetadataArgs } from '../metadata-args/TreeMetadataArgs.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 /**
  * Interface for entity metadata mappings stored inside "schemas" instead of models decorated by decorators.

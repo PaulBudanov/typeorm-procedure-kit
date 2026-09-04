@@ -1,16 +1,16 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
 import {
   FindRelationsNotFoundError,
   EntityPropertyNotFoundError,
 } from '../error/index.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 import type { FindManyOptions } from './FindManyOptions.js';
 import type { FindOneOptions } from './FindOneOptions.js';
 import type { FindTreeOptions } from './FindTreeOptions.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
+import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 
 /**
  * Utilities to work with FindOptions.
@@ -63,13 +63,10 @@ export class FindOptionsUtils {
     return (
       possibleOptions &&
       (this.isFindOneOptions(possibleOptions) ||
-        typeof (possibleOptions as FindManyOptions<unknown>).skip ===
-          'number' ||
-        typeof (possibleOptions as FindManyOptions<unknown>).take ===
-          'number' ||
-        typeof (possibleOptions as FindManyOptions<unknown>).skip ===
-          'string' ||
-        typeof (possibleOptions as FindManyOptions<unknown>).take === 'string')
+        typeof (possibleOptions as FindManyOptions).skip === 'number' ||
+        typeof (possibleOptions as FindManyOptions).take === 'number' ||
+        typeof (possibleOptions as FindManyOptions).skip === 'string' ||
+        typeof (possibleOptions as FindManyOptions).take === 'string')
     );
   }
 

@@ -1,19 +1,12 @@
-import {
-  Inject,
-  Injectable,
-  type OnApplicationShutdown,
-  type OnModuleInit,
-  Scope,
-} from '@nestjs/common';
+import { Inject, Injectable, Scope } from '@nestjs/common';
 
 import { TypeOrmProcedureKit } from '../core/index.js';
-import type { DataSource } from '../typeorm/data-source/DataSource.js';
-import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
-import type { IModuleConfig } from '../types/base.types.js';
-import type { ILoggerModule } from '../types/logger.types.js';
-import type { TSerializerTypeCastWithoutFormat } from '../types/serializer.types.js';
 
 import { DATABASE_CONFIG_TOKEN } from './consts.js';
+
+import type { IModuleConfig } from '../types/base.types.js';
+import type { ILoggerModule } from '../types/logger.types.js';
+import type { OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 
 @Injectable({ scope: Scope.DEFAULT })
 export class TypeOrmProcedureKitNestService
@@ -50,17 +43,5 @@ export class TypeOrmProcedureKitNestService
       `Application shutdown signal received: ${signal ?? 'unknown'}`
     );
     await this.destroy();
-  }
-
-  public override get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
-    return super.serializerReadOnlyMapping;
-  }
-
-  public override get databaseAdapter(): TAdapterUtilsClassTypes {
-    return super.databaseAdapter;
-  }
-
-  public override get dataSource(): DataSource {
-    return super.dataSource;
   }
 }

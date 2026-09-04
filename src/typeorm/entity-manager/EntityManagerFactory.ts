@@ -1,7 +1,7 @@
+import { EntityManager } from './EntityManager.js';
+
 import type { DataSource } from '../data-source/DataSource.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
-
-import { EntityManager } from './EntityManager.js';
 
 /**
  * Helps to create entity managers.

@@ -1,6 +1,7 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
 import { Subject } from '../Subject.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 
 /**
  * Finds all cascade operations of the given subject and cascade operations of the found cascaded subjects,
@@ -51,23 +52,22 @@ export class CascadesSubjectBuilder {
           relationEntity as ObjectLiteral
         );
         if (alreadyExistRelationEntitySubject) {
-          if (alreadyExistRelationEntitySubject.canBeInserted === false)
+          if (!alreadyExistRelationEntitySubject.canBeInserted)
             // if its not marked for insertion yet
             alreadyExistRelationEntitySubject.canBeInserted =
-              relation.isCascadeInsert === true && operationType === 'save';
-          if (alreadyExistRelationEntitySubject.canBeUpdated === false)
+              relation.isCascadeInsert && operationType === 'save';
+          if (!alreadyExistRelationEntitySubject.canBeUpdated)
             // if its not marked for update yet
             alreadyExistRelationEntitySubject.canBeUpdated =
-              relation.isCascadeUpdate === true && operationType === 'save';
-          if (alreadyExistRelationEntitySubject.canBeSoftRemoved === false)
+              relation.isCascadeUpdate && operationType === 'save';
+          if (!alreadyExistRelationEntitySubject.canBeSoftRemoved)
             // if its not marked for removal yet
             alreadyExistRelationEntitySubject.canBeSoftRemoved =
-              relation.isCascadeSoftRemove === true &&
-              operationType === 'soft-remove';
-          if (alreadyExistRelationEntitySubject.canBeRecovered === false)
+              relation.isCascadeSoftRemove && operationType === 'soft-remove';
+          if (!alreadyExistRelationEntitySubject.canBeRecovered)
             // if its not marked for recovery yet
             alreadyExistRelationEntitySubject.canBeRecovered =
-              relation.isCascadeRecover === true && operationType === 'recover';
+              relation.isCascadeRecover && operationType === 'recover';
           return;
         }
 
@@ -77,15 +77,12 @@ export class CascadesSubjectBuilder {
           metadata: relationEntityMetadata,
           parentSubject: subject,
           entity: relationEntity as ObjectLiteral,
-          canBeInserted:
-            relation.isCascadeInsert === true && operationType === 'save',
-          canBeUpdated:
-            relation.isCascadeUpdate === true && operationType === 'save',
+          canBeInserted: relation.isCascadeInsert && operationType === 'save',
+          canBeUpdated: relation.isCascadeUpdate && operationType === 'save',
           canBeSoftRemoved:
-            relation.isCascadeSoftRemove === true &&
-            operationType === 'soft-remove',
+            relation.isCascadeSoftRemove && operationType === 'soft-remove',
           canBeRecovered:
-            relation.isCascadeRecover === true && operationType === 'recover',
+            relation.isCascadeRecover && operationType === 'recover',
         });
         this.allSubjects.push(relationEntitySubject);
 

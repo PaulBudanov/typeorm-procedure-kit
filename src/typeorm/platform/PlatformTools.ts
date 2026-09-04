@@ -1,4 +1,5 @@
 import { existsSync } from 'fs';
+import { createRequire } from 'module';
 import { extname, normalize, resolve } from 'path';
 
 import dotenv from 'dotenv';
@@ -6,6 +7,34 @@ import dotenv from 'dotenv';
 export { EventEmitter } from 'events';
 export { ReadStream } from 'fs';
 export { Readable, Writable } from 'stream';
+
+function getCurrentModuleLocation(): string {
+  if (typeof __filename === 'string') return __filename;
+
+  const originalPrepareStackTrace = Error.prepareStackTrace;
+  try {
+    Error.prepareStackTrace = (_error, callSites): Array<NodeJS.CallSite> =>
+      callSites;
+    const error = new Error();
+    Error.captureStackTrace(error, getCurrentModuleLocation);
+    const callSites = error.stack as unknown as Array<NodeJS.CallSite>;
+    const moduleLocation = callSites[0]?.getFileName();
+    if (!moduleLocation) {
+      throw new TypeError(
+        'Unable to resolve the PlatformTools module location'
+      );
+    }
+    return moduleLocation;
+  } finally {
+    Error.prepareStackTrace = originalPrepareStackTrace;
+  }
+}
+
+// Driver construction is synchronous, so optional peer dependencies must be
+// resolved synchronously as well. Anchor resolution to this installed module,
+// not to the consumer entry point or cwd. This works in both generated ESM and
+// CommonJS builds and supports nested package-manager topologies.
+const platformRequire = createRequire(getCurrentModuleLocation());
 
 /**
  * Platform-specific tools.
@@ -24,37 +53,29 @@ export class PlatformTools {
     return global;
   }
 
-  public static async load(name: string): Promise<unknown> {
+  public static load(name: string): unknown {
     try {
       switch (name) {
         /**
          * oracle
          */
         case 'oracledb':
-          return import('oracledb');
+          return platformRequire('oracledb');
 
         /**
          * postgres
          */
         case 'pg':
-          return import('pg');
-        case 'pg-native': {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          return require('pg-native');
-        }
-        case 'pg-query-stream': {
-          const { default: QueryStream } = await import('pg-query-stream');
-          return QueryStream;
-        }
+          return platformRequire('pg');
+        case 'pg-native':
+          return platformRequire('pg-native');
+        case 'pg-query-stream':
+          return platformRequire('pg-query-stream');
       }
-    } catch {
-      return import(resolve(process.cwd() + '/node_modules/' + name)).catch(
-        () => {
-          throw new TypeError(
-            `Invalid Package for PlatformTools.load: ${name}`
-          );
-        }
-      );
+    } catch (error: unknown) {
+      throw new TypeError(`Invalid Package for PlatformTools.load: ${name}`, {
+        cause: error,
+      });
     }
 
     // If nothing above matched and we get here, the package was not listed within PlatformTools

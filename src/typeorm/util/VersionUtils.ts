@@ -11,9 +11,9 @@ export class VersionUtils {
     const v2 = parseVersion(targetVersion);
 
     for (let i = 0; i < v1.length && i < v2.length; i++) {
-      if ((v1[i] as number) > (v2[i] as number)) {
+      if (v1[i]! > v2[i]!) {
         return true;
-      } else if ((v1[i] as number) < (v2[i] as number)) {
+      } else if (v1[i]! < v2[i]!) {
         return false;
       }
     }

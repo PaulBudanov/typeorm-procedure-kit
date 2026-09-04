@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   pull_request:
@@ -14,23 +14,33 @@ on:
 permissions:
   contents: read
 
+env:
+  NPM_VERSION: 11.19.0
+
 jobs:
   test:
-    name: Typecheck, lint, and test
-    runs-on: ubuntu-latest
+    name: Node ${{ matrix.node-version }} — typecheck, lint, test, package
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Use the pinned npm version
+        run: npm install --global "npm@$NPM_VERSION" --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies from lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Check
         run: npm run check:ci
@@ -39,16 +49,49 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: vitest-junit-report
+          name: vitest-junit-report-node-${{ matrix.node-version }}
           path: reports/vitest/junit.xml
           if-no-files-found: ignore
 
+  package-consumer:
+    name: Tarball consumer — Node ${{ matrix.node-version }} — ${{ matrix.scenario }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
+        scenario: [vendor-neutral, postgres, oracle, nest10, nest11]
+    env:
+      PROCEDURE_KIT_CONSUMER_SCENARIO: ${{ matrix.scenario }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Use the pinned npm version
+        run: npm install --global "npm@$NPM_VERSION" --ignore-scripts --no-audit --no-fund
+
+      - name: Install build dependencies from lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build package
+        run: npm run clean && npm run build:esm && npm run build:cjs
+
+      - name: Verify isolated package consumer
+        run: npm run check:package-consumer
+
   integration:
-    name: Integration tests
-    runs-on: ubuntu-latest
+    name: Critical PostgreSQL and Oracle integration tests
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: test
-
     services:
       postgres:
         image: postgres:16@sha256:7267ecfc493a386732ce3ebc1a69660981002e2dcf693be1e35e1b436695dcc0
@@ -63,7 +106,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
-
       oracle:
         image: gvenzl/oracle-free:23.26.0-slim-faststart@sha256:67de722693c8351cf93a602667926820376c10b3d23e283a6cdcdc50be46ec10
         env:
@@ -77,7 +119,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 60
-
     env:
       RUN_INTEGRATION_TESTS: '1'
       POSTGRES_HOST: 127.0.0.1
@@ -90,22 +131,24 @@ jobs:
       ORACLE_DATABASE: FREEPDB1
       ORACLE_USERNAME: typeorm
       ORACLE_PASSWORD: typeorm
-
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Use the pinned npm version
+        run: npm install --global "npm@$NPM_VERSION" --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies from lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Run integration tests
-        run: npx vitest run test/integration --reporter=default --reporter=junit --outputFile.junit=reports/vitest/integration-junit.xml
+        run: npm exec --offline -- vitest run test/integration --reporter=default --reporter=junit --outputFile.junit=reports/vitest/integration-junit.xml
 
       - name: Upload integration test report
         if: always()
@@ -114,3 +157,190 @@ jobs:
           name: vitest-integration-junit-report
           path: reports/vitest/integration-junit.xml
           if-no-files-found: ignore
+
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
+        with:
+          category: /language:javascript-typescript
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Use the pinned npm version
+        run: npm install --global "npm@$NPM_VERSION" --ignore-scripts --no-audit --no-fund
+
+      - name: Validate committed lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Audit production dependencies
+        run: npm run check:audit:production
+
+      - name: Audit complete build dependency graph
+        run: npm run check:audit:build
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
+        with:
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, development, unknown
+          show-openssf-scorecard: true
+          warn-on-openssf-scorecard-level: 3
+          show-patched-versions: true
+
+  oracle-thick:
+    name: Oracle Thick integration release gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23.26.0-slim-faststart@sha256:67de722693c8351cf93a602667926820376c10b3d23e283a6cdcdc50be46ec10
+        env:
+          ORACLE_RANDOM_PASSWORD: 'true'
+          APP_USER: typeorm
+          APP_USER_PASSWORD: typeorm
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 60
+    env:
+      RUN_INTEGRATION_TESTS: '1'
+      ORACLE_HOST: 127.0.0.1
+      ORACLE_PORT: 1521
+      ORACLE_DATABASE: FREEPDB1
+      ORACLE_USERNAME: typeorm
+      ORACLE_PASSWORD: typeorm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Use the pinned npm version
+        run: npm install --global "npm@$NPM_VERSION" --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies from lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install Oracle Instant Client Basic Light
+        env:
+          INSTANT_CLIENT_URL: https://download.oracle.com/otn_software/linux/instantclient/2326200v2/instantclient-basiclite-linux.x64-23.26.2.0.0.zip
+          EXPECTED_SHA256: c36bd3c341cf194fed0a1b71cbd66bfcd37a9d12e1bcfb2c841def272bc9446a
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archive="$RUNNER_TEMP/instantclient-basiclite.zip"
+          destination="$RUNNER_TEMP/oracle-instant-client"
+          curl --fail --location --silent --show-error --retry 3 --retry-all-errors --connect-timeout 30 "$INSTANT_CLIENT_URL" --output "$archive"
+          actual_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
+          if [ "$actual_sha256" != "$EXPECTED_SHA256" ]; then
+            echo "Oracle Instant Client SHA-256 verification failed."
+            exit 1
+          fi
+
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libaio1t64 unzip
+          mkdir -p "$destination"
+          unzip -q "$archive" -d "$destination"
+          client_dir="$(find "$destination" -mindepth 1 -maxdepth 1 -type d -name 'instantclient_*' -print -quit)"
+          if [ -z "$client_dir" ]; then
+            echo "Oracle Instant Client directory was not found after extraction."
+            exit 1
+          fi
+          echo "$client_dir" | sudo tee /etc/ld.so.conf.d/oracle-instant-client.conf > /dev/null
+          sudo ldconfig
+          echo "ORACLE_CLIENT_LIB_DIR=$client_dir" >> "$GITHUB_ENV"
+
+      - name: Run Oracle Thick integration tests
+        run: |
+          test -n "$ORACLE_CLIENT_LIB_DIR"
+          npm exec --offline -- vitest run test/integration/oracle.integration.test.ts --reporter=default
+
+  ci:
+    name: CI
+    if: always()
+    needs:
+      - test
+      - package-consumer
+      - integration
+      - codeql
+      - dependency-audit
+      - dependency-review
+      - oracle-thick
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TEST_RESULT: ${{ needs.test.result }}
+      CONSUMER_RESULT: ${{ needs.package-consumer.result }}
+      INTEGRATION_RESULT: ${{ needs.integration.result }}
+      CODEQL_RESULT: ${{ needs.codeql.result }}
+      AUDIT_RESULT: ${{ needs.dependency-audit.result }}
+      REVIEW_RESULT: ${{ needs.dependency-review.result }}
+      ORACLE_THICK_RESULT: ${{ needs.oracle-thick.result }}
+    steps:
+      - name: Require every applicable check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for result in "$TEST_RESULT" "$CONSUMER_RESULT" "$INTEGRATION_RESULT" "$CODEQL_RESULT" "$AUDIT_RESULT"; do
+            test "$result" = 'success'
+          done
+
+          if [ "$GITHUB_EVENT_NAME" = 'pull_request' ]; then
+            test "$REVIEW_RESULT" = 'success'
+          else
+            test "$REVIEW_RESULT" = 'skipped'
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = 'push' ] && [ "$GITHUB_REF" = 'refs/heads/release' ]; then
+            test "$ORACLE_THICK_RESULT" = 'success'
+          else
+            test "$ORACLE_THICK_RESULT" = 'skipped'
+          fi

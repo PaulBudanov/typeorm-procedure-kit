@@ -1,0 +1,41 @@
+name: Release dispatcher
+run-name: Release dispatcher · ${{ github.event.workflow_run.head_sha }}
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - release
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch verified release commit
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFIED_RUN_ID: ${{ github.event.workflow_run.id }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh workflow run release.yml \
+            --repo "$REPOSITORY" \
+            --ref release \
+            -f verified_sha="$VERIFIED_SHA" \
+            -f verified_run_id="$VERIFIED_RUN_ID"

@@ -1,4 +1,10 @@
 import { ServerError } from '../../utils/server-error.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
+
+import type { RemoveOptions } from './RemoveOptions.js';
+import type { Repository } from './Repository.js';
+import type { SaveOptions } from './SaveOptions.js';
+import type { UpsertOptions } from './UpsertOptions.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -12,12 +18,6 @@ import type { DeleteResult } from '../query-builder/result/DeleteResult.js';
 import type { InsertResult } from '../query-builder/result/InsertResult.js';
 import type { UpdateResult } from '../query-builder/result/UpdateResult.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-
-import type { RemoveOptions } from './RemoveOptions.js';
-import type { Repository } from './Repository.js';
-import type { SaveOptions } from './SaveOptions.js';
-import type { UpsertOptions } from './UpsertOptions.js';
 
 /**
  * Base abstract entity for all entities, used in ActiveRecord patterns.
@@ -42,7 +42,7 @@ export class BaseEntity {
    */
   public hasId(): boolean {
     const baseEntity = this.constructor as typeof BaseEntity;
-    return baseEntity.getRepository().hasId(this as unknown as BaseEntity);
+    return baseEntity.getRepository().hasId(this);
   }
 
   /**
@@ -108,9 +108,7 @@ export class BaseEntity {
         `Entity doesn't have id-s set, cannot reload entity`
       );
     }
-    const reloadedEntity = await baseEntity
-      .getRepository()
-      .findOneByOrFail(id as FindOptionsWhere<ObjectLiteral>);
+    const reloadedEntity = await baseEntity.getRepository().findOneByOrFail(id);
 
     ObjectUtils.assign(this, reloadedEntity);
   }
@@ -135,7 +133,7 @@ export class BaseEntity {
     const dataSource = (this as typeof BaseEntity).dataSource;
     if (!dataSource)
       throw new ServerError(`DataSource is not set for this entity.`);
-    return dataSource.getRepository(this as unknown as EntityTarget<T>);
+    return dataSource.getRepository<T>(this);
   }
 
   /**
@@ -152,7 +150,7 @@ export class BaseEntity {
    * If entity composite compose ids, it will check them all.
    */
   public static hasId(entity: BaseEntity): boolean {
-    return this.getRepository().hasId(entity as unknown as BaseEntity);
+    return this.getRepository().hasId(entity);
   }
 
   /**
@@ -172,9 +170,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     alias?: string
   ): SelectQueryBuilder<T> {
-    return this.getRepository<T>().createQueryBuilder(
-      alias
-    ) as unknown as SelectQueryBuilder<T>;
+    return this.getRepository<T>().createQueryBuilder(alias);
   }
 
   /**
@@ -212,10 +208,7 @@ export class BaseEntity {
     mergeIntoEntity: T,
     ...entityLikes: Array<DeepPartial<T>>
   ): T {
-    return this.getRepository<T>().merge(
-      mergeIntoEntity as unknown as T,
-      ...(entityLikes as Array<DeepPartial<T>>)
-    ) as T;
+    return this.getRepository<T>().merge(mergeIntoEntity, ...entityLikes);
   }
 
   /**
@@ -232,7 +225,7 @@ export class BaseEntity {
     entityLike: DeepPartial<T>
   ): Promise<T | ObjectLiteral | undefined> {
     const thisRepository = this.getRepository<T>();
-    return thisRepository.preload(entityLike as DeepPartial<T>);
+    return thisRepository.preload(entityLike);
   }
 
   /**
@@ -364,10 +357,7 @@ export class BaseEntity {
       | FindOptionsWhere<T>,
     partialEntity: QueryDeepPartialEntity<T>
   ): Promise<UpdateResult> {
-    return this.getRepository<T>().update(
-      criteria as FindOptionsWhere<T>,
-      partialEntity
-    );
+    return this.getRepository<T>().update(criteria, partialEntity);
   }
 
   /**
@@ -405,7 +395,7 @@ export class BaseEntity {
       | Array<Date>
       | FindOptionsWhere<T>
   ): Promise<DeleteResult> {
-    return this.getRepository<T>().delete(criteria as FindOptionsWhere<T>);
+    return this.getRepository<T>().delete(criteria);
   }
 
   /**
@@ -415,7 +405,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options?: FindManyOptions<T>
   ): Promise<boolean> {
-    return this.getRepository<T>().exists(options as FindManyOptions<T>);
+    return this.getRepository<T>().exists(options);
   }
 
   /**
@@ -425,7 +415,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<boolean> {
-    return this.getRepository<T>().existsBy(where as FindOptionsWhere<T>);
+    return this.getRepository<T>().existsBy(where);
   }
 
   /**
@@ -435,7 +425,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options?: FindManyOptions<T>
   ): Promise<number> {
-    return this.getRepository<T>().count(options as FindManyOptions<T>);
+    return this.getRepository<T>().count(options);
   }
 
   /**
@@ -445,7 +435,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<number> {
-    return this.getRepository<T>().countBy(where as FindOptionsWhere<T>);
+    return this.getRepository<T>().countBy(where);
   }
 
   /**
@@ -456,10 +446,7 @@ export class BaseEntity {
     columnName: PickKeysByType<T, number>,
     where: FindOptionsWhere<T>
   ): Promise<number | null> {
-    return this.getRepository<T>().sum(
-      columnName as never,
-      where as FindOptionsWhere<T>
-    );
+    return this.getRepository<T>().sum(columnName as never, where);
   }
 
   /**
@@ -470,10 +457,7 @@ export class BaseEntity {
     columnName: PickKeysByType<T, number>,
     where: FindOptionsWhere<T>
   ): Promise<number | null> {
-    return this.getRepository<T>().average(
-      columnName as never,
-      where as FindOptionsWhere<T>
-    );
+    return this.getRepository<T>().average(columnName as never, where);
   }
 
   /**
@@ -484,10 +468,7 @@ export class BaseEntity {
     columnName: PickKeysByType<T, number>,
     where: FindOptionsWhere<T>
   ): Promise<number | null> {
-    return this.getRepository<T>().minimum(
-      columnName as never,
-      where as FindOptionsWhere<T>
-    );
+    return this.getRepository<T>().minimum(columnName as never, where);
   }
 
   /**
@@ -498,10 +479,7 @@ export class BaseEntity {
     columnName: PickKeysByType<T, number>,
     where: FindOptionsWhere<T>
   ): Promise<number | null> {
-    return this.getRepository<T>().maximum(
-      columnName as never,
-      where as FindOptionsWhere<T>
-    );
+    return this.getRepository<T>().maximum(columnName as never, where);
   }
 
   /**
@@ -511,9 +489,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options?: FindManyOptions<T>
   ): Promise<Array<T>> {
-    return this.getRepository<T>().find(
-      options as FindManyOptions<T>
-    ) as Promise<Array<T>>;
+    return this.getRepository<T>().find(options);
   }
 
   /**
@@ -523,9 +499,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<Array<T>> {
-    return this.getRepository<T>().findBy(
-      where as FindOptionsWhere<T>
-    ) as Promise<Array<T>>;
+    return this.getRepository<T>().findBy(where);
   }
 
   /**
@@ -537,9 +511,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options?: FindManyOptions<T>
   ): Promise<[Array<T>, number]> {
-    return this.getRepository<T>().findAndCount(
-      options as FindManyOptions<T>
-    ) as Promise<[Array<T>, number]>;
+    return this.getRepository<T>().findAndCount(options);
   }
 
   /**
@@ -551,9 +523,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<[Array<T>, number]> {
-    return this.getRepository<T>().findAndCountBy(
-      where as FindOptionsWhere<T>
-    ) as Promise<[Array<T>, number]>;
+    return this.getRepository<T>().findAndCountBy(where);
   }
 
   /**
@@ -570,7 +540,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     ids: Array<unknown>
   ): Promise<Array<T>> {
-    return this.getRepository<T>().findByIds(ids) as Promise<Array<T>>;
+    return this.getRepository<T>().findByIds(ids);
   }
 
   /**
@@ -580,9 +550,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options: FindOneOptions<T>
   ): Promise<T | null> {
-    return this.getRepository<T>().findOne(
-      options as FindOptionsWhere<ObjectLiteral>
-    ) as Promise<T | null>;
+    return this.getRepository<T>().findOne(options);
   }
 
   /**
@@ -592,9 +560,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<T | null> {
-    return this.getRepository<T>().findOneBy(
-      where as FindOptionsWhere<T>
-    ) as Promise<T | null>;
+    return this.getRepository<T>().findOneBy(where);
   }
 
   /**
@@ -610,7 +576,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     id: string | number | Date
   ): Promise<T | null> {
-    return this.getRepository<T>().findOneById(id) as Promise<T | null>;
+    return this.getRepository<T>().findOneById(id);
   }
 
   /**
@@ -620,9 +586,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     options: FindOneOptions<T>
   ): Promise<T> {
-    return this.getRepository<T>().findOneOrFail(
-      options as FindOneOptions<T>
-    ) as Promise<T>;
+    return this.getRepository<T>().findOneOrFail(options);
   }
 
   /**
@@ -632,9 +596,7 @@ export class BaseEntity {
     this: (new () => T) & typeof BaseEntity,
     where: FindOptionsWhere<T>
   ): Promise<T> {
-    return this.getRepository<T>().findOneByOrFail(
-      where as FindOptionsWhere<T>
-    ) as Promise<T>;
+    return this.getRepository<T>().findOneByOrFail(where);
   }
 
   /**

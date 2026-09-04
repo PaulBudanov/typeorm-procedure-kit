@@ -1,8 +1,6 @@
-import type oracledb from 'oracledb';
-
-import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
-
 import type { OracleConnectionCredentialsOptions } from './OracleConnectionCredentialsOptions.js';
+import type { BaseDataSourceOptions } from '../../data-source/BaseDataSourceOptions.js';
+import type oracledb from 'oracledb';
 
 export interface OracleThickModeOptions {
   binaryDir?: string;
@@ -41,9 +39,7 @@ export interface OracleConnectionOptions
    */
   readonly thickMode?: boolean | OracleThickModeOptions;
 
-  /**
-   * Database session time zone passed to node-oracledb through `ORA_SDTZ`.
-   */
+  /** Database session time zone configured on every pooled connection. */
   readonly sessionTimeZone?: string;
 
   /**

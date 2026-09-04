@@ -23,7 +23,7 @@ export function resolveColumnPath<Entity>(
   );
 
   if (mode !== 'databasePath' && relationWithSameName) {
-    return relationWithSameName.joinColumns as Array<ColumnMetadata>;
+    return relationWithSameName.joinColumns;
   }
 
   if (mode !== 'propertyPath') {

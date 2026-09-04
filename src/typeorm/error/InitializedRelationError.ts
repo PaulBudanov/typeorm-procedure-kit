@@ -1,6 +1,6 @@
-import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 
 /**
  * Thrown when relation has array initialized which is forbidden my ORM.

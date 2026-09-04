@@ -1,15 +1,16 @@
-import type oracledb from 'oracledb';
-import type { PoolClient } from 'pg';
+import { Query } from '../driver/Query.js';
+import { SqlInMemory } from '../driver/SqlInMemory.js';
+import { TypeORMError } from '../error/TypeORMError.js';
+import { InstanceChecker } from '../util/InstanceChecker.js';
+import { OrmUtils } from '../util/OrmUtils.js';
+import { buildSqlTag } from '../util/SqlTagUtils.js';
 
 import type { DataSource } from '../data-source/DataSource.js';
 import type { Driver } from '../driver/Driver.js';
 import type { PostgresConnectionOptions } from '../driver/postgres/PostgresConnectionOptions.js';
-import { Query } from '../driver/Query.js';
-import { SqlInMemory } from '../driver/SqlInMemory.js';
 import type { MetadataTableType } from '../driver/types/MetadataTableType.js';
 import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
 import type { EntityManager } from '../entity-manager/EntityManager.js';
-import { TypeORMError } from '../error/TypeORMError.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { Table } from '../schema-builder/table/Table.js';
 import type { TableColumn } from '../schema-builder/table/TableColumn.js';
@@ -17,9 +18,8 @@ import type { TableForeignKey } from '../schema-builder/table/TableForeignKey.js
 import type { TableIndex } from '../schema-builder/table/TableIndex.js';
 import type { View } from '../schema-builder/view/View.js';
 import type { Broadcaster } from '../subscriber/Broadcaster.js';
-import { InstanceChecker } from '../util/InstanceChecker.js';
-import { OrmUtils } from '../util/OrmUtils.js';
-import { buildSqlTag } from '../util/SqlTagUtils.js';
+import type oracledb from 'oracledb';
+import type { PoolClient } from 'pg';
 
 export abstract class BaseQueryRunner {
   // -------------------------------------------------------------------------
@@ -187,7 +187,7 @@ export abstract class BaseQueryRunner {
     if (!tableNames) {
       // Don't cache in this case.
       // This is the new case & isn't used anywhere else anyway.
-      return await this.loadTables(tableNames);
+      return this.loadTables(tableNames);
     }
 
     this.loadedTables = await this.loadTables(tableNames);
@@ -598,18 +598,16 @@ export abstract class BaseQueryRunner {
       const metadata = this.connection.getMetadata(table.name);
       const columnMetadata = metadata.findColumnWithDatabaseName(column.name);
       if (
-        columnMetadata &&
-        columnMetadata.precision !== null &&
-        columnMetadata.precision !== undefined
+        columnMetadata?.precision !== undefined &&
+        columnMetadata.precision !== null
       )
         return false;
     }
 
     const dataTypeDefault = this.driver.dataTypeDefaults?.[column.type];
     if (
-      dataTypeDefault &&
-      dataTypeDefault.precision !== null &&
-      dataTypeDefault.precision !== undefined
+      dataTypeDefault?.precision !== undefined &&
+      dataTypeDefault.precision !== null
     ) {
       return dataTypeDefault.precision === precision;
     }
@@ -629,19 +627,14 @@ export abstract class BaseQueryRunner {
     if (this.connection.hasMetadata(table.name)) {
       const metadata = this.connection.getMetadata(table.name);
       const columnMetadata = metadata.findColumnWithDatabaseName(column.name);
-      if (
-        columnMetadata &&
-        columnMetadata.scale !== null &&
-        columnMetadata.scale !== undefined
-      )
+      if (columnMetadata?.scale !== undefined && columnMetadata.scale !== null)
         return false;
     }
 
     const dataTypeDefault = this.driver.dataTypeDefaults?.[column.type];
     if (
-      dataTypeDefault &&
-      dataTypeDefault.scale !== null &&
-      dataTypeDefault.scale !== undefined
+      dataTypeDefault?.scale !== undefined &&
+      dataTypeDefault.scale !== null
     ) {
       return dataTypeDefault.scale === scale;
     }
@@ -663,7 +656,7 @@ export abstract class BaseQueryRunner {
     this.sqlInMemory.downQueries.push(...downQueries);
 
     // if sql-in-memory mode is enabled then simply store sql in memory and return
-    if (this.sqlMemoryMode === true) return;
+    if (this.sqlMemoryMode) return;
 
     for (const { query, parameters } of upQueries) {
       await this.query(query, parameters);

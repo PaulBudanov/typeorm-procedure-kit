@@ -39,8 +39,6 @@ export class MetadataUtils {
     classes?: Array<unknown>
   ): Array<T> {
     if (!classes) return array;
-    return array.filter(
-      (item) => item.target && classes.indexOf(item.target) !== -1
-    );
+    return array.filter((item) => item.target && classes.includes(item.target));
   }
 }

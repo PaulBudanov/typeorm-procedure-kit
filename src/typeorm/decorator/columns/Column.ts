@@ -1,3 +1,6 @@
+import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError.js';
+import { getMetadataArgsStorage } from '../../globals.js';
+
 import type {
   ColumnType,
   SimpleColumnType,
@@ -6,8 +9,6 @@ import type {
   WithLengthColumnType,
   WithPrecisionColumnType,
 } from '../../driver/types/ColumnTypes.js';
-import { ColumnTypeUndefinedError } from '../../error/ColumnTypeUndefinedError.js';
-import { getMetadataArgsStorage } from '../../globals.js';
 import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
 import type { EmbeddedMetadataArgs } from '../../metadata-args/EmbeddedMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs.js';
@@ -156,7 +157,7 @@ export function Column(
     ) {
       type = typeOrOptions as ColumnType;
     } else if (typeOrOptions) {
-      options = typeOrOptions as ColumnOptions;
+      options = typeOrOptions;
       type = typeOrOptions.type;
     }
     if (!options) options = {};
@@ -185,7 +186,7 @@ export function Column(
         propertyName: propertyName.toString(),
         isArray: reflectMetadataType === Array || options.array === true,
         prefix: options.prefix !== undefined ? options.prefix : undefined,
-        type: typeOrOptions as EmbeddedTypeFunction,
+        type: typeOrOptions,
       } as EmbeddedMetadataArgs);
     } else {
       // register a regular column

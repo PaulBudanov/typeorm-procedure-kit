@@ -1,63 +1,192 @@
+import { ProcedureNameParser } from '../utils/procedure-name-parser.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../utils/resource-limits.js';
+import { ServerError } from '../utils/server-error.js';
+import { StringUtilities } from '../utils/string-utilities.js';
+
+import type { ExecuteBase } from './execute-base.js';
+import type {
+  IPackageFetchControl,
+  IPackageFetchState,
+} from '../interfaces/procedure-list.interfaces.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type {
   IProcedureArgumentBase,
+  IProcedureStructuredField,
+  IProcedureStructuredType,
+  TProcedureArgumentMode,
   TDBMapStructure,
+  TProcedureArgumentList,
 } from '../types/procedure.types.js';
-import { AsyncUtils } from '../utils/async-utils.js';
-import { procedureNameParser } from '../utils/procedure-name-parser.js';
-import { ServerError } from '../utils/server-error.js';
-import { StringUtilities } from '../utils/string-utilities.js';
-
-import type { ExecuteBase } from './execute-base.js';
 
 export class ProcedureListBase {
   public packagesWithProceduresList: TDBMapStructure = new Map();
+  private readonly procedureNameParser = new ProcedureNameParser();
+  private readonly retryTimers = new Map<
+    Lowercase<string>,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly packageFetchStates = new Map<
+    Lowercase<string>,
+    IPackageFetchState
+  >();
+  private destroyPromise: Promise<void> | null = null;
+  private isDestroyed = false;
+  private static readonly RETRY_DELAY_MS = 1000 * 60 * 5;
 
   public constructor(
     private readonly logger: ILoggerModule,
     private readonly databaseAdapter: TAdapterUtilsClassTypes,
     private readonly executeBase: ExecuteBase,
-    private readonly packagesSettings?: TDbConfig['packagesSettings']
+    private readonly packagesSettings?: TDbConfig['packagesSettings'],
+    private readonly maxMetadataRows = DEFAULT_RESOURCE_LIMITS.maxMetadataRows
   ) {}
 
   /**
    * Fetch procedure list with arguments from database
    * @param packageName - name of package in lowercase
-   * @param isRetry - flag to indicate if procedure call failed previously and should be retried
    * @returns Promise<void> - promise that resolves when procedure list is fetched
    */
   public async fetchProcedureListWithArguments(
+    packageName: Lowercase<string>
+  ): Promise<void> {
+    if (this.isDestroyed) {
+      throw new ServerError('ProcedureListBase is destroyed');
+    }
+
+    const activeState = this.packageFetchStates.get(packageName);
+    if (activeState) {
+      activeState.control.rerunRequested = true;
+      await activeState.promise;
+      return;
+    }
+
+    const control: IPackageFetchControl = {
+      rerunRequested: false,
+    };
+    const fetchPromise = this.runPackageFetch(packageName, control);
+    const state: IPackageFetchState = { control, promise: fetchPromise };
+    this.packageFetchStates.set(packageName, state);
+
+    try {
+      await fetchPromise;
+    } finally {
+      if (this.packageFetchStates.get(packageName) === state) {
+        this.packageFetchStates.delete(packageName);
+      }
+    }
+  }
+
+  private async runPackageFetch(
     packageName: Lowercase<string>,
-    isRetry = false
+    control: IPackageFetchControl
+  ): Promise<void> {
+    let lastError: unknown;
+    for (
+      let shouldFetch = true;
+      shouldFetch;
+      shouldFetch = this.shouldRerunFetch(control)
+    ) {
+      control.rerunRequested = false;
+      try {
+        await this.fetchProcedureListInternal(packageName);
+        lastError = undefined;
+      } catch (error: unknown) {
+        lastError = error;
+      }
+    }
+
+    if (lastError !== undefined) {
+      throw lastError instanceof Error
+        ? lastError
+        : ServerError.ENSURE_SERVER_ERROR({ error: lastError });
+    }
+  }
+
+  /** Re-reads fetch state that callers may mutate while the request is awaited. */
+  private shouldRerunFetch(control: IPackageFetchControl): boolean {
+    return control.rerunRequested && !this.isDestroyed;
+  }
+
+  private async fetchProcedureListInternal(
+    packageName: Lowercase<string>
   ): Promise<void> {
     try {
       this.logger.log(
         `Package was changed: ${packageName.toUpperCase()} or init get package info from DB`
       );
 
-      this.packagesWithProceduresList.delete(packageName);
-      await this.callbackFetchProcedureList(packageName);
-      this.checkExistingProcedures(packageName);
+      const packageSnapshot = await this.fetchPackageSnapshot(packageName);
+      this.assertActive();
+      this.checkExistingProcedures(packageName, packageSnapshot);
+      this.assertActive();
+
+      const nextSnapshot = new Map(this.packagesWithProceduresList);
+      nextSnapshot.set(packageName, packageSnapshot);
+      this.packagesWithProceduresList = nextSnapshot;
+      this.procedureNameParser.clear();
+      this.clearRetryTimer(packageName);
     } catch (error: unknown) {
-      const errorMessage = (error as Error).message;
+      const metadataError = ServerError.ENSURE_SERVER_ERROR({ error });
+      const errorMessage = metadataError.message;
       this.logger.error(
         `Error fetching procedure list with arguments: ${errorMessage}`
       );
 
-      if (isRetry) {
-        throw new ServerError(
-          `Failed to fetch procedure list with arguments for package ${packageName}: ${errorMessage}`
-        );
-      }
-
-      this.logger.warn(
-        'Retrying fetching procedure list with arguments in 5 minutes'
+      if (!this.isDestroyed) this.scheduleRetry(packageName);
+      throw new ServerError(
+        `Failed to fetch procedure list with arguments for package ${packageName}: ${errorMessage}`,
+        error,
+        { cause: error }
       );
-      await AsyncUtils.delay(1000 * 60 * 5);
-      await this.fetchProcedureListWithArguments(packageName, true);
     }
+  }
+
+  private assertActive(): void {
+    if (this.isDestroyed)
+      throw new ServerError('ProcedureListBase is destroyed');
+  }
+
+  /** Parses a procedure name using the cache owned by this metadata registry. */
+  public parseProcedureName(
+    executeString: string,
+    packages: Array<Lowercase<string>>
+  ): { processName: Lowercase<string>; packageName: Lowercase<string> } {
+    return this.procedureNameParser.parse(
+      executeString,
+      this.packagesWithProceduresList,
+      packages
+    );
+  }
+
+  private scheduleRetry(packageName: Lowercase<string>): void {
+    if (this.isDestroyed || this.retryTimers.has(packageName)) return;
+
+    this.logger.warn(
+      `Retrying fetching procedure list with arguments for ${packageName.toUpperCase()} in 5 minutes`
+    );
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(packageName);
+      if (this.isDestroyed) return;
+      void this.fetchProcedureListWithArguments(packageName).catch(
+        (error: unknown) => {
+          const metadataError = ServerError.ENSURE_SERVER_ERROR({ error });
+          this.logger.error(
+            `Background procedure metadata refresh failed for ${packageName}: ${metadataError.message}`
+          );
+        }
+      );
+    }, ProcedureListBase.RETRY_DELAY_MS);
+    (timer as { unref?: () => void }).unref?.();
+    this.retryTimers.set(packageName, timer);
+  }
+
+  private clearRetryTimer(packageName: Lowercase<string>): void {
+    const timer = this.retryTimers.get(packageName);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.retryTimers.delete(packageName);
   }
 
   /**
@@ -65,11 +194,11 @@ export class ProcedureListBase {
    * If any procedures are not found, logs an error with the names of the missing procedures.
    * @param searchPackageName - name of package to search for procedures in
    */
-  private checkExistingProcedures(searchPackageName: Lowercase<string>): void {
-    const procedureObject =
-      this.packagesWithProceduresList.get(searchPackageName);
-
-    if (!procedureObject || Object.keys(procedureObject).length < 1) {
+  private checkExistingProcedures(
+    searchPackageName: Lowercase<string>,
+    procedureObject: TProcedureArgumentList
+  ): void {
+    if (Object.keys(procedureObject).length < 1) {
       this.logger.error(`No procedure list for package ${searchPackageName}`);
       return;
     }
@@ -90,13 +219,18 @@ export class ProcedureListBase {
 
     const notFoundProcedures = Object.entries(procedureObjectList)
       .map(([_, sqlString]) => {
-        const { processName, packageName } = procedureNameParser.parse(
-          sqlString,
-          this.packagesWithProceduresList,
-          packages
-        );
+        const explicitPackageName =
+          this.procedureNameParser.extractPackageName(sqlString);
+        const packageName = (explicitPackageName ??
+          (packages.length === 1 ? packages[0] : undefined)) as
+          | Lowercase<string>
+          | undefined;
 
         if (packageName !== searchPackageName) return null;
+
+        const processName = this.procedureNameParser.extractProcedureName(
+          sqlString
+        ) as Lowercase<string>;
 
         return procedureMap.some((item) => item[0] === processName)
           ? null
@@ -121,28 +255,65 @@ export class ProcedureListBase {
    * @throws Error - if the package does not have any procedures in the procedureObjectList
    */
 
-  private async callbackFetchProcedureList(
+  private async fetchPackageSnapshot(
     packageName: Lowercase<string>
-  ): Promise<void> {
+  ): Promise<TProcedureArgumentList> {
     if (!this.packagesSettings) {
       throw new ServerError('Package settings are not configured');
     }
 
-    const rawArguments = (
-      await this.executeBase.execute<IProcedureArgumentBase>(
-        this.databaseAdapter.generatePackageInfoSql(
-          packageName,
-          this.packagesSettings.procedureMetadataSql
-        )
-      )
-    ).map((item) =>
-      Object.fromEntries(
-        Object.entries(item).map(([key, value]) => [
-          StringUtilities.toCamelCase(key),
-          value,
-        ])
+    const metadataRows = await this.executeBase.execute<unknown>(
+      this.databaseAdapter.generatePackageInfoSql(
+        packageName,
+        this.packagesSettings.procedureMetadataSql
       )
     );
+    if (metadataRows.length > this.maxMetadataRows) {
+      throw new ServerError(
+        `Procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
+    const normalizedRows = metadataRows.map((item, index) => {
+      const normalizedItem =
+        item !== null && typeof item === 'object' && !Array.isArray(item)
+          ? Object.fromEntries(
+              Object.entries(item).map(([key, itemValue]) => [
+                StringUtilities.toCamelCase(key),
+                itemValue,
+              ])
+            )
+          : item;
+      if (
+        normalizedItem === null ||
+        typeof normalizedItem !== 'object' ||
+        Array.isArray(normalizedItem)
+      ) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: expected an object`
+        );
+      }
+      return normalizedItem as Record<string, unknown>;
+    });
+    const preparedRows =
+      this.databaseAdapter.prepareProcedureMetadataRows(normalizedRows);
+    if (preparedRows.length > this.maxMetadataRows) {
+      throw new ServerError(
+        `Prepared procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
+    const rawArguments = preparedRows.map((item, index) =>
+      this.decodeProcedureArgument(item, index)
+    );
+    const preparedMetadataCount = rawArguments.reduce(
+      (count, argument) =>
+        count + 1 + (argument.structuredType?.fields.length ?? 0),
+      0
+    );
+    if (preparedMetadataCount > this.maxMetadataRows) {
+      throw new ServerError(
+        `Prepared procedure metadata exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
 
     if (rawArguments.length < 1) {
       throw new ServerError(
@@ -150,19 +321,272 @@ export class ProcedureListBase {
       );
     }
 
-    this.packagesWithProceduresList.delete(packageName);
-
-    this.packagesWithProceduresList.set(
+    return this.databaseAdapter.sortArgumentsAlgorithm(
+      rawArguments,
+      Object.values(this.packagesSettings.procedureObjectList).map((item) =>
+        item.toLowerCase()
+      ) as Array<Lowercase<string>>,
       packageName,
-      this.databaseAdapter.sortArgumentsAlgorithm(
-        rawArguments as Array<IProcedureArgumentBase>,
-        Object.values(this.packagesSettings.procedureObjectList).map((item) =>
-          item.toLowerCase()
-        ) as Array<Lowercase<string>>,
-        packageName,
-        this.packagesSettings.packages.length
-      )
+      this.packagesSettings.packages.length
     );
+  }
+
+  private decodeProcedureArgument(
+    value: unknown,
+    index: number
+  ): IProcedureArgumentBase {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(
+        `Invalid procedure metadata row ${index + 1}: expected an object`
+      );
+    }
+    const record = value as Record<string, unknown>;
+    const readString = (key: string): string => {
+      const candidate = record[key];
+      if (typeof candidate !== 'string' || candidate.trim().length === 0) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: ${key} must be a non-empty string`
+        );
+      }
+      return candidate.trim();
+    };
+
+    const rawMode = readString('mode').toUpperCase().replaceAll(' ', '');
+    let mode: TProcedureArgumentMode;
+    if (rawMode === 'IN') mode = 'IN';
+    else if (rawMode === 'OUT') mode = 'OUT';
+    else if (rawMode === 'INOUT' || rawMode === 'IN/OUT') mode = 'IN/OUT';
+    else
+      throw new ServerError(
+        `Invalid procedure metadata row ${index + 1}: unsupported mode ${rawMode}`
+      );
+
+    const rawOrder = record.order;
+    const order =
+      typeof rawOrder === 'number' ||
+      (typeof rawOrder === 'string' && rawOrder.trim().length > 0)
+        ? Number(rawOrder)
+        : Number.NaN;
+    if (!Number.isSafeInteger(order) || order < 0) {
+      throw new ServerError(
+        `Invalid procedure metadata row ${index + 1}: order must be a non-negative safe integer`
+      );
+    }
+
+    const rawSize = record.size;
+    let size: number | undefined;
+    if (rawSize !== undefined && rawSize !== null) {
+      const parsedSize =
+        typeof rawSize === 'number' || typeof rawSize === 'string'
+          ? Number(rawSize)
+          : Number.NaN;
+      if (!Number.isSafeInteger(parsedSize) || parsedSize <= 0) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: size must be a positive safe integer`
+        );
+      }
+      size = parsedSize;
+    }
+
+    const readOptionalString = (key: string): string | undefined => {
+      const candidate = record[key];
+      if (candidate === undefined || candidate === null) return undefined;
+      if (typeof candidate !== 'string' || candidate.trim().length === 0) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: ${key} must be a non-empty string when provided`
+        );
+      }
+      return candidate.trim();
+    };
+    const rawSubprogramId = record.subprogramId;
+    let subprogramId: number | undefined;
+    if (rawSubprogramId !== undefined && rawSubprogramId !== null) {
+      const parsedSubprogramId =
+        typeof rawSubprogramId === 'number' ||
+        typeof rawSubprogramId === 'string'
+          ? Number(rawSubprogramId)
+          : Number.NaN;
+      if (
+        !Number.isSafeInteger(parsedSubprogramId) ||
+        parsedSubprogramId <= 0
+      ) {
+        throw new ServerError(
+          `Invalid procedure metadata row ${index + 1}: subprogramId must be a positive safe integer`
+        );
+      }
+      subprogramId = parsedSubprogramId;
+    }
+
+    const specificName = readOptionalString('specificName');
+    const owner = readOptionalString('owner');
+    const overload = readOptionalString('overload');
+    const structuredType = this.decodeStructuredType(
+      record.structuredType,
+      index
+    );
+
+    return {
+      procedureName: readString('procedureName'),
+      argumentName: readString('argumentName'),
+      argumentType: readString('argumentType'),
+      order,
+      mode,
+      ...(size === undefined ? {} : { size }),
+      ...(specificName === undefined ? {} : { specificName }),
+      ...(owner === undefined ? {} : { owner }),
+      ...(subprogramId === undefined ? {} : { subprogramId }),
+      ...(overload === undefined ? {} : { overload }),
+      ...(structuredType === undefined ? {} : { structuredType }),
+    };
+  }
+
+  private decodeStructuredType(
+    value: unknown,
+    rowIndex: number
+  ): IProcedureStructuredType | undefined {
+    if (value === undefined || value === null) return undefined;
+    const path = `Invalid procedure metadata row ${rowIndex + 1}: structuredType`;
+    if (typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(`${path} must be an object when provided`);
+    }
+    const record = value as Record<string, unknown>;
+    const kind = record.kind;
+    if (kind !== 'oracle-record' && kind !== 'postgres-composite') {
+      throw new ServerError(`${path}.kind is unsupported`);
+    }
+    const typeName = this.readRequiredStructuredString(
+      record,
+      'typeName',
+      path
+    );
+    const rawFields = record.fields;
+    if (!Array.isArray(rawFields) || rawFields.length === 0) {
+      throw new ServerError(`${path}.fields must be a non-empty array`);
+    }
+    if (rawFields.length > this.maxMetadataRows) {
+      throw new ServerError(
+        `${path}.fields exceeds resourceLimits.maxMetadataRows (${this.maxMetadataRows})`
+      );
+    }
+    const fields = rawFields.map((field, fieldIndex) =>
+      this.decodeStructuredField(field, `${path}.fields[${fieldIndex}]`)
+    );
+    const orders = new Set<number>();
+    const names = new Set<string>();
+    for (const field of fields) {
+      const normalizedName = field.name.toLowerCase();
+      if (names.has(normalizedName) || orders.has(field.order)) {
+        throw new ServerError(
+          `${path}.fields must have unique names and order`
+        );
+      }
+      names.add(normalizedName);
+      orders.add(field.order);
+    }
+    fields.sort((left, right) => left.order - right.order);
+    const typeOid = this.readStructuredInteger(record, 'typeOid', path);
+    return {
+      kind,
+      typeName,
+      fields,
+      ...this.readStructuredOptionalNames(record, path),
+      ...(typeOid === undefined ? {} : { typeOid }),
+    };
+  }
+
+  private decodeStructuredField(
+    value: unknown,
+    path: string
+  ): IProcedureStructuredField {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new ServerError(`${path} must be an object`);
+    }
+    const record = value as Record<string, unknown>;
+    const order = this.readRequiredStructuredInteger(record, 'order', path);
+    const typeOid = this.readStructuredInteger(record, 'typeOid', path);
+    const typeName = this.readStructuredString(record, 'typeName', path);
+    return {
+      name: this.readRequiredStructuredString(record, 'name', path),
+      argumentType: this.readRequiredStructuredString(
+        record,
+        'argumentType',
+        path
+      ),
+      order,
+      ...this.readStructuredOptionalNames(record, path),
+      ...(typeName === undefined ? {} : { typeName }),
+      ...(typeOid === undefined ? {} : { typeOid }),
+    };
+  }
+
+  private readStructuredOptionalNames(
+    record: Record<string, unknown>,
+    path: string
+  ): Pick<IProcedureStructuredType, 'owner' | 'schema' | 'packageName'> {
+    const owner = this.readStructuredString(record, 'owner', path);
+    const schema = this.readStructuredString(record, 'schema', path);
+    const packageName = this.readStructuredString(record, 'packageName', path);
+    return {
+      ...(owner === undefined ? {} : { owner }),
+      ...(schema === undefined ? {} : { schema }),
+      ...(packageName === undefined ? {} : { packageName }),
+    };
+  }
+
+  private readRequiredStructuredString(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): string {
+    const value = this.readStructuredString(record, key, path);
+    if (value === undefined) {
+      throw new ServerError(`${path}.${key} is required`);
+    }
+    return value;
+  }
+
+  private readStructuredString(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): string | undefined {
+    const value = record[key];
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new ServerError(`${path}.${key} must be a non-empty string`);
+    }
+    return value.trim();
+  }
+
+  private readRequiredStructuredInteger(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): number {
+    const value = this.readStructuredInteger(record, key, path);
+    if (value === undefined) {
+      throw new ServerError(`${path}.${key} is required`);
+    }
+    return value;
+  }
+
+  private readStructuredInteger(
+    record: Record<string, unknown>,
+    key: string,
+    path: string
+  ): number | undefined {
+    const value = record[key];
+    if (value === undefined || value === null) return undefined;
+    const parsed =
+      typeof value === 'number' || typeof value === 'string'
+        ? Number(value)
+        : Number.NaN;
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw new ServerError(
+        `${path}.${key} must be a non-negative safe integer`
+      );
+    }
+    return parsed;
   }
 
   public async initPackagesMap(): Promise<void> {
@@ -175,5 +599,24 @@ export class ProcedureListBase {
         )
       )
     );
+  }
+
+  /** Stops retries and releases the instance-local parser cache. */
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.isDestroyed = true;
+    for (const timer of this.retryTimers.values()) clearTimeout(timer);
+    this.retryTimers.clear();
+    this.destroyPromise = this.destroyInternal();
+    return this.destroyPromise;
+  }
+
+  private async destroyInternal(): Promise<void> {
+    await Promise.allSettled(
+      Array.from(this.packageFetchStates.values(), ({ promise }) => promise)
+    );
+    this.packageFetchStates.clear();
+    this.procedureNameParser.destroy();
+    this.packagesWithProceduresList = new Map();
   }
 }

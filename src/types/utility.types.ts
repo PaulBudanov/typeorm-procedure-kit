@@ -1,87 +1,32 @@
-export interface ISqlError {
-  error_code?: number;
-  err_code?: number;
-  errorCode?: number;
-  errCode?: number;
-  err_text?: string;
-  error_text?: string;
-  errorText?: string;
-  errText?: string;
-}
-interface IProcedureOutBinding {
-  name: string;
-  type: 'cursor' | 'scalar' | 'lob' | 'object' | 'array';
-}
+import type {
+  IProcedureQueryLogContext,
+  ISqlQueryLogContext,
+} from '../interfaces/utility.interfaces.js';
+
+export type {
+  IBindingsObjectReturn,
+  ICollectionStrategy,
+  IEventBusService,
+  IProcedureBindingLogItem,
+  IProcedureOutBinding,
+  IProcedureQueryLogContext,
+  IProcedureResult,
+  ISqlBindingLogItem,
+  ISqlBindingsObjectReturn,
+  ISqlError,
+  ISqlQueryLogContext,
+} from '../interfaces/utility.interfaces.js';
+
 export type TProcedureBindings = Array<unknown> | Record<string, unknown>;
-
-//TODO: Add in the future support for another out bindings, at now added new object keys for this.
-export interface IBindingsObjectReturn {
-  paramExecuteString: string;
-  bindings: TProcedureBindings;
-  cursorsNames?: Array<string>;
-  outNames?: Array<string>;
-  outBindings?: Array<IProcedureOutBinding>;
-}
-
-export interface ISqlBindingsObjectReturn {
-  bindings: Array<unknown>;
-  sqlString: string;
-}
-
-export interface IProcedureBindingLogItem {
-  name: string;
-  type: string;
-  mode: string;
-  value?: unknown;
-  isCursor?: boolean;
-}
-
-export interface IProcedureQueryLogContext {
-  kind: 'procedure';
-  packageName: string;
-  procedureName: string;
-  bindings: Array<IProcedureBindingLogItem>;
-}
-
-export interface ISqlBindingLogItem {
-  name: string;
-  value: unknown;
-}
-
-export interface ISqlQueryLogContext {
-  kind: 'sql';
-  bindings: Array<ISqlBindingLogItem>;
-}
 
 export type TQueryLogContext = IProcedureQueryLogContext | ISqlQueryLogContext;
 
 export type TFunction<T = unknown> = (...args: Array<unknown>) => T;
 
-export interface IEventBusService {
-  emit<T>(event: string | symbol, data: T): void;
-  emitAsync<T>(event: string | symbol, data: T): Promise<void>;
-  registerListener<T, U extends string | symbol>(
-    event: string | symbol,
-    callback: (data?: T) => U | void | Promise<void>
-  ): void;
-  registerOnce<T, U extends string | symbol>(
-    event: string | symbol,
-    callback: (data?: T) => U | void | Promise<void>
-  ): void;
-  getListenedEvents(): Array<string>;
-  removeListener<T, U>(
-    event: string | symbol,
-    callback: (data?: T) => U | void | Promise<void>
-  ): void;
-  removeAllListeners(event: string): void;
-}
+export type TEventBusListener = {
+  listener(data: unknown): unknown;
+}['listener'];
 
 export type TQueueType = 'array' | 'set' | 'map';
+
 export type TMapKey = string | number | symbol;
-export interface ICollectionStrategy<T> {
-  enqueue(key: unknown, item: T): void;
-  dequeue(key?: unknown): T | undefined;
-  clear(): void;
-  size(): number;
-  getItems(): Array<T> | Map<unknown, T> | Set<T>;
-}

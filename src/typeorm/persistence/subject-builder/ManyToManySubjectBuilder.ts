@@ -1,7 +1,8 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 import { Subject } from '../Subject.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { RelationMetadata } from '../../metadata/RelationMetadata.js';
 
 /**
  * Builds operations needs to be executed for many-to-many relations of the given subjects.
@@ -33,7 +34,7 @@ export class ManyToManySubjectBuilder {
       // go through all persistence enabled many-to-many relations and build subject operations for them
       subject.metadata.manyToManyRelations.forEach((relation) => {
         // skip relations for which persistence is disabled
-        if (relation.persistenceEnabled === false) return;
+        if (!relation.persistenceEnabled) return;
 
         this.buildForSubjectRelation(subject, relation);
       });
@@ -51,7 +52,7 @@ export class ManyToManySubjectBuilder {
     // go through all persistence enabled many-to-many relations and build subject operations for them
     subject.metadata.manyToManyRelations.forEach((relation) => {
       // skip relations for which persistence is disabled
-      if (relation.persistenceEnabled === false) return;
+      if (!relation.persistenceEnabled) return;
 
       // get all related entities (actually related entity relation ids) bind to this subject entity
       // by example: returns category ids of the post we are currently working with (subject.entity is post)
@@ -130,7 +131,7 @@ export class ManyToManySubjectBuilder {
       // extract only relation id from the related entities, since we only need it for comparison
       // by example: extract from category only relation id (category id, or let's say category title, depend on join column options)
       let relatedEntityRelationIdMap =
-        relation.inverseEntityMetadata!.getEntityIdMap(relatedEntity);
+        relation.inverseEntityMetadata.getEntityIdMap(relatedEntity);
 
       // try to find a subject of this related entity, maybe it was loaded or was marked for persistence
       const relatedEntitySubject = this.subjects.find((subject) => {
@@ -206,7 +207,7 @@ export class ManyToManySubjectBuilder {
     relatedEntities.forEach((relatedEntity) => {
       // relation.inverseEntityMetadata!.getEntityIdMap(relatedEntity)
       let relatedEntityRelationIdMap =
-        relation.inverseEntityMetadata!.getEntityIdMap(relatedEntity);
+        relation.inverseEntityMetadata.getEntityIdMap(relatedEntity);
 
       // try to find a subject of this related entity, maybe it was loaded or was marked for persistence
       const relatedEntitySubject = this.subjects.find((subject) => {

@@ -1,6 +1,7 @@
 import { getMetadataArgsStorage } from '../../globals.js';
-import type { TableMetadataArgs } from '../../metadata-args/TableMetadataArgs.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
+
+import type { TableMetadataArgs } from '../../metadata-args/TableMetadataArgs.js';
 import type { ViewEntityOptions } from '../options/ViewEntityOptions.js';
 
 /**
@@ -27,9 +28,7 @@ export function ViewEntity(
   maybeOptions?: ViewEntityOptions
 ): ClassDecorator {
   const options =
-    (ObjectUtils.isObject(nameOrOptions)
-      ? (nameOrOptions as ViewEntityOptions)
-      : maybeOptions) || {};
+    (ObjectUtils.isObject(nameOrOptions) ? nameOrOptions : maybeOptions) || {};
   const name = typeof nameOrOptions === 'string' ? nameOrOptions : options.name;
 
   return function (target): void {

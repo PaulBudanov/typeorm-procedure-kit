@@ -1,6 +1,5 @@
-import type { EntitySchema } from '../entity-schema/EntitySchema.js';
-
 import type { ObjectType } from './ObjectType.js';
+import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 
 /**
  * Entity target.

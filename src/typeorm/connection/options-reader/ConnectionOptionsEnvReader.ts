@@ -1,6 +1,7 @@
-import type { DataSourceOptions } from '../../data-source/DataSourceOptions.js';
 import { PlatformTools } from '../../platform/PlatformTools.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
+
+import type { DataSourceOptions } from '../../data-source/DataSourceOptions.js';
 
 /**
  * Reads connection options from environment variables.
@@ -77,7 +78,7 @@ export class ConnectionOptionsEnvReader {
         | undefined,
     };
 
-    return [options as unknown as DataSourceOptions];
+    return [options];
   }
 
   // -------------------------------------------------------------------------

@@ -1,10 +1,12 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { formatDataSourceIdentifier } from '../../data-source/IdentifierQuoting.js';
 import { CannotAttachTreeChildrenEntityError } from '../../error/CannotAttachTreeChildrenEntityError.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
 import type { DeleteQueryBuilder } from '../../query-builder/DeleteQueryBuilder.js';
 import type { QueryBuilder } from '../../query-builder/QueryBuilder.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
-import { OrmUtils } from '../../util/OrmUtils.js';
 import type { Subject } from '../Subject.js';
 
 /**
@@ -49,15 +51,15 @@ export class ClosureSubjectExecutor {
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
-    if (!parent && subject.parentSubject && subject.parentSubject.entity)
+    if (!parent && subject.parentSubject?.entity)
       // if entity was attached via children
       parent = subject.parentSubject.insertedValueSet
         ? subject.parentSubject.insertedValueSet
         : subject.parentSubject.entity;
 
     if (parent) {
-      const escape = (alias: string): string =>
-        this.queryRunner.connection.driver.escape(alias);
+      const escapeColumn = (identifier: string): string =>
+        formatDataSourceIdentifier(identifier, this.queryRunner.connection);
       const tableName = this.getTableName(
         subject.metadata.closureJunctionTable.tablePath
       );
@@ -65,12 +67,12 @@ export class ClosureSubjectExecutor {
 
       const ancestorColumnNames =
         subject.metadata.closureJunctionTable.ancestorColumns.map((column) => {
-          return escape(column.databaseName);
+          return escapeColumn(column.databaseName);
         });
       const descendantColumnNames =
         subject.metadata.closureJunctionTable.descendantColumns.map(
           (column) => {
-            return escape(column.databaseName);
+            return escapeColumn(column.databaseName);
           }
         );
       const childEntityIds1 = subject.metadata.primaryColumns.map((column) => {
@@ -90,10 +92,10 @@ export class ClosureSubjectExecutor {
       const whereCondition =
         subject.metadata.closureJunctionTable.descendantColumns.map(
           (column) => {
-            const columnName = escape(column.databaseName);
+            const columnName = escapeColumn(column.databaseName);
             const parentId = column.referencedColumn!.getEntityValue(parent);
 
-            if (!parentId)
+            if (parentId == null)
               throw new CannotAttachTreeChildrenEntityError(
                 subject.metadata.name
               );
@@ -128,7 +130,7 @@ export class ClosureSubjectExecutor {
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
-    if (!parent && subject.parentSubject && subject.parentSubject.entity)
+    if (!parent && subject.parentSubject?.entity)
       // if entity was attached via children
       parent = subject.parentSubject.entity;
 
@@ -151,9 +153,8 @@ export class ClosureSubjectExecutor {
       return;
     }
 
-    const oldParent = subject.metadata.treeParentRelation!.getEntityValue(
-      entity!
-    );
+    const oldParent =
+      subject.metadata.treeParentRelation!.getEntityValue(entity);
     const oldParentId = subject.metadata.getEntityIdMap(oldParent);
     const parentId = subject.metadata.getEntityIdMap(parent);
 
@@ -162,17 +163,19 @@ export class ClosureSubjectExecutor {
       return;
     }
 
-    const escape = (alias: string, isNeedQuote = false): string =>
-      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
+    const escapeAlias = (identifier: string): string =>
+      this.queryRunner.connection.driver.escape(identifier);
+    const escapeColumn = (identifier: string): string =>
+      formatDataSourceIdentifier(identifier, this.queryRunner.connection);
     const closureTable = subject.metadata.closureJunctionTable;
 
     const ancestorColumnNames = closureTable.ancestorColumns.map((column) => {
-      return escape(column.databaseName);
+      return escapeColumn(column.databaseName);
     });
 
     const descendantColumnNames = closureTable.descendantColumns.map(
       (column) => {
-        return escape(column.databaseName);
+        return escapeColumn(column.databaseName);
       }
     );
 
@@ -191,7 +194,7 @@ export class ClosureSubjectExecutor {
       // Create where conditions e.g. (WHERE "subdescendant"."id_ancestor" = :value_id)
       for (const column of closureTable.ancestorColumns) {
         subSelect.andWhere(
-          `${escape(subAlias, true)}.${escape(
+          `${escapeAlias(subAlias)}.${escapeColumn(
             column.databaseName
           )} = :value_${column.referencedColumn!.databaseName}`
         );
@@ -207,9 +210,8 @@ export class ClosureSubjectExecutor {
 
     const parameters: ObjectLiteral = {};
     for (const column of subject.metadata.primaryColumns) {
-      parameters[`value_${column.databaseName}`] = (entity! as ObjectLiteral)[
-        column.databaseName!
-      ];
+      parameters[`value_${column.databaseName}`] =
+        column.getEntityValue(entity);
     }
 
     await this.queryRunner.manager
@@ -242,8 +244,8 @@ export class ClosureSubjectExecutor {
       const queryParams: Array<unknown> = [];
 
       const tableName = this.getTableName(closureTable.tablePath);
-      const superAlias = escape('supertree', true);
-      const subAlias = escape('subtree', true);
+      const superAlias = escapeAlias('supertree');
+      const subAlias = escapeAlias('subtree');
 
       const select = [
         ...ancestorColumnNames.map(
@@ -256,8 +258,8 @@ export class ClosureSubjectExecutor {
 
       const entityWhereCondition =
         subject.metadata.closureJunctionTable.ancestorColumns.map((column) => {
-          const columnName = escape(column.databaseName);
-          const entityId = column.referencedColumn!.getEntityValue(entity!);
+          const columnName = escapeColumn(column.databaseName);
+          const entityId = column.referencedColumn!.getEntityValue(entity);
 
           queryParams.push(entityId);
           const parameterName =
@@ -271,10 +273,10 @@ export class ClosureSubjectExecutor {
       const parentWhereCondition =
         subject.metadata.closureJunctionTable.descendantColumns.map(
           (column) => {
-            const columnName = escape(column.databaseName);
+            const columnName = escapeColumn(column.databaseName);
             const parentId = column.referencedColumn!.getEntityValue(parent);
 
-            if (!parentId)
+            if (parentId == null)
               throw new CannotAttachTreeChildrenEntityError(
                 subject.metadata.name
               );
@@ -310,32 +312,44 @@ export class ClosureSubjectExecutor {
   public async remove(subjects: Subject | Array<Subject>): Promise<void> {
     if (!Array.isArray(subjects)) subjects = [subjects];
 
-    const escape = (alias: string, isNeedQuote = false): string =>
-      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
-    const identifiers = subjects.map((subject) => subject.identifier);
+    const escapeColumn = (identifier: string): string =>
+      formatDataSourceIdentifier(identifier, this.queryRunner.connection);
+    const identifiers = subjects.map((subject) => subject.identifier ?? {});
     const closureTable = subjects[0]!.metadata.closureJunctionTable;
+    const parameters: ObjectLiteral = {};
 
-    const generateWheres = (columns: Array<ColumnMetadata>): string => {
-      return columns
-        .map((column) => {
-          const data = identifiers.map(
-            (identifier) =>
-              (identifier ?? {})[column.referencedColumn!.databaseName]!
-          );
-          return `${escape(column.databaseName)} IN (${data.join(', ')})`;
+    const generateWhere = (
+      columns: Array<ColumnMetadata>,
+      scope: 'ancestor' | 'descendant'
+    ): string => {
+      return identifiers
+        .map((identifier, subjectIndex) => {
+          const tuple = columns.map((column, columnIndex) => {
+            const parameterName = `tree_${scope}_${subjectIndex}_${columnIndex}`;
+            parameters[parameterName] =
+              column.referencedColumn!.getEntityValue(identifier);
+            return `${escapeColumn(column.databaseName)} = :${parameterName}`;
+          });
+          return `(${tuple.join(' AND ')})`;
         })
-        .join(' AND ');
+        .join(' OR ');
     };
 
-    const ancestorWhere = generateWheres(closureTable.ancestorColumns);
-    const descendantWhere = generateWheres(closureTable.descendantColumns);
+    const ancestorWhere = generateWhere(
+      closureTable.ancestorColumns,
+      'ancestor'
+    );
+    const descendantWhere = generateWhere(
+      closureTable.descendantColumns,
+      'descendant'
+    );
 
     await this.queryRunner.manager
       .createQueryBuilder()
       .delete()
       .from(closureTable.tablePath)
-      .where(ancestorWhere)
-      .orWhere(descendantWhere)
+      .where(`(${ancestorWhere})`, parameters)
+      .orWhere(`(${descendantWhere})`, parameters)
       .execute();
   }
 
@@ -348,7 +362,9 @@ export class ClosureSubjectExecutor {
       .split('.')
       .map((i) => {
         // this condition need because in SQL Server driver when custom database name was specified and schema name was not, we got `dbName..tableName` string, and doesn't need to escape middle empty string
-        return i === '' ? i : this.queryRunner.connection.driver.escape(i);
+        return i === ''
+          ? i
+          : formatDataSourceIdentifier(i, this.queryRunner.connection);
       })
       .join('.');
   }

@@ -1,7 +1,6 @@
-import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
-
 import type { ColumnMetadata } from './ColumnMetadata.js';
 import type { EntityMetadata } from './EntityMetadata.js';
+import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 import type { DeferrableType } from './types/DeferrableType.js';
 import type { OnDeleteType } from './types/OnDeleteType.js';
 import type { OnUpdateType } from './types/OnUpdateType.js';

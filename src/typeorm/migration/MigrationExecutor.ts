@@ -1,12 +1,13 @@
 import { ServerError } from '../../utils/server-error.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
-import type { Driver } from '../driver/Driver.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { Table } from '../schema-builder/table/Table.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 
 import { Migration } from './Migration.js';
+
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
  * Executes migrations: runs pending and reverts previously executed migrations.
@@ -110,7 +111,7 @@ export class MigrationExecutor {
     return this.withQueryRunner(async (queryRunner) => {
       await this.createMigrationsTableIfNotExist(queryRunner);
 
-      return await this.loadExecutedMigrations(queryRunner);
+      return this.loadExecutedMigrations(queryRunner);
     });
   }
 
@@ -418,7 +419,7 @@ export class MigrationExecutor {
 
     // find the instance of the migration we need to remove
     const migrationToRevert = allMigrations.find(
-      (migration) => migration.name === lastTimeExecutedMigration!.name
+      (migration) => migration.name === lastTimeExecutedMigration.name
     );
 
     // if no migrations found in the database then nothing to revert
@@ -544,9 +545,9 @@ export class MigrationExecutor {
       .getRawMany();
     return migrationsRaw.map((migrationRaw) => {
       return new Migration(
-        parseInt(migrationRaw['id'] as string),
-        parseInt(migrationRaw['timestamp'] as string),
-        migrationRaw['name'] as string
+        parseInt(migrationRaw.id as string),
+        parseInt(migrationRaw.timestamp as string),
+        migrationRaw.name as string
       );
     });
   }
@@ -624,8 +625,8 @@ export class MigrationExecutor {
   ): Promise<void> {
     const values: ObjectLiteral = {};
 
-    values['timestamp'] = migration.timestamp;
-    values['name'] = migration.name;
+    values.timestamp = migration.timestamp;
+    values.name = migration.name;
 
     const qb = queryRunner.manager.createQueryBuilder();
     await qb.insert().into(this.migrationsTable).values(values).execute();
@@ -640,8 +641,8 @@ export class MigrationExecutor {
   ): Promise<void> {
     const conditions: ObjectLiteral = {};
 
-    conditions['timestamp'] = migration.timestamp;
-    conditions['name'] = migration.name;
+    conditions.timestamp = migration.timestamp;
+    conditions.name = migration.name;
 
     const qb = queryRunner.manager.createQueryBuilder();
     await qb

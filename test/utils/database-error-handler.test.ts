@@ -38,23 +38,60 @@ describe('DatabaseErrorHandler', (): void => {
     );
   });
 
-  it.each([
-    { errorCode: 500, errorText: 'error fields' },
-    { errCode: 500, errText: 'err fields' },
-  ])('supports camelCase error fields: %o', (responseData): void => {
+  it('recognizes a case-strategy-transformed procedure error envelope', (): void => {
     expect((): void => {
-      DatabaseErrorHandler.checkForDatabaseError(responseData);
-    }).toThrow(
-      `Database error: ${responseData.errorText ?? responseData.errText}`
-    );
+      DatabaseErrorHandler.checkForDatabaseError({
+        errorCode: 500,
+        errorText: 'transformed failure',
+      });
+    }).toThrow('Database error: transformed failure');
+
+    expect((): void => {
+      DatabaseErrorHandler.checkForDatabaseError({
+        errCode: 500,
+        errText: 'short transformed failure',
+      });
+    }).toThrow('Database error: short transformed failure');
   });
 
-  it('recursively checks arrays', (): void => {
+  it('does not scan business rows or nested objects for error fields', (): void => {
     expect((): void => {
       DatabaseErrorHandler.checkForDatabaseError([
         { error_code: 0, error_text: 'ok' },
         { err_code: 1, err_text: 'bad' },
       ]);
-    }).toThrow('Database error: bad');
+      DatabaseErrorHandler.checkForDatabaseError({
+        payload: { error_code: 500, error_text: 'business value' },
+      });
+    }).not.toThrow();
+  });
+
+  it('requires both a code key and a text key in the top-level envelope', (): void => {
+    expect((): void => {
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: 500,
+        description: 'business status',
+      });
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_text: 'business status',
+      });
+    }).not.toThrow();
+  });
+
+  it('treats numeric and string zero codes as success', (): void => {
+    expect((): void => {
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: '0',
+        error_text: 'ok',
+      });
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: '00000',
+        error_text: 'ok',
+      });
+      DatabaseErrorHandler.checkForDatabaseError({
+        error_code: '  ',
+        error_text: 'ok',
+      });
+    }).not.toThrow();
   });
 });

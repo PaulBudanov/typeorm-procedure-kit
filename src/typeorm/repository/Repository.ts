@@ -1,3 +1,8 @@
+import { buildSqlTag } from '../util/SqlTagUtils.js';
+
+import type { RemoveOptions } from './RemoveOptions.js';
+import type { SaveOptions } from './SaveOptions.js';
+import type { UpsertOptions } from './UpsertOptions.js';
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { EntityTarget } from '../common/EntityTarget.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
@@ -13,11 +18,6 @@ import type { InsertResult } from '../query-builder/result/InsertResult.js';
 import type { UpdateResult } from '../query-builder/result/UpdateResult.js';
 import type { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
-import { buildSqlTag } from '../util/SqlTagUtils.js';
-
-import type { RemoveOptions } from './RemoveOptions.js';
-import type { SaveOptions } from './SaveOptions.js';
-import type { UpsertOptions } from './UpsertOptions.js';
 
 /**
  * Repository is supposed to work with your entity objects. Find entities, insert, update, delete, etc.
@@ -445,10 +445,7 @@ export class Repository<Entity = unknown> {
       | FindOptionsWhere<Entity>
       | Array<FindOptionsWhere<Entity>>
   ): Promise<UpdateResult> {
-    return this.manager.softDelete(
-      this.metadata.target as EntityTarget<ObjectLiteral>,
-      criteria
-    );
+    return this.manager.softDelete(this.metadata.target, criteria);
   }
 
   /**
@@ -468,10 +465,7 @@ export class Repository<Entity = unknown> {
       | FindOptionsWhere<Entity>
       | Array<FindOptionsWhere<Entity>>
   ): Promise<UpdateResult> {
-    return this.manager.restore(
-      this.metadata.target as EntityTarget<ObjectLiteral>,
-      criteria as unknown
-    );
+    return this.manager.restore(this.metadata.target, criteria);
   }
 
   /**
@@ -751,7 +745,7 @@ export class Repository<Entity = unknown> {
       expressions: values,
     });
 
-    return await this.query(query, parameters);
+    return this.query(query, parameters);
   }
 
   /**

@@ -1,238 +1,209 @@
-import { finished } from 'stream/promises';
-
 import oracledb from 'oracledb';
 
-import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { ServerError } from '../../utils/server-error.js';
+import { SqlIdentifier } from '../../utils/sql-identifier.js';
+import { DatabaseAdapter } from '../abstract/database-adapter.js';
+
+import { OracleProcedureBindings } from './oracle-bindings.js';
+import { OracleConnection } from './oracle-connection.js';
+import { OracleNotify } from './oracle-notify.js';
+import { OracleProcedureResultMaterializer } from './oracle-result-materializer.js';
+import { OracleSerializer } from './oracle-serializer.js';
+import { OracleSqlCommand } from './oracle-sql.js';
+
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { OracleDriver } from '../../typeorm/driver/oracle/OracleDriver.js';
+import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IOracleOptionsNotify } from '../../types/notification.types.js';
 import type {
+  IProcedureArgumentBase,
+  IProcedureStructuredField,
+  IProcedureStructuredType,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type {
   IBindingsObjectReturn,
+  IProcedureOutBinding,
+  IProcedureResult,
   ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
-import { ServerError } from '../../utils/server-error.js';
-import { SqlIdentifier } from '../../utils/sql-identifier.js';
-import { TypeGuards } from '../../utils/type-guards.js';
-import { DatabaseAdapter } from '../abstract/database-adapter.js';
 
-import { OracleConnection } from './oracle-connection.js';
-import { OracleNotify } from './oracle-notify.js';
-import { OracleSerializer } from './oracle-serializer.js';
-import { OracleSqlCommand } from './oracle-sql.js';
-
+/** Thin Oracle facade that wires vendor-specific adapter capabilities. */
 export class OracleAdapter extends DatabaseAdapter<
   OracleSerializer,
   OracleNotify,
-  OracleConnection,
-  IOracleOptionsNotify
+  IOracleOptionsNotify,
+  oracledb.Connection
 > {
+  private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
+  private static readonly MINIMUM_RECORD_VERSION = [12, 1] as const;
+  private static readonly UNSUPPORTED_RECORD_FIELD_TYPES = new Set([
+    'BFILE',
+    'BLOB',
+    'CLOB',
+    'NCLOB',
+    'OBJECT',
+    'PL/SQL RECORD',
+    'PL/SQL TABLE',
+    'REF CURSOR',
+    'TABLE',
+    'VARRAY',
+  ]);
+  private readonly procedureBindings: OracleProcedureBindings;
+  private readonly resultMaterializer: OracleProcedureResultMaterializer;
+
   public constructor(
     protected readonly appDataSource: DataSource,
-    protected readonly logger: ILoggerModule,
+    protected override readonly logger: ILoggerModule,
     protected readonly handlerOptions: IRegisteredFetchHandlerOptions
   ) {
-    const oracleConnection = new OracleConnection(appDataSource, logger);
-    const oracleNotify = new OracleNotify(oracleConnection, logger);
-    const oracleSerializer = new OracleSerializer(logger, handlerOptions);
-    super(logger, oracleSerializer, oracleNotify, oracleConnection);
+    const connection = new OracleConnection(appDataSource, logger);
+    const notifier = new OracleNotify(
+      connection,
+      logger,
+      handlerOptions.resourceLimits?.maxNotificationQueue,
+      handlerOptions.resourceLimits?.maxNotificationRows
+    );
+    const serializer = new OracleSerializer(logger, handlerOptions);
+    super(logger, serializer, notifier);
+    this.procedureBindings = new OracleProcedureBindings();
+    this.resultMaterializer = new OracleProcedureResultMaterializer(
+      logger,
+      handlerOptions,
+      serializer
+    );
     oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
   }
-  private CURSOR_TYPE = 'REF CURSOR' as const;
-  private BINDING_DIR = {
-    IN: oracledb.BIND_IN,
-    OUT: oracledb.BIND_OUT,
-    'IN/OUT': oracledb.BIND_INOUT,
-  } as const;
-  private TYPE_MAPPING = {
-    NUMBER: oracledb.NUMBER,
-    STRING: oracledb.STRING,
-    VARCHAR2: oracledb.STRING,
-    [this.CURSOR_TYPE]: oracledb.CURSOR,
-    BUFFER: oracledb.BUFFER,
-    DATE: oracledb.DATE,
-    TIMESTAMP: oracledb.DB_TYPE_TIMESTAMP,
-    CLOB: oracledb.CLOB,
-    BLOB: oracledb.BLOB,
-  } as const;
 
-  /**
-   * Creates Oracle PL/SQL procedure bindings from procedure metadata.
-   *
-   * Object payload keys may use either the raw argument name or the same name
-   * without a leading `p_`. Arrays are bound by argument order. Oracle REF
-   * CURSOR arguments are configured as output cursor bindings and returned in
-   * cursorsNames.
-   *
-   * @param packageName - package name in lowercase.
-   * @param processName - procedure name in lowercase.
-   * @param procedures - procedure argument metadata map.
-   * @param payload - object or array with input values, or undefined/null.
-   * @returns object with:
-   * - paramExecuteString: a string representing the SQL query with bindings
-   * - bindings: an array of values to be passed to the procedure
-   * - cursorsNames: an array of names of cursors (for Oracle only)
-   */
+  public override sortArgumentsAlgorithm(
+    rawArguments: Array<IProcedureArgumentBase>,
+    procedureListBase: Array<Lowercase<string>>,
+    packageName: Lowercase<string>,
+    packagesLength: number
+  ): TProcedureArgumentList {
+    return this.normalizeProcedureMetadata(
+      rawArguments,
+      procedureListBase,
+      packageName,
+      packagesLength,
+      {
+        vendor: 'Oracle',
+        noArgumentSentinel: OracleAdapter.NO_ARGUMENT_SENTINEL,
+        getOverloadIdentity: ({ overload, subprogramId }) =>
+          overload ?? subprogramId,
+      }
+    );
+  }
+
+  public override async execute<T>(
+    sql: string,
+    client: EntityManager,
+    optionsCommands: Array<string>,
+    bindings: IBindingsObjectReturn['bindings'] = [],
+    cursorsNames: Array<string> = []
+  ): Promise<Awaited<Array<T>>> {
+    this.assertNoPersistentTimeZoneOverride(optionsCommands);
+    return super.execute<T>(
+      sql,
+      client,
+      optionsCommands,
+      bindings,
+      cursorsNames
+    );
+  }
+
+  public override async executeProcedure<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
+    sql: string,
+    client: EntityManager,
+    optionsCommands: Array<string>,
+    bindings: IBindingsObjectReturn['bindings'] = [],
+    cursorsNames: Array<string> = [],
+    outBindings: Array<IProcedureOutBinding> = []
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    this.assertNoPersistentTimeZoneOverride(optionsCommands);
+    return super.executeProcedure<TRow, TOut>(
+      sql,
+      client,
+      optionsCommands,
+      bindings,
+      cursorsNames,
+      outBindings
+    );
+  }
+
+  public override registerFetchHandlerHook(): void {
+    super.registerFetchHandlerHook();
+    const driver = this.appDataSource.driver as unknown;
+    if (
+      driver === null ||
+      typeof driver !== 'object' ||
+      !('setFetchTypeHandler' in driver) ||
+      typeof driver.setFetchTypeHandler !== 'function'
+    ) {
+      throw new ServerError(
+        'Oracle DataSource driver does not support instance fetch handlers'
+      );
+    }
+    const fetchHandlerDriver = driver as Pick<
+      OracleDriver,
+      'setFetchTypeHandler'
+    >;
+    fetchHandlerDriver.setFetchTypeHandler(
+      this.serializer.createFetchTypeHandler()
+    );
+  }
+
   public override makeBindings<U extends TProcedurePayload = TProcedurePayload>(
     packageName: Lowercase<string>,
     processName: Lowercase<string>,
     procedures: TProcedureArgumentList | undefined,
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn {
-    if (!procedures?.[processName]) {
-      throw new ServerError(
-        `Package "${packageName}" or process "${processName}" not found`
-      );
+    if (
+      procedures?.[processName]?.some(
+        ({ structuredType }) => structuredType?.kind === 'oracle-record'
+      )
+    ) {
+      this.assertRecordVersionSupport();
     }
-    const functionParams = procedures[processName];
-    const processBindings = (payload?: U): IBindingsObjectReturn => {
-      const bindings: Record<string, oracledb.BindParameter> = {};
-      const cursorsNames: Array<string> = [];
-      const paramInputArray: Array<string> = [];
-
-      functionParams.forEach((item, index) => {
-        SqlIdentifier.validateIdentifier(item.argumentName, 'oracle bind');
-        paramInputArray.push(`:${item.argumentName}`);
-        if (item.argumentType === this.CURSOR_TYPE) {
-          cursorsNames.push(item.argumentName);
-          const dataType = item.argumentType.toUpperCase();
-          if (!this.isValidDataType(dataType))
-            throw new ServerError(`Invalid data type: ${dataType}`);
-          bindings[item.argumentName] = {
-            dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
-            type: this.TYPE_MAPPING[dataType],
-          };
-          return;
-        }
-        if (typeof payload === 'string' || typeof payload === 'number')
-          throw new TypeError(
-            'Payload for call procedure must be an object or array or undefined or null'
-          );
-        const normalizedName = item.argumentName.replace(/^p_/, '');
-        let value: unknown;
-        if (Array.isArray(payload)) {
-          value = payload[index] ?? null;
-        } else if (payload && typeof payload === 'object') {
-          value =
-            (payload as Record<string, unknown>)[normalizedName] ??
-            (payload as Record<string, unknown>)[item.argumentName] ??
-            null;
-        } else {
-          value = null;
-        }
-
-        if (Array.isArray(value)) {
-          const dataType = item.argumentType.toUpperCase();
-          if (!this.isValidDataType(dataType))
-            throw new ServerError(`Invalid data type: ${dataType}`);
-          bindings[item.argumentName] = {
-            dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
-            type: this.TYPE_MAPPING[dataType],
-            val: value.length > 1 ? value.join(',') : value.toString(),
-          };
-          return;
-        }
-        const dataType = item.argumentType.toUpperCase();
-        if (!this.isValidDataType(dataType))
-          throw new ServerError(`Invalid data type: ${dataType}`);
-        bindings[item.argumentName] = {
-          dir: this.BINDING_DIR[item.mode as 'IN' | 'OUT' | 'IN/OUT'],
-          type: this.TYPE_MAPPING[dataType],
-          val: value,
-        };
-      });
-      const paramExecuteString = `BEGIN ${SqlIdentifier.formatOracleQualifiedIdentifier(
-        [packageName, processName]
-      )} (${paramInputArray.join(',')}); END;`;
-      return {
-        bindings,
-        cursorsNames,
-        paramExecuteString,
-      };
-    };
-    if (TypeGuards.isNullOrUndefined(payload)) payload = {} as U;
-    return processBindings(payload);
+    return this.procedureBindings.build(
+      packageName,
+      processName,
+      procedures,
+      payload
+    );
   }
-  /**
-   * Builds Oracle bindings for uppercase named placeholders.
-   * Oracle keeps the original `:PARAM` placeholders in the SQL string and
-   * receives the binding values in placeholder occurrence order.
-   * @param sqlQuery - SQL query with uppercase named placeholders.
-   * @param params - values keyed by placeholder name, case-insensitive.
-   * @returns original SQL and ordered binding values.
-   */
-  public override makeSqlBindings<U extends Record<string, unknown>>(
+
+  public override makeSqlBindings(
     sqlQuery: string,
-    params?: U
+    params?: Record<string, unknown>
   ): ISqlBindingsObjectReturn {
     const bindings: Array<unknown> = [];
     const paramsInUpperCase = Object.fromEntries(
       params
-        ? Object.entries(params).map(([key, value]) => {
-            return [key.toUpperCase(), value];
-          })
+        ? Object.entries(params).map(([key, value]) => [
+            key.toUpperCase(),
+            value,
+          ])
         : []
     );
     replaceNamedParameters(sqlQuery, ({ full, key }) => {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase?.[(key as string).toUpperCase()] ?? null);
+      bindings.push(paramsInUpperCase[key.toUpperCase()] ?? null);
       return full;
     });
-    return { bindings, sqlString: sqlQuery ?? '' };
-  }
-  /**
-   * Checks if a given data type is valid for the current database adapter.
-   * @param key - data type to check
-   * @returns true if the data type is valid, false otherwise
-   */
-  private isValidDataType(key: string): key is keyof typeof this.TYPE_MAPPING {
-    return key in this.TYPE_MAPPING;
+    return { bindings, sqlString: sqlQuery };
   }
 
-  private isResultSet<T>(value: unknown): value is oracledb.ResultSet<T> {
-    return (
-      value !== null &&
-      typeof value === 'object' &&
-      'toQueryStream' in value &&
-      typeof value.toQueryStream === 'function'
-    );
-  }
-
-  private getResultSets<T>(
-    values: Iterable<unknown>
-  ): Set<oracledb.ResultSet<T>> {
-    const resultSets = new Set<oracledb.ResultSet<T>>();
-    for (const value of values) {
-      if (this.isResultSet<T>(value)) resultSets.add(value);
-    }
-    return resultSets;
-  }
-
-  private async closePendingResultSets<T>(
-    resultSets: ReadonlySet<oracledb.ResultSet<T>>
-  ): Promise<void> {
-    if (resultSets.size === 0) return;
-
-    for (const resultSet of resultSets) {
-      try {
-        await resultSet.close();
-      } catch (reason: unknown) {
-        const error = reason instanceof Error ? reason.message : String(reason);
-        this.logger.warn(`Failed to close Oracle result set: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * Generates a SQL query that loads Oracle package procedure metadata.
-   * @param packageName - package name to inspect.
-   * @returns SQL query string for procedure metadata loading.
-   */
   public override generatePackageInfoSql(
     packageName: string,
     procedureMetadataSql?: string
@@ -241,10 +212,117 @@ export class OracleAdapter extends DatabaseAdapter<
       packageName,
       'oracle package'
     ).toUpperCase();
-    return this.replacePackageNamePlaceholder(
+    const query = this.replacePackageNamePlaceholder(
       procedureMetadataSql ?? OracleSqlCommand.SQL_GET_PACKAGE_INFO,
       `'${safePackageName}'`
     );
+    if (procedureMetadataSql) return query;
+    const maxMetadataRows =
+      this.handlerOptions.resourceLimits?.maxMetadataRows ??
+      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
+    const detectionLimit = Math.min(
+      maxMetadataRows + 1,
+      Number.MAX_SAFE_INTEGER
+    );
+    return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
+  }
+
+  /** Combines a package RECORD argument with its dictionary field rows. */
+  public override prepareProcedureMetadataRows(
+    rows: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
+    const preparedRows: Array<Record<string, unknown>> = [];
+    let activeRecord: IProcedureStructuredType | undefined;
+
+    for (const [index, row] of rows.entries()) {
+      if (!Object.hasOwn(row, 'dataLevel')) {
+        preparedRows.push(row);
+        activeRecord = undefined;
+        continue;
+      }
+
+      const dataLevel = this.readMetadataInteger(row.dataLevel, index, {
+        name: 'dataLevel',
+        minimum: 0,
+      });
+      if (dataLevel === 0) {
+        activeRecord = undefined;
+        const argumentType = this.readMetadataString(
+          row.argumentType,
+          index,
+          'argumentType'
+        ).toUpperCase();
+        if (this.isCollectionType(argumentType, row.plsqlTypecode)) {
+          throw new ServerError(
+            `Oracle collection argument at metadata row ${index + 1} is not supported`
+          );
+        }
+        if (!this.isRecordType(row)) {
+          preparedRows.push(row);
+          continue;
+        }
+
+        this.assertRecordVersionSupport();
+        activeRecord = this.createRecordMetadata(row, index);
+        preparedRows.push({ ...row, size: null, structuredType: activeRecord });
+        continue;
+      }
+
+      if (!activeRecord) {
+        throw new ServerError(
+          `Oracle nested argument metadata row ${index + 1} has no package RECORD parent`
+        );
+      }
+      if (dataLevel !== 1) {
+        throw new ServerError(
+          `Oracle nested RECORD fields are not supported (metadata row ${index + 1})`
+        );
+      }
+      activeRecord.fields.push(this.createRecordFieldMetadata(row, index));
+    }
+
+    for (const [index, row] of preparedRows.entries()) {
+      const structuredType = row.structuredType;
+      if (
+        structuredType !== null &&
+        typeof structuredType === 'object' &&
+        !Array.isArray(structuredType) &&
+        (structuredType as { kind?: unknown }).kind === 'oracle-record' &&
+        (structuredType as IProcedureStructuredType).fields.length === 0
+      ) {
+        throw new ServerError(
+          `Oracle package RECORD at prepared metadata row ${index + 1} has no fields`
+        );
+      }
+    }
+    return preparedRows;
+  }
+
+  protected override createProcedureResult<
+    TRow,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
+    cursorsNames: Array<string>,
+    outBindings: Array<IProcedureOutBinding>,
+    executeResult: { result?: unknown }
+  ): Promise<IProcedureResult<TRow, TOut>> {
+    return this.resultMaterializer.materialize<TRow, TOut>(
+      cursorsNames,
+      outBindings,
+      executeResult.result
+    );
+  }
+
+  private assertNoPersistentTimeZoneOverride(commands: Array<string>): void {
+    const timeZoneCommand = commands.find(
+      (command) =>
+        /\bALTER\s+SESSION\b/i.test(command) && /\bTIME_ZONE\b/i.test(command)
+    );
+    if (timeZoneCommand) {
+      throw new ServerError(
+        'Oracle optionsCommands cannot override TIME_ZONE because ALTER SESSION state persists after the connection returns to the pool. Configure sessionTimeZone instead.'
+      );
+    }
   }
 
   private replacePackageNamePlaceholder(
@@ -259,73 +337,158 @@ export class OracleAdapter extends DatabaseAdapter<
     return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
   }
 
-  /**
-   * Handles an Oracle query stream and returns the results as an array.
-   * The stream is automatically destroyed when the function returns.
-   * @param stream - Oracle query stream to handle
-   * @returns Promise that resolves with the results of the stream as an array
-   */
-  private async handleQueryStream<T>(
-    stream: oracledb.QueryStream<T>
-  ): Promise<Array<T>> {
-    const results: Array<T> = [];
-    try {
-      await finished(
-        stream.on('data', (row: T) => {
-          results.push(row);
-        })
+  private createRecordMetadata(
+    row: Record<string, unknown>,
+    index: number
+  ): IProcedureStructuredType {
+    const owner = this.readMetadataString(row.typeOwner, index, 'typeOwner');
+    const packageName = this.readMetadataString(
+      row.typeName,
+      index,
+      'typeName'
+    );
+    const typeName = this.readMetadataString(
+      row.typeSubname,
+      index,
+      'typeSubname'
+    );
+    if (
+      owner.includes('%ROWTYPE') ||
+      packageName.includes('%ROWTYPE') ||
+      typeName.includes('%ROWTYPE')
+    ) {
+      throw new ServerError(
+        'Oracle PL/SQL %ROWTYPE arguments are not supported'
       );
-    } finally {
-      if (!stream.destroyed) {
-        stream.destroy();
-      }
     }
-
-    return results;
+    SqlIdentifier.validateIdentifier(owner, 'oracle record owner');
+    SqlIdentifier.validateIdentifier(packageName, 'oracle record package');
+    SqlIdentifier.validateIdentifier(typeName, 'oracle record type');
+    return {
+      kind: 'oracle-record',
+      owner,
+      packageName,
+      typeName,
+      fields: [],
+    };
   }
 
-  /**
-   * Fetches all the cursors from the given result set.
-   *
-   * Oracle returns REF CURSOR values as ResultSet instances. This method reads
-   * each result set as a query stream and concatenates the rows.
-   *
-   * @param cursorsNames - output cursor names from procedure metadata.
-   * @param result - result sets containing cursor rows.
-   * @returns rows fetched from all cursors.
-   */
-  protected override async fetchAllCursors<T>(
-    cursorsNames: Array<string>,
-    executeResult: {
-      result?:
-        | Array<oracledb.ResultSet<T>>
-        | Record<string, oracledb.ResultSet<T>>;
-    }
-  ): Promise<Array<T>> {
-    const cursorResults: Array<T> = [];
-    const pendingResultSets = this.getResultSets<T>(
-      executeResult.result ? Object.values(executeResult.result) : []
+  private createRecordFieldMetadata(
+    row: Record<string, unknown>,
+    index: number
+  ): IProcedureStructuredField {
+    const name = this.readMetadataString(
+      row.argumentName,
+      index,
+      'argumentName'
     );
-    try {
-      if (!executeResult.result || Array.isArray(executeResult.result)) {
-        throw new ServerError(
-          'Oracle cursor out binds must be returned by name'
-        );
-      }
-      for (const cursorName of cursorsNames) {
-        const resultSet = executeResult.result[cursorName];
-        if (!this.isResultSet<T>(resultSet)) {
-          throw new ServerError(
-            `Oracle cursor "${cursorName}" was not returned`
-          );
-        }
-        const stream = resultSet.toQueryStream();
-        pendingResultSets.delete(resultSet);
-        cursorResults.push(...(await this.handleQueryStream<T>(stream)));
-      }
-    } finally {
-      await this.closePendingResultSets<T>(pendingResultSets);
+    const argumentType = this.readMetadataString(
+      row.argumentType,
+      index,
+      'argumentType'
+    ).toUpperCase();
+    const order = this.readMetadataInteger(row.sequence, index, {
+      name: 'sequence',
+      minimum: 0,
+    });
+    SqlIdentifier.validateIdentifier(name, 'oracle record field');
+    if (
+      OracleAdapter.UNSUPPORTED_RECORD_FIELD_TYPES.has(argumentType) ||
+      argumentType.includes('%ROWTYPE') ||
+      row.typeOwner != null ||
+      row.typeName != null ||
+      row.typeSubname != null
+    ) {
+      throw new ServerError(
+        `Oracle RECORD field "${name}" uses unsupported type ${argumentType}`
+      );
     }
-    return cursorResults;
+    return { name, argumentType, order };
+  }
+
+  private isRecordType(row: Record<string, unknown>): boolean {
+    const typeCode =
+      typeof row.plsqlTypecode === 'string'
+        ? row.plsqlTypecode.trim().toUpperCase()
+        : undefined;
+    return typeCode === 'RECORD';
+  }
+
+  private isCollectionType(
+    argumentType: string,
+    rawTypeCode: unknown
+  ): boolean {
+    const typeCode =
+      typeof rawTypeCode === 'string'
+        ? rawTypeCode.trim().toUpperCase()
+        : undefined;
+    return (
+      typeCode === 'COLLECTION' ||
+      argumentType === 'PL/SQL TABLE' ||
+      argumentType === 'TABLE' ||
+      argumentType === 'VARRAY'
+    );
+  }
+
+  private readMetadataString(
+    value: unknown,
+    index: number,
+    name: string
+  ): string {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new ServerError(
+        `Invalid Oracle metadata row ${index + 1}: ${name} must be a non-empty string`
+      );
+    }
+    return value.trim();
+  }
+
+  private readMetadataInteger(
+    value: unknown,
+    index: number,
+    options: { name: string; minimum: number }
+  ): number {
+    const parsed =
+      typeof value === 'number' ||
+      (typeof value === 'string' && value.trim().length > 0)
+        ? Number(value)
+        : Number.NaN;
+    if (!Number.isSafeInteger(parsed) || parsed < options.minimum) {
+      throw new ServerError(
+        `Invalid Oracle metadata row ${index + 1}: ${options.name} must be a safe integer greater than or equal to ${options.minimum}`
+      );
+    }
+    return parsed;
+  }
+
+  private assertRecordVersionSupport(): void {
+    const databaseVersion = this.appDataSource.driver.version;
+    if (!this.isSupportedRecordVersion(databaseVersion)) {
+      throw new ServerError(
+        `Oracle PL/SQL RECORD requires Oracle Database 12.1 or newer; detected ${databaseVersion ?? 'unknown'}`
+      );
+    }
+    if (
+      !oracledb.thin &&
+      !this.isSupportedRecordVersion(oracledb.oracleClientVersionString)
+    ) {
+      throw new ServerError(
+        `Oracle PL/SQL RECORD requires Oracle Client 12.1 or newer; detected ${oracledb.oracleClientVersionString}`
+      );
+    }
+  }
+
+  private isSupportedRecordVersion(version: string | undefined): boolean {
+    if (!version) return false;
+    const [majorText, minorText = '0'] = version.split('.');
+    const major = Number(majorText);
+    const minor = Number(minorText);
+    if (!Number.isSafeInteger(major) || !Number.isSafeInteger(minor)) {
+      return false;
+    }
+    const [minimumMajor, minimumMinor] = OracleAdapter.MINIMUM_RECORD_VERSION;
+    return (
+      major > minimumMajor || (major === minimumMajor && minor >= minimumMinor)
+    );
   }
 }

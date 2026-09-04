@@ -1,7 +1,4 @@
-import type oracledb from 'oracledb';
-import type { PoolClient } from 'pg';
-
-import type { TFunction } from '../../types/utility.types.js';
+import type { QueryResult } from './QueryResult.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { QueryParameterValues } from '../driver/QueryParameters.js';
@@ -9,7 +6,6 @@ import type { SqlInMemory } from '../driver/SqlInMemory.js';
 import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
 import type { ReplicationMode } from '../driver/types/ReplicationMode.js';
 import type { EntityManager } from '../entity-manager/EntityManager.js';
-import type { ReadStream } from '../platform/PlatformTools.js';
 import type { Table } from '../schema-builder/table/Table.js';
 import type { TableCheck } from '../schema-builder/table/TableCheck.js';
 import type { TableColumn } from '../schema-builder/table/TableColumn.js';
@@ -19,8 +15,9 @@ import type { TableIndex } from '../schema-builder/table/TableIndex.js';
 import type { TableUnique } from '../schema-builder/table/TableUnique.js';
 import type { View } from '../schema-builder/view/View.js';
 import type { Broadcaster } from '../subscriber/Broadcaster.js';
-
-import type { QueryResult } from './QueryResult.js';
+import type oracledb from 'oracledb';
+import type { PoolClient } from 'pg';
+import type { Readable } from 'stream';
 
 /**
  * Runs queries on a single database connection.
@@ -79,6 +76,10 @@ export interface QueryRunner {
   connect(): Promise<PoolClient | oracledb.Connection>;
 
   /**
+   * Get Database version method.
+   */
+  getVersion(): Promise<string>;
+  /**
    * Called before migrations are run.
    */
   beforeMigration(): Promise<void>;
@@ -92,7 +93,7 @@ export interface QueryRunner {
    * Releases used database connection.
    * You cannot use query runner methods after connection is released.
    */
-  release(): Promise<void>;
+  release(error?: Error): Promise<void>;
 
   /**
    * Removes all tables from the currently connected database.
@@ -153,9 +154,9 @@ export interface QueryRunner {
   stream(
     query: string,
     parameters?: Array<unknown>,
-    onEnd?: TFunction,
-    onError?: TFunction
-  ): Promise<ReadStream>;
+    onEnd?: () => void | Promise<void>,
+    onError?: (error: Error) => void | Promise<void>
+  ): Promise<Readable>;
 
   /**
    * Returns all available database names including system databases.

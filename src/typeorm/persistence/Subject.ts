@@ -1,12 +1,12 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
 import type { SubjectChangeMap } from './SubjectChangeMap.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 
 /**
  * Subject is a subject of persistence.
@@ -192,7 +192,7 @@ export class Subject {
     return (
       this.canBeUpdated &&
       this.identifier &&
-      (this.databaseEntityLoaded === false ||
+      (!this.databaseEntityLoaded ||
         (this.databaseEntityLoaded && this.databaseEntity)) &&
       // ((this.entity && this.databaseEntity) || (!this.entity && !this.databaseEntity)) &&
       // ensure there are one or more changes for updatable columns
@@ -209,7 +209,7 @@ export class Subject {
     return (
       this.canBeSoftRemoved &&
       this.identifier &&
-      (this.databaseEntityLoaded === false ||
+      (!this.databaseEntityLoaded ||
         (this.databaseEntityLoaded && this.databaseEntity))
     );
   }
@@ -223,7 +223,7 @@ export class Subject {
     return (
       this.canBeRecovered &&
       this.identifier &&
-      (this.databaseEntityLoaded === false ||
+      (!this.databaseEntityLoaded ||
         (this.databaseEntityLoaded && this.databaseEntity))
     );
   }
@@ -239,64 +239,67 @@ export class Subject {
    */
   public createValueSetAndPopChangeMap(): ObjectLiteral {
     const changeMapsWithoutValues: Array<SubjectChangeMap> = [];
-    const changeSet = this.changeMaps.reduce((updateMap, changeMap) => {
-      let value: ObjectLiteral | Subject | undefined =
-        changeMap.value as Subject;
-      if (InstanceChecker.isSubject(value)) {
-        // referenced columns can refer on values both which were just inserted and which were present in the model
-        // if entity was just inserted valueSets must contain all values from the entity and values just inserted in the database
-        // so, here we check if we have a value set then we simply use it as value to get our reference column values
-        // otherwise simply use an entity which cannot be just inserted at the moment and have all necessary data
-        value = value.insertedValueSet ? value.insertedValueSet : value.entity;
-      }
-      // value = changeMap.valueFactory ? changeMap.valueFactory(value) : changeMap.column.createValueMap(value);
-
-      let valueMap: ObjectLiteral | undefined;
-      if (this.metadata.isJunction && changeMap.column) {
-        valueMap = changeMap.column.createValueMap(
-          changeMap.column.referencedColumn!.getEntityValue(
-            value as ObjectLiteral
-          )
-        );
-      } else if (changeMap.column) {
-        valueMap = changeMap.column.createValueMap(value);
-      } else if (changeMap.relation) {
-        // value can be a related object, for example: post.question = { id: 1 }
-        // or value can be a null or direct relation id, e.g. post.question = 1
-        // if its a direction relation id then we just set it to the valueMap,
-        // however if its an object then we need to extract its relation id map and set it to the valueMap
-        if (ObjectUtils.isObject(value) && !Buffer.isBuffer(value)) {
-          // get relation id, e.g. referenced column name and its value,
-          // for example: { id: 1 } which then will be set to relation, e.g. post.category = { id: 1 }
-          const relationId = changeMap.relation!.getRelationIdMap(value);
-
-          // but relation id can be empty, for example in the case when you insert a new post with category
-          // and both post and category are newly inserted objects (by cascades) and in this case category will not have id
-          // this means we need to insert post without question id and update post's questionId once question be inserted
-          // that's why we create a new changeMap operation for future updation of the post entity
-          if (relationId === undefined) {
-            changeMapsWithoutValues.push(changeMap);
-            this.canBeUpdated = true;
-            return updateMap;
-          }
-          valueMap = changeMap.relation!.createValueMap(relationId);
-          this.updatedRelationMaps.push({
-            relation: changeMap.relation,
-            value: relationId,
-          });
-        } else {
-          // value can be "null" or direct relation id here
-          valueMap = changeMap.relation!.createValueMap(value as ObjectLiteral);
-          this.updatedRelationMaps.push({
-            relation: changeMap.relation,
-            value: value as ObjectLiteral,
-          });
+    const changeSet = this.changeMaps.reduce<ObjectLiteral>(
+      (updateMap, changeMap) => {
+        let value: ObjectLiteral | Subject | undefined =
+          changeMap.value as Subject;
+        if (InstanceChecker.isSubject(value)) {
+          // referenced columns can refer on values both which were just inserted and which were present in the model
+          // if entity was just inserted valueSets must contain all values from the entity and values just inserted in the database
+          // so, here we check if we have a value set then we simply use it as value to get our reference column values
+          // otherwise simply use an entity which cannot be just inserted at the moment and have all necessary data
+          value = value.insertedValueSet
+            ? value.insertedValueSet
+            : value.entity;
         }
-      }
+        // value = changeMap.valueFactory ? changeMap.valueFactory(value) : changeMap.column.createValueMap(value);
 
-      OrmUtils.mergeDeep(updateMap, valueMap);
-      return updateMap;
-    }, {} as ObjectLiteral);
+        let valueMap: ObjectLiteral | undefined;
+        if (this.metadata.isJunction && changeMap.column) {
+          valueMap = changeMap.column.createValueMap(
+            changeMap.column.referencedColumn!.getEntityValue(value!)
+          );
+        } else if (changeMap.column) {
+          valueMap = changeMap.column.createValueMap(value);
+        } else if (changeMap.relation) {
+          // value can be a related object, for example: post.question = { id: 1 }
+          // or value can be a null or direct relation id, e.g. post.question = 1
+          // if its a direction relation id then we just set it to the valueMap,
+          // however if its an object then we need to extract its relation id map and set it to the valueMap
+          if (ObjectUtils.isObject(value) && !Buffer.isBuffer(value)) {
+            // get relation id, e.g. referenced column name and its value,
+            // for example: { id: 1 } which then will be set to relation, e.g. post.category = { id: 1 }
+            const relationId = changeMap.relation.getRelationIdMap(value);
+
+            // but relation id can be empty, for example in the case when you insert a new post with category
+            // and both post and category are newly inserted objects (by cascades) and in this case category will not have id
+            // this means we need to insert post without question id and update post's questionId once question be inserted
+            // that's why we create a new changeMap operation for future updation of the post entity
+            if (relationId === undefined) {
+              changeMapsWithoutValues.push(changeMap);
+              this.canBeUpdated = true;
+              return updateMap;
+            }
+            valueMap = changeMap.relation.createValueMap(relationId);
+            this.updatedRelationMaps.push({
+              relation: changeMap.relation,
+              value: relationId,
+            });
+          } else {
+            // value can be "null" or direct relation id here
+            valueMap = changeMap.relation.createValueMap(value);
+            this.updatedRelationMaps.push({
+              relation: changeMap.relation,
+              value: value as ObjectLiteral,
+            });
+          }
+        }
+
+        OrmUtils.mergeDeep(updateMap, valueMap);
+        return updateMap;
+      },
+      {}
+    );
     this.changeMaps = changeMapsWithoutValues;
     return changeSet;
   }
@@ -310,9 +313,8 @@ export class Subject {
       if (this.parentSubject) {
         this.metadata.primaryColumns.forEach((primaryColumn) => {
           if (
-            primaryColumn.relationMetadata &&
-            primaryColumn.relationMetadata.inverseEntityMetadata ===
-              this.parentSubject!.metadata
+            primaryColumn.relationMetadata?.inverseEntityMetadata ===
+            this.parentSubject!.metadata
           ) {
             const value = primaryColumn.referencedColumn!.getEntityValue(
               this.parentSubject!.entity!

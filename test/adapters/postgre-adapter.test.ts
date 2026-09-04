@@ -1,17 +1,51 @@
-import { describe, expect, it } from 'vitest';
+import { types as pgTypes } from 'pg';
+import { describe, expect, it, vi } from 'vitest';
 
 import { PostgreAdapter } from '../../src/adapters/postgres/postgre-adapter.js';
+import { PostgresQueryRunner } from '../../src/typeorm/driver/postgres/PostgresQueryRunner.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
-function createPostgreAdapter(): PostgreAdapter {
+import type { IProcedureStructuredType } from '../../src/types/procedure.types.js';
+import type { FieldDef } from 'pg';
+
+const profileStructuredType = {
+  kind: 'postgres-composite',
+  schema: 'pkg',
+  typeName: 'profile_type',
+  typeOid: 16_384,
+  fields: [
+    {
+      name: 'first_name',
+      argumentType: 'text',
+      order: 1,
+      typeOid: pgTypes.builtins.TEXT,
+    },
+    {
+      name: 'created_at',
+      argumentType: 'timestamp with time zone',
+      order: 2,
+      typeOid: pgTypes.builtins.TIMESTAMPTZ,
+    },
+    {
+      name: 'tags',
+      argumentType: 'text[]',
+      order: 3,
+      typeOid: 1009,
+    },
+  ],
+} satisfies IProcedureStructuredType;
+
+function createPostgreAdapter(
+  transformColumnName: (value: string) => string = (value) => value
+): PostgreAdapter {
   return new PostgreAdapter(
     { options: { replication: { master: {} } } } as never,
     createLogger(),
     {
       isNeedRegisterDefaultSerializers: false,
       caseStrategy: {
-        transformColumnName: (value: string): string => value,
+        transformColumnName,
       },
     }
   );
@@ -23,7 +57,14 @@ describe('PostgreAdapter', (): void => {
 
     const sql = adapter.generatePackageInfoSql('Public');
 
-    expect(sql).toContain("proc.specific_schema = 'public'");
+    expect(sql).toContain("procedure_namespace.nspname = 'public'");
+    expect(sql).toContain("proc.prokind = 'p'");
+    expect(sql).toContain(`proc.proname || '_' || proc.oid AS "specific_name"`);
+    expect(sql).toContain('pg_catalog.pg_type composite_type');
+    expect(sql).toContain('pg_catalog.pg_attribute field');
+    expect(sql).toContain(`'postgres-composite'`);
+    expect(sql).toContain("'__tpk_no_argument__'");
+    expect(sql).toContain('LIMIT 10001');
     expect(sql).not.toContain(':PACKAGE_NAME');
     expect((): void => {
       adapter.generatePackageInfoSql('public;drop');
@@ -44,6 +85,95 @@ describe('PostgreAdapter', (): void => {
     expect((): void => {
       adapter.generatePackageInfoSql('public', 'select * from custom_args');
     }).toThrow(ServerError);
+  });
+
+  it('prepares named composite and table-row metadata for the shared decoder', (): void => {
+    const adapter = createPostgreAdapter();
+    const fields = profileStructuredType.fields;
+
+    expect(
+      adapter.prepareProcedureMetadataRows([
+        {
+          order: 1,
+          argumentName: 'p_profile',
+          argumentType: 'pkg.profile_type',
+          mode: 'IN',
+          procedureName: 'consume_profile',
+          specificName: 'consume_profile_10',
+          structuredKind: 'postgres-composite',
+          structuredSchema: 'pkg',
+          structuredTypeName: 'profile_type',
+          structuredTypeOid: '16384',
+          structuredFields: fields,
+        },
+        {
+          order: 2,
+          argumentName: 'out_row',
+          argumentType: 'pkg.account_row',
+          mode: 'OUT',
+          procedureName: 'consume_profile',
+          specificName: 'consume_profile_10',
+          structuredKind: 'postgres-composite',
+          structuredSchema: 'pkg',
+          structuredTypeName: 'account_row',
+          structuredTypeOid: '16385',
+          structuredFields: [
+            {
+              name: 'id',
+              argumentType: 'integer',
+              order: 1,
+              typeOid: String(pgTypes.builtins.INT4),
+            },
+          ],
+        },
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        structuredType: {
+          kind: 'postgres-composite',
+          schema: 'pkg',
+          typeName: 'profile_type',
+          typeOid: '16384',
+          fields,
+        },
+      }),
+      expect.objectContaining({
+        structuredType: {
+          kind: 'postgres-composite',
+          schema: 'pkg',
+          typeName: 'account_row',
+          typeOid: '16385',
+          fields: [
+            {
+              name: 'id',
+              argumentType: 'integer',
+              order: 1,
+              typeOid: String(pgTypes.builtins.INT4),
+            },
+          ],
+        },
+      }),
+    ]);
+  });
+
+  it('rejects dynamic RECORD metadata', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect(() =>
+      adapter.prepareProcedureMetadataRows([
+        {
+          order: 1,
+          argumentName: 'p_value',
+          argumentType: 'record',
+          mode: 'IN',
+          procedureName: 'consume_record',
+          specificName: 'consume_record_10',
+          structuredKind: null,
+        },
+      ])
+    ).toThrow(
+      'Dynamic PostgreSQL RECORD arguments are not supported; use a named composite type'
+    );
   });
 
   it('sorts procedure arguments and skips unrelated packages', (): void => {
@@ -91,9 +221,131 @@ describe('PostgreAdapter', (): void => {
     });
   });
 
+  it('strictly filters procedure metadata by the configured allowlist', (): void => {
+    const adapter = createPostgreAdapter();
+
+    const procedures = adapter.sortArgumentsAlgorithm(
+      [
+        {
+          procedureName: 'Ping',
+          argumentName: '__tpk_no_argument__',
+          argumentType: 'void',
+          order: 0,
+          mode: 'IN',
+          specificName: 'ping_100',
+        },
+        {
+          procedureName: 'Unlisted',
+          argumentName: '__tpk_no_argument__',
+          argumentType: 'void',
+          order: 0,
+          mode: 'IN',
+          specificName: 'unlisted_101',
+        },
+      ],
+      ['pkg.ping'],
+      'pkg',
+      1
+    );
+    expect(procedures).toEqual({ ping: [] });
+    expect(
+      adapter.sortArgumentsAlgorithm(
+        [
+          {
+            procedureName: 'Ping',
+            argumentName: '__tpk_no_argument__',
+            argumentType: 'void',
+            order: 0,
+            mode: 'IN',
+            specificName: 'ping_100',
+          },
+          {
+            procedureName: 'Unlisted',
+            argumentName: '__tpk_no_argument__',
+            argumentType: 'void',
+            order: 0,
+            mode: 'IN',
+            specificName: 'unlisted_101',
+          },
+        ],
+        ['pkg.ping'],
+        'pkg',
+        2
+      )
+    ).toEqual({ ping: [] });
+    expect(adapter.makeBindings('pkg', 'ping', procedures)).toMatchObject({
+      paramExecuteString: 'CALL "pkg"."ping"()',
+      bindings: [],
+      cursorsNames: [],
+    });
+    expect(() =>
+      adapter.sortArgumentsAlgorithm(
+        [
+          {
+            procedureName: 'Run',
+            argumentName: 'value',
+            argumentType: 'int4',
+            order: 1,
+            mode: 'IN',
+            specificName: 'run_1',
+          },
+          {
+            procedureName: 'Run',
+            argumentName: 'value',
+            argumentType: 'text',
+            order: 1,
+            mode: 'IN',
+            specificName: 'run_2',
+          },
+        ],
+        ['pkg.run'],
+        'pkg',
+        1
+      )
+    ).toThrow('is overloaded');
+  });
+
   it('creates procedure bindings from object payloads and refcursors', (): void => {
     const adapter = createPostgreAdapter();
 
+    const result = adapter.makeBindings(
+      'pkg',
+      'run',
+      {
+        run: [
+          { argumentName: 'p_id', argumentType: 'int', order: 1, mode: 'IN' },
+          {
+            argumentName: 'items',
+            argumentType: 'varchar[]',
+            order: 2,
+            mode: 'IN',
+          },
+          {
+            argumentName: 'out_cursor',
+            argumentType: 'refcursor',
+            order: 3,
+            mode: 'OUT',
+          },
+        ],
+      },
+      {
+        id: 7,
+        items: ['a', 'b'],
+      }
+    );
+    expect(result).toMatchObject({
+      paramExecuteString: 'CALL "pkg"."run"($1,$2,$3)',
+      bindings: [7, ['a', 'b'], null],
+      cursorsNames: ['out_cursor'],
+      outNames: ['out_cursor'],
+      outBindings: [
+        {
+          name: 'out_cursor',
+          type: 'cursor',
+          databaseType: 'refcursor',
+        },
+      ],
+    });
     expect(
       adapter.makeBindings(
         'pkg',
@@ -101,37 +353,311 @@ describe('PostgreAdapter', (): void => {
         {
           run: [
             { argumentName: 'p_id', argumentType: 'int', order: 1, mode: 'IN' },
+          ],
+        },
+        { id: undefined, p_id: 8 }
+      ).bindings
+    ).toEqual([8]);
+  });
+
+  it('builds parameterized named-composite bindings for IN, INOUT, and OUT', (): void => {
+    const adapter = createPostgreAdapter();
+    const createdAt = new Date('2026-01-02T03:04:05.678Z');
+
+    const result = adapter.makeBindings(
+      'pkg',
+      'transform_profile',
+      {
+        transform_profile: [
+          {
+            argumentName: 'p_input',
+            argumentType: 'pkg.profile_type',
+            order: 1,
+            mode: 'IN',
+            structuredType: profileStructuredType,
+          },
+          {
+            argumentName: 'p_state',
+            argumentType: 'pkg.profile_type',
+            order: 2,
+            mode: 'IN/OUT',
+            structuredType: profileStructuredType,
+          },
+          {
+            argumentName: 'out_profile',
+            argumentType: 'pkg.profile_type',
+            order: 3,
+            mode: 'OUT',
+            structuredType: profileStructuredType,
+          },
+        ],
+      },
+      {
+        input: {
+          first_name: `O'Reilly, (safe) $1`,
+          created_at: createdAt,
+          tags: ['one', 'two,three'],
+        },
+        state: { first_name: 'before' },
+      }
+    );
+
+    expect(result.paramExecuteString).toContain(
+      'jsonb_populate_record(NULL::"pkg"."profile_type", $1::jsonb)'
+    );
+    expect(result.paramExecuteString).toContain(
+      'jsonb_populate_record(NULL::"pkg"."profile_type", $2::jsonb)'
+    );
+    expect(result.paramExecuteString).toContain('NULL::"pkg"."profile_type")');
+    expect(result.paramExecuteString).not.toContain("O'Reilly");
+    expect(
+      (result.bindings as Array<string>).map((value) => JSON.parse(value))
+    ).toEqual([
+      {
+        first_name: `O'Reilly, (safe) $1`,
+        created_at: createdAt.toISOString(),
+        tags: ['one', 'two,three'],
+      },
+      { first_name: 'before', created_at: null, tags: null },
+    ]);
+    expect(result.outBindings).toEqual([
+      {
+        name: 'p_state',
+        type: 'object',
+        databaseType: 'pkg.profile_type',
+        structuredType: profileStructuredType,
+      },
+      {
+        name: 'out_profile',
+        type: 'object',
+        databaseType: 'pkg.profile_type',
+        structuredType: profileStructuredType,
+      },
+    ]);
+  });
+
+  it('normalizes composite nulls and rejects unknown or conflicting fields', (): void => {
+    const adapter = createPostgreAdapter((value) =>
+      value.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      )
+    );
+    const procedures = {
+      run: [
+        {
+          argumentName: 'p_profile',
+          argumentType: 'pkg.profile_type',
+          order: 1,
+          mode: 'IN' as const,
+          structuredType: profileStructuredType,
+        },
+      ],
+    };
+
+    expect(adapter.makeBindings('pkg', 'run', procedures, null)).toMatchObject({
+      bindings: [null],
+    });
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { firstName: 'safe', unknown: true },
+      })
+    ).toThrow('Unknown field "unknown"');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { first_name: 'raw', firstName: 'transformed' },
+      })
+    ).toThrow('Conflicting fields');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { firstName: 'one' },
+        p_profile: { firstName: 'two' },
+      })
+    ).toThrow('Conflicting PostgreSQL procedure payload keys');
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, { profile: [] })
+    ).toThrow('must be a plain object or null');
+  });
+
+  it('passes scalar arrays natively and rejects unsupported composite shapes', (): void => {
+    const adapter = createPostgreAdapter();
+    const scalarArrayProcedures = {
+      run: [
+        {
+          argumentName: 'items',
+          argumentType: 'text[]',
+          order: 1,
+          mode: 'IN' as const,
+        },
+      ],
+    };
+
+    const values = ['a,b', '(quoted)', '"value"'];
+    expect(
+      adapter.makeBindings('pkg', 'run', scalarArrayProcedures, {
+        items: values,
+      }).bindings
+    ).toEqual([values]);
+
+    const compositeArrayProcedures = {
+      run: [
+        {
+          argumentName: 'profiles',
+          argumentType: 'pkg.profile_type[]',
+          order: 1,
+          mode: 'IN' as const,
+          structuredType: profileStructuredType,
+        },
+      ],
+    };
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', compositeArrayProcedures, {
+        profiles: [],
+      })
+    ).toThrow('PostgreSQL composite arrays are not supported');
+
+    const nestedType = {
+      ...profileStructuredType,
+      fields: [
+        {
+          name: 'nested',
+          argumentType: 'pkg.child_type',
+          order: 1,
+          schema: 'pkg',
+          typeName: 'child_type',
+        },
+      ],
+    } satisfies IProcedureStructuredType;
+    expect(() =>
+      adapter.makeBindings(
+        'pkg',
+        'run',
+        {
+          run: [
             {
-              argumentName: 'items',
-              argumentType: 'varchar',
-              order: 2,
+              argumentName: 'profile',
+              argumentType: 'pkg.profile_type',
+              order: 1,
               mode: 'IN',
-            },
-            {
-              argumentName: 'out_cursor',
-              argumentType: 'refcursor',
-              order: 3,
-              mode: 'OUT',
+              structuredType: nestedType,
             },
           ],
         },
-        {
-          id: 7,
-          items: ['a', 'b'],
-        }
+        { profile: { nested: {} } }
       )
-    ).toEqual({
-      paramExecuteString: 'CALL "pkg"."run"($1,$2,$3)',
-      bindings: [7, 'a,b', 'out_cursor'],
-      cursorsNames: ['out_cursor'],
-    });
+    ).toThrow('Nested PostgreSQL composites are not supported');
+  });
+
+  it('rejects unsafe metadata-derived composite identifiers', (): void => {
+    const adapter = createPostgreAdapter();
+    const procedures = {
+      run: [
+        {
+          argumentName: 'profile',
+          argumentType: 'pkg.profile_type',
+          order: 1,
+          mode: 'IN' as const,
+          structuredType: {
+            ...profileStructuredType,
+            schema: 'pkg"; SELECT pg_sleep(10); --',
+          },
+        },
+      ],
+    };
+
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        profile: { first_name: 'safe' },
+      })
+    ).toThrow('Unsafe SQL identifier');
+  });
+
+  it('generates missing IN/OUT cursor names, preserves explicit names, and rejects unnamed portals', (): void => {
+    const adapter = createPostgreAdapter();
+    const procedures = {
+      run: [
+        {
+          argumentName: 'in_cursor',
+          argumentType: 'refcursor',
+          order: 1,
+          mode: 'IN' as const,
+        },
+        {
+          argumentName: 'inout_cursor',
+          argumentType: 'REFCURSOR',
+          order: 2,
+          mode: 'IN/OUT' as const,
+        },
+        {
+          argumentName: 'out_cursor',
+          argumentType: 'refcursor',
+          order: 3,
+          mode: 'OUT' as const,
+        },
+      ],
+    };
+
+    const generated = adapter.makeBindings('pkg', 'run', procedures);
+    expect(generated.bindings).toEqual([
+      expect.stringMatching(/^tpk_[0-9a-f_]+$/),
+      expect.stringMatching(/^tpk_[0-9a-f_]+$/),
+      null,
+    ]);
+    expect(generated.cursorsNames).toEqual(['inout_cursor', 'out_cursor']);
+
+    expect(
+      adapter.makeBindings('pkg', 'run', procedures, {
+        in_cursor: 'input_portal',
+        inout_cursor: 'portal"quoted',
+      }).bindings
+    ).toEqual(['input_portal', 'portal"quoted', null]);
+    expect(
+      (
+        adapter.makeBindings('pkg', 'run', procedures, {
+          inout_cursor: 'x'.repeat(63),
+        }).bindings as Array<unknown>
+      )[1]
+    ).toBe('x'.repeat(63));
+    expect(
+      (
+        adapter.makeBindings('pkg', 'run', procedures, {
+          inout_cursor: `${'я'.repeat(31)}a`,
+        }).bindings as Array<unknown>
+      )[1]
+    ).toBe(`${'я'.repeat(31)}a`);
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        inout_cursor: '<unnamed portal 1>',
+      })
+    ).toThrow('Unsafe PostgreSQL portal name');
+    const oversizedPortal = `secret_${'x'.repeat(57)}`;
+    try {
+      adapter.makeBindings('pkg', 'run', procedures, {
+        inout_cursor: oversizedPortal,
+      });
+      throw new Error('Expected oversized portal name to be rejected');
+    } catch (error: unknown) {
+      expect((error as Error).message).toContain(
+        'Unsafe PostgreSQL portal name'
+      );
+      expect((error as Error).message).not.toContain(oversizedPortal);
+    }
+    expect(() =>
+      adapter.makeBindings('pkg', 'run', procedures, {
+        inout_cursor: `${'я'.repeat(31)}ab`,
+      })
+    ).toThrow('Unsafe PostgreSQL portal name');
   });
 
   it('creates procedure bindings from array payloads and rejects scalar payloads', (): void => {
     const adapter = createPostgreAdapter();
     const procedures = {
       run: [
-        { argumentName: 'p_id', argumentType: 'int', order: 1, mode: 'IN' },
+        {
+          argumentName: 'p_id',
+          argumentType: 'int',
+          order: 1,
+          mode: 'IN' as const,
+        },
       ],
     };
 
@@ -144,6 +670,684 @@ describe('PostgreAdapter', (): void => {
     expect((): void => {
       adapter.makeBindings('pkg', 'missing', procedures);
     }).toThrow(ServerError);
+  });
+
+  it('supports an explicitly named pure OUT portal and preserves metadata order', async (): Promise<void> => {
+    const adapter = createPostgreAdapter();
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_status: 2, out_cursor: 'out_cursor' }])
+      .mockResolvedValueOnce([{ id: 1 }, { id: 2 }])
+      .mockResolvedValueOnce([]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure<{ id: number }>(
+        'CALL "pkg"."run"($1,$2)',
+        manager as never,
+        [],
+        [null, null],
+        ['out_cursor'],
+        [
+          { name: 'out_status', type: 'scalar', databaseType: 'integer' },
+          { name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' },
+        ]
+      )
+    ).resolves.toEqual({
+      rows: [{ id: 1 }, { id: 2 }],
+      outBinds: {
+        out_status: 2,
+        out_cursor: [{ id: 1 }, { id: 2 }],
+      },
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'FETCH FORWARD 1000 FROM "out_cursor"'
+    );
+    expect(query).toHaveBeenNthCalledWith(3, 'CLOSE "out_cursor"');
+  });
+
+  it('materializes multiple composite outputs in one typed JSON batch', async (): Promise<void> => {
+    const adapter = createPostgreAdapter((value) =>
+      value.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      )
+    );
+    adapter.setSerializer({
+      serializerType: 'TIMESTAMP_TZ',
+      strategy: ({ value, context }) =>
+        `${value.toString()}:${context?.name ?? 'unknown'}`,
+    });
+    const accountStructuredType = {
+      kind: 'postgres-composite',
+      schema: 'pkg',
+      typeName: 'account_row',
+      typeOid: 16_385,
+      fields: [
+        {
+          name: 'account_id',
+          argumentType: 'integer',
+          order: 1,
+          typeOid: pgTypes.builtins.INT4,
+        },
+        {
+          name: 'display_name',
+          argumentType: 'text',
+          order: 2,
+          typeOid: pgTypes.builtins.TEXT,
+        },
+      ],
+    } satisfies IProcedureStructuredType;
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { p_state: '(raw-profile)', out_row: '(raw-table-row)' },
+      ])
+      .mockResolvedValueOnce([
+        {
+          tpk_composite_0: JSON.stringify({
+            first_name: 'Ada',
+            created_at: '2026-01-02T03:04:05.678+00:00',
+            tags: ['one', 'two'],
+          }),
+          tpk_composite_1: JSON.stringify({
+            account_id: 42,
+            display_name: 'table row',
+          }),
+        },
+      ]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    try {
+      await expect(
+        adapter.executeProcedure(
+          'CALL "pkg"."transform_profile"($1,NULL::"pkg"."account_row")',
+          manager as never,
+          [],
+          ['input'],
+          [],
+          [
+            {
+              name: 'p_state',
+              type: 'object',
+              databaseType: 'pkg.profile_type',
+              structuredType: profileStructuredType,
+            },
+            {
+              name: 'out_row',
+              type: 'object',
+              databaseType: 'pkg.account_row',
+              structuredType: accountStructuredType,
+            },
+          ]
+        )
+      ).resolves.toEqual({
+        rows: [],
+        outBinds: {
+          pState: {
+            firstName: 'Ada',
+            createdAt: '2026-01-02T03:04:05.678+00:00:createdAt',
+            tags: ['one', 'two'],
+          },
+          outRow: { accountId: 42, displayName: 'table row' },
+        },
+      });
+      expect(query).toHaveBeenNthCalledWith(
+        2,
+        'SELECT to_jsonb($1::"pkg"."profile_type")::text AS "tpk_composite_0", to_jsonb($2::"pkg"."account_row")::text AS "tpk_composite_1"',
+        ['(raw-profile)', '(raw-table-row)']
+      );
+    } finally {
+      adapter.deleteAllSerializers();
+    }
+  });
+
+  it('preserves composite nulls and applies output resource limits', async (): Promise<void> => {
+    const nullAdapter = createPostgreAdapter();
+    const nullQuery = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_profile: null }])
+      .mockResolvedValueOnce([{ tpk_composite_0: null }]);
+    const nullManager = {
+      query: nullQuery,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(nullManager)
+      ),
+    };
+    const compositeBinding = {
+      name: 'out_profile',
+      type: 'object' as const,
+      databaseType: 'pkg.profile_type',
+      structuredType: profileStructuredType,
+    };
+
+    await expect(
+      nullAdapter.executeProcedure(
+        'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
+        nullManager as never,
+        [],
+        [],
+        [],
+        [compositeBinding]
+      )
+    ).resolves.toEqual({ rows: [], outBinds: { out_profile: null } });
+    expect(nullQuery).toHaveBeenNthCalledWith(
+      2,
+      'SELECT to_jsonb($1::"pkg"."profile_type")::text AS "tpk_composite_0"',
+      [null]
+    );
+
+    const limitedAdapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      createLogger(),
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: { transformColumnName: (value: string) => value },
+        resourceLimits: {
+          maxProcedureRows: 10,
+          maxProcedureBytes: 8,
+          maxMetadataRows: 100,
+          maxLobBytes: 100,
+          maxNotificationQueue: 10,
+          maxNotificationRows: 10,
+        },
+      }
+    );
+    const limitedQuery = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_profile: '(large)' }])
+      .mockResolvedValueOnce([
+        {
+          tpk_composite_0: JSON.stringify({
+            first_name: 'too large',
+            created_at: null,
+            tags: null,
+          }),
+        },
+      ]);
+    const limitedManager = {
+      query: limitedQuery,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(limitedManager)
+      ),
+    };
+
+    await expect(
+      limitedAdapter.executeProcedure(
+        'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
+        limitedManager as never,
+        [],
+        [],
+        [],
+        [compositeBinding]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureBytes (8)');
+  });
+
+  it('rejects unexpected and case-colliding composite output fields', async (): Promise<void> => {
+    const adapter = createPostgreAdapter((value) =>
+      value.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      )
+    );
+    const executeWithFields = async (
+      structuredType: IProcedureStructuredType,
+      fields: Record<string, unknown>
+    ): Promise<unknown> => {
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce([{ out_profile: '(raw)' }])
+        .mockResolvedValueOnce([{ tpk_composite_0: JSON.stringify(fields) }]);
+      const manager = {
+        query,
+        transaction: vi.fn(
+          async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+            execute(manager)
+        ),
+      };
+      return adapter.executeProcedure(
+        'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
+        manager as never,
+        [],
+        [],
+        [],
+        [
+          {
+            name: 'out_profile',
+            type: 'object',
+            databaseType: 'pkg.profile_type',
+            structuredType,
+          },
+        ]
+      );
+    };
+
+    await expect(
+      executeWithFields(profileStructuredType, {
+        first_name: 'Ada',
+        created_at: null,
+        tags: [],
+        unexpected: true,
+      })
+    ).rejects.toThrow('Unknown field "unexpected"');
+    await expect(
+      executeWithFields(
+        {
+          ...profileStructuredType,
+          fields: [
+            { name: 'first_name', argumentType: 'text', order: 1 },
+            { name: 'firstName', argumentType: 'text', order: 2 },
+          ],
+        },
+        { first_name: 'first', firstName: 'second' }
+      )
+    ).rejects.toThrow('conflicting transformed field "firstName"');
+  });
+
+  it('preserves a QueryRunner refcursor field through adapter FETCH and CLOSE', async (): Promise<void> => {
+    const databaseQuery = vi.fn(async (sql: string) => {
+      if (sql.startsWith('CALL')) {
+        return {
+          command: 'CALL',
+          rowCount: 1,
+          rows: [{ OUT_CURSOR: 'runner_portal' }],
+          fields: [
+            {
+              name: 'OUT_CURSOR',
+              dataTypeID: pgTypes.builtins.REFCURSOR,
+            },
+          ],
+        };
+      }
+      if (sql.startsWith('FETCH')) {
+        return {
+          command: 'FETCH',
+          rowCount: 1,
+          rows: [{ ID: 7 }],
+          fields: [{ name: 'ID', dataTypeID: pgTypes.builtins.INT4 }],
+        };
+      }
+      return { command: 'CLOSE', rowCount: 0, rows: [], fields: [] };
+    });
+    const databaseConnection = {
+      query: databaseQuery,
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    let transformRows = (
+      rows: Array<unknown>,
+      _fields: Array<FieldDef>
+    ): Array<unknown> => rows;
+    const dataSource = {
+      logger: {
+        logQuery: vi.fn(),
+        logQueryError: vi.fn(),
+        logQuerySlow: vi.fn(),
+      },
+      subscribers: [],
+      options: { replication: { master: {} } },
+    };
+    const driver = {
+      connection: dataSource,
+      connectedQueryRunners: [],
+      isReplicated: false,
+      options: {},
+      obtainMasterConnection: vi
+        .fn()
+        .mockResolvedValue([databaseConnection, vi.fn()]),
+      configureResultHandling: vi.fn(
+        (
+          _typeOverrides: unknown,
+          transformer: (
+            rows: Array<unknown>,
+            fields: Array<FieldDef>
+          ) => Array<unknown>
+        ): void => {
+          transformRows = (rows, fields): Array<unknown> =>
+            transformer(rows, fields);
+        }
+      ),
+      transformResultRows: (
+        rows: Array<unknown>,
+        fields: Array<FieldDef>
+      ): Array<unknown> => transformRows(rows, fields),
+    };
+    Object.assign(dataSource, { driver });
+    const adapter = new PostgreAdapter(dataSource as never, createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy: {
+        transformColumnName: (value: string): string => value.toLowerCase(),
+      },
+    });
+    adapter.registerFetchHandlerHook();
+    const queryRunner = new PostgresQueryRunner(driver as never, 'master');
+    const managerQuery = <T>(
+      sql: string,
+      bindings?: Array<unknown>
+    ): Promise<T> => queryRunner.query<T>(sql, bindings);
+    const transactionManager = { query: managerQuery };
+    const manager = {
+      query: managerQuery,
+      transaction: async <T>(
+        execute: (currentManager: unknown) => Promise<T>
+      ): Promise<T> => execute(transactionManager),
+    };
+
+    await expect(
+      adapter.executeProcedure<{ id: number }>(
+        'CALL "pkg"."run"($1)',
+        manager as never,
+        [],
+        [null],
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' }]
+      )
+    ).resolves.toEqual({
+      rows: [{ id: 7 }],
+      outBinds: { out_cursor: [{ id: 7 }] },
+    });
+    expect(databaseQuery).toHaveBeenNthCalledWith(
+      2,
+      'FETCH FORWARD 1000 FROM "runner_portal"',
+      undefined
+    );
+    expect(databaseQuery).toHaveBeenNthCalledWith(
+      3,
+      'CLOSE "runner_portal"',
+      undefined
+    );
+  });
+
+  it('quotes returned portal names, closes after fetch failures, and rejects unnamed portals', async (): Promise<void> => {
+    const logger = createLogger();
+    const adapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      logger,
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: {
+          transformColumnName: (value: string): string => value,
+        },
+      }
+    );
+    const fetchError = new Error('fetch failed');
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_cursor: 'portal"safe' }])
+      .mockRejectedValueOnce(fetchError)
+      .mockResolvedValueOnce([]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1)',
+        manager as never,
+        [],
+        [null],
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' }]
+      )
+    ).rejects.toBe(fetchError);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'FETCH FORWARD 1000 FROM "portal""safe"'
+    );
+    expect(query).toHaveBeenNthCalledWith(3, 'CLOSE "portal""safe"');
+
+    const unnamedManager = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce([{ out_cursor: '<unnamed portal 2>' }])
+        .mockRejectedValueOnce(new Error('unnamed cleanup failed')),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(unnamedManager)
+      ),
+    };
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1)',
+        unnamedManager as never,
+        [],
+        [null],
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' }]
+      )
+    ).rejects.toThrow(
+      'refcursor outputs, including pure OUT, must return an explicit portal name'
+    );
+    expect(unnamedManager.query).toHaveBeenNthCalledWith(
+      2,
+      'CLOSE "<unnamed portal 2>"'
+    );
+    expect(unnamedManager.query).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Failed to close pending PostgreSQL portal: unnamed cleanup failed'
+    );
+
+    const controlManager = {
+      query: vi.fn().mockResolvedValue([{ out_cursor: 'portal\nname' }]),
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(controlManager)
+      ),
+    };
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1)',
+        controlManager as never,
+        [],
+        [null],
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' }]
+      )
+    ).rejects.toThrow('Unsafe PostgreSQL portal name');
+    expect(controlManager.query).toHaveBeenCalledOnce();
+  });
+
+  it('rejects duplicate outputs and closes every safe portal on failures', async (): Promise<void> => {
+    const adapter = createPostgreAdapter();
+    const duplicateQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { first_cursor: 'shared', second_cursor: 'shared' },
+      ])
+      .mockResolvedValueOnce([]);
+    const duplicateManager = {
+      query: duplicateQuery,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(duplicateManager)
+      ),
+    };
+    const cursorBindings = [
+      {
+        name: 'first_cursor',
+        type: 'cursor' as const,
+        databaseType: 'refcursor',
+      },
+      {
+        name: 'second_cursor',
+        type: 'cursor' as const,
+        databaseType: 'refcursor',
+      },
+    ];
+
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1,$2)',
+        duplicateManager as never,
+        [],
+        [null, null],
+        ['first_cursor', 'second_cursor'],
+        cursorBindings
+      )
+    ).rejects.toThrow('was returned for more than one cursor output');
+    expect(duplicateQuery).toHaveBeenNthCalledWith(2, 'CLOSE "shared"');
+
+    const fetchError = new Error('first fetch failed');
+    const cleanupQuery = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { first_cursor: 'first_portal', second_cursor: 'second_portal' },
+      ])
+      .mockRejectedValueOnce(fetchError)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const cleanupManager = {
+      query: cleanupQuery,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(cleanupManager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1,$2)',
+        cleanupManager as never,
+        [],
+        [null, null],
+        ['first_cursor', 'second_cursor'],
+        cursorBindings
+      )
+    ).rejects.toBe(fetchError);
+    expect(cleanupQuery).toHaveBeenNthCalledWith(
+      2,
+      'FETCH FORWARD 1000 FROM "first_portal"'
+    );
+    expect(cleanupQuery).toHaveBeenNthCalledWith(3, 'CLOSE "first_portal"');
+    expect(cleanupQuery).toHaveBeenNthCalledWith(4, 'CLOSE "second_portal"');
+    expect(cleanupQuery).toHaveBeenCalledTimes(4);
+  });
+
+  it('fetches refcursors in bounded batches and closes after a cumulative row limit error', async (): Promise<void> => {
+    const adapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      createLogger(),
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: {
+          transformColumnName: (value: string): string => value,
+        },
+        resourceLimits: {
+          maxProcedureRows: 1000,
+          maxProcedureBytes: 1_000_000,
+          maxMetadataRows: 1000,
+          maxLobBytes: 100_000,
+          maxNotificationQueue: 100,
+          maxNotificationRows: 1000,
+        },
+      }
+    );
+    const firstBatch = Array.from({ length: 1000 }, (_, id) => ({ id }));
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ out_cursor: 'bounded_cursor' }])
+      .mockResolvedValueOnce(firstBatch)
+      .mockResolvedValueOnce([{ id: 1000 }])
+      .mockResolvedValueOnce([]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1)',
+        manager as never,
+        [],
+        [null],
+        ['out_cursor'],
+        [{ name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' }]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureRows (1000)');
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'FETCH FORWARD 1000 FROM "bounded_cursor"'
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      'FETCH FORWARD 1 FROM "bounded_cursor"'
+    );
+    expect(query).toHaveBeenNthCalledWith(4, 'CLOSE "bounded_cursor"');
+  });
+
+  it('counts scalar and cursor bytes cumulatively and closes after a byte limit error', async (): Promise<void> => {
+    const adapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      createLogger(),
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: {
+          transformColumnName: (value: string): string => value,
+        },
+        resourceLimits: {
+          maxProcedureRows: 100,
+          maxProcedureBytes: 12,
+          maxMetadataRows: 100,
+          maxLobBytes: 12,
+          maxNotificationQueue: 100,
+          maxNotificationRows: 100,
+        },
+      }
+    );
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { out_status: '1234', out_cursor: 'bounded_cursor' },
+      ])
+      .mockResolvedValueOnce([{ value: '1234' }])
+      .mockResolvedValueOnce([]);
+    const manager = {
+      query,
+      transaction: vi.fn(
+        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+          execute(manager)
+      ),
+    };
+
+    await expect(
+      adapter.executeProcedure(
+        'CALL "pkg"."run"($1,$2)',
+        manager as never,
+        [],
+        ['1234', null],
+        ['out_cursor'],
+        [
+          { name: 'out_status', type: 'scalar', databaseType: 'text' },
+          { name: 'out_cursor', type: 'cursor', databaseType: 'refcursor' },
+        ]
+      )
+    ).rejects.toThrow('resourceLimits.maxProcedureBytes (12)');
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'FETCH FORWARD 101 FROM "bounded_cursor"'
+    );
+    expect(query).toHaveBeenNthCalledWith(3, 'CLOSE "bounded_cursor"');
   });
 
   it('creates SQL bindings for uppercase named parameters', (): void => {

@@ -18,7 +18,9 @@ describe('QueryTimer', (): void => {
       expect.stringContaining('SQL request [query-1] completed successfully in')
     );
     expect(logger.log.mock.calls.at(-1)?.[0]).toContain('with 2 rows');
-    expect(logger.log.mock.calls.at(-1)?.[0]).toContain('Bindings: [1]');
+    expect(logger.log.mock.calls.at(-1)?.[0]).toContain(
+      'Bindings: [REDACTED: 1 positional value(s)]'
+    );
     expect(logger.log.mock.calls.at(-1)?.[0]).not.toContain('\n');
   });
 
@@ -71,7 +73,8 @@ describe('QueryTimer', (): void => {
           'BEGIN PKG.RUN (:p_id,:p_password,:out_cursor); END;',
           logger,
           'query-1',
-          [{ val: 7 }, { val: 'secret-password' }, { dir: 3003, type: 2021 }]
+          [{ val: 7 }, { val: 'secret-password' }, { dir: 3003, type: 2021 }],
+          'redact-by-name'
         )
     );
 
@@ -104,7 +107,8 @@ describe('QueryTimer', (): void => {
           'select * from users where id = :ID and password = :PASSWORD',
           logger,
           'query-1',
-          [7, 'secret-password']
+          [7, 'secret-password'],
+          'redact-by-name'
         )
     );
 
@@ -131,12 +135,62 @@ describe('QueryTimer', (): void => {
     timer.success(1);
 
     const message = logger.log.mock.calls.at(-1)?.[0] as string;
-    expect(message).toContain('"password":"[REDACTED]"');
-    expect(message).toContain('"token":"[REDACTED]"');
-    expect(message).toContain('"count":"1n"');
-    expect(message).toContain('"self":"[Circular]"');
+    expect(message).toContain('Bindings: [REDACTED: 1 positional value(s)]');
     expect(message).not.toContain('secret-password');
     expect(message).not.toContain('secret-token');
+    expect(message).not.toContain('count');
+  });
+
+  it('logs binding values only with the explicit unsafe mode', (): void => {
+    const logger = createLogger();
+    const timer = new QueryTimer(
+      'SELECT 1',
+      logger,
+      'query-1',
+      ['secret-value'],
+      'unsafe-values'
+    );
+
+    timer.success(1);
+
+    expect(logger.log.mock.calls.at(-1)?.[0]).toContain(
+      'Bindings: ["secret-value"]'
+    );
+  });
+
+  it('hides all named values in metadata-only mode', (): void => {
+    const logger = createLogger();
+    const timer = QueryLogContextStorage.run(
+      {
+        kind: 'sql',
+        bindings: [{ name: 'ID', value: 7 }],
+      },
+      () =>
+        new QueryTimer('SELECT :ID', logger, 'query-1', [7], 'metadata-only')
+    );
+
+    timer.success(1);
+
+    expect(logger.log.mock.calls.at(-1)?.[0]).toContain(
+      'Bindings: ID=[REDACTED]'
+    );
+  });
+
+  it('uses metadata-only binding logging by default', (): void => {
+    const logger = createLogger();
+    const timer = QueryLogContextStorage.run(
+      {
+        kind: 'sql',
+        bindings: [{ name: 'UNCLASSIFIED_PII', value: 'private-value' }],
+      },
+      () => new QueryTimer('SELECT :UNCLASSIFIED_PII', logger, 'query-1', [1])
+    );
+
+    timer.success(1);
+
+    const message = logger.log.mock.calls.at(-1)?.[0] as string;
+    expect(message).toContain('UNCLASSIFIED_PII=[REDACTED]');
+    expect(message).not.toContain('private-value');
   });
 
   it('warns for slow successful queries', (): void => {
@@ -165,5 +219,44 @@ describe('QueryTimer', (): void => {
       expect.stringContaining('SQL request [query-1] failed'),
       error.stack
     );
+  });
+
+  it('hides positional values echoed by database errors', (): void => {
+    const logger = createLogger();
+    const timer = new QueryTimer('SELECT $1', logger, 'query-1', [
+      'secret-value',
+    ]);
+
+    timer.error(new Error('invalid input: secret-value'));
+
+    const [message, stack] = logger.error.mock.calls.at(-1) ?? [];
+    expect(message).toContain('error details hidden');
+    expect(message).not.toContain('secret-value');
+    expect(stack).toBeUndefined();
+  });
+
+  it('redacts named sensitive values echoed by database errors', (): void => {
+    const logger = createLogger();
+    const timer = QueryLogContextStorage.run(
+      {
+        kind: 'sql',
+        bindings: [{ name: 'PASSWORD', value: 'secret-value' }],
+      },
+      () =>
+        new QueryTimer(
+          'SELECT :PASSWORD',
+          logger,
+          'query-1',
+          ['secret-value'],
+          'redact-by-name'
+        )
+    );
+
+    timer.error(new Error('invalid input: secret-value'));
+
+    const [message, stack] = logger.error.mock.calls.at(-1) ?? [];
+    expect(message).toContain('invalid input: [REDACTED]');
+    expect(message).not.toContain('secret-value');
+    expect(stack).not.toContain('secret-value');
   });
 });

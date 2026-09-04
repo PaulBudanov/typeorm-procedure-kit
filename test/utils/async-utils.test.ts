@@ -6,6 +6,7 @@ import { createLogger } from '../support/helpers.js';
 
 describe('AsyncUtils', (): void => {
   afterEach((): void => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -14,12 +15,12 @@ describe('AsyncUtils', (): void => {
     const promise = AsyncUtils.delay(100);
 
     await vi.advanceTimersByTimeAsync(99);
-    let resolved = false;
-    promise.then((): void => {
-      resolved = true;
+    let isResolved = false;
+    void promise.then((): void => {
+      isResolved = true;
     });
     await Promise.resolve();
-    expect(resolved).toBe(false);
+    expect(isResolved).toBe(false);
 
     await vi.advanceTimersByTimeAsync(1);
     await expect(promise).resolves.toBeUndefined();
@@ -74,5 +75,65 @@ describe('AsyncUtils', (): void => {
 
     await expect(promise).rejects.toBeInstanceOf(ServerError);
     await expect(promise).rejects.toThrow('too slow');
+  });
+
+  it('unrefs and clears the timeout timer when the operation settles', async (): Promise<void> => {
+    const unref = vi.fn<() => void>();
+    const timeoutHandle = { unref } as unknown as NodeJS.Timeout;
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((): void => undefined);
+    vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
+
+    await expect(
+      AsyncUtils.timeout(async (): Promise<string> => 'done', 100)
+    ).resolves.toBe('done');
+
+    expect(unref).toHaveBeenCalledOnce();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
+  it('does not imply cancellation of work after a timeout', async (): Promise<void> => {
+    vi.useFakeTimers();
+    let isOperationCompleted = false;
+    const promise = AsyncUtils.timeout(async (): Promise<void> => {
+      await AsyncUtils.delay(20);
+      isOperationCompleted = true;
+    }, 10);
+    void promise.catch((): void => undefined);
+
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(promise).rejects.toBeInstanceOf(ServerError);
+    expect(isOperationCompleted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(10);
+    expect(isOperationCompleted).toBe(true);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid maxRetries value %s',
+    async (maxRetries): Promise<void> => {
+      await expect(
+        AsyncUtils.retry(async () => 'ok', maxRetries)
+      ).rejects.toThrow('maxRetries must be a positive safe integer');
+    }
+  );
+
+  it.each([-1, 1.5, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid delay value %s',
+    async (delayMs): Promise<void> => {
+      expect(() => AsyncUtils.delay(delayMs)).toThrow(
+        'delay must be a non-negative safe integer'
+      );
+      await expect(
+        AsyncUtils.retry(async () => 'ok', 1, delayMs)
+      ).rejects.toThrow('retry delay must be a non-negative safe integer');
+    }
+  );
+
+  it('rejects invalid timeout bounds', async (): Promise<void> => {
+    await expect(AsyncUtils.timeout(async () => 'ok', 0)).rejects.toThrow(
+      RangeError
+    );
   });
 });

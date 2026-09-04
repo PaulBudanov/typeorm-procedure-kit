@@ -1,11 +1,11 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { EntityListenerMetadataArgs } from '../metadata-args/EntityListenerMetadataArgs.js';
 
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import type { EntityMetadata } from './EntityMetadata.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { EntityListenerMetadataArgs } from '../metadata-args/EntityListenerMetadataArgs.js';
 import type { EventListenerType } from './types/EventListenerTypes.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * This metadata contains all information about entity's listeners.
@@ -101,7 +101,7 @@ export class EntityListenerMetadata {
     }
 
     // Call the Embedded Method
-    this.callEntityEmbeddedMethod(
+    return this.callEntityEmbeddedMethod(
       entity,
       this.embeddedMetadata.propertyPath.split('.')
     );
@@ -128,7 +128,7 @@ export class EntityListenerMetadata {
         );
       } else {
         (
-          (entity[propertyPath as keyof typeof entity] as ObjectLiteral)[
+          (entity[propertyPath] as ObjectLiteral)[
             this.propertyName
           ] as TFunction
         )();
