@@ -2,6 +2,7 @@ import { types as pgTypes } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PostgreAdapter } from '../../src/adapters/postgres/postgre-adapter.js';
+import { CaseStrategyFactory } from '../../src/case-strategy/case-strategy-factory.js';
 import { PostgresQueryRunner } from '../../src/typeorm/driver/postgres/PostgresQueryRunner.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
@@ -713,106 +714,166 @@ describe('PostgreAdapter', (): void => {
     expect(query).toHaveBeenNthCalledWith(3, 'CLOSE "out_cursor"');
   });
 
-  it('materializes multiple composite outputs in one typed JSON batch', async (): Promise<void> => {
-    const adapter = createPostgreAdapter((value) =>
-      value.replace(/_([a-z])/g, (_match, letter: string) =>
-        letter.toUpperCase()
-      )
-    );
-    adapter.setSerializer({
-      serializerType: 'TIMESTAMP_TZ',
-      strategy: ({ value, context }) =>
-        `${value.toString()}:${context?.name ?? 'unknown'}`,
-    });
-    const accountStructuredType = {
-      kind: 'postgres-composite',
-      schema: 'pkg',
-      typeName: 'account_row',
-      typeOid: 16_385,
-      fields: [
-        {
-          name: 'account_id',
-          argumentType: 'integer',
-          order: 1,
-          typeOid: pgTypes.builtins.INT4,
-        },
-        {
-          name: 'display_name',
-          argumentType: 'text',
-          order: 2,
-          typeOid: pgTypes.builtins.TEXT,
-        },
-      ],
-    } satisfies IProcedureStructuredType;
-    const query = vi
-      .fn()
-      .mockResolvedValueOnce([
-        { p_state: '(raw-profile)', out_row: '(raw-table-row)' },
-      ])
-      .mockResolvedValueOnce([
-        {
-          tpk_composite_0: JSON.stringify({
-            first_name: 'Ada',
-            created_at: '2026-01-02T03:04:05.678+00:00',
-            tags: ['one', 'two'],
-          }),
-          tpk_composite_1: JSON.stringify({
-            account_id: 42,
-            display_name: 'table row',
-          }),
-        },
-      ]);
-    const manager = {
-      query,
-      transaction: vi.fn(
-        async (execute: (transactionManager: unknown) => Promise<unknown>) =>
-          execute(manager)
-      ),
-    };
+  it.each(['camelCase', 'lowerCase', 'snakeCase'] as const)(
+    'materializes multiple composite outputs with %s driver aliases in one batch',
+    async (keyCase): Promise<void> => {
+      const { strategy } = CaseStrategyFactory.caseStrategyFactory(keyCase);
+      const transform = (value: string): string =>
+        strategy.transformColumnName(value);
+      const adapter = createPostgreAdapter(transform);
+      adapter.setSerializer({
+        serializerType: 'TIMESTAMP_TZ',
+        strategy: ({ value, context }) =>
+          `${value.toString()}:${context?.name ?? 'unknown'}`,
+      });
+      const accountStructuredType = {
+        kind: 'postgres-composite',
+        schema: 'pkg',
+        typeName: 'account_row',
+        typeOid: 16_385,
+        fields: [
+          {
+            name: 'account_id',
+            argumentType: 'integer',
+            order: 1,
+            typeOid: pgTypes.builtins.INT4,
+          },
+          {
+            name: 'display_name',
+            argumentType: 'text',
+            order: 2,
+            typeOid: pgTypes.builtins.TEXT,
+          },
+        ],
+      } satisfies IProcedureStructuredType;
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            [transform('p_state')]: '(raw-profile)',
+            [transform('out_row')]: '(raw-table-row)',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            [transform('tpk_composite_0')]: JSON.stringify({
+              first_name: 'Ada',
+              created_at: '2026-01-02T03:04:05.678+00:00',
+              tags: ['one', 'two'],
+            }),
+            [transform('tpk_composite_1')]: JSON.stringify({
+              account_id: 42,
+              display_name: 'table row',
+            }),
+          },
+        ]);
+      const manager = {
+        query,
+        transaction: vi.fn(
+          async (execute: (transactionManager: unknown) => Promise<unknown>) =>
+            execute(manager)
+        ),
+      };
 
-    try {
-      await expect(
+      try {
+        await expect(
+          adapter.executeProcedure(
+            'CALL "pkg"."transform_profile"($1,NULL::"pkg"."account_row")',
+            manager as never,
+            [],
+            ['input'],
+            [],
+            [
+              {
+                name: 'p_state',
+                type: 'object',
+                databaseType: 'pkg.profile_type',
+                structuredType: profileStructuredType,
+              },
+              {
+                name: 'out_row',
+                type: 'object',
+                databaseType: 'pkg.account_row',
+                structuredType: accountStructuredType,
+              },
+            ]
+          )
+        ).resolves.toEqual({
+          rows: [],
+          outBinds: {
+            [transform('p_state')]: {
+              [transform('first_name')]: 'Ada',
+              [transform('created_at')]:
+                `2026-01-02T03:04:05.678+00:00:${transform('created_at')}`,
+              tags: ['one', 'two'],
+            },
+            [transform('out_row')]: {
+              [transform('account_id')]: 42,
+              [transform('display_name')]: 'table row',
+            },
+          },
+        });
+        expect(query).toHaveBeenNthCalledWith(
+          2,
+          'SELECT to_jsonb($1::"pkg"."profile_type")::text AS "tpk_composite_0", to_jsonb($2::"pkg"."account_row")::text AS "tpk_composite_1"',
+          ['(raw-profile)', '(raw-table-row)']
+        );
+      } finally {
+        adapter.deleteAllSerializers();
+        strategy.destroy();
+      }
+    }
+  );
+
+  it.each(['camelCase', 'lowerCase', 'snakeCase'] as const)(
+    'distinguishes a missing composite conversion column from SQL null with %s',
+    async (keyCase): Promise<void> => {
+      const { strategy } = CaseStrategyFactory.caseStrategyFactory(keyCase);
+      const adapter = createPostgreAdapter((value) =>
+        strategy.transformColumnName(value)
+      );
+      const alias = strategy.transformColumnName('tpk_composite_0');
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce([{ out_profile: null }])
+        .mockResolvedValueOnce([{ [alias]: null }])
+        .mockResolvedValueOnce([{ out_profile: '(Ada)' }])
+        .mockResolvedValueOnce([{}]);
+      const manager = {
+        query,
+        transaction: async <T>(
+          execute: (client: unknown) => Promise<T>
+        ): Promise<T> => execute(manager),
+      };
+      const call = (): Promise<unknown> =>
         adapter.executeProcedure(
-          'CALL "pkg"."transform_profile"($1,NULL::"pkg"."account_row")',
+          'CALL "pkg"."run"(NULL::"pkg"."profile_type")',
           manager as never,
           [],
-          ['input'],
+          [],
           [],
           [
             {
-              name: 'p_state',
+              name: 'out_profile',
               type: 'object',
               databaseType: 'pkg.profile_type',
               structuredType: profileStructuredType,
             },
-            {
-              name: 'out_row',
-              type: 'object',
-              databaseType: 'pkg.account_row',
-              structuredType: accountStructuredType,
-            },
           ]
-        )
-      ).resolves.toEqual({
-        rows: [],
-        outBinds: {
-          pState: {
-            firstName: 'Ada',
-            createdAt: '2026-01-02T03:04:05.678+00:00:createdAt',
-            tags: ['one', 'two'],
-          },
-          outRow: { accountId: 42, displayName: 'table row' },
-        },
-      });
-      expect(query).toHaveBeenNthCalledWith(
-        2,
-        'SELECT to_jsonb($1::"pkg"."profile_type")::text AS "tpk_composite_0", to_jsonb($2::"pkg"."account_row")::text AS "tpk_composite_1"',
-        ['(raw-profile)', '(raw-table-row)']
-      );
-    } finally {
-      adapter.deleteAllSerializers();
+        );
+      try {
+        await expect(call()).resolves.toEqual({
+          rows: [],
+          outBinds: { [strategy.transformColumnName('out_profile')]: null },
+        });
+        await expect(call()).rejects.toThrow(
+          'composite conversion did not return column "tpk_composite_0"'
+        );
+      } finally {
+        strategy.destroy();
+      }
     }
-  });
+  );
 
   it('preserves composite nulls and applies output resource limits', async (): Promise<void> => {
     const nullAdapter = createPostgreAdapter();

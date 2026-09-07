@@ -14,6 +14,7 @@ import type { TFunction } from '../../types/utility.types.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
 import type { TIdentifierQuoting } from '../data-source/DataSourceOptions.js';
+import type { ReturningType } from '../driver/Driver.js';
 import type { UpsertType } from '../driver/types/UpsertType.js';
 import type { OrderByCondition } from '../find-options/OrderByCondition.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
@@ -394,6 +395,42 @@ export class QueryExpressionMap {
   // -------------------------------------------------------------------------
   // Public Methods
   // -------------------------------------------------------------------------
+
+  /** Resolves the column order shared by RETURNING SQL, binds, and hydration. */
+  public getReturningColumns(
+    returningType?: ReturningType
+  ): Array<ColumnMetadata> {
+    if (typeof this.returning === 'string') return [];
+    if (
+      returningType === 'insert' &&
+      this.connection.driver.options.type === 'oracle' &&
+      Array.isArray(this.valuesSet) &&
+      this.valuesSet.length > 1
+    )
+      return [];
+
+    const columns: Array<ColumnMetadata> = [];
+    if (Array.isArray(this.returning) && this.mainAlias?.hasMetadata) {
+      for (const columnName of this.returning) {
+        columns.push(
+          ...this.mainAlias.metadata.findColumnsWithPropertyOrDatabasePath(
+            columnName
+          )
+        );
+      }
+    }
+    if (
+      returningType !== undefined &&
+      this.connection.driver.isReturningSqlSupported(returningType)
+    ) {
+      columns.push(
+        ...this.extraReturningColumns.filter(
+          (column) => !columns.includes(column)
+        )
+      );
+    }
+    return columns;
+  }
 
   /**
    * Creates a main alias and adds it to the current expression map.

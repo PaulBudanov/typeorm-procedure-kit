@@ -1033,22 +1033,8 @@ export abstract class QueryBuilder<Entity = unknown> {
    * Creates "RETURNING" / "OUTPUT" expression.
    */
   protected createReturningExpression(returningType: ReturningType): string {
-    const columns = this.getReturningColumns();
+    const columns = this.expressionMap.getReturningColumns(returningType);
     const driver = this.connection.driver;
-
-    // also add columns we must auto-return to perform entity updation
-    // if user gave his own returning
-    if (
-      typeof this.expressionMap.returning !== 'string' &&
-      this.expressionMap.extraReturningColumns.length > 0 &&
-      driver.isReturningSqlSupported(returningType)
-    ) {
-      columns.push(
-        ...this.expressionMap.extraReturningColumns.filter((column) => {
-          return !columns.includes(column);
-        })
-      );
-    }
 
     if (columns.length) {
       let columnsExpression = columns
@@ -1086,19 +1072,7 @@ export abstract class QueryBuilder<Entity = unknown> {
    * then this method will return all column metadatas of those column names.
    */
   protected getReturningColumns(): Array<ColumnMetadata> {
-    const columns: Array<ColumnMetadata> = [];
-    if (Array.isArray(this.expressionMap.returning)) {
-      this.expressionMap.returning.forEach((columnName) => {
-        if (this.expressionMap.mainAlias!.hasMetadata) {
-          columns.push(
-            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
-              columnName
-            )
-          );
-        }
-      });
-    }
-    return columns;
+    return this.expressionMap.getReturningColumns();
   }
 
   protected createWhereClausesExpression(clauses: Array<WhereClause>): string {

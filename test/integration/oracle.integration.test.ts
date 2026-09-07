@@ -414,10 +414,10 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
         result: number;
         label: string;
         source: string;
-        cursorDate?: string;
-        cursorTimestamp?: string;
-        cursorTstz?: string;
-        cursorTsltz?: string;
+        cursor_date?: string;
+        cursor_timestamp?: string;
+        cursor_tstz?: string;
+        cursor_tsltz?: string;
       }>(`${procedurePackage}.echo_values`, {
         value: 41,
         label: 'procedure',
@@ -430,10 +430,10 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
             result: 42,
             label: 'procedure',
             source: 'first',
-            cursorDate: '2026-07-16 12:30:45',
-            cursorTimestamp: '2026-07-16 12:30:45.123',
-            cursorTstz: '2026-07-16T09:30:45.123Z',
-            cursorTsltz: '2026-07-16T09:30:45.123Z',
+            cursor_date: '2026-07-16 12:30:45',
+            cursor_timestamp: '2026-07-16 12:30:45.123',
+            cursor_tstz: '2026-07-16T09:30:45.123Z',
+            cursor_tsltz: '2026-07-16T09:30:45.123Z',
           },
           { result: 43, label: 'procedure', source: 'second' },
         ],
@@ -448,10 +448,10 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
               result: 42,
               label: 'procedure',
               source: 'first',
-              cursorDate: '2026-07-16 12:30:45',
-              cursorTimestamp: '2026-07-16 12:30:45.123',
-              cursorTstz: '2026-07-16T09:30:45.123Z',
-              cursorTsltz: '2026-07-16T09:30:45.123Z',
+              cursor_date: '2026-07-16 12:30:45',
+              cursor_timestamp: '2026-07-16 12:30:45.123',
+              cursor_tstz: '2026-07-16T09:30:45.123Z',
+              cursor_tsltz: '2026-07-16T09:30:45.123Z',
             },
           ],
           out_second_cursor: [
@@ -807,12 +807,23 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
         }
         return returnedValues;
       };
-      const insertedValues = flattenReturnedValues(insertResult.raw);
+      expect(insertResult.raw).toMatchObject({
+        ID: 4,
+        STATUS: 'inserted',
+        UPDATED_AT: expect.any(Date),
+        ROW_VERSION: 1,
+      });
+      expect(insertResult.identifiers).toEqual([{ id: 4 }]);
+      expect(insertResult.generatedMaps).toEqual([
+        expect.objectContaining({
+          id: 4,
+          status: 'inserted',
+          updatedAt: expect.any(Date),
+          version: 1,
+        }),
+      ]);
       const updatedValues = flattenReturnedValues(updateResult.raw);
       const deletedValues = flattenReturnedValues(deleteResult.raw);
-      expect(insertedValues).toContain('inserted');
-      expect(insertedValues.map(Number)).toContain(4);
-      expect(insertedValues.some((value) => value instanceof Date)).toBe(true);
       expect(updatedValues).toContain('processed');
       expect(updatedValues.map(Number)).toContain(2);
       expect(deletedValues).toContain('stale');

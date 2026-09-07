@@ -79,7 +79,9 @@ describe('OracleAdapter', (): void => {
     expect(sql).toContain('COALESCE(a.DATA_LEVEL, 0) AS "data_level"');
     expect(sql).toContain('a.SEQUENCE AS "sequence"');
     expect(sql).toContain('ALL_PLSQL_TYPE_ATTRS');
-    expect(sql).toContain('argument_rows."plsql_typecode" = \'RECORD\'');
+    expect(sql).toContain(
+      "argument_rows.\"plsql_typecode\" IN ('PL/SQL RECORD', 'RECORD')"
+    );
     expect(sql).toContain("'__TPK_NO_ARGUMENT__'");
     expect(sql).toContain('FETCH FIRST 10001 ROWS ONLY');
     expect(sql).not.toContain(':PACKAGE_NAME');
@@ -89,82 +91,85 @@ describe('OracleAdapter', (): void => {
     }).toThrow(ServerError);
   });
 
-  it('collapses Oracle package RECORD metadata into one top-level argument', (): void => {
-    const adapter = createOracleAdapter();
+  it.each(['PL/SQL RECORD', 'RECORD'])(
+    'collapses Oracle package %s metadata into one top-level argument',
+    (typeCode): void => {
+      const adapter = createOracleAdapter();
 
-    expect(
-      adapter.prepareProcedureMetadataRows([
-        {
-          procedureName: 'TRANSFORM_SHIP',
+      expect(
+        adapter.prepareProcedureMetadataRows([
+          {
+            procedureName: 'TRANSFORM_SHIP',
+            argumentName: 'P_SHIP',
+            argumentType: 'OBJECT',
+            order: 1,
+            mode: 'IN/OUT',
+            dataLevel: 0,
+            sequence: 1,
+            typeOwner: 'APP',
+            typeName: 'TPK_IT_PKG',
+            typeSubname: 'SHIP_RECORD',
+            plsqlTypecode: typeCode,
+          },
+          {
+            procedureName: 'TRANSFORM_SHIP',
+            argumentName: 'SHIP_NAME',
+            argumentType: 'VARCHAR2',
+            order: 1,
+            mode: 'IN/OUT',
+            dataLevel: 1,
+            sequence: 2,
+            typeOwner: null,
+            typeName: null,
+            typeSubname: null,
+          },
+          {
+            procedureName: 'TRANSFORM_SHIP',
+            argumentName: 'SAILED_AT',
+            argumentType: 'TIMESTAMP WITH TIME ZONE',
+            order: 2,
+            mode: 'IN/OUT',
+            dataLevel: 1,
+            sequence: 3,
+            typeOwner: null,
+            typeName: null,
+            typeSubname: null,
+          },
+          {
+            procedureName: 'TRANSFORM_SHIP',
+            argumentName: 'OUT_COUNT',
+            argumentType: 'NUMBER',
+            order: 2,
+            mode: 'OUT',
+            dataLevel: 0,
+            sequence: 4,
+            typeOwner: null,
+            typeName: null,
+            typeSubname: null,
+          },
+        ])
+      ).toEqual([
+        expect.objectContaining({
           argumentName: 'P_SHIP',
-          argumentType: 'OBJECT',
-          order: 1,
-          mode: 'IN/OUT',
-          dataLevel: 0,
-          sequence: 1,
-          typeOwner: 'APP',
-          typeName: 'TPK_IT_PKG',
-          typeSubname: 'SHIP_RECORD',
-          plsqlTypecode: 'RECORD',
-        },
-        {
-          procedureName: 'TRANSFORM_SHIP',
-          argumentName: 'SHIP_NAME',
-          argumentType: 'VARCHAR2',
-          order: 1,
-          mode: 'IN/OUT',
-          dataLevel: 1,
-          sequence: 2,
-          typeOwner: null,
-          typeName: null,
-          typeSubname: null,
-        },
-        {
-          procedureName: 'TRANSFORM_SHIP',
-          argumentName: 'SAILED_AT',
-          argumentType: 'TIMESTAMP WITH TIME ZONE',
-          order: 2,
-          mode: 'IN/OUT',
-          dataLevel: 1,
-          sequence: 3,
-          typeOwner: null,
-          typeName: null,
-          typeSubname: null,
-        },
-        {
-          procedureName: 'TRANSFORM_SHIP',
-          argumentName: 'OUT_COUNT',
-          argumentType: 'NUMBER',
-          order: 2,
-          mode: 'OUT',
-          dataLevel: 0,
-          sequence: 4,
-          typeOwner: null,
-          typeName: null,
-          typeSubname: null,
-        },
-      ])
-    ).toEqual([
-      expect.objectContaining({
-        argumentName: 'P_SHIP',
-        structuredType: {
-          kind: 'oracle-record',
-          owner: 'APP',
-          packageName: 'TPK_IT_PKG',
-          typeName: 'SHIP_RECORD',
-          fields: [
-            { name: 'SHIP_NAME', argumentType: 'VARCHAR2', order: 2 },
-            {
-              name: 'SAILED_AT',
-              argumentType: 'TIMESTAMP WITH TIME ZONE',
-              order: 3,
-            },
-          ],
-        },
-      }),
-      expect.objectContaining({ argumentName: 'OUT_COUNT' }),
-    ]);
-  });
+          structuredType: {
+            kind: 'oracle-record',
+            owner: 'APP',
+            packageName: 'TPK_IT_PKG',
+            typeName: 'SHIP_RECORD',
+            fields: [
+              { name: 'SHIP_NAME', argumentType: 'VARCHAR2', order: 2 },
+              {
+                name: 'SAILED_AT',
+                argumentType: 'TIMESTAMP WITH TIME ZONE',
+                order: 3,
+              },
+            ],
+          },
+        }),
+        expect.objectContaining({ argumentName: 'OUT_COUNT' }),
+      ]);
+    }
+  );
 
   it('rejects unsupported Oracle collection and nested RECORD metadata', (): void => {
     const adapter = createOracleAdapter();

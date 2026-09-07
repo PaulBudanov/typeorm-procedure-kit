@@ -1,3 +1,7 @@
+import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { promisify } from 'node:util';
+
 import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -54,6 +58,93 @@ function invokeSubscriptionChange(
 }
 
 describe('OracleNotify', (): void => {
+  it(
+    'rejects long malformed SQL without blocking the process',
+    { timeout: 15_000 },
+    async (): Promise<void> => {
+      await expect(
+        promisify(execFile)(
+          process.execPath,
+          [resolve('test/support/oracle-cqn-parser-child.mjs')],
+          {
+            timeout: 10_000,
+          }
+        )
+      ).resolves.toMatchObject({ stderr: '' });
+    }
+  );
+
+  it.each([
+    'select\tID\nfrom\tAPP.TABLE_A\nAS t\nWHERE t.ID = 1',
+    'SELECT ID FROM APP.TABLE_A t WHERE t.ID = 1',
+  ])('preserves CQN query parts for %s', async (sql): Promise<void> => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] });
+    const notify = new OracleNotify({} as never, createLogger());
+    await invokeSubscriptionChange(
+      notify,
+      { execute } as never,
+      vi.fn(),
+      {
+        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+        tables: [{ name: 'APP.TABLE_A', rows: [{ rowid: 'AAA' }] }],
+      } as IOracleNotifyMsg,
+      sql
+    );
+    expect(execute).toHaveBeenCalledWith(
+      'SELECT ID FROM APP.TABLE_A t WHERE (t.ID = 1) AND t.ROWID IN (:rowid_0)',
+      { rowid_0: 'AAA' },
+      expect.objectContaining({ maxRows: 2 })
+    );
+  });
+
+  it('does not split a quoted FROM or an escaped quote in a projection', async (): Promise<void> => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] });
+    const notify = new OracleNotify({} as never, createLogger());
+    const sql =
+      "SELECT 'it''s FROM somewhere' AS label FROM APP.TABLE_A WHERE NAME = 'with spaces'";
+    await invokeSubscriptionChange(
+      notify,
+      { execute } as never,
+      vi.fn(),
+      {
+        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+        tables: [{ name: 'APP.TABLE_A', rows: [{ rowid: 'AAA' }] }],
+      } as IOracleNotifyMsg,
+      sql
+    );
+    expect(execute.mock.calls[0]?.[0]).toBe(
+      "SELECT 'it''s FROM somewhere' AS label FROM APP.TABLE_A WHERE (NAME = 'with spaces') AND ROWID IN (:rowid_0)"
+    );
+  });
+
+  it.each([
+    '',
+    'SELECT',
+    'SELECT FROM APP.TABLE_A',
+    'SELECT ID FROM',
+    'SELECT ID FROM APP.TABLE_A AS',
+    'SELECT ID FROM APP.TABLE_A WHERE',
+    'SELECT ID FROM APP.TABLE_A AS WHERE ID = 1',
+    'SELECT ID FROM A.B.C',
+    'SELECT ID FROM APP.TABLE_A;',
+    'SELECT ID FROM APP.TABLE_A -- comment',
+    'SELECT /* comment */ ID FROM APP.TABLE_A',
+    'SELECT DISTINCT ID FROM APP.TABLE_A',
+    'SELECT ID FROM APP.TABLE_A ORDER BY ID',
+    'SELECT ID FROM APP.TABLE_A WHERE ID IN (SELECT ID FROM APP.TABLE_B)',
+  ])(
+    'rejects unsupported CQN SQL before acquiring resources: %j',
+    async (sql): Promise<void> => {
+      const createSingleConnection = vi.fn();
+      const notify = new OracleNotify(
+        { createSingleConnection } as never,
+        createLogger()
+      );
+      await expect(notify.listenNotify(sql, vi.fn())).rejects.toThrow();
+      expect(createSingleConnection).not.toHaveBeenCalled();
+    }
+  );
+
   it('builds package notification SQL with validated package names', (): void => {
     const notify = new OracleNotify({} as never, createLogger());
 

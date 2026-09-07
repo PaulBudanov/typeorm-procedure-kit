@@ -411,7 +411,7 @@ export class OracleAdapter extends DatabaseAdapter<
       typeof row.plsqlTypecode === 'string'
         ? row.plsqlTypecode.trim().toUpperCase()
         : undefined;
-    return typeCode === 'RECORD';
+    return typeCode === 'PL/SQL RECORD' || typeCode === 'RECORD';
   }
 
   private isCollectionType(

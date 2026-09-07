@@ -531,24 +531,60 @@ export class OracleNotify extends DatabaseNotify<
         'Oracle CQN SQL must be one simple SELECT statement without comments or terminators'
       );
     }
-    const match =
-      /^SELECT\s+([\s\S]+?)\s+FROM\s+([A-Za-z_][A-Za-z0-9_$#]*(?:\.[A-Za-z_][A-Za-z0-9_$#]*)?)(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_$#]*))?(?:\s+WHERE\s+([\s\S]+?))?$/i.exec(
-        normalizedSql
-      );
-    if (!match) {
-      throw new ServerError(
-        'Oracle CQN SQL must be a simple single-table SELECT with an optional alias and WHERE clause'
-      );
+    const syntaxError =
+      'Oracle CQN SQL must be a simple single-table SELECT with an optional alias and WHERE clause';
+    const tokens = this.scanCqnTokens(normalizedSql);
+    const select = tokens.next().value;
+    if (select?.text.toUpperCase() !== 'SELECT')
+      throw new ServerError(syntaxError);
+
+    let fromStart = -1;
+    for (
+      let token = tokens.next().value;
+      token !== undefined;
+      token = tokens.next().value
+    ) {
+      if (token.text.toUpperCase() === 'FROM') {
+        fromStart = token.start;
+        break;
+      }
     }
-    const projection = match[1]?.trim() ?? '';
+    const table = tokens.next().value;
+    if (
+      fromStart < 0 ||
+      !table ||
+      !/^[A-Za-z_][A-Za-z0-9_$#]*(?:\.[A-Za-z_][A-Za-z0-9_$#]*)?$/u.test(
+        table.text
+      )
+    )
+      throw new ServerError(syntaxError);
+
+    const projection = normalizedSql.slice(select.end, fromStart).trim();
     const tableName = SqlIdentifier.validateQualifiedIdentifier(
-      match[2] ?? '',
+      table.text,
       'oracle CQN source table'
     );
-    const alias = match[3]
-      ? SqlIdentifier.validateIdentifier(match[3], 'oracle CQN table alias')
-      : undefined;
-    const predicate = match[4]?.trim();
+    let token = tokens.next().value;
+    let alias: string | undefined;
+    if (token?.text.toUpperCase() === 'AS') {
+      token = tokens.next().value;
+      if (!token || token.text.toUpperCase() === 'WHERE')
+        throw new ServerError(syntaxError);
+    }
+    if (token && token.text.toUpperCase() !== 'WHERE') {
+      alias = SqlIdentifier.validateIdentifier(
+        token.text,
+        'oracle CQN table alias'
+      );
+      token = tokens.next().value;
+    }
+    let predicate: string | undefined;
+    if (token) {
+      if (token.text.toUpperCase() !== 'WHERE')
+        throw new ServerError(syntaxError);
+      predicate = normalizedSql.slice(token.end).trim();
+      if (predicate.length === 0) throw new ServerError(syntaxError);
+    }
     const forbiddenSql =
       /\b(?:SELECT|DISTINCT|JOIN|UNION|INTERSECT|MINUS|GROUP\s+BY|ORDER\s+BY|HAVING|FETCH|OFFSET|CONNECT\s+BY|START\s+WITH|MODEL)\b/i;
     if (
@@ -561,6 +597,32 @@ export class OracleNotify extends DatabaseNotify<
       );
     }
     return { projection, tableName, alias, predicate };
+  }
+
+  /** Scans whitespace-delimited tokens without splitting quoted SQL text. */
+  private *scanCqnTokens(
+    sql: string
+  ): Generator<{ text: string; start: number; end: number }, undefined, void> {
+    let start = 0;
+    let quote: string | undefined;
+    for (let index = 0; index <= sql.length; index += 1) {
+      const character = sql[index];
+      if (quote !== undefined) {
+        if (character === quote) {
+          if (sql[index + 1] === quote) index += 1;
+          else quote = undefined;
+        }
+        continue;
+      }
+      if (character === "'" || character === '"') {
+        quote = character;
+      } else if (character === undefined || /\s/u.test(character)) {
+        if (start < index)
+          yield { text: sql.slice(start, index), start, end: index };
+        start = index + 1;
+      }
+    }
+    return undefined;
   }
 
   private isSameCqnTable(

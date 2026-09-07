@@ -19,7 +19,7 @@ export class PostgreUnnamedPortalError extends ServerError {
 export class PostgrePortalName {
   private static readonly MAX_NAME_BYTES = 63;
   private static readonly UNNAMED_PORTAL_PATTERN =
-    /^<\s*unnamed\s+portal(?:\s+[^>]*)?\s*>$/iu;
+    /^<\s*unnamed\s+portal(?:\s[^>]*)?>$/iu;
 
   public normalizeInput(value: unknown, argumentName: string): string {
     if (

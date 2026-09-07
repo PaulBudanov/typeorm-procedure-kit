@@ -92,7 +92,7 @@ class OracleSqlCommandApi {
       AND nested_type.TYPE_NAME = type_attr.ATTR_TYPE_NAME
     WHERE argument_rows."data_level" = 0
       AND argument_rows."type_subname" IS NOT NULL
-      AND argument_rows."plsql_typecode" = 'RECORD'
+      AND argument_rows."plsql_typecode" IN ('PL/SQL RECORD', 'RECORD')
     ORDER BY
       "procedure_name",
       "subprogram_id",

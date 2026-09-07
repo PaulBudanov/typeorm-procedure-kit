@@ -195,11 +195,21 @@ export class PostgreProcedureResultMaterializer {
     const outputs = new Map<string, unknown>();
     for (const [index, binding] of compositeBindings.entries()) {
       const alias = `tpk_composite_${index}`;
-      const rawKey = conversionKeys.get(alias) ?? alias;
+      const value = this.readOutputValue(
+        conversionRow,
+        conversionKeys,
+        alias,
+        this.options.caseStrategy.transformColumnName(alias)
+      );
+      if (value === undefined) {
+        throw new ServerError(
+          `PostgreSQL composite conversion did not return column "${alias}"`
+        );
+      }
       outputs.set(
         binding.name,
         this.materializeCompositeValue(
-          conversionRow[rawKey],
+          value,
           binding.structuredType,
           binding.name
         )

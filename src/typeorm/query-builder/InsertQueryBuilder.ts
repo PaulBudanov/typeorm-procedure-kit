@@ -115,21 +115,6 @@ export class InsertQueryBuilder<
         this.expressionMap
       );
 
-      const returningColumns: Array<ColumnMetadata> = [];
-
-      if (
-        Array.isArray(this.expressionMap.returning) &&
-        this.expressionMap.mainAlias!.hasMetadata
-      ) {
-        for (const columnPath of this.expressionMap.returning) {
-          returningColumns.push(
-            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
-              columnPath
-            )
-          );
-        }
-      }
-
       if (
         this.expressionMap.updateEntity &&
         this.expressionMap.mainAlias!.hasMetadata
@@ -138,12 +123,6 @@ export class InsertQueryBuilder<
           this.expressionMap.extraReturningColumns =
             this.expressionMap.mainAlias!.metadata.getInsertionReturningColumns();
         }
-
-        returningColumns.push(
-          ...this.expressionMap.extraReturningColumns.filter(
-            (c) => !returningColumns.includes(c)
-          )
-        );
       }
       // console.timeEnd(".prepare returning statement");
 

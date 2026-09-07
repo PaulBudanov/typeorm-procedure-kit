@@ -94,21 +94,6 @@ export class UpdateQueryBuilder<Entity extends ObjectLiteral>
         this.expressionMap
       );
 
-      const returningColumns: Array<ColumnMetadata> = [];
-
-      if (
-        Array.isArray(this.expressionMap.returning) &&
-        this.expressionMap.mainAlias!.hasMetadata
-      ) {
-        for (const columnPath of this.expressionMap.returning) {
-          returningColumns.push(
-            ...this.expressionMap.mainAlias!.metadata.findColumnsWithPropertyOrDatabasePath(
-              columnPath
-            )
-          );
-        }
-      }
-
       if (
         this.expressionMap.updateEntity &&
         this.expressionMap.mainAlias!.hasMetadata &&
@@ -116,12 +101,6 @@ export class UpdateQueryBuilder<Entity extends ObjectLiteral>
       ) {
         this.expressionMap.extraReturningColumns =
           returningResultsEntityUpdator.getUpdationReturningColumns();
-
-        returningColumns.push(
-          ...this.expressionMap.extraReturningColumns.filter(
-            (c) => !returningColumns.includes(c)
-          )
-        );
       }
 
       // execute update query
