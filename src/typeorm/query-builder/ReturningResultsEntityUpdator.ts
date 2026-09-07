@@ -18,7 +18,8 @@ export class ReturningResultsEntityUpdator {
 
   public constructor(
     protected queryRunner: QueryRunner,
-    protected expressionMap: QueryExpressionMap
+    protected expressionMap: QueryExpressionMap,
+    protected returningColumns?: Array<ColumnMetadata>
   ) {}
 
   // -------------------------------------------------------------------------
@@ -233,7 +234,10 @@ export class ReturningResultsEntityUpdator {
     )
       return raw;
 
-    const columns = this.expressionMap.getReturningColumns(returningType);
+    const columns = this.expressionMap.getReturningColumns(
+      returningType,
+      this.returningColumns
+    );
     if (columns.length === 0) return raw;
     if (raw.length !== columns.length) {
       throw new TypeORMError(

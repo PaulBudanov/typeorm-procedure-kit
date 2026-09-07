@@ -112,7 +112,8 @@ export class InsertQueryBuilder<
       // console.time(".prepare returning statement");
       const returningResultsEntityUpdator = new ReturningResultsEntityUpdator(
         queryRunner,
-        this.expressionMap
+        this.expressionMap,
+        this.getReturningColumns()
       );
 
       if (

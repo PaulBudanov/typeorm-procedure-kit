@@ -398,7 +398,8 @@ export class QueryExpressionMap {
 
   /** Resolves the column order shared by RETURNING SQL, binds, and hydration. */
   public getReturningColumns(
-    returningType?: ReturningType
+    returningType?: ReturningType,
+    requestedColumns?: Array<ColumnMetadata>
   ): Array<ColumnMetadata> {
     if (typeof this.returning === 'string') return [];
     if (
@@ -409,8 +410,12 @@ export class QueryExpressionMap {
     )
       return [];
 
-    const columns: Array<ColumnMetadata> = [];
-    if (Array.isArray(this.returning) && this.mainAlias?.hasMetadata) {
+    const columns = requestedColumns ? [...requestedColumns] : [];
+    if (
+      !requestedColumns &&
+      Array.isArray(this.returning) &&
+      this.mainAlias?.hasMetadata
+    ) {
       for (const columnName of this.returning) {
         columns.push(
           ...this.mainAlias.metadata.findColumnsWithPropertyOrDatabasePath(

@@ -91,9 +91,30 @@ describe('OracleAdapter', (): void => {
     }).toThrow(ServerError);
   });
 
-  it.each(['PL/SQL RECORD', 'RECORD'])(
-    'collapses Oracle package %s metadata into one top-level argument',
-    (typeCode): void => {
+  it.each([
+    ['PL/SQL RECORD', 'TIMESTAMP WITH TZ', 'TIMESTAMP WITH TIME ZONE'],
+    ['RECORD', 'TIMESTAMP WITH TZ', 'TIMESTAMP WITH TIME ZONE'],
+    ['PL/SQL RECORD', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITH TIME ZONE'],
+    ['RECORD', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITH TIME ZONE'],
+    [
+      'PL/SQL RECORD',
+      'TIMESTAMP WITH LOCAL TZ',
+      'TIMESTAMP WITH LOCAL TIME ZONE',
+    ],
+    ['RECORD', 'TIMESTAMP WITH LOCAL TZ', 'TIMESTAMP WITH LOCAL TIME ZONE'],
+    [
+      'PL/SQL RECORD',
+      'TIMESTAMP WITH LOCAL TIME ZONE',
+      'TIMESTAMP WITH LOCAL TIME ZONE',
+    ],
+    [
+      'RECORD',
+      'TIMESTAMP WITH LOCAL TIME ZONE',
+      'TIMESTAMP WITH LOCAL TIME ZONE',
+    ],
+  ])(
+    'normalizes Oracle package %s metadata with a %s field',
+    (typeCode, dictionaryType, argumentType): void => {
       const adapter = createOracleAdapter();
 
       expect(
@@ -126,7 +147,7 @@ describe('OracleAdapter', (): void => {
           {
             procedureName: 'TRANSFORM_SHIP',
             argumentName: 'SAILED_AT',
-            argumentType: 'TIMESTAMP WITH TIME ZONE',
+            argumentType: dictionaryType,
             order: 2,
             mode: 'IN/OUT',
             dataLevel: 1,
@@ -160,7 +181,7 @@ describe('OracleAdapter', (): void => {
               { name: 'SHIP_NAME', argumentType: 'VARCHAR2', order: 2 },
               {
                 name: 'SAILED_AT',
-                argumentType: 'TIMESTAMP WITH TIME ZONE',
+                argumentType,
                 order: 3,
               },
             ],

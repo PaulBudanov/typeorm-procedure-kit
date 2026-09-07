@@ -559,6 +559,51 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
     const token = Buffer.from([1, 2, 3, 4]);
 
     try {
+      const recordMetadata = await withOracleConnection(
+        settings!,
+        async (connection) => {
+          const result = await connection.execute<{
+            typeCode: string;
+            name: string;
+            argumentType: string;
+          }>(
+            `SELECT
+               record_type.TYPECODE AS "typeCode",
+               type_attr.ATTR_NAME AS "name",
+               type_attr.ATTR_TYPE_NAME AS "argumentType"
+             FROM ALL_PLSQL_TYPES record_type
+             JOIN ALL_PLSQL_TYPE_ATTRS type_attr
+               ON type_attr.OWNER = record_type.OWNER
+               AND type_attr.PACKAGE_NAME = record_type.PACKAGE_NAME
+               AND type_attr.TYPE_NAME = record_type.TYPE_NAME
+             WHERE record_type.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+               AND record_type.PACKAGE_NAME = :PACKAGE_NAME
+               AND record_type.TYPE_NAME = 'SHIP_RECORD'
+             ORDER BY type_attr.ATTR_NO`,
+            { PACKAGE_NAME: procedurePackage.toUpperCase() },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+          );
+          return result.rows;
+        }
+      );
+      const recordTypeCode = expect.stringMatching(/^(?:PL\/SQL )?RECORD$/u);
+      expect(recordMetadata).toEqual([
+        {
+          typeCode: recordTypeCode,
+          name: 'SHIP_NAME',
+          argumentType: 'VARCHAR2',
+        },
+        { typeCode: recordTypeCode, name: 'WEIGHT', argumentType: 'NUMBER' },
+        {
+          typeCode: recordTypeCode,
+          name: 'SAILED_AT',
+          argumentType: expect.stringMatching(
+            /^TIMESTAMP WITH (?:TIME ZONE|TZ)$/u
+          ),
+        },
+        { typeCode: recordTypeCode, name: 'TOKEN', argumentType: 'RAW' },
+      ]);
+
       await kit.initDatabase();
 
       const result = await kit.call<

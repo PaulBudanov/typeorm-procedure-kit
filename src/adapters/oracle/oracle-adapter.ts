@@ -43,6 +43,10 @@ export class OracleAdapter extends DatabaseAdapter<
 > {
   private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
   private static readonly MINIMUM_RECORD_VERSION = [12, 1] as const;
+  private static readonly RECORD_FIELD_TYPE_ALIASES = new Map([
+    ['TIMESTAMP WITH TZ', 'TIMESTAMP WITH TIME ZONE'],
+    ['TIMESTAMP WITH LOCAL TZ', 'TIMESTAMP WITH LOCAL TIME ZONE'],
+  ]);
   private static readonly UNSUPPORTED_RECORD_FIELD_TYPES = new Set([
     'BFILE',
     'BLOB',
@@ -382,11 +386,15 @@ export class OracleAdapter extends DatabaseAdapter<
       index,
       'argumentName'
     );
-    const argumentType = this.readMetadataString(
+    const dictionaryType = this.readMetadataString(
       row.argumentType,
       index,
       'argumentType'
     ).toUpperCase();
+    // Object attribute metadata abbreviates time zones, unlike ALL_ARGUMENTS.
+    const argumentType =
+      OracleAdapter.RECORD_FIELD_TYPE_ALIASES.get(dictionaryType) ??
+      dictionaryType;
     const order = this.readMetadataInteger(row.sequence, index, {
       name: 'sequence',
       minimum: 0,

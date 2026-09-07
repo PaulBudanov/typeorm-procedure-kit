@@ -1033,7 +1033,10 @@ export abstract class QueryBuilder<Entity = unknown> {
    * Creates "RETURNING" / "OUTPUT" expression.
    */
   protected createReturningExpression(returningType: ReturningType): string {
-    const columns = this.expressionMap.getReturningColumns(returningType);
+    const columns = this.expressionMap.getReturningColumns(
+      returningType,
+      this.getReturningColumns()
+    );
     const driver = this.connection.driver;
 
     if (columns.length) {

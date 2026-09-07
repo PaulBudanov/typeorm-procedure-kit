@@ -533,23 +533,24 @@ export class OracleNotify extends DatabaseNotify<
     }
     const syntaxError =
       'Oracle CQN SQL must be a simple single-table SELECT with an optional alias and WHERE clause';
-    const tokens = this.scanCqnTokens(normalizedSql);
-    const select = tokens.next().value;
+    const select = this.readCqnToken(normalizedSql, 0);
     if (select?.text.toUpperCase() !== 'SELECT')
       throw new ServerError(syntaxError);
 
     let fromStart = -1;
+    let fromEnd = select.end;
     for (
-      let token = tokens.next().value;
+      let token = this.readCqnToken(normalizedSql, select.end);
       token !== undefined;
-      token = tokens.next().value
+      token = this.readCqnToken(normalizedSql, token.end)
     ) {
       if (token.text.toUpperCase() === 'FROM') {
         fromStart = token.start;
+        fromEnd = token.end;
         break;
       }
     }
-    const table = tokens.next().value;
+    const table = this.readCqnToken(normalizedSql, fromEnd);
     if (
       fromStart < 0 ||
       !table ||
@@ -564,10 +565,10 @@ export class OracleNotify extends DatabaseNotify<
       table.text,
       'oracle CQN source table'
     );
-    let token = tokens.next().value;
+    let token = this.readCqnToken(normalizedSql, table.end);
     let alias: string | undefined;
     if (token?.text.toUpperCase() === 'AS') {
-      token = tokens.next().value;
+      token = this.readCqnToken(normalizedSql, token.end);
       if (!token || token.text.toUpperCase() === 'WHERE')
         throw new ServerError(syntaxError);
     }
@@ -576,7 +577,7 @@ export class OracleNotify extends DatabaseNotify<
         token.text,
         'oracle CQN table alias'
       );
-      token = tokens.next().value;
+      token = this.readCqnToken(normalizedSql, token.end);
     }
     let predicate: string | undefined;
     if (token) {
@@ -599,14 +600,19 @@ export class OracleNotify extends DatabaseNotify<
     return { projection, tableName, alias, predicate };
   }
 
-  /** Scans whitespace-delimited tokens without splitting quoted SQL text. */
-  private *scanCqnTokens(
-    sql: string
-  ): Generator<{ text: string; start: number; end: number }, undefined, void> {
-    let start = 0;
+  /** Reads one whitespace-delimited token without splitting quoted SQL text. */
+  private readCqnToken(
+    sql: string,
+    offset: number
+  ): { text: string; start: number; end: number } | undefined {
+    let start: number | undefined;
     let quote: string | undefined;
-    for (let index = 0; index <= sql.length; index += 1) {
-      const character = sql[index];
+    for (let index = offset; index < sql.length; index += 1) {
+      const character = sql.charAt(index);
+      if (start === undefined) {
+        if (/\s/u.test(character)) continue;
+        start = index;
+      }
       if (quote !== undefined) {
         if (character === quote) {
           if (sql[index + 1] === quote) index += 1;
@@ -616,13 +622,17 @@ export class OracleNotify extends DatabaseNotify<
       }
       if (character === "'" || character === '"') {
         quote = character;
-      } else if (character === undefined || /\s/u.test(character)) {
-        if (start < index)
-          yield { text: sql.slice(start, index), start, end: index };
-        start = index + 1;
+      } else if (/\s/u.test(character)) {
+        return { text: sql.slice(start, index), start, end: index };
       }
     }
-    return undefined;
+    if (quote !== undefined) {
+      throw new ServerError(
+        'Oracle CQN SQL contains an unterminated quoted value'
+      );
+    }
+    if (start === undefined) return undefined;
+    return { text: sql.slice(start), start, end: sql.length };
   }
 
   private isSameCqnTable(

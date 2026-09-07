@@ -126,6 +126,8 @@ describe('OracleNotify', (): void => {
     'SELECT ID FROM APP.TABLE_A WHERE',
     'SELECT ID FROM APP.TABLE_A AS WHERE ID = 1',
     'SELECT ID FROM A.B.C',
+    "SELECT ID FROM APP.TABLE_A 'unfinished",
+    'SELECT "unfinished FROM APP.TABLE_A',
     'SELECT ID FROM APP.TABLE_A;',
     'SELECT ID FROM APP.TABLE_A -- comment',
     'SELECT /* comment */ ID FROM APP.TABLE_A',

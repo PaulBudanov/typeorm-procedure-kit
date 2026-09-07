@@ -90,7 +90,8 @@ export class SoftDeleteQueryBuilder<Entity extends ObjectLiteral>
       // if update entity mode is enabled we may need extra columns for the returning statement
       const returningResultsEntityUpdator = new ReturningResultsEntityUpdator(
         queryRunner,
-        this.expressionMap
+        this.expressionMap,
+        this.getReturningColumns()
       );
       if (
         this.expressionMap.updateEntity &&
