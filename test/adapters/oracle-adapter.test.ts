@@ -4,9 +4,11 @@ import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OracleAdapter } from '../../src/adapters/oracle/oracle-adapter.js';
+import { ProcedureListBase } from '../../src/core/procedure-list-base.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../src/utils/resource-limits.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
+import { oracleRecordMetadataFixture } from '../support/oracle-record-metadata.fixture.js';
 
 import type { IResourceLimits } from '../../src/types/config.types.js';
 import type {
@@ -189,6 +191,111 @@ describe('OracleAdapter', (): void => {
         }),
         expect.objectContaining({ argumentName: 'OUT_COUNT' }),
       ]);
+    }
+  );
+
+  it.each([
+    { label: 'captured Oracle 23.26', rows: oracleRecordMetadataFixture.rows },
+    {
+      label: 'compatible local-time-zone',
+      rows: oracleRecordMetadataFixture.rows.map((row) => ({
+        ...row,
+        argument_type:
+          row.argument_type === 'TIMESTAMP WITH TZ'
+            ? 'TIMESTAMP WITH LOCAL TZ'
+            : row.argument_type,
+      })),
+    },
+  ])(
+    'binds and materializes RECORD values loaded from $label metadata',
+    async ({ rows }): Promise<void> => {
+      const adapter = createOracleAdapter(true);
+      adapter.registerFetchHandlerHook();
+      const procedureList = new ProcedureListBase(
+        createLogger(),
+        adapter,
+        {
+          execute: vi.fn().mockResolvedValue(rows),
+        } as never,
+        {
+          packages: ['tpk_it_pkg'],
+          procedureObjectList: { run: 'tpk_it_pkg.transform_record' },
+        }
+      );
+
+      try {
+        await procedureList.initPackagesMap();
+        const procedures =
+          procedureList.packagesWithProceduresList.get('tpk_it_pkg');
+        if (procedures === undefined)
+          throw new Error('Missing package metadata');
+        const token = Buffer.from([1, 2, 3, 4]);
+        const payload = {
+          ship_name: 'Aurora',
+          weight: 1200,
+          sailed_at: '2026-07-16 12:30:45.123 +03:00',
+          token,
+        };
+        const bindings = adapter.makeBindings(
+          'tpk_it_pkg',
+          'transform_record',
+          procedures,
+          { input: payload, in_out: payload }
+        );
+        const sailedAt = new Date('2026-07-16T09:30:45.123Z');
+        const dbRecord = {
+          SHIP_NAME: 'Aurora',
+          WEIGHT: 1200,
+          SAILED_AT: sailedAt,
+          TOKEN: token,
+        };
+        expect(bindings.bindings).toEqual({
+          p_input: {
+            dir: oracledb.BIND_IN,
+            type: 'TYPEORM.TPK_IT_PKG.SHIP_RECORD',
+            val: dbRecord,
+          },
+          p_in_out: {
+            dir: oracledb.BIND_INOUT,
+            type: 'TYPEORM.TPK_IT_PKG.SHIP_RECORD',
+            val: dbRecord,
+          },
+          p_output: {
+            dir: oracledb.BIND_OUT,
+            type: 'TYPEORM.TPK_IT_PKG.SHIP_RECORD',
+          },
+        });
+
+        const manager = {
+          query: vi
+            .fn()
+            .mockResolvedValue({ P_OUTPUT: dbRecord, P_IN_OUT: dbRecord }),
+          transaction: vi.fn(
+            async (
+              execute: (transactionManager: unknown) => Promise<unknown>
+            ) => execute(manager)
+          ),
+        };
+        await expect(
+          adapter.executeProcedure(
+            bindings.paramExecuteString,
+            manager as never,
+            [],
+            bindings.bindings,
+            bindings.cursorsNames,
+            bindings.outBindings
+          )
+        ).resolves.toEqual({
+          rows: [],
+          outBinds: {
+            p_output: { ...payload, sailed_at: '2026-07-16T09:30:45.123Z' },
+            p_in_out: { ...payload, sailed_at: '2026-07-16T09:30:45.123Z' },
+          },
+        });
+      } finally {
+        adapter.deleteAllSerializers();
+        await procedureList.destroy();
+      }
     }
   );
 

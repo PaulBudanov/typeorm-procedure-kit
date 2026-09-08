@@ -401,7 +401,7 @@ export class QueryExpressionMap {
     returningType?: ReturningType,
     requestedColumns?: Array<ColumnMetadata>
   ): Array<ColumnMetadata> {
-    if (typeof this.returning === 'string') return [];
+    if (typeof this.returning === 'string' && !requestedColumns) return [];
     if (
       returningType === 'insert' &&
       this.connection.driver.options.type === 'oracle' &&
@@ -425,6 +425,7 @@ export class QueryExpressionMap {
       }
     }
     if (
+      typeof this.returning !== 'string' &&
       returningType !== undefined &&
       this.connection.driver.isReturningSqlSupported(returningType)
     ) {

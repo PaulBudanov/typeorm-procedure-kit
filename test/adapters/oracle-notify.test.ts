@@ -97,25 +97,38 @@ describe('OracleNotify', (): void => {
     );
   });
 
-  it('does not split a quoted FROM or an escaped quote in a projection', async (): Promise<void> => {
-    const execute = vi.fn().mockResolvedValue({ rows: [] });
-    const notify = new OracleNotify({} as never, createLogger());
-    const sql =
-      "SELECT 'it''s FROM somewhere' AS label FROM APP.TABLE_A WHERE NAME = 'with spaces'";
-    await invokeSubscriptionChange(
-      notify,
-      { execute } as never,
-      vi.fn(),
-      {
-        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
-        tables: [{ name: 'APP.TABLE_A', rows: [{ rowid: 'AAA' }] }],
-      } as IOracleNotifyMsg,
-      sql
-    );
-    expect(execute.mock.calls[0]?.[0]).toBe(
-      "SELECT 'it''s FROM somewhere' AS label FROM APP.TABLE_A WHERE (NAME = 'with spaces') AND ROWID IN (:rowid_0)"
-    );
-  });
+  it.each([
+    "'it''s FROM somewhere' AS label",
+    'EXTRACT(DAY FROM CREATED_AT) AS day_number',
+    "TRIM(' ' FROM NAME) AS trimmed_name",
+    "COALESCE(TRIM(' ' FROM NAME), 'unknown') AS name",
+    "q'[it's FROM somewhere]' AS label",
+    "Q'{it's FROM somewhere}' AS label",
+    "q'<it's FROM somewhere>' AS label",
+    "nq'(it's FROM somewhere)' AS label",
+    "q'!it's FROM somewhere!' AS label",
+    "q'🙂it's FROM somewhere🙂' AS label",
+  ])(
+    'preserves FROM inside projection %s',
+    async (projection): Promise<void> => {
+      const execute = vi.fn().mockResolvedValue({ rows: [] });
+      const notify = new OracleNotify({} as never, createLogger());
+      const sql = `SELECT ${projection} FROM APP.TABLE_A WHERE NAME = 'with spaces'`;
+      await invokeSubscriptionChange(
+        notify,
+        { execute } as never,
+        vi.fn(),
+        {
+          type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+          tables: [{ name: 'APP.TABLE_A', rows: [{ rowid: 'AAA' }] }],
+        } as IOracleNotifyMsg,
+        sql
+      );
+      expect(execute.mock.calls[0]?.[0]).toBe(
+        `SELECT ${projection} FROM APP.TABLE_A WHERE (NAME = 'with spaces') AND ROWID IN (:rowid_0)`
+      );
+    }
+  );
 
   it.each([
     '',
@@ -128,6 +141,10 @@ describe('OracleNotify', (): void => {
     'SELECT ID FROM A.B.C',
     "SELECT ID FROM APP.TABLE_A 'unfinished",
     'SELECT "unfinished FROM APP.TABLE_A',
+    'SELECT EXTRACT(DAY FROM CREATED_AT FROM APP.TABLE_A',
+    'SELECT ID) FROM APP.TABLE_A',
+    "SELECT q'[unfinished FROM APP.TABLE_A",
+    "SELECT q' unfinished ' FROM APP.TABLE_A",
     'SELECT ID FROM APP.TABLE_A;',
     'SELECT ID FROM APP.TABLE_A -- comment',
     'SELECT /* comment */ ID FROM APP.TABLE_A',

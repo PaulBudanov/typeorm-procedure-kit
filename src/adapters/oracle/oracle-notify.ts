@@ -600,13 +600,14 @@ export class OracleNotify extends DatabaseNotify<
     return { projection, tableName, alias, predicate };
   }
 
-  /** Reads one whitespace-delimited token without splitting quoted SQL text. */
+  /** Keeps SQL literals and parenthesized expressions together when locating FROM. */
   private readCqnToken(
     sql: string,
     offset: number
   ): { text: string; start: number; end: number } | undefined {
     let start: number | undefined;
     let quote: string | undefined;
+    let parentheses = 0;
     for (let index = offset; index < sql.length; index += 1) {
       const character = sql.charAt(index);
       if (start === undefined) {
@@ -614,15 +615,47 @@ export class OracleNotify extends DatabaseNotify<
         start = index;
       }
       if (quote !== undefined) {
-        if (character === quote) {
+        if (quote.length > 1) {
+          if (sql.startsWith(quote, index)) {
+            index += quote.length - 1;
+            quote = undefined;
+          }
+        } else if (character === quote) {
           if (sql[index + 1] === quote) index += 1;
           else quote = undefined;
         }
         continue;
       }
-      if (character === "'" || character === '"') {
+      if ((character === 'q' || character === 'Q') && sql[index + 1] === "'") {
+        const delimiterCodePoint = sql.codePointAt(index + 2);
+        if (delimiterCodePoint === undefined)
+          throw new ServerError(
+            'Oracle CQN SQL contains an unterminated quoted value'
+          );
+        const delimiter = String.fromCodePoint(delimiterCodePoint);
+        if (/\s/u.test(delimiter))
+          throw new ServerError(
+            'Oracle CQN SQL contains an invalid quote delimiter'
+          );
+        const closingDelimiters: Readonly<Record<string, string>> = {
+          '[': ']',
+          '{': '}',
+          '<': '>',
+          '(': ')',
+        };
+        quote = `${closingDelimiters[delimiter] ?? delimiter}'`;
+        index += 1 + delimiter.length;
+      } else if (character === "'" || character === '"') {
         quote = character;
-      } else if (/\s/u.test(character)) {
+      } else if (character === '(') {
+        parentheses += 1;
+      } else if (character === ')') {
+        parentheses -= 1;
+        if (parentheses < 0)
+          throw new ServerError(
+            'Oracle CQN SQL contains unbalanced parentheses'
+          );
+      } else if (parentheses === 0 && /\s/u.test(character)) {
         return { text: sql.slice(start, index), start, end: index };
       }
     }
@@ -631,6 +664,8 @@ export class OracleNotify extends DatabaseNotify<
         'Oracle CQN SQL contains an unterminated quoted value'
       );
     }
+    if (parentheses !== 0)
+      throw new ServerError('Oracle CQN SQL contains unbalanced parentheses');
     if (start === undefined) return undefined;
     return { text: sql.slice(start), start, end: sql.length };
   }

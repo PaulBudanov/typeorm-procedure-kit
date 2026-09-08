@@ -46,21 +46,22 @@ export class OracleSerializer extends DatabaseSerializer {
         metaData.name = this.options.caseStrategy.transformColumnName(
           metaData.name
         );
-
-      const dbType = metaData.dbType;
-      if (dbType !== undefined && this.objectDbTypeHandlerCast.has(dbType)) {
-        const serializeKey = this.objectDbTypeHandlerCast.get(dbType);
+      if (
+        metaData.dbType !== undefined &&
+        this.objectDbTypeHandlerCast.has(metaData.dbType)
+      ) {
+        const serializeKey = this.objectDbTypeHandlerCast.get(metaData.dbType);
         if (serializeKey === undefined) return;
-        if (!this.hasSerializer(serializeKey)) return { type: dbType };
+        if (!this.hasSerializer(serializeKey)) return { type: metaData.dbType };
         const converter = (value: unknown): unknown =>
           this.serializeValue(serializeKey, value, {
             source: 'fetch',
             database: 'oracle',
             name: metaData.name,
-            databaseType: dbType.columnTypeName,
+            databaseType: metaData.dbType?.columnTypeName,
           });
         return {
-          type: dbType,
+          type: metaData.dbType,
           converter: converter,
         };
       }

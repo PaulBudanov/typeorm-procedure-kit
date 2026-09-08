@@ -482,7 +482,9 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
         },
       },
     });
-    const input = new Date('2026-07-16T12:30:45.678Z');
+    // DATE and TIMESTAMP use the application time zone in node-oracledb 6+.
+    const localInput = new Date(2026, 6, 16, 12, 30, 45, 678);
+    const zonedInput = new Date('2026-07-16T12:30:45.678Z');
 
     try {
       await kit.initDatabase();
@@ -510,14 +512,14 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
           p_tsltz_in_out: string;
         }
       >(`${procedurePackage}.echo_temporals`, {
-        date_in: input,
-        timestamp_in: input,
-        tstz_in: input,
-        tsltz_in: input,
-        date_in_out: input,
-        timestamp_in_out: input,
-        tstz_in_out: input,
-        tsltz_in_out: input,
+        date_in: localInput,
+        timestamp_in: localInput,
+        tstz_in: zonedInput,
+        tsltz_in: zonedInput,
+        date_in_out: localInput,
+        timestamp_in_out: localInput,
+        tstz_in_out: zonedInput,
+        tsltz_in_out: zonedInput,
       });
 
       expect(result).toEqual({

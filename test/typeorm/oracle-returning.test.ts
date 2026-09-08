@@ -1,3 +1,4 @@
+import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
@@ -19,6 +20,12 @@ class MetadataDataSource extends DataSource {
 class ReorderedInsertQueryBuilder extends InsertQueryBuilder<ObjectLiteral> {
   protected override getReturningColumns(): Array<ColumnMetadata> {
     return super.getReturningColumns().reverse();
+  }
+}
+
+class PrimaryReturningInsertQueryBuilder extends InsertQueryBuilder<ObjectLiteral> {
+  protected override getReturningColumns(): Array<ColumnMetadata> {
+    return this.connection.getMetadata(auditSchema).primaryColumns;
   }
 }
 
@@ -112,15 +119,29 @@ describe('Oracle RETURNING SQL and entity hydration', (): void => {
       returning: ['status', 'id'],
       columns: 'STATUS, ID, UPDATED_AT, ROW_VERSION, DELETED_AT',
       outBinds: [['saved'], [42], [updatedAt], [1], [null]],
+      bindTypes: [
+        oracledb.DB_TYPE_VARCHAR,
+        oracledb.DB_TYPE_NUMBER,
+        oracledb.DB_TYPE_TIMESTAMP,
+        oracledb.DB_TYPE_NUMBER,
+        oracledb.DB_TYPE_TIMESTAMP,
+      ],
     },
     {
       returning: ['ROW_VERSION', 'STATUS'],
       columns: 'ROW_VERSION, STATUS, ID, UPDATED_AT, DELETED_AT',
       outBinds: [[1], ['saved'], [42], [updatedAt], [null]],
+      bindTypes: [
+        oracledb.DB_TYPE_NUMBER,
+        oracledb.DB_TYPE_VARCHAR,
+        oracledb.DB_TYPE_NUMBER,
+        oracledb.DB_TYPE_TIMESTAMP,
+        oracledb.DB_TYPE_TIMESTAMP,
+      ],
     },
   ])(
     'matches explicit INSERT order $columns including automatic columns',
-    async ({ returning, columns, outBinds }): Promise<void> => {
+    async ({ returning, columns, outBinds, bindTypes }): Promise<void> => {
       const dataSource = await createOracleDataSource();
       const { queryRunner, query } = mockExecution(dataSource, outBinds);
       const entity = { status: 'ready' };
@@ -133,6 +154,10 @@ describe('Oracle RETURNING SQL and entity hydration', (): void => {
         .execute();
 
       expect(query.mock.calls[0]?.[0]).toContain(`RETURNING ${columns} INTO`);
+      expect(query.mock.calls[0]?.[1]).toEqual([
+        'ready',
+        ...bindTypes.map((type) => ({ dir: oracledb.BIND_OUT, type })),
+      ]);
       expect(result.raw).toEqual({
         ID: 42,
         STATUS: 'saved',
@@ -145,6 +170,34 @@ describe('Oracle RETURNING SQL and entity hydration', (): void => {
       ]);
       expect(entity).toEqual(result.generatedMaps[0]);
       expect(result.identifiers).toEqual([{ id: 42 }]);
+    }
+  );
+
+  it.each([
+    {
+      raw: [[42]],
+      error: 'Oracle RETURNING result does not match the requested columns',
+    },
+    {
+      raw: [[42], updatedAt, [1], [null]],
+      error: 'Oracle RETURNING column must contain an array of values',
+    },
+  ])(
+    'rejects invalid RETURNING output before entity hydration: $error',
+    async ({ raw, error }): Promise<void> => {
+      const dataSource = await createOracleDataSource();
+      const { queryRunner } = mockExecution(dataSource, raw);
+      const entity = { status: 'ready' };
+
+      await expect(
+        dataSource
+          .createQueryBuilder(queryRunner)
+          .insert()
+          .into(auditSchema)
+          .values(entity)
+          .execute()
+      ).rejects.toThrow(error);
+      expect(entity).toEqual({ status: 'ready' });
     }
   );
 
@@ -171,6 +224,26 @@ describe('Oracle RETURNING SQL and entity hydration', (): void => {
     );
     expect(result.generatedMaps[0]).toMatchObject({ id: 42, status: 'saved' });
     expect(result.identifiers).toEqual([{ id: 42 }]);
+  });
+
+  it('honors a returning-column override for a string RETURNING expression', async (): Promise<void> => {
+    const dataSource = await createOracleDataSource();
+    const { queryRunner, query } = mockExecution(dataSource, [[42]]);
+    const entity = { status: 'ready' };
+    const result = await new PrimaryReturningInsertQueryBuilder(
+      dataSource,
+      queryRunner
+    )
+      .into(auditSchema)
+      .values(entity)
+      .returning('ID')
+      .execute();
+
+    expect(query.mock.calls[0]?.[0]).toContain('RETURNING ID INTO');
+    expect(result.raw).toEqual({ ID: 42 });
+    expect(result.generatedMaps).toEqual([{ id: 42 }]);
+    expect(result.identifiers).toEqual([{ id: 42 }]);
+    expect(entity).toEqual({ id: 42, status: 'ready' });
   });
 
   it('hydrates an UPDATE whereEntity using explicit and automatic columns', async (): Promise<void> => {
@@ -215,7 +288,13 @@ describe('Oracle RETURNING SQL and entity hydration', (): void => {
         [updatedAt],
         [2],
       ]);
-      const entity = { id: 42, status: 'ready', version: 1 };
+      const entity = {
+        id: 42,
+        status: 'ready',
+        version: 1,
+        updatedAt: null,
+        deletedAt: null,
+      };
       const result = await dataSource
         .createQueryBuilder(queryRunner)
         [operation]()
@@ -303,8 +382,7 @@ describe('Oracle RETURNING SQL and entity hydration', (): void => {
       .values(entities)
       .returning(['id', 'status'])
       .execute();
-
-    expect(query.mock.calls[0]?.[0]).not.toContain('RETURNING');
+    expect(query.mock.calls[0]?.[0]).not.toMatch(/\bRETURNING\b/u);
     expect(result.raw).toBe(2);
     expect(result.generatedMaps).toEqual([{}, {}]);
     expect(result.identifiers).toEqual([{ id: 41 }, { id: 42 }]);
