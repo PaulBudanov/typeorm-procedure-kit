@@ -1,7 +1,7 @@
+import { TypeORMError } from './TypeORMError.js';
+
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-
-import { TypeORMError } from './TypeORMError.js';
 
 export class UsingJoinTableIsNotAllowedError extends TypeORMError {
   public constructor(

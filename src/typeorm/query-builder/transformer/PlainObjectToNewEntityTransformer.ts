@@ -1,6 +1,7 @@
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
-import { ObjectUtils } from '../../util/ObjectUtils.js';
 
 /**
  * Transforms plain old javascript object
@@ -81,7 +82,7 @@ export class PlainObjectToNewEntityTransformer {
             ).find((entityRelatedValueItem) => {
               return relation.inverseEntityMetadata.compareEntities(
                 objectRelatedValueItem as ObjectLiteral,
-                entityRelatedValueItem as ObjectLiteral
+                entityRelatedValueItem
               );
             });
 
@@ -97,7 +98,7 @@ export class PlainObjectToNewEntityTransformer {
                 {
                   fromDeserializer: true,
                 }
-              ) as ObjectLiteral;
+              );
               (entityRelatedValue as Array<ObjectLiteral>).push(
                 objectRelatedValueEntity
               );
@@ -129,13 +130,13 @@ export class PlainObjectToNewEntityTransformer {
           if (!entityRelatedValue) {
             entityRelatedValue = inverseEntityMetadata.create(undefined, {
               fromDeserializer: true,
-            }) as ObjectLiteral;
+            });
             relation.setEntityValue(entity, entityRelatedValue);
           }
 
           this.groupAndTransform(
             entityRelatedValue as ObjectLiteral,
-            objectRelatedValue as ObjectLiteral,
+            objectRelatedValue,
             inverseEntityMetadata,
             getLazyRelationsPromiseValue
           );

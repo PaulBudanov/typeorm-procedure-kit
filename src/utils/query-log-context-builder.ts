@@ -1,4 +1,5 @@
 import { replaceNamedParameters } from '../typeorm/util/NamedParameterUtils.js';
+
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
@@ -10,8 +11,8 @@ import type {
   TQueryLogContext,
 } from '../types/utility.types.js';
 
-export class QueryLogContextBuilder {
-  public static createProcedureContext(
+class QueryLogContextBuilderApi {
+  public createProcedureContext(
     packageName: string,
     procedureName: string,
     procedureArguments: TProcedureArgumentList[Lowercase<string>] | undefined,
@@ -33,7 +34,7 @@ export class QueryLogContextBuilder {
     };
   }
 
-  public static createSqlContext(
+  public createSqlContext(
     sql: string,
     params?: Record<string, unknown>
   ): TQueryLogContext {
@@ -61,7 +62,7 @@ export class QueryLogContextBuilder {
     };
   }
 
-  private static createProcedureBindingLogItem(
+  private createProcedureBindingLogItem(
     argument: Omit<IProcedureArgumentBase, 'procedureName'>,
     binding: unknown,
     cursorsNames: Array<string>
@@ -78,14 +79,14 @@ export class QueryLogContextBuilder {
     };
   }
 
-  private static extractBindingLogValue(binding: unknown): unknown {
-    if (binding && typeof binding === 'object' && 'val' in binding) {
+  private extractBindingLogValue(binding: unknown): unknown {
+    if (binding !== null && typeof binding === 'object' && 'val' in binding) {
       return (binding as { val?: unknown }).val;
     }
     return binding;
   }
 
-  private static getProcedureBinding(
+  private getProcedureBinding(
     bindings: IBindingsObjectReturn['bindings'],
     argumentName: string,
     index: number
@@ -94,3 +95,7 @@ export class QueryLogContextBuilder {
     return bindings[argumentName];
   }
 }
+
+const queryLogContextBuilder = new QueryLogContextBuilderApi();
+
+export { queryLogContextBuilder as QueryLogContextBuilder };

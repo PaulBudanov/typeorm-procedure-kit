@@ -1,7 +1,7 @@
+import { RelationIdAttribute } from './RelationIdAttribute.js';
+
 import type { RelationIdMetadata } from '../../metadata/RelationIdMetadata.js';
 import type { QueryExpressionMap } from '../QueryExpressionMap.js';
-
-import { RelationIdAttribute } from './RelationIdAttribute.js';
 
 export class RelationIdMetadataToAttributeTransformer {
   // -------------------------------------------------------------------------

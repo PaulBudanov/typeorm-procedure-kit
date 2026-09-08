@@ -1,13 +1,14 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
-import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
+
+import { resolveColumnPath } from './ColumnPathResolver.js';
 
 import type { ColumnMetadata } from './ColumnMetadata.js';
-import { resolveColumnPath } from './ColumnPathResolver.js';
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import type { EntityMetadata } from './EntityMetadata.js';
 import type { DeferrableType } from './types/DeferrableType.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
+import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
 /**
  * Unique metadata contains all information about table's unique constraints.
@@ -122,8 +123,7 @@ export class UniqueMetadata {
             String(i)
           );
           Object.keys(columnsFnResult).forEach(
-            (columnName) =>
-              (map[columnName] = columnsFnResult[columnName] as number)
+            (columnName) => (map[columnName] = columnsFnResult[columnName]!)
           );
         }
       }
@@ -146,17 +146,16 @@ export class UniqueMetadata {
         .reduce((a, b) => a.concat(b));
     }
 
-    this.columnNamesWithOrderingMap = Object.keys(map).reduce(
-      (updatedMap, key) => {
-        const column = this.entityMetadata.columns.find(
-          (column) => column.propertyPath === key
-        );
-        if (column) updatedMap[column.databasePath] = map[key] as number;
+    this.columnNamesWithOrderingMap = Object.keys(map).reduce<
+      Record<string, number>
+    >((updatedMap, key) => {
+      const column = this.entityMetadata.columns.find(
+        (column) => column.propertyPath === key
+      );
+      if (column) updatedMap[column.databasePath] = map[key]!;
 
-        return updatedMap;
-      },
-      {} as Record<string, number>
-    );
+      return updatedMap;
+    }, {});
 
     this.name = this.givenName
       ? this.givenName

@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
 import { EntitySchema } from '../../src/typeorm/entity-schema/EntitySchema.js';
-import {
-  AbstractTypeormRepository,
-  type IBuildBaseQueryContext,
-  type IRepositoryContext,
+import { AbstractTypeormRepository } from '../../src/typeorm-extend/index.js';
+
+import type {
+  IBuildBaseQueryContext,
+  IRepositoryContext,
 } from '../../src/typeorm-extend/index.js';
 
 class TestDataSource extends DataSource {

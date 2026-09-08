@@ -1,7 +1,7 @@
 import { getMetadataArgsStorage } from '../../globals.js';
+
 import type { OnDeleteType } from '../../metadata/types/OnDeleteType.js';
 import type { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs.js';
-import type { RelationOptions } from '../options/RelationOptions.js';
 
 /**
  * Marks an entity property as a parent of the tree.
@@ -11,7 +11,7 @@ export function TreeParent(options?: {
   onDelete?: OnDeleteType;
 }): PropertyDecorator {
   return function (object: object, propertyName: string | symbol): void {
-    if (!options) options = {} as RelationOptions;
+    if (!options) options = {};
 
     // now try to determine it its lazy relation
     const reflectedType =

@@ -2,13 +2,14 @@ import path from 'path';
 
 import appRootPath from 'app-root-path';
 
-import type { DataSourceOptions } from '../data-source/DataSourceOptions.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { PlatformTools } from '../platform/PlatformTools.js';
 import { importOrRequireFile } from '../util/ImportUtils.js';
 import { isAbsolute } from '../util/PathUtils.js';
 
 import { ConnectionOptionsEnvReader } from './options-reader/ConnectionOptionsEnvReader.js';
+
+import type { DataSourceOptions } from '../data-source/DataSourceOptions.js';
 
 /**
  * Reads connection options from the ormconfig.
@@ -225,8 +226,7 @@ export class ConnectionOptionsReader {
         options.type === ('sqlite' as string) ||
         options.type === ('better-sqlite3' as string)
       ) {
-        const db = (options as DataSourceOptions & { database?: string })
-          .database;
+        const db = options.database;
         if (
           typeof db === 'string' &&
           !isAbsolute(db) &&

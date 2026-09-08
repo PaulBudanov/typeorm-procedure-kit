@@ -80,8 +80,7 @@ export class DriverUtils {
     buildOptions: { shorten?: boolean; joiner?: string } | undefined,
     ...alias: Array<string>
   ): string {
-    const joiner =
-      buildOptions && buildOptions.joiner ? buildOptions.joiner : '_';
+    const joiner = buildOptions?.joiner ? buildOptions.joiner : '_';
 
     const newAlias =
       alias.length === 1
@@ -108,7 +107,7 @@ export class DriverUtils {
       // )
       //   aliasWithoutEscape = newAlias.substring(1, newAlias.length - 1);
 
-      if (buildOptions && buildOptions.shorten === true) {
+      if (buildOptions?.shorten === true) {
         const shortenedAlias = shorten(newAlias);
         if (shortenedAlias.length < maxAliasLength) {
           return shortenedAlias;
@@ -146,7 +145,7 @@ export class DriverUtils {
     let afterBase =
       secondSlash !== -1 ? preBase.substr(secondSlash + 1) : undefined;
     // remove mongodb query params
-    if (afterBase && afterBase.indexOf('?') !== -1) {
+    if (afterBase?.includes('?')) {
       afterBase = afterBase.substr(0, afterBase.indexOf('?'));
     }
 

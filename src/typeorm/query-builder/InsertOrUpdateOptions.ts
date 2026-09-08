@@ -1,7 +1,6 @@
+import type { Brackets } from './Brackets.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { UpsertType } from '../driver/types/UpsertType.js';
-
-import type { Brackets } from './Brackets.js';
 
 export interface InsertOrUpdateOptions {
   /**

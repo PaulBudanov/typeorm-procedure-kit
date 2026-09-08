@@ -7,5 +7,5 @@ import { FindOperator } from '../FindOperator.js';
 export function JsonContains<
   T extends Record<string | number | symbol, unknown>,
 >(value: T | FindOperator<T>): FindOperator<unknown> {
-  return new FindOperator('jsonContains', value as unknown);
+  return new FindOperator('jsonContains', value);
 }

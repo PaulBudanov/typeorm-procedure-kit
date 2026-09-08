@@ -1,9 +1,16 @@
 import { CaseStrategyFactory } from '../case-strategy/case-strategy-factory.js';
 import { DataSource } from '../typeorm/data-source/DataSource.js';
+import { ProcedureKitLogger } from '../typeorm/logger/ProcedureKitLogger.js';
+import {
+  assertValidQueryTimeoutMs,
+  normalizeQueryTimeoutMs,
+} from '../utils/query-timeout.js';
+import { resolveResourceLimits } from '../utils/resource-limits.js';
+import { ServerError } from '../utils/server-error.js';
+
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
 import type { PostgresConnectionOptions } from '../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { DataSourceOptions } from '../typeorm/index.js';
-import { ProcedureKitLogger } from '../typeorm/logger/ProcedureKitLogger.js';
 import type {
   IRegisteredFetchHandlerOptions,
   TAdapterUtilsClassTypes,
@@ -13,20 +20,25 @@ import type {
   IDatabaseCredentials,
   IEntityOptions,
   IMigrationOptions,
+  IResourceLimits,
   TDbConfig,
   TOracleDbConfig,
   TPostgresDbConfig,
 } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ICaseStrategyFactory } from '../types/strategy.types.js';
-import { normalizeQueryTimeoutMs } from '../utils/query-timeout.js';
-import { ServerError } from '../utils/server-error.js';
 
 export class DatabaseInitializerBase {
+  private static readonly BINDING_LOG_MODES = new Set([
+    'metadata-only',
+    'redact-by-name',
+    'unsafe-values',
+  ]);
   public readonly caseSettings: ICaseStrategyFactory;
   private appDataSourceInstance: DataSource | null = null;
   private databaseAdapterInstance: TAdapterUtilsClassTypes | null = null;
   private readonly logger: ILoggerModule;
+  private readonly resourceLimits: Readonly<IResourceLimits>;
   public constructor(
     public readonly dbConfig: TDbConfig,
     private readonly loggerConfig: IModuleLoggerConfig,
@@ -34,6 +46,24 @@ export class DatabaseInitializerBase {
     private readonly migration?: IMigrationOptions
   ) {
     this.logger = loggerConfig.module;
+    if (
+      loggerConfig.bindingLogMode !== undefined &&
+      !DatabaseInitializerBase.BINDING_LOG_MODES.has(
+        loggerConfig.bindingLogMode
+      )
+    ) {
+      throw new RangeError(
+        'logger.bindingLogMode must be metadata-only, redact-by-name, or unsafe-values'
+      );
+    }
+    assertValidQueryTimeoutMs(this.dbConfig.queryTimeoutMs);
+    if (
+      !Number.isSafeInteger(this.dbConfig.poolSize) ||
+      this.dbConfig.poolSize <= 0
+    ) {
+      throw new RangeError('poolSize must be a positive safe integer');
+    }
+    this.resourceLimits = resolveResourceLimits(this.dbConfig.resourceLimits);
     this.caseSettings = CaseStrategyFactory.caseStrategyFactory(
       this.dbConfig.outKeyTransformCase
     );
@@ -53,6 +83,25 @@ export class DatabaseInitializerBase {
 
   public get isDataSourceInitialized(): boolean {
     return this.appDataSourceInstance?.isInitialized ?? false;
+  }
+
+  public get resolvedResourceLimits(): Readonly<IResourceLimits> {
+    return this.resourceLimits;
+  }
+
+  /**
+   * Drops resources that were already closed by an initialization rollback.
+   * A later initialization must build a fresh adapter because notification
+   * implementations are terminal after `destroyNotifications()`.
+   */
+  public resetAfterFailedInitialization(): void {
+    if (this.isDataSourceInitialized) {
+      throw new ServerError(
+        'Cannot reset DatabaseInitializerBase while DataSource is initialized'
+      );
+    }
+    this.appDataSourceInstance = null;
+    this.databaseAdapterInstance = null;
   }
 
   /**
@@ -106,18 +155,18 @@ export class DatabaseInitializerBase {
       synchronize: this.entity?.isNeedEntitySync,
       logger: new ProcedureKitLogger(
         this.logger,
-        this.loggerConfig.typeormLogLevels
+        this.loggerConfig.typeormLogLevels,
+        this.loggerConfig.bindingLogMode
       ),
       poolSize: this.dbConfig.poolSize,
-      maxQueryExecutionTime:
-        this.dbConfig.maxQueryExecutionTime ?? this.dbConfig.callTimeout,
+      maxQueryExecutionTime: this.dbConfig.maxQueryExecutionTime,
       namingStrategy: this.caseSettings.strategy,
       isolateWhereStatements: true,
       invalidWhereValuesBehavior: {
         null: 'sql-null',
         undefined: 'throw',
       },
-      isQuotingDisabled: true,
+      identifierQuoting: this.dbConfig.identifierQuoting ?? 'disabled',
       migrations:
         this.migration?.migrationPath &&
         Array.isArray(this.migration.migrationPath)
@@ -196,6 +245,7 @@ export class DatabaseInitializerBase {
       isNeedRegisterDefaultSerializers:
         this.dbConfig.isNeedRegisterDefaultSerializers ?? false,
       caseStrategy: this.caseSettings.strategy,
+      resourceLimits: this.resourceLimits,
     };
     switch (this.dbConfig.type) {
       case 'postgres': {
@@ -234,7 +284,7 @@ export class DatabaseInitializerBase {
     const defaultObject: PostgresConnectionOptions = {
       type: 'postgres',
       driver,
-      parseInt8: config.parseInt8AsBigInt,
+      parseInt8: config.parseInt8AsNumber,
       installExtensions: true,
       uuidExtension: 'uuid-ossp',
       applicationName: config.appName,

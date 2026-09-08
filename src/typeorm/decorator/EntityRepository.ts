@@ -1,5 +1,6 @@
-import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { getMetadataArgsStorage } from '../globals.js';
+
+import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import type { EntityRepositoryMetadataArgs } from '../metadata-args/EntityRepositoryMetadataArgs.js';
 
 /**
@@ -10,7 +11,7 @@ import type { EntityRepositoryMetadataArgs } from '../metadata-args/EntityReposi
  * @deprecated use Repository.extend function to create a custom repository
  */
 export function EntityRepository(
-  entity?: ((...args: Array<unknown>) => unknown) | EntitySchema<unknown>
+  entity?: ((...args: Array<unknown>) => unknown) | EntitySchema
 ): ClassDecorator {
   return function (target): void {
     getMetadataArgsStorage().entityRepositories.push({

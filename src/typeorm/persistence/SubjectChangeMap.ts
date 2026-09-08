@@ -1,7 +1,6 @@
+import type { Subject } from './Subject.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
-
-import type { Subject } from './Subject.js';
 
 /**
  * Change for insertion or updation of the column of the subject.

@@ -2,6 +2,12 @@ import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { BaseDataSourceOptions } from '../data-source/BaseDataSourceOptions.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { ColumnType } from './types/ColumnTypes.js';
+import type { CteCapabilities } from './types/CteCapabilities.js';
+import type { DataTypeDefaults } from './types/DataTypeDefaults.js';
+import type { MappedColumnTypes } from './types/MappedColumnTypes.js';
+import type { ReplicationMode } from './types/ReplicationMode.js';
+import type { UpsertType } from './types/UpsertType.js';
 import type { OnDeleteType } from '../metadata/types/OnDeleteType.js';
 import type { OnUpdateType } from '../metadata/types/OnUpdateType.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
@@ -10,13 +16,6 @@ import type { Table } from '../schema-builder/table/Table.js';
 import type { TableColumn } from '../schema-builder/table/TableColumn.js';
 import type { TableForeignKey } from '../schema-builder/table/TableForeignKey.js';
 import type { View } from '../schema-builder/view/View.js';
-
-import type { ColumnType } from './types/ColumnTypes.js';
-import type { CteCapabilities } from './types/CteCapabilities.js';
-import type { DataTypeDefaults } from './types/DataTypeDefaults.js';
-import type { MappedColumnTypes } from './types/MappedColumnTypes.js';
-import type { ReplicationMode } from './types/ReplicationMode.js';
-import type { UpsertType } from './types/UpsertType.js';
 
 export type ReturningType = 'insert' | 'update' | 'delete';
 

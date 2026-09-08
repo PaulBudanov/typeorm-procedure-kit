@@ -1,5 +1,5 @@
 export class TypeORMError extends Error {
-  public get name(): string {
+  public override get name(): string {
     return this.constructor.name;
   }
   public constructor(message?: string) {

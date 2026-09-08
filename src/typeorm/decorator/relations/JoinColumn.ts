@@ -1,5 +1,6 @@
-import type { TFunction } from '../../../types/utility.types.js';
 import { getMetadataArgsStorage } from '../../globals.js';
+
+import type { TFunction } from '../../../types/utility.types.js';
 import type { JoinColumnMetadataArgs } from '../../metadata-args/JoinColumnMetadataArgs.js';
 import type { JoinColumnOptions } from '../options/JoinColumnOptions.js';
 

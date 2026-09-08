@@ -1,9 +1,10 @@
+import { ServerError } from '../utils/server-error.js';
+
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type {
-  ISetSerializer,
   TSerializerTypeCastWithoutFormat,
+  TSetSerializer,
 } from '../types/serializer.types.js';
-import { ServerError } from '../utils/server-error.js';
 
 export class SerializerBase {
   public constructor(
@@ -24,7 +25,7 @@ export class SerializerBase {
         }
         const value = Reflect.get(target, prop) as unknown;
         return typeof value === 'function'
-          ? (value.bind(target) as Pick<ISetSerializer, 'strategy'>)
+          ? (value.bind(target) as Pick<TSetSerializer, 'strategy'>)
           : value;
       },
 
@@ -44,8 +45,8 @@ export class SerializerBase {
    *   strategy - A function that takes a value of the given type and returns a serialized string.
    * @throws Error - If the serializer type is unknown.
    */
-  public setSerializer(options: ISetSerializer): void {
-    return this.databaseAdapter.setSerializer(options);
+  public setSerializer(options: TSetSerializer): void {
+    this.databaseAdapter.setSerializer(options);
   }
 
   /**
@@ -54,7 +55,7 @@ export class SerializerBase {
    * but don't want to keep the old ones.
    */
   public deleteAllSerializers(): void {
-    return this.databaseAdapter.deleteAllSerializers();
+    this.databaseAdapter.deleteAllSerializers();
   }
 
   /**
@@ -62,8 +63,8 @@ export class SerializerBase {
    * @param serializerType - The type of the serializer to delete.
    */
   public deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
-    return this.databaseAdapter.deleteSerializer(serializerType);
+    this.databaseAdapter.deleteSerializer(serializerType);
   }
 }

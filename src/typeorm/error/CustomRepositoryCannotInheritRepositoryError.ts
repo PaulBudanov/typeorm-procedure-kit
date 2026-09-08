@@ -1,6 +1,6 @@
-import type { TFunction } from '../../types/utility.types.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Thrown if custom repository inherits Repository class however entity is not set in @EntityRepository decorator.

@@ -1,8 +1,7 @@
+import type { EntityMetadata } from './EntityMetadata.js';
 import type { TFunction } from '../../types/utility.types.js';
 import type { ExclusionMetadataArgs } from '../metadata-args/ExclusionMetadataArgs.js';
 import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
-
-import type { EntityMetadata } from './EntityMetadata.js';
 
 /**
  * Exclusion metadata contains all information about table's exclusion constraints.

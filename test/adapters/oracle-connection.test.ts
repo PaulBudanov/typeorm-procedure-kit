@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OracleConnection } from '../../src/adapters/oracle/oracle-connection.js';
 import { createLogger } from '../support/helpers.js';
 
-type GetConnection = (
+type TGetConnection = (
   options: oracledb.ConnectionAttributes
 ) => Promise<oracledb.Connection>;
 
@@ -30,13 +30,13 @@ function createOracleConnection(queryTimeoutMs?: number): OracleConnection {
 
 function mockGetConnection(
   connection: oracledb.Connection
-): ReturnType<typeof vi.fn<GetConnection>> {
+): ReturnType<typeof vi.fn<TGetConnection>> {
   return vi
     .spyOn(
-      oracledb as unknown as { getConnection: GetConnection },
+      oracledb as unknown as { getConnection: TGetConnection },
       'getConnection'
     )
-    .mockResolvedValue(connection) as ReturnType<typeof vi.fn<GetConnection>>;
+    .mockResolvedValue(connection) as ReturnType<typeof vi.fn<TGetConnection>>;
 }
 
 describe('OracleConnection', (): void => {

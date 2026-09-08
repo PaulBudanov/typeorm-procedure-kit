@@ -1,10 +1,10 @@
-import type { TMapKey, TQueueType } from '../types/utility.types.js';
-
 import { EventBusService } from './event-bus.js';
 import { ServerError } from './server-error.js';
 
+import type { TMapKey, TQueueType } from '../types/utility.types.js';
+
 export class QueueManager<TQueueItem> {
-  private _eventBusService: EventBusService;
+  private readonly eventBusService: EventBusService;
   private queue:
     | Array<TQueueItem>
     | Map<string | number | symbol, TQueueItem>
@@ -13,10 +13,10 @@ export class QueueManager<TQueueItem> {
   public constructor(
     private queueName: string,
     private collectionType: TQueueType,
-    private eventBusService?: EventBusService
+    eventBusService?: EventBusService
   ) {
-    this._eventBusService =
-      this.eventBusService ?? EventBusService.getNewInstance(20);
+    this.eventBusService =
+      eventBusService ?? EventBusService.getNewInstance(20);
 
     switch (this.collectionType) {
       case 'array':
@@ -33,32 +33,44 @@ export class QueueManager<TQueueItem> {
     }
   }
 
-  public enqueue(key: string | number | undefined, item: TQueueItem): void {
-    this.addItem(key, item);
-    this._eventBusService.emit(`${this.queueName}:enqueue`, { key, item });
+  public enqueue(key: string | number | undefined, item: TQueueItem): boolean {
+    const isNewItem = this.addItem(key, item);
+    if (!isNewItem) return false;
+
+    this.eventBusService.emit(`${this.queueName}:enqueue`, { key, item });
+    return true;
   }
 
   public async enqueueAsync(
     key: string | number | undefined,
     item: TQueueItem
-  ): Promise<void> {
-    this.addItem(key, item);
-    await this._eventBusService.emitAsync(`${this.queueName}:enqueue`, {
+  ): Promise<boolean> {
+    const isNewItem = this.addItem(key, item);
+    if (!isNewItem) return false;
+
+    await this.eventBusService.emitAsync(`${this.queueName}:enqueue`, {
       key,
       item,
     });
+    return true;
   }
 
-  private addItem(key: string | number | undefined, item: TQueueItem): void {
+  private addItem(key: string | number | undefined, item: TQueueItem): boolean {
     if (this.queue instanceof Array) {
       this.queue.push(item);
+      return true;
     } else if (this.queue instanceof Map) {
       if (key === undefined) {
         throw new ReferenceError('Key is required for Map collection');
       }
+      const isNewItem =
+        !this.queue.has(key) || !Object.is(this.queue.get(key), item);
       this.queue.set(key, item);
+      return isNewItem;
     } else {
+      const previousSize = this.queue.size;
       this.queue.add(item);
+      return this.queue.size > previousSize;
     }
   }
 
@@ -78,7 +90,7 @@ export class QueueManager<TQueueItem> {
     }
 
     if (removedItem !== undefined) {
-      this._eventBusService.emit(`${this.queueName}:dequeue`, {
+      this.eventBusService.emit(`${this.queueName}:dequeue`, {
         key,
         item: removedItem,
       });
@@ -115,7 +127,7 @@ export class QueueManager<TQueueItem> {
   }
 
   public getEventBusService(): EventBusService {
-    return this._eventBusService;
+    return this.eventBusService;
   }
 
   public subscribeToEnqueue(
@@ -124,7 +136,7 @@ export class QueueManager<TQueueItem> {
       item: TQueueItem;
     }) => void | Promise<void>
   ): void {
-    this._eventBusService.registerListener(
+    this.eventBusService.registerListener(
       `${this.queueName}:enqueue`,
       callback
     );
@@ -136,7 +148,7 @@ export class QueueManager<TQueueItem> {
       item: TQueueItem;
     }) => void | Promise<void>
   ): void {
-    this._eventBusService.registerListener(
+    this.eventBusService.registerListener(
       `${this.queueName}:dequeue`,
       callback
     );
@@ -148,7 +160,7 @@ export class QueueManager<TQueueItem> {
       item: TQueueItem;
     }) => void | Promise<void>
   ): void {
-    this._eventBusService.removeListener(`${this.queueName}:enqueue`, callback);
+    this.eventBusService.removeListener(`${this.queueName}:enqueue`, callback);
   }
 
   public unsubscribeFromDequeue(
@@ -157,7 +169,7 @@ export class QueueManager<TQueueItem> {
       item: TQueueItem;
     }) => void | Promise<void>
   ): void {
-    this._eventBusService.removeListener(`${this.queueName}:dequeue`, callback);
+    this.eventBusService.removeListener(`${this.queueName}:dequeue`, callback);
   }
 
   private dequeueFromArray(key?: TMapKey | TQueueItem): TQueueItem | undefined {

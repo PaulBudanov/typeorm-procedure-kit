@@ -1,4 +1,5 @@
 import { EqualOperator } from '../EqualOperator.js';
+
 import type { FindOperator } from '../FindOperator.js';
 
 /**

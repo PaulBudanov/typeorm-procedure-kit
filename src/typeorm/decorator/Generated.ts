@@ -1,4 +1,5 @@
 import { getMetadataArgsStorage } from '../globals.js';
+
 import type { GeneratedMetadataArgs } from '../metadata-args/GeneratedMetadataArgs.js';
 
 /**

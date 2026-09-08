@@ -93,7 +93,7 @@ export class TableForeignKey {
       onDelete: this.onDelete,
       onUpdate: this.onUpdate,
       deferrable: this.deferrable,
-    } as TableForeignKeyOptions);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -114,6 +114,6 @@ export class TableForeignKey {
       onDelete: metadata.onDelete,
       onUpdate: metadata.onUpdate,
       deferrable: metadata.deferrable,
-    } as TableForeignKeyOptions);
+    });
   }
 }

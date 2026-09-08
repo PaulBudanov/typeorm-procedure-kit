@@ -1,7 +1,7 @@
+import { RelationCountAttribute } from './RelationCountAttribute.js';
+
 import type { RelationCountMetadata } from '../../metadata/RelationCountMetadata.js';
 import type { QueryExpressionMap } from '../QueryExpressionMap.js';
-
-import { RelationCountAttribute } from './RelationCountAttribute.js';
 
 export class RelationCountMetadataToAttributeTransformer {
   // -------------------------------------------------------------------------

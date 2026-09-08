@@ -1,10 +1,10 @@
 import { getMetadataArgsStorage } from '../globals.js';
+import { ObjectUtils } from '../util/ObjectUtils.js';
+
 import type {
   UniqueColumnsResolver,
   UniqueMetadataArgs,
 } from '../metadata-args/UniqueMetadataArgs.js';
-import { ObjectUtils } from '../util/ObjectUtils.js';
-
 import type { UniqueOptions } from './options/UniqueOptions.js';
 
 type FieldsFunction = UniqueColumnsResolver;

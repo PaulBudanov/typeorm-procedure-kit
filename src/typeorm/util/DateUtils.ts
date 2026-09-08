@@ -16,9 +16,7 @@ export class DateUtils {
   ): Date | string | undefined {
     if (!mixedDate) return mixedDate;
 
-    return typeof mixedDate === 'string'
-      ? new Date(mixedDate)
-      : (mixedDate as Date);
+    return typeof mixedDate === 'string' ? new Date(mixedDate) : mixedDate;
   }
 
   /**
@@ -257,7 +255,7 @@ export class DateUtils {
     if (
       columnMetadata.enum &&
       !isNaN(value as number) &&
-      columnMetadata.enum.indexOf(parseInt(value as string)) >= 0
+      columnMetadata.enum.includes(parseInt(value as string))
     ) {
       // convert to number if that exists in poosible enum options
       value = parseInt(value as string);

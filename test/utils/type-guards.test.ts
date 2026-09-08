@@ -21,32 +21,4 @@ describe('TypeGuards', (): void => {
     expect(TypeGuards.isError(new Error('x'))).toBe(true);
     expect(TypeGuards.isPromise(Promise.resolve())).toBe(true);
   });
-
-  it('compares nested values deeply', (): void => {
-    expect(
-      TypeGuards.deepEqual(
-        { a: [1, { b: /x/u }], date: new Date('2024-01-01') },
-        { a: [1, { b: /x/u }], date: new Date('2024-01-01') }
-      )
-    ).toBe(true);
-    expect(TypeGuards.deepEqual({ a: 1 }, { a: 2 })).toBe(false);
-    expect(TypeGuards.deepEqual([1], [1, 2])).toBe(false);
-  });
-
-  it('clones nested values without sharing mutable references', (): void => {
-    const source = {
-      date: new Date('2024-01-01'),
-      regexp: /value/iu,
-      items: [{ value: 1 }],
-    };
-
-    const cloned = TypeGuards.clone(source);
-
-    expect(cloned).toEqual(source);
-    expect(cloned).not.toBe(source);
-    expect(cloned.date).not.toBe(source.date);
-    expect(cloned.regexp).not.toBe(source.regexp);
-    expect(cloned.items).not.toBe(source.items);
-    expect(cloned.items[0]).not.toBe(source.items[0]);
-  });
 });

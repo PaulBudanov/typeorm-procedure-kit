@@ -1,6 +1,6 @@
-import type { TFunction } from '../../types/utility.types.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { TFunction } from '../../types/utility.types.js';
 
 export class MetadataAlreadyExistsError extends TypeORMError {
   public constructor(

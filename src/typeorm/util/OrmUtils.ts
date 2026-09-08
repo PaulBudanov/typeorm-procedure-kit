@@ -1,9 +1,15 @@
+import { TypeORMError } from '../error/TypeORMError.js';
+import { IsNull } from '../find-options/operator/IsNull.js';
+
+import { InstanceChecker } from './InstanceChecker.js';
+
 import type { DeepPartial } from '../common/DeepPartial.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type {
   PrimitiveCriteria,
   SinglePrimitiveCriteria,
 } from '../common/PrimitiveCriteria.js';
+import type { BaseDataSourceOptions } from '../data-source/BaseDataSourceOptions.js';
 
 export class OrmUtils {
   // -------------------------------------------------------------------------
@@ -22,6 +28,18 @@ export class OrmUtils {
     );
   }
 
+  /** Executes tasks sequentially when they share a single-client driver. */
+  public static async executeTasks<T>(
+    tasks: ReadonlyArray<() => Promise<T>>,
+    sequential: boolean
+  ): Promise<Array<T>> {
+    if (!sequential) return Promise.all(tasks.map((task) => task()));
+
+    const results: Array<T> = [];
+    for (const task of tasks) results.push(await task());
+    return results;
+  }
+
   public static splitClassesAndStrings<T>(
     classesAndStrings: Array<string | T>
   ): [Array<T>, Array<string>] {
@@ -35,7 +53,7 @@ export class OrmUtils {
     array: ReadonlyArray<T>,
     propertyCallback: (item: T) => R
   ): Array<{ id: R; items: Array<T> }> {
-    return array.reduce(
+    return array.reduce<Array<{ id: R; items: Array<T> }>>(
       (groupedArray, value) => {
         const key = propertyCallback(value);
         const grouped = groupedArray.find((i) => i.id === key);
@@ -46,7 +64,7 @@ export class OrmUtils {
         }
         return groupedArray;
       },
-      [] as Array<{ id: R; items: Array<T> }>
+      []
     );
   }
 
@@ -54,7 +72,7 @@ export class OrmUtils {
     array: ReadonlyArray<T>,
     criteriaOrProperty?: ((item: T) => unknown) | K
   ): Array<T> {
-    return array.reduce((uniqueArray, item) => {
+    return array.reduce<Array<T>>((uniqueArray, item) => {
       let found: boolean;
       if (typeof criteriaOrProperty === 'function') {
         const itemValue = criteriaOrProperty(item);
@@ -73,7 +91,7 @@ export class OrmUtils {
       if (!found) uniqueArray.push(item);
 
       return uniqueArray;
-    }, [] as Array<T>);
+    }, []);
   }
 
   /**
@@ -265,13 +283,11 @@ export class OrmUtils {
     sql: string,
     columnName: string
   ): Array<string> | undefined {
-    const enumMatch = sql.match(
-      new RegExp(
-        `"${columnName}" varchar CHECK\\s*\\(\\s*"${columnName}"\\s+IN\\s*`
-      )
-    );
+    const enumMatch = new RegExp(
+      `"${columnName}" varchar CHECK\\s*\\(\\s*"${columnName}"\\s+IN\\s*`
+    ).exec(sql);
 
-    if (enumMatch && enumMatch.index) {
+    if (enumMatch?.index) {
       const afterMatch = sql.substring(enumMatch.index + enumMatch[0].length);
 
       // This is an enum
@@ -369,6 +385,83 @@ export class OrmUtils {
     }
 
     return OrmUtils.isSinglePrimitiveCriteria(criteria);
+  }
+
+  /**
+   * Normalizes null and undefined values in object criteria before a write.
+   * Non-plain values (including FindOperators, dates and buffers) are preserved.
+   */
+  public static normalizeWhereCriteria(
+    criteria: unknown,
+    options?: BaseDataSourceOptions['invalidWhereValuesBehavior'],
+    path = ''
+  ): unknown {
+    if (Array.isArray(criteria)) {
+      return criteria.map((item, index) =>
+        OrmUtils.normalizeWhereCriteria(item, options, `${path}[${index}]`)
+      );
+    }
+
+    if (
+      !OrmUtils.isPlainObject(criteria) ||
+      InstanceChecker.isFindOperator(criteria)
+    ) {
+      return criteria;
+    }
+
+    const normalized: ObjectLiteral = {};
+    for (const key of Object.keys(criteria as ObjectLiteral)) {
+      if (key === '__proto__') continue;
+
+      const value = (criteria as ObjectLiteral)[key];
+      const propertyPath = path ? `${path}.${key}` : key;
+
+      if (value === undefined) {
+        if (options?.undefined === 'throw') {
+          throw new TypeORMError(
+            `Undefined value encountered in property '${propertyPath}' of a where condition. ` +
+              `Set 'invalidWhereValuesBehavior.undefined' to 'ignore' to skip properties with undefined values.`
+          );
+        }
+        continue;
+      }
+
+      if (value === null) {
+        if (options?.null === 'throw') {
+          throw new TypeORMError(
+            `Null value encountered in property '${propertyPath}' of a where condition. ` +
+              `To match with SQL NULL, the IsNull() operator must be used. ` +
+              `Set 'invalidWhereValuesBehavior.null' to 'ignore' or 'sql-null' to skip or handle null values.`
+          );
+        }
+        if (options?.null === 'sql-null') normalized[key] = IsNull();
+        continue;
+      }
+
+      if (OrmUtils.isPlainObject(value)) {
+        const nested = OrmUtils.normalizeWhereCriteria(
+          value,
+          options,
+          propertyPath
+        ) as ObjectLiteral;
+        if (Object.keys(nested).length > 0) normalized[key] = nested;
+        continue;
+      }
+
+      normalized[key] = value;
+    }
+
+    return normalized;
+  }
+
+  /** Write operations default to rejecting invalid values instead of ignoring them. */
+  public static getWriteWhereOptions(
+    options?: BaseDataSourceOptions['invalidWhereValuesBehavior']
+  ): NonNullable<BaseDataSourceOptions['invalidWhereValuesBehavior']> {
+    return {
+      null: options?.null ?? 'throw',
+      undefined: options?.undefined ?? 'throw',
+    };
   }
 
   // -------------------------------------------------------------------------

@@ -6,51 +6,56 @@
     "module": "nodenext",
     "rootDir": "src",
     "declarationDir": "./dist/types",
-    // Строгие проверки
+
+    // Type safety and correctness
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictBindCallApply": true,
     "strictPropertyInitialization": true,
+    "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "useUnknownInCatchVariables": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
 
-    // Импорты
+    // Module interoperability and resolution
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": false,
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
     "noUncheckedSideEffectImports": true,
     "esModuleInterop": true,
-    "resolveJsonModule": false,
-
-    // Другие важные опции
+    "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": false,
-    "skipDefaultLibCheck": false,
-    "useUnknownInCatchVariables": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    // JavaScript interop boundaries
     "allowJs": false,
     "checkJs": false,
-    "verbatimModuleSyntax": true,
 
-    // Сборка и отладка
-    "declaration": true,
+    // Emission and build ergonomics
     "incremental": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    "sourceMap": false,
+    "declarationMap": false,
+    "declaration": true,
     "inlineSources": false,
-    "tsBuildInfoFile": "./dist/tsbuildinfo.json",
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": false,
+    "tsBuildInfoFile": "./.cache/typescript/typecheck.tsbuildinfo",
 
-    // Декораторы
+    // NestJS decorator support
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-
-    // Оптимизации
     "importHelpers": true,
-    "useDefineForClassFields": true,
-    "composite": true
+    "useDefineForClassFields": true
   },
   "include": ["src/**/*.ts"],
   "exclude": [

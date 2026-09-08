@@ -1,6 +1,6 @@
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 export class MissingPrimaryColumnError extends TypeORMError {
   public constructor(entityMetadata: EntityMetadata) {

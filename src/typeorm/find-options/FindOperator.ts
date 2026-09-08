@@ -1,9 +1,9 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
 import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 
 import type { FindOperatorType } from './FindOperatorType.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
 
 type SqlGeneratorType = (aliasPath: string) => string;
 

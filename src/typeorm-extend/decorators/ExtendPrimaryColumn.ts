@@ -1,7 +1,8 @@
-import type { PrimaryColumnOptions } from '../../typeorm/decorator/columns/PrimaryColumn.js';
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
 import { ServerError } from '../../utils/server-error.js';
 import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
+
+import type { PrimaryColumnOptions } from '../../typeorm/decorator/columns/PrimaryColumn.js';
 
 /**
  * Extends the @PrimaryColumn decorator with additional options.
@@ -33,12 +34,11 @@ export function ExtendPrimaryColumn(
     );
 
     if (
-      !columnMetadata.foundTarget ||
       typeof columnMetadata.foundTarget !== 'function' ||
       !columnMetadata.column
     )
       throw new ServerError(
-        `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
+        `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget?.constructor.name ?? 'unknown'}". ` +
           'Register column with @PrimaryColumn() decorator first.'
       );
     const targetRegister = isRegisterToParentTarget
@@ -55,9 +55,7 @@ export function ExtendPrimaryColumn(
       targetRegister,
       propertyKey.toString(),
       columnMetadata.generation,
-      !overrideSource?.generated && overrideSource?.generated !== false
-        ? (columnMetadata.column.options.generated ?? undefined)
-        : overrideSource?.generated
+      overrideSource?.generated ?? columnMetadata.column.options.generated
     );
   };
 }

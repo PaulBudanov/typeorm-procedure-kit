@@ -1,9 +1,10 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import { formatDataSourceIdentifier } from '../../data-source/IdentifierQuoting.js';
 import { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import { Brackets } from '../../query-builder/Brackets.js';
-import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import type { Subject } from '../Subject.js';
 
 /**
@@ -27,7 +28,7 @@ export class MaterializedPathSubjectExecutor {
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
-    if (!parent && subject.parentSubject && subject.parentSubject.entity)
+    if (!parent && subject.parentSubject?.entity)
       // if entity was attached via children
       parent = subject.parentSubject.insertedValueSet
         ? subject.parentSubject.insertedValueSet
@@ -66,7 +67,7 @@ export class MaterializedPathSubjectExecutor {
     let newParent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
-    if (!newParent && subject.parentSubject && subject.parentSubject.entity)
+    if (!newParent && subject.parentSubject?.entity)
       // if entity was attached via children
       newParent = subject.parentSubject.entity;
 
@@ -79,8 +80,7 @@ export class MaterializedPathSubjectExecutor {
         (child) => {
           return Object.entries(subject.identifier!).every(
             ([key, value]) =>
-              child[key as keyof typeof subject.identifier] ===
-              (value as unknown)
+              child[key as keyof typeof subject.identifier] === value
           );
         }
       );
@@ -119,18 +119,27 @@ export class MaterializedPathSubjectExecutor {
       })
       .join('_');
 
-    const propertyPath = subject.metadata.materializedPathColumn!.propertyPath;
+    const materializedPathColumn = subject.metadata.materializedPathColumn!;
+    const propertyPath = materializedPathColumn.propertyPath;
+    const databaseColumnName = formatDataSourceIdentifier(
+      materializedPathColumn.databaseName,
+      this.queryRunner.connection
+    );
+    const oldEntityPath = `${oldParentPath}${entityPath}.`;
+    const newEntityPath = `${newParentPath}${entityPath}.`;
     await this.queryRunner.manager
       .createQueryBuilder()
       .update(subject.metadata.target)
       .set({
         [propertyPath]: () =>
-          `REPLACE(${
-            (this.queryRunner.connection.driver.escape(propertyPath), true)
-          }, '${oldParentPath}${entityPath}.', '${newParentPath}${entityPath}.')`,
+          `REPLACE(${databaseColumnName}, :tree_old_path, :tree_new_path)`,
       })
-      .where(`${propertyPath} LIKE :path`, {
-        path: `${oldParentPath}${entityPath}.%`,
+      .where(`${databaseColumnName} LIKE :tree_like_path`, {
+        tree_like_path: `${oldEntityPath}%`,
+      })
+      .setParameters({
+        tree_old_path: oldEntityPath,
+        tree_new_path: newEntityPath,
       })
       .execute();
   }
@@ -142,7 +151,7 @@ export class MaterializedPathSubjectExecutor {
     if (!entity) return undefined;
     const columns = subject.metadata
       .treeParentRelation!.joinColumns.map((column) => column.referencedColumn)
-      .filter((v) => v != null) as Array<ColumnMetadata>;
+      .filter((v) => v != null);
     return EntityMetadata.getValueMap(entity, columns);
   }
 
@@ -169,7 +178,7 @@ export class MaterializedPathSubjectExecutor {
       )
       .getRawOne()
       .then((result) =>
-        result ? ((result as Record<string, string>)['path'] as string) : ''
+        result ? (result as Record<string, string>).path! : ''
       );
   }
 }

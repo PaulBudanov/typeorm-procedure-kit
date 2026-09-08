@@ -1,14 +1,5 @@
-import type { DataSource } from '../data-source/DataSource.js';
-import type { Driver } from '../driver/Driver.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
-import type { PostgresQueryRunner } from '../driver/postgres/PostgresQueryRunner.js';
-import type { SqlInMemory } from '../driver/SqlInMemory.js';
-import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
-import type { TableColumnOptions } from './options/TableColumnOptions.js';
-import type { SchemaBuilder } from './SchemaBuilder.js';
 import { Table } from './table/Table.js';
 import { TableCheck } from './table/TableCheck.js';
 import { TableColumn } from './table/TableColumn.js';
@@ -19,6 +10,16 @@ import { TableUnique } from './table/TableUnique.js';
 import { TableUtils } from './util/TableUtils.js';
 import { ViewUtils } from './util/ViewUtils.js';
 import { View } from './view/View.js';
+
+import type { TableColumnOptions } from './options/TableColumnOptions.js';
+import type { SchemaBuilder } from './SchemaBuilder.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
+import type { PostgresQueryRunner } from '../driver/postgres/PostgresQueryRunner.js';
+import type { SqlInMemory } from '../driver/SqlInMemory.js';
+import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
  * Creates complete tables schemas in the database based on the entity metadatas.
@@ -379,7 +380,7 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
             (index) => index.name === tableIndex.name
           );
           if (indexMetadata) {
-            if (indexMetadata.synchronize === false) return false;
+            if (!indexMetadata.synchronize) return false;
 
             if (indexMetadata.isUnique !== tableIndex.isUnique) return true;
 
@@ -394,9 +395,8 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
             if (indexMetadata.columns.length !== tableIndex.columnNames.length)
               return true;
 
-            return !indexMetadata.columns.every(
-              (column) =>
-                tableIndex.columnNames.indexOf(column.databaseName) !== -1
+            return !indexMetadata.columns.every((column) =>
+              tableIndex.columnNames.includes(column.databaseName)
             );
           }
 
@@ -426,7 +426,7 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
               (index) => index.name === tableIndex.name
             );
             if (indexMetadata) {
-              if (indexMetadata.synchronize === false) return false;
+              if (!indexMetadata.synchronize) return false;
 
               if (indexMetadata.isUnique !== tableIndex.isUnique) return true;
 
@@ -443,9 +443,8 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
               )
                 return true;
 
-              return !indexMetadata.columns.every(
-                (column) =>
-                  tableIndex.columnNames.indexOf(column.databaseName) !== -1
+              return !indexMetadata.columns.every((column) =>
+                tableIndex.columnNames.includes(column.databaseName)
               );
             }
 
@@ -668,8 +667,8 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
         // If the currently iterated view depends on the passed in view
         if (
           currentMetadata.dependsOn &&
-          (currentMetadata.dependsOn.has(viewMetadata.target!) ||
-            currentMetadata.dependsOn.has(viewMetadata.name!))
+          (currentMetadata.dependsOn.has(viewMetadata.target) ||
+            currentMetadata.dependsOn.has(viewMetadata.name))
         ) {
           // Recursively add currently iterate view and its dependents
           viewWithDependencies = viewWithDependencies.concat(
@@ -890,7 +889,7 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
           (indexMetadata) =>
             !table.indices.find(
               (tableIndex) => tableIndex.name === indexMetadata.name
-            ) && indexMetadata.synchronize === true
+            ) && indexMetadata.synchronize
         )
         .map((indexMetadata) => TableIndex.create(indexMetadata));
 
@@ -934,14 +933,14 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
           viewExpression === metadataExpression
         );
       });
-      if (!view || !view.materialized) continue;
+      if (!view?.materialized) continue;
 
       const newIndices = metadata.indices
         .filter(
           (indexMetadata) =>
             !view.indices.find(
               (tableIndex) => tableIndex.name === indexMetadata.name
-            ) && indexMetadata.synchronize === true
+            ) && indexMetadata.synchronize
         )
         .map((indexMetadata) => TableIndex.create(indexMetadata));
 
@@ -1092,8 +1091,8 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
     if (!table) return;
 
     const tablesWithFK: Array<Table> = [];
-    const columnForeignKey = table.foreignKeys.find(
-      (foreignKey) => foreignKey.columnNames.indexOf(columnName) !== -1
+    const columnForeignKey = table.foreignKeys.find((foreignKey) =>
+      foreignKey.columnNames.includes(columnName)
     );
     if (columnForeignKey) {
       const clonedTable = table.clone();
@@ -1106,7 +1105,7 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
       const dependForeignKeys = loadedTable.foreignKeys.filter((foreignKey) => {
         return (
           this.getTablePath(foreignKey) === tablePath &&
-          foreignKey.referencedColumnNames.indexOf(columnName) !== -1
+          foreignKey.referencedColumnNames.includes(columnName)
         );
       });
 
@@ -1114,9 +1113,9 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
         const clonedTable = loadedTable.clone();
         clonedTable.foreignKeys = dependForeignKeys;
         tablesWithFK.push(clonedTable);
-        dependForeignKeys.forEach((dependForeignKey) =>
-          loadedTable.removeForeignKey(dependForeignKey)
-        );
+        dependForeignKeys.forEach((dependForeignKey) => {
+          loadedTable.removeForeignKey(dependForeignKey);
+        });
       }
     }
 
@@ -1151,8 +1150,7 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
 
     const relatedIndices = table.indices.filter(
       (index) =>
-        index.columnNames.length > 1 &&
-        index.columnNames.indexOf(columnName) !== -1
+        index.columnNames.length > 1 && index.columnNames.includes(columnName)
     );
     if (relatedIndices.length === 0) return;
 
@@ -1178,8 +1176,7 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
 
     const relatedUniques = table.uniques.filter(
       (unique) =>
-        unique.columnNames.length > 1 &&
-        unique.columnNames.indexOf(columnName) !== -1
+        unique.columnNames.length > 1 && unique.columnNames.includes(columnName)
     );
     if (relatedUniques.length === 0) return;
 

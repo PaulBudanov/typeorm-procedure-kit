@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Driver } from '../../src/typeorm/driver/Driver.js';
 import { DriverUtils } from '../../src/typeorm/driver/DriverUtils.js';
 import { hash } from '../../src/typeorm/util/StringUtils.js';
+
+import type { Driver } from '../../src/typeorm/driver/Driver.js';
 
 function createDriverWithMaxAliasLength(maxAliasLength: number): Driver {
   return { maxAliasLength } as Driver;

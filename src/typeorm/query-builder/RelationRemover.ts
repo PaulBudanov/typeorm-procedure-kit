@@ -1,8 +1,8 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import type { QueryBuilder } from './QueryBuilder.js';
 import type { QueryExpressionMap } from './QueryExpressionMap.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 
 /**
  * Allows to work with entity relations and perform specific operations with those relations.
@@ -37,13 +37,11 @@ export class RelationRemover {
       const expressionMapOf = this.expressionMap.of as
         | ObjectLiteral
         | Array<ObjectLiteral>;
-      const ofs = (
-        Array.isArray(expressionMapOf) ? expressionMapOf : [expressionMapOf]
-      ) as Array<ObjectLiteral>;
+      const ofs = Array.isArray(expressionMapOf)
+        ? expressionMapOf
+        : [expressionMapOf];
       const valuesArray = value as ObjectLiteral | Array<ObjectLiteral>;
-      const values = (
-        Array.isArray(valuesArray) ? valuesArray : [valuesArray]
-      ) as Array<ObjectLiteral>;
+      const values = Array.isArray(valuesArray) ? valuesArray : [valuesArray];
 
       const updateSet: ObjectLiteral = {};
       relation.inverseRelation!.joinColumns.forEach((column) => {
@@ -66,9 +64,7 @@ export class RelationRemover {
                     '_' +
                     columnIndex;
                   parameters[parameterName] = ObjectUtils.isObject(of)
-                    ? column.referencedColumn!.getEntityValue(
-                        of as ObjectLiteral
-                      )
+                    ? column.referencedColumn!.getEntityValue(of)
                     : of;
                   return `${column.propertyPath} = :${parameterName}`;
                 }
@@ -83,7 +79,7 @@ export class RelationRemover {
                     '_' +
                     columnIndex;
                   parameters[parameterName] = ObjectUtils.isObject(value)
-                    ? column.getEntityValue(value as ObjectLiteral)
+                    ? column.getEntityValue(value)
                     : value;
                   return `${column.propertyPath} = :${parameterName}`;
                 }
@@ -109,13 +105,11 @@ export class RelationRemover {
       const expressionMapOf = this.expressionMap.of as
         | ObjectLiteral
         | Array<ObjectLiteral>;
-      const ofs = (
-        Array.isArray(expressionMapOf) ? expressionMapOf : [expressionMapOf]
-      ) as Array<ObjectLiteral>;
+      const ofs = Array.isArray(expressionMapOf)
+        ? expressionMapOf
+        : [expressionMapOf];
       const valuesArray = value as ObjectLiteral | Array<ObjectLiteral>;
-      const values = (
-        Array.isArray(valuesArray) ? valuesArray : [valuesArray]
-      ) as Array<ObjectLiteral>;
+      const values = Array.isArray(valuesArray) ? valuesArray : [valuesArray];
       const firstColumnValues = relation.isManyToManyOwner ? ofs : values;
       const secondColumnValues = relation.isManyToManyOwner ? values : ofs;
 
@@ -134,9 +128,7 @@ export class RelationRemover {
                   '_' +
                   columnIndex;
                 parameters[parameterName] = ObjectUtils.isObject(firstColumnVal)
-                  ? column.referencedColumn!.getEntityValue(
-                      firstColumnVal as ObjectLiteral
-                    )
+                  ? column.referencedColumn!.getEntityValue(firstColumnVal)
                   : firstColumnVal;
                 return `${column.databaseName} = :${parameterName}`;
               }),
@@ -151,9 +143,7 @@ export class RelationRemover {
                 parameters[parameterName] = ObjectUtils.isObject(
                   secondColumnVal
                 )
-                  ? column.referencedColumn!.getEntityValue(
-                      secondColumnVal as ObjectLiteral
-                    )
+                  ? column.referencedColumn!.getEntityValue(secondColumnVal)
                   : secondColumnVal;
                 return `${column.databaseName} = :${parameterName}`;
               }),

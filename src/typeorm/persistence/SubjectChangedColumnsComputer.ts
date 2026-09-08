@@ -1,10 +1,10 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
 import { DateUtils } from '../util/DateUtils.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { OrmUtils } from '../util/OrmUtils.js';
 
 import type { Subject } from './Subject.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 
 /**
  * Finds what columns are changed in the subject entities.

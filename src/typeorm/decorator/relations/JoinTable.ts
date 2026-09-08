@@ -1,4 +1,5 @@
 import { getMetadataArgsStorage } from '../../globals.js';
+
 import type { JoinTableMetadataArgs } from '../../metadata-args/JoinTableMetadataArgs.js';
 import type { JoinTableMultipleColumnsOptions } from '../options/JoinTableMultipleColumnsOptions.js';
 import type { JoinTableOptions } from '../options/JoinTableOptions.js';
@@ -31,8 +32,7 @@ export function JoinTable(
   options?: JoinTableOptions | JoinTableMultipleColumnsOptions
 ): PropertyDecorator {
   return function (object: object, propertyKey: string | symbol) {
-    options =
-      options || ({} as JoinTableOptions | JoinTableMultipleColumnsOptions);
+    options = options || {};
     getMetadataArgsStorage().joinTables.push({
       target: object.constructor,
       propertyName: propertyKey,
@@ -45,9 +45,9 @@ export function JoinTable(
         ? [(options as JoinTableOptions).inverseJoinColumn!]
         : (options as JoinTableMultipleColumnsOptions)
             .inverseJoinColumns) as unknown,
-      schema: options && options.schema ? options.schema : undefined,
-      database: options && options.database ? options.database : undefined,
-      synchronize: !(options && options.synchronize === false),
+      schema: options?.schema ? options.schema : undefined,
+      database: options?.database ? options.database : undefined,
+      synchronize: !(options?.synchronize === false),
     } as JoinTableMetadataArgs);
   };
 }

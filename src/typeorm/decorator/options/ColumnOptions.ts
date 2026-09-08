@@ -1,7 +1,6 @@
-import type { ColumnType } from '../../driver/types/ColumnTypes.js';
-
 import type { ColumnCommonOptions } from './ColumnCommonOptions.js';
 import type { ValueTransformer } from './ValueTransformer.js';
+import type { ColumnType } from '../../driver/types/ColumnTypes.js';
 
 /**
  * Describes all column's options.

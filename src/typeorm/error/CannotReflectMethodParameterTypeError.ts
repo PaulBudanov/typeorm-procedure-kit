@@ -1,6 +1,6 @@
-import type { TFunction } from '../../types/utility.types.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Thrown when ORM cannot get method parameter's type.

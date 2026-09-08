@@ -1,9 +1,10 @@
-import type { DataSource } from '../data-source/DataSource.js';
-import type { Driver } from '../driver/Driver.js';
 import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { ForeignKeyMetadata } from '../metadata/ForeignKeyMetadata.js';
 import { IndexMetadata } from '../metadata/IndexMetadata.js';
+
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
 
 /**
  * Creates EntityMetadata for junction tables of the closure entities.
@@ -41,11 +42,9 @@ export class ClosureJunctionEntityMetadataBuilder {
       connection: this.connection,
       args: {
         target: '',
-        name:
-          parentClosureEntityMetadata.treeOptions &&
-          parentClosureEntityMetadata.treeOptions.closureTableName
-            ? parentClosureEntityMetadata.treeOptions.closureTableName
-            : parentClosureEntityMetadata.tableNameWithoutPrefix,
+        name: parentClosureEntityMetadata.treeOptions?.closureTableName
+          ? parentClosureEntityMetadata.treeOptions.closureTableName
+          : parentClosureEntityMetadata.tableNameWithoutPrefix,
         type: 'closure-junction',
       },
     });
@@ -62,13 +61,12 @@ export class ClosureJunctionEntityMetadataBuilder {
           args: {
             target: '',
             mode: 'virtual',
-            propertyName:
-              parentClosureEntityMetadata.treeOptions &&
-              parentClosureEntityMetadata.treeOptions.ancestorColumnName
-                ? parentClosureEntityMetadata.treeOptions.ancestorColumnName(
-                    primaryColumn
-                  )
-                : primaryColumn.propertyName + '_ancestor',
+            propertyName: parentClosureEntityMetadata.treeOptions
+              ?.ancestorColumnName
+              ? parentClosureEntityMetadata.treeOptions.ancestorColumnName(
+                  primaryColumn
+                )
+              : primaryColumn.propertyName + '_ancestor',
             options: {
               primary: true,
               length: primaryColumn.length,
@@ -93,13 +91,12 @@ export class ClosureJunctionEntityMetadataBuilder {
           args: {
             target: '',
             mode: 'virtual',
-            propertyName:
-              parentClosureEntityMetadata.treeOptions &&
-              parentClosureEntityMetadata.treeOptions.descendantColumnName
-                ? parentClosureEntityMetadata.treeOptions.descendantColumnName(
-                    primaryColumn
-                  )
-                : primaryColumn.propertyName + '_descendant',
+            propertyName: parentClosureEntityMetadata.treeOptions
+              ?.descendantColumnName
+              ? parentClosureEntityMetadata.treeOptions.descendantColumnName(
+                  primaryColumn
+                )
+              : primaryColumn.propertyName + '_descendant',
             options: {
               primary: true,
               length: primaryColumn.length,
@@ -164,14 +161,14 @@ export class ClosureJunctionEntityMetadataBuilder {
       new ForeignKeyMetadata({
         entityMetadata: entityMetadata,
         referencedEntityMetadata: parentClosureEntityMetadata,
-        columns: [entityMetadata.ownColumns[0] as ColumnMetadata],
+        columns: [entityMetadata.ownColumns[0]!],
         referencedColumns: parentClosureEntityMetadata.primaryColumns,
         onDelete: 'CASCADE',
       }),
       new ForeignKeyMetadata({
         entityMetadata: entityMetadata,
         referencedEntityMetadata: parentClosureEntityMetadata,
-        columns: [entityMetadata.ownColumns[1] as ColumnMetadata],
+        columns: [entityMetadata.ownColumns[1]!],
         referencedColumns: parentClosureEntityMetadata.primaryColumns,
         onDelete: 'CASCADE',
       }),

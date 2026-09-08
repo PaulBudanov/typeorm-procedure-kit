@@ -1,6 +1,8 @@
 import type { OracleConnectionOptions } from '../driver/oracle/OracleConnectionOptions.js';
 import type { PostgresConnectionOptions } from '../driver/postgres/PostgresConnectionOptions.js';
 
+export type TIdentifierQuoting = 'disabled' | 'enabled';
+
 /**
  * DataSourceOptions is an interface with settings and options for specific DataSource.
  */
@@ -9,11 +11,11 @@ export type DataSourceOptions = (
   | OracleConnectionOptions
 ) & {
   /**
-   * Disables automatic identifier quoting in query builders when true.
+   * Controls automatic quoting of physical database, schema, table, and column
+   * identifiers in query builders. Aliases are always quoted.
    *
-   * The kit sets this to true by default during module initialization so
-   * generated SQL keeps database identifiers unquoted unless quoting is forced
-   * through query-builder escape APIs.
+   * Defaults to `disabled` for compatibility with databases whose unquoted
+   * identifiers rely on server-side case folding.
    */
-  isQuotingDisabled?: boolean;
+  identifierQuoting?: TIdentifierQuoting;
 };

@@ -1,7 +1,8 @@
-import type { ObjectType } from '../../common/ObjectType.js';
 import { getMetadataArgsStorage } from '../../globals.js';
-import type { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs.js';
 import { ObjectUtils } from '../../util/ObjectUtils.js';
+
+import type { ObjectType } from '../../common/ObjectType.js';
+import type { RelationMetadataArgs } from '../../metadata-args/RelationMetadataArgs.js';
 import type { RelationOptions } from '../options/RelationOptions.js';
 
 /**
@@ -40,15 +41,15 @@ export function ManyToOne<T>(
   if (ObjectUtils.isObject(inverseSideOrOptions)) {
     options = inverseSideOrOptions as RelationOptions;
   } else {
-    inverseSideProperty = inverseSideOrOptions as string;
+    inverseSideProperty = inverseSideOrOptions!;
   }
 
   return function (object: object, propertyName: string | symbol) {
-    if (!options) options = {} as RelationOptions;
+    if (!options) options = {};
 
     // Now try to determine if it is a lazy relation.
-    let isLazy = options && options.lazy === true;
-    if (!isLazy && Reflect && (Reflect as typeof Reflect).getMetadata) {
+    let isLazy = options?.lazy === true;
+    if (!isLazy && Reflect && Reflect.getMetadata) {
       // automatic determination
       const reflectedType = Reflect.getMetadata(
         'design:type',

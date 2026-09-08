@@ -8,7 +8,7 @@ export class QueryBuilderUtils {
    */
   public static isAliasProperty(str: string): str is string {
     // alias property must be a string and must have a dot separator
-    if (typeof str !== 'string' || str.indexOf('.') === -1) return false;
+    if (typeof str !== 'string' || !str.includes('.')) return false;
 
     // extra alias and its property relation
     const [aliasName, propertyName] = str.split('.'); // todo: what about relations in embedded?
@@ -19,7 +19,7 @@ export class QueryBuilderUtils {
     // if (!aliasNameRegexp.test(aliasName) || !aliasNameRegexp.test(propertyName))
     //     return false;
     // make sure string is not a subquery
-    if (str.indexOf('(') !== -1 || str.indexOf(')') !== -1) return false;
+    if (str.includes('(') || str.includes(')')) return false;
 
     return true;
   }

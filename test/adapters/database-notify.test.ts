@@ -1,13 +1,14 @@
-import type { Client } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DatabaseNotify } from '../../src/adapters/abstract/database-notify.js';
+import { createLogger } from '../support/helpers.js';
+
 import type { ILoggerModule } from '../../src/types/logger.types.js';
 import type {
   INotifyRetryOptions,
   TNotifyCallbackGeneric,
 } from '../../src/types/notification.types.js';
-import { createLogger } from '../support/helpers.js';
+import type { Client } from 'pg';
 
 class TestDatabaseNotify extends DatabaseNotify<Client> {
   public constructor(logger: ILoggerModule) {
@@ -30,7 +31,8 @@ class TestDatabaseNotify extends DatabaseNotify<Client> {
 
   public restore(
     channelName: string,
-    restore: () => Promise<void>
+    restore: () => Promise<void>,
+    options: INotifyRetryOptions = {}
   ): Promise<void> {
     return this.restoreNotification({
       channelName,
@@ -38,6 +40,7 @@ class TestDatabaseNotify extends DatabaseNotify<Client> {
       restore,
       maxRetries: 1,
       retryAfterMaxDelayMs: 60_000,
+      ...options,
     });
   }
 
@@ -93,18 +96,18 @@ describe('DatabaseNotify', (): void => {
       await Promise.resolve();
       await Promise.resolve();
 
-      let destroySettled = false;
+      let isDestroySettled = false;
       const destroyPromise = notify.destroy().then(() => {
-        destroySettled = true;
+        isDestroySettled = true;
       });
       await Promise.resolve();
 
-      expect(destroySettled).toBe(false);
+      expect(isDestroySettled).toBe(false);
 
       await vi.advanceTimersByTimeAsync(5_000);
       await destroyPromise;
 
-      expect(destroySettled).toBe(true);
+      expect(isDestroySettled).toBe(true);
       expect(notify.getNotificationPool().size).toBe(0);
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining(
@@ -168,5 +171,29 @@ describe('DatabaseNotify', (): void => {
       vi.clearAllTimers();
       vi.useRealTimers();
     }
+  });
+
+  it.each([
+    { option: 'maxRetries', value: 0 },
+    { option: 'maxRetries', value: -1 },
+    { option: 'maxRetries', value: 1.5 },
+    { option: 'maxRetries', value: Number.NaN },
+    { option: 'maxRetries', value: Infinity },
+    { option: 'retryDelayMs', value: -1 },
+    { option: 'retryDelayMs', value: 1.5 },
+    { option: 'retryDelayMs', value: Number.NaN },
+    { option: 'retryDelayMs', value: Infinity },
+    { option: 'retryAfterMaxDelayMs', value: -1 },
+    { option: 'retryAfterMaxDelayMs', value: 1.5 },
+    { option: 'retryAfterMaxDelayMs', value: Number.NaN },
+    { option: 'retryAfterMaxDelayMs', value: Infinity },
+  ])('rejects invalid $option value $value', ({ option, value }): void => {
+    const notify = new TestDatabaseNotify(createLogger());
+
+    expect(() =>
+      notify.restore('channel', vi.fn(), {
+        [option]: value,
+      })
+    ).toThrow(RangeError);
   });
 });

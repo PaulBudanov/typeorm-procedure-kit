@@ -1,13 +1,7 @@
+import type { ISafeStringifyOptions } from '../interfaces/safe-stringify.interfaces.js';
+
 const DEFAULT_REDACT_KEYS =
   /password|passwd|pwd|pass|secret|token|authorization|auth|cookie|credential|apikey|api_key|privatekey|private_key/i;
-
-interface ISafeStringifyOptions {
-  maxArrayLength?: number;
-  maxDepth?: number;
-  maxObjectKeys?: number;
-  maxStringLength?: number;
-  redactKeys?: RegExp;
-}
 
 const DEFAULT_OPTIONS: Required<ISafeStringifyOptions> = {
   maxArrayLength: 50,
@@ -39,7 +33,7 @@ function sanitizeForLog(
   if (value instanceof Date) return value.toISOString();
   if (Buffer.isBuffer(value)) return `[Buffer:${value.length}]`;
 
-  if (typeof value !== 'object') return String(value);
+  if (typeof value !== 'object') return Object.prototype.toString.call(value);
   if (seen.has(value)) return '[Circular]';
   if (depth >= options.maxDepth) return '[MaxDepth]';
 
@@ -85,7 +79,7 @@ export function safeStringify(
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
   try {
     return JSON.stringify(
-      sanitizeForLog(value, mergedOptions, 0, new WeakSet<object>())
+      sanitizeForLog(value, mergedOptions, 0, new WeakSet())
     );
   } catch {
     return '[Unserializable value]';

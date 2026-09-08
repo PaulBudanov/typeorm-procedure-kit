@@ -1,12 +1,13 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
-import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
+
+import { resolveColumnPath } from './ColumnPathResolver.js';
 
 import type { ColumnMetadata } from './ColumnMetadata.js';
-import { resolveColumnPath } from './ColumnPathResolver.js';
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import type { EntityMetadata } from './EntityMetadata.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
+import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 
 /**
  * Index metadata contains all information about table's index.
@@ -171,7 +172,7 @@ export class IndexMetadata {
    * Must be called after all entity metadata's properties map, columns and relations are built.
    */
   public build(namingStrategy: NamingStrategyInterface): this {
-    if (this.synchronize === false) {
+    if (!this.synchronize) {
       this.name = this.givenName!;
       return this;
     }
@@ -203,8 +204,7 @@ export class IndexMetadata {
             (i: string | number) => String(i)
           );
           Object.keys(columnsFnResult).forEach(
-            (columnName) =>
-              (map[columnName] = columnsFnResult[columnName] as number)
+            (columnName) => (map[columnName] = columnsFnResult[columnName]!)
           );
         }
       }
@@ -224,20 +224,19 @@ export class IndexMetadata {
               propertyPath
           );
         })
-        .reduce((a, b) => a.concat(b)) as Array<ColumnMetadata>;
+        .reduce((a, b) => a.concat(b));
     }
 
-    this.columnNamesWithOrderingMap = Object.keys(map).reduce(
-      (updatedMap, key) => {
-        const column = this.entityMetadata.columns.find(
-          (column) => column.propertyPath === key
-        );
-        if (column) updatedMap[column.databasePath] = map[key] as number;
+    this.columnNamesWithOrderingMap = Object.keys(map).reduce<
+      Record<string, number>
+    >((updatedMap, key) => {
+      const column = this.entityMetadata.columns.find(
+        (column) => column.propertyPath === key
+      );
+      if (column) updatedMap[column.databasePath] = map[key]!;
 
-        return updatedMap;
-      },
-      {} as Record<string, number>
-    );
+      return updatedMap;
+    }, {});
 
     this.name = this.givenName
       ? this.givenName

@@ -160,7 +160,7 @@ export interface BaseDataSourceOptions {
 
         /**
          * Configurable table name for "database" type cache.
-         * Default value is "query-result-cache"
+         * Default value is "query_result_cache".
          */
         readonly tableName?: string;
 

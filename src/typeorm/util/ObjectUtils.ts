@@ -21,7 +21,7 @@ export class ObjectUtils {
     return (
       val !== null &&
       typeof val === 'object' &&
-      (val as Record<string, unknown>)['name'] !== undefined
+      (val as Record<string, unknown>).name !== undefined
     );
   }
 

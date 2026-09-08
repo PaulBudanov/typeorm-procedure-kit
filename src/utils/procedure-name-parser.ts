@@ -1,14 +1,10 @@
-import type { TDBMapStructure } from '../types/procedure.types.js';
-
 import { DatabaseNamingCache } from './database-naming-cache.js';
 import { ServerError } from './server-error.js';
 
-interface IProcedureNameParser extends Record<string, unknown> {
-  processName: Lowercase<string>;
-  packageName: Lowercase<string>;
-}
+import type { IProcedureNameParser } from '../interfaces/procedure-name-parser.interfaces.js';
+import type { TDBMapStructure } from '../types/procedure.types.js';
 
-class ProcedureNameParser {
+export class ProcedureNameParser {
   private databaseNamingCache = new DatabaseNamingCache<IProcedureNameParser>();
   private cacheKey = Symbol('procedureNameParser');
 
@@ -22,6 +18,12 @@ class ProcedureNameParser {
    */
   public destroy(): void {
     this.databaseNamingCache.cacheClear(this.cacheKey);
+  }
+
+  /** Clears parsed names after the owning metadata snapshot changes. */
+  public clear(): void {
+    this.databaseNamingCache.cacheClear(this.cacheKey);
+    this.databaseNamingCache.createCache(this.cacheKey);
   }
   /**
    * Parse the given executeString into a procedure name and package name.
@@ -40,13 +42,14 @@ class ProcedureNameParser {
     procedureList: TDBMapStructure,
     packages: Array<Lowercase<string>>
   ): IProcedureNameParser {
+    const normalized = executeString.trim().toLowerCase();
+    const cacheEntryKey = `${packages.join(',')}:${normalized}`;
     const cached = this.databaseNamingCache.cacheGet(
       this.cacheKey,
-      executeString
+      cacheEntryKey
     );
     if (cached) return cached;
 
-    const normalized = executeString.trim().toLowerCase();
     const parts = normalized.split('.') as Array<Lowercase<string>>;
     let result: IProcedureNameParser | null = null;
 
@@ -74,7 +77,7 @@ class ProcedureNameParser {
       );
     }
 
-    this.databaseNamingCache.cacheSet(this.cacheKey, executeString, result);
+    this.databaseNamingCache.cacheSet(this.cacheKey, cacheEntryKey, result);
     return result;
   }
 
@@ -119,7 +122,8 @@ class ProcedureNameParser {
     const normalized = executeString.trim().toLowerCase();
     const parts = normalized.split('.');
 
-    return parts.length === 2 ? (parts[1] as string) : (parts[0] as string);
+    const firstPart = parts[0] ?? '';
+    return parts.length === 2 ? (parts[1] ?? firstPart) : firstPart;
   }
 
   /**
@@ -142,4 +146,3 @@ class ProcedureNameParser {
     return `${packageName}.${procedureName}`;
   }
 }
-export const procedureNameParser = new ProcedureNameParser();

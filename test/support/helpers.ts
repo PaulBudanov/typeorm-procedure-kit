@@ -4,23 +4,23 @@ import type { IDatabaseAdapterContract } from '../../src/types/adapter.types.js'
 import type { ILoggerModule } from '../../src/types/logger.types.js';
 import type { TSerializerTypeCastWithoutFormat } from '../../src/types/serializer.types.js';
 
-type LoggerMock = ReturnType<
+type TLoggerMock = ReturnType<
   typeof vi.fn<(message: unknown, stack?: string, context?: string) => void>
 >;
 
-export interface TestLogger extends ILoggerModule {
-  error: LoggerMock;
-  log: LoggerMock;
-  warn: LoggerMock;
+export interface ITestLogger extends ILoggerModule {
+  error: TLoggerMock;
+  log: TLoggerMock;
+  warn: TLoggerMock;
 }
 
-export function createLogger(): TestLogger {
+export function createLogger(): ITestLogger {
   return {
     error:
       vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
     log: vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
     warn: vi.fn<(message: unknown, stack?: string, context?: string) => void>(),
-  } as TestLogger;
+  } as ITestLogger;
 }
 
 export function createAdapterMock(
@@ -30,7 +30,9 @@ export function createAdapterMock(
   return {
     sortArgumentsAlgorithm: vi.fn(),
     execute: vi.fn(),
+    executeProcedure: vi.fn(),
     generatePackageInfoSql: vi.fn(),
+    prepareProcedureMetadataRows: vi.fn((rows) => rows),
     makeSqlBindings: vi.fn(),
     makeBindings: vi.fn(),
     setSerializer: vi.fn(),

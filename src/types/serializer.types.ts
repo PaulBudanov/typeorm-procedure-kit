@@ -1,9 +1,21 @@
+import type {
+  ISerializerContext,
+  ISerializerNativeValueMap,
+  ISerializerValues,
+} from '../interfaces/serializer.interfaces.js';
 import type { DbType } from 'oracledb';
 
-type TSerializerTypeWithoutFormatBase =
+export type {
+  ISerializerContext,
+  ISerializerNativeValueMap,
+  ISerializerValues,
+} from '../interfaces/serializer.interfaces.js';
+
+export type TSerializerType =
   | 'DATE'
   | 'TIMESTAMP'
   | 'TIMESTAMP_TZ'
+  | 'TIMESTAMP_LTZ'
   | 'BOOLEAN'
   | 'CHAR'
   | 'VARCHAR'
@@ -11,33 +23,50 @@ type TSerializerTypeWithoutFormatBase =
   | 'BINARY'
   | 'XML';
 
-/**
- * Serializer strategy for a raw database value.
- */
-export interface ISerializerValues {
-  strategy: (param: string | Buffer) => unknown;
-}
+export type TTemporalSerializerType =
+  | 'DATE'
+  | 'TIMESTAMP'
+  | 'TIMESTAMP_TZ'
+  | 'TIMESTAMP_LTZ';
 
-/**
- * @deprecated Use `ISerializerValues` instead.
- */
-export type ISerialzerValues = ISerializerValues;
+export type TJsonSerializerValue =
+  | string
+  | Buffer
+  | number
+  | boolean
+  | Record<string, unknown>
+  | ReadonlyArray<unknown>;
 
-export type TSerializerTypeCastWithoutFormat = Map<
-  TSerializerTypeWithoutFormatBase,
-  ISerializerValues
+export type TSerializerNativeValue<T extends TSerializerType> =
+  ISerializerNativeValueMap[T];
+
+export type TSerializerInput<T extends TSerializerType = TSerializerType> =
+  T extends TSerializerType
+    ? {
+        serializerType: T;
+        value: TSerializerNativeValue<T>;
+        context?: ISerializerContext;
+      }
+    : never;
+
+export type TSerializerStrategy<T extends TSerializerType = TSerializerType> = (
+  input: TSerializerInput<T>
+) => unknown;
+
+export type TSetSerializer<T extends TSerializerType = TSerializerType> =
+  T extends TSerializerType
+    ? ISerializerValues<T> & {
+        serializerType: T;
+      }
+    : never;
+
+export type TSerializerRegistry = {
+  [T in TSerializerType]?: TSetSerializer<T>;
+};
+
+export type TSerializerTypeCastWithoutFormat = ReadonlyMap<
+  TSerializerType,
+  TSetSerializer
 >;
 
-/**
- * Registers or overrides a serializer for one supported database type key.
- *
- * Supported keys are `DATE`, `TIMESTAMP`, `TIMESTAMP_TZ`, `BOOLEAN`, `CHAR`,
- * `VARCHAR`, `JSON`, `BINARY`, and `XML`.
- */
-export interface ISetSerializer extends ISerializerValues {
-  serializerType: TSerializerTypeWithoutFormatBase;
-}
-export type TOracleObjectDbTypeHandlerCast = Map<
-  DbType,
-  TSerializerTypeWithoutFormatBase
->;
+export type TOracleObjectDbTypeHandlerCast = Map<DbType, TSerializerType>;

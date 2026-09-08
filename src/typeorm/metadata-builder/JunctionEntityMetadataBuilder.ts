@@ -1,10 +1,11 @@
-import type { DataSource } from '../data-source/DataSource.js';
-import type { Driver } from '../driver/Driver.js';
 import { TypeORMError } from '../error/TypeORMError.js';
 import { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { ForeignKeyMetadata } from '../metadata/ForeignKeyMetadata.js';
 import { IndexMetadata } from '../metadata/IndexMetadata.js';
+
+import type { DataSource } from '../data-source/DataSource.js';
+import type { Driver } from '../driver/Driver.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import type { JoinTableMetadataArgs } from '../metadata-args/JoinTableMetadataArgs.js';
 
@@ -84,14 +85,13 @@ export class JunctionEntityMetadataBuilder {
             );
           })
         : undefined;
-      const columnName =
-        joinColumn && joinColumn.name
-          ? joinColumn.name
-          : this.connection.namingStrategy.joinTableColumnName(
-              relation.entityMetadata.tableNameWithoutPrefix,
-              referencedColumn.propertyName,
-              referencedColumn.databaseName
-            );
+      const columnName = joinColumn?.name
+        ? joinColumn.name
+        : this.connection.namingStrategy.joinTableColumnName(
+            relation.entityMetadata.tableNameWithoutPrefix,
+            referencedColumn.propertyName,
+            referencedColumn.databaseName
+          );
 
       return new ColumnMetadata({
         connection: this.connection,
@@ -137,14 +137,13 @@ export class JunctionEntityMetadataBuilder {
               );
             })
           : undefined;
-        const columnName =
-          joinColumn && joinColumn.name
-            ? joinColumn.name
-            : this.connection.namingStrategy.joinTableInverseColumnName(
-                relation.inverseEntityMetadata.tableNameWithoutPrefix,
-                inverseReferencedColumn.propertyName,
-                inverseReferencedColumn.databaseName
-              );
+        const columnName = joinColumn?.name
+          ? joinColumn.name
+          : this.connection.namingStrategy.joinTableInverseColumnName(
+              relation.inverseEntityMetadata.tableNameWithoutPrefix,
+              inverseReferencedColumn.propertyName,
+              inverseReferencedColumn.databaseName
+            );
 
         return new ColumnMetadata({
           connection: this.connection,
@@ -296,7 +295,7 @@ export class JunctionEntityMetadataBuilder {
   ): Array<ColumnMetadata> {
     const hasInverseJoinColumns = !!joinTable.inverseJoinColumns;
     const hasAnyInverseReferencedColumnName = hasInverseJoinColumns
-      ? joinTable.inverseJoinColumns!.find(
+      ? joinTable.inverseJoinColumns.find(
           (joinColumn) => !!joinColumn.referencedColumnName
         )
       : false;
@@ -306,7 +305,7 @@ export class JunctionEntityMetadataBuilder {
     ) {
       return relation.inverseEntityMetadata.primaryColumns;
     } else {
-      return joinTable.inverseJoinColumns!.map((joinColumn) => {
+      return joinTable.inverseJoinColumns.map((joinColumn) => {
         const referencedColumn = relation.inverseEntityMetadata.ownColumns.find(
           (column) => column.propertyName === joinColumn.referencedColumnName
         );

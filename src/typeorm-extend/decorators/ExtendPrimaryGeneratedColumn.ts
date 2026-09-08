@@ -1,10 +1,11 @@
 import { getMetadataArgsStorage } from '../../typeorm/globals.js';
+import { ServerError } from '../../utils/server-error.js';
+import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
+
 import type {
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,
 } from '../../types/typeorm-extend.types.js';
-import { ServerError } from '../../utils/server-error.js';
-import { TypeOrmHelpers } from '../../utils/typeorm-helpers.js';
 
 function isPrimaryGeneratedColumnOverrideDescriptor(
   overrideSource?: TExtendPrimaryGeneratedColumnOptions
@@ -45,13 +46,12 @@ export function ExtendPrimaryGeneratedColumn(
     );
 
     if (
-      !columnMetadata.foundTarget ||
       typeof columnMetadata.foundTarget !== 'function' ||
       !columnMetadata.column ||
       !columnMetadata.generation
     )
       throw new ServerError(
-        `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget}". ` +
+        `Primary Column "${propertyKey.toString()}" not found for entity "${targetConstructor.name}". Original entity name: "${columnMetadata.foundTarget?.constructor.name ?? 'unknown'}". ` +
           'Register column with @PrimaryGeneratedColumn() decorator first.'
       );
     const targetRegister = isRegisterToParentTarget
@@ -78,7 +78,7 @@ export function ExtendPrimaryGeneratedColumn(
       targetRegister,
       propertyKey.toString(),
       columnMetadata.generation,
-      overrideStrategy ?? columnMetadata.generation.strategy ?? undefined
+      overrideStrategy ?? columnMetadata.generation.strategy
     );
     return;
   };

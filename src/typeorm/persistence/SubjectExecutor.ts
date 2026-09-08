@@ -1,18 +1,20 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { SubjectRemovedAndUpdatedError } from '../error/SubjectRemovedAndUpdatedError.js';
 import { SubjectWithoutIdentifierError } from '../error/SubjectWithoutIdentifierError.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
-import type { RemoveOptions } from '../repository/RemoveOptions.js';
-import type { SaveOptions } from '../repository/SaveOptions.js';
 import { BroadcasterResult } from '../subscriber/BroadcasterResult.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
+import { OrmUtils } from '../util/OrmUtils.js';
 
-import type { Subject } from './Subject.js';
 import { SubjectChangedColumnsComputer } from './SubjectChangedColumnsComputer.js';
 import { SubjectTopologicalSorter } from './SubjectTopologicalSorter.js';
 import { ClosureSubjectExecutor } from './tree/ClosureSubjectExecutor.js';
 import { MaterializedPathSubjectExecutor } from './tree/MaterializedPathSubjectExecutor.js';
 import { NestedSetSubjectExecutor } from './tree/NestedSetSubjectExecutor.js';
+
+import type { Subject } from './Subject.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import type { RemoveOptions } from '../repository/RemoveOptions.js';
+import type { SaveOptions } from '../repository/SaveOptions.js';
 
 /**
  * Executes all database operations (inserts, updated, deletes) that must be executed
@@ -101,7 +103,7 @@ export class SubjectExecutor {
 
     // broadcast "before" events before we start insert / update / remove operations
     let broadcasterResult: BroadcasterResult | undefined = undefined;
-    if (!this.options || this.options.listeners !== false) {
+    if (this.options?.listeners !== false) {
       // console.time(".broadcastBeforeEventsForAll");
       broadcasterResult = this.broadcastBeforeEventsForAll();
       if (broadcasterResult.promises.length > 0)
@@ -113,11 +115,21 @@ export class SubjectExecutor {
     // recompute only in the case if any listener or subscriber was really executed
     if (broadcasterResult && broadcasterResult.count > 0) {
       // console.time(".recompute");
-      this.insertSubjects.forEach((subject) => subject.recompute());
-      this.updateSubjects.forEach((subject) => subject.recompute());
-      this.removeSubjects.forEach((subject) => subject.recompute());
-      this.softRemoveSubjects.forEach((subject) => subject.recompute());
-      this.recoverSubjects.forEach((subject) => subject.recompute());
+      this.insertSubjects.forEach((subject) => {
+        subject.recompute();
+      });
+      this.updateSubjects.forEach((subject) => {
+        subject.recompute();
+      });
+      this.removeSubjects.forEach((subject) => {
+        subject.recompute();
+      });
+      this.softRemoveSubjects.forEach((subject) => {
+        subject.recompute();
+      });
+      this.recoverSubjects.forEach((subject) => {
+        subject.recompute();
+      });
       this.recompute();
       // console.timeEnd(".recompute");
     }
@@ -175,7 +187,7 @@ export class SubjectExecutor {
     // console.timeEnd(".updateSpecialColumnsInPersistedEntities");
 
     // finally broadcast "after" events after we finish insert / update / remove operations
-    if (!this.options || this.options.listeners !== false) {
+    if (this.options?.listeners !== false) {
       // console.time(".broadcastAfterEventsForAll");
       broadcasterResult = this.broadcastAfterEventsForAll();
       if (broadcasterResult.promises.length > 0)
@@ -233,54 +245,54 @@ export class SubjectExecutor {
   protected broadcastBeforeEventsForAll(): BroadcasterResult {
     const result = new BroadcasterResult();
     if (this.insertSubjects.length)
-      this.insertSubjects.forEach((subject) =>
+      this.insertSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastBeforeInsertEvent(
           result,
           subject.metadata,
-          subject.entity!
-        )
-      );
+          subject.entity
+        );
+      });
     if (this.updateSubjects.length)
-      this.updateSubjects.forEach((subject) =>
+      this.updateSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastBeforeUpdateEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.diffColumns,
           subject.diffRelations
-        )
-      );
+        );
+      });
     if (this.removeSubjects.length)
-      this.removeSubjects.forEach((subject) =>
+      this.removeSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastBeforeRemoveEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.identifier
-        )
-      );
+        );
+      });
     if (this.softRemoveSubjects.length)
-      this.softRemoveSubjects.forEach((subject) =>
+      this.softRemoveSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastBeforeSoftRemoveEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.identifier
-        )
-      );
+        );
+      });
     if (this.recoverSubjects.length)
-      this.recoverSubjects.forEach((subject) =>
+      this.recoverSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastBeforeRecoverEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.identifier
-        )
-      );
+        );
+      });
     return result;
   }
 
@@ -292,55 +304,55 @@ export class SubjectExecutor {
   protected broadcastAfterEventsForAll(): BroadcasterResult {
     const result = new BroadcasterResult();
     if (this.insertSubjects.length)
-      this.insertSubjects.forEach((subject) =>
+      this.insertSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastAfterInsertEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.identifier
-        )
-      );
+        );
+      });
     if (this.updateSubjects.length)
-      this.updateSubjects.forEach((subject) =>
+      this.updateSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastAfterUpdateEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.diffColumns,
           subject.diffRelations
-        )
-      );
+        );
+      });
     if (this.removeSubjects.length)
-      this.removeSubjects.forEach((subject) =>
+      this.removeSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastAfterRemoveEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.identifier
-        )
-      );
+        );
+      });
     if (this.softRemoveSubjects.length)
-      this.softRemoveSubjects.forEach((subject) =>
+      this.softRemoveSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastAfterSoftRemoveEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.identifier
-        )
-      );
+        );
+      });
     if (this.recoverSubjects.length)
-      this.recoverSubjects.forEach((subject) =>
+      this.recoverSubjects.forEach((subject) => {
         this.queryRunner.broadcaster.broadcastAfterRecoverEvent(
           result,
           subject.metadata,
-          subject.entity!,
+          subject.entity,
           subject.databaseEntity,
           subject.identifier
-        )
-      );
+        );
+      });
     return result;
   }
 
@@ -395,9 +407,7 @@ export class SubjectExecutor {
           .insert()
           .into(subjects[0]?.metadata.target ?? subjects[0]!.metadata.target)
           .values(bulkInsertMaps)
-          .updateEntity(
-            this.options && this.options.reload === false ? false : true
-          )
+          .updateEntity(this.options?.reload === false ? false : true)
           .callListeners(false)
           .execute();
 
@@ -424,9 +434,7 @@ export class SubjectExecutor {
             .insert()
             .into(subject.metadata.target)
             .values(subject.insertedValueSet)
-            .updateEntity(
-              this.options && this.options.reload === false ? false : true
-            )
+            .updateEntity(this.options?.reload === false ? false : true)
             .callListeners(false)
             .execute();
 
@@ -496,9 +504,7 @@ export class SubjectExecutor {
         .createQueryBuilder()
         .update(subject.metadata.target)
         .set(updateMap)
-        .updateEntity(
-          this.options && this.options.reload === false ? false : true
-        )
+        .updateEntity(this.options?.reload === false ? false : true)
         .callListeners(false);
 
       if (subject.entity) {
@@ -512,14 +518,14 @@ export class SubjectExecutor {
       const updateGeneratedMap = updateResult.generatedMaps[0];
       if (updateGeneratedMap) {
         subject.metadata.columns.forEach((column) => {
-          const value = column.getEntityValue(updateGeneratedMap!);
+          const value = column.getEntityValue(updateGeneratedMap);
           if (value !== undefined && value !== null) {
             const preparedValue =
               this.queryRunner.connection.driver.prepareHydratedValue(
                 value,
                 column
               );
-            column.setEntityValue(updateGeneratedMap!, preparedValue);
+            column.setEntityValue(updateGeneratedMap, preparedValue);
           }
         });
         if (!subject.generatedMap) {
@@ -549,11 +555,15 @@ export class SubjectExecutor {
       }
     };
 
-    // Run all remaining subjects in parallel
-    await Promise.all([
-      ...remainingSubjects.map(updateSubject),
-      updateNestSetSubjects(),
-    ]);
+    if (this.queryRunner.connection.options.type === 'postgres') {
+      for (const subject of remainingSubjects) await updateSubject(subject);
+      await updateNestSetSubjects();
+    } else {
+      await Promise.all([
+        ...remainingSubjects.map(updateSubject),
+        updateNestSetSubjects(),
+      ]);
+    }
   }
 
   /**
@@ -609,8 +619,8 @@ export class SubjectExecutor {
    * Soft-removes all given subjects in the database.
    */
   protected async executeSoftRemoveOperations(): Promise<void> {
-    await Promise.all(
-      this.softRemoveSubjects.map(async (subject) => {
+    await OrmUtils.executeTasks(
+      this.softRemoveSubjects.map((subject) => async (): Promise<void> => {
         if (!subject.identifier)
           throw new SubjectWithoutIdentifierError(subject);
 
@@ -623,9 +633,7 @@ export class SubjectExecutor {
           .createQueryBuilder()
           .softDelete()
           .from(subject.metadata.target)
-          .updateEntity(
-            this.options && this.options.reload === false ? false : true
-          )
+          .updateEntity(this.options?.reload === false ? false : true)
           .callListeners(false);
 
         if (subject.entity) {
@@ -663,7 +671,8 @@ export class SubjectExecutor {
         //         }
         //     }));
         // }
-      })
+      }),
+      this.queryRunner.connection.options.type === 'postgres'
     );
   }
 
@@ -671,8 +680,8 @@ export class SubjectExecutor {
    * Recovers all given subjects in the database.
    */
   protected async executeRecoverOperations(): Promise<void> {
-    await Promise.all(
-      this.recoverSubjects.map(async (subject) => {
+    await OrmUtils.executeTasks(
+      this.recoverSubjects.map((subject) => async (): Promise<void> => {
         if (!subject.identifier)
           throw new SubjectWithoutIdentifierError(subject);
 
@@ -684,9 +693,7 @@ export class SubjectExecutor {
           .createQueryBuilder()
           .restore()
           .from(subject.metadata.target)
-          .updateEntity(
-            this.options && this.options.reload === false ? false : true
-          )
+          .updateEntity(this.options?.reload === false ? false : true)
           .callListeners(false);
 
         if (subject.entity) {
@@ -724,7 +731,8 @@ export class SubjectExecutor {
         //         }
         //     }));
         // }
-      })
+      }),
+      this.queryRunner.connection.options.type === 'postgres'
     );
   }
 
@@ -795,7 +803,7 @@ export class SubjectExecutor {
           subject.metadata.childEntityMetadatas.length > 0 &&
           subject.metadata.childEntityMetadatas
             .map((metadata) => metadata.target)
-            .indexOf(column.target) !== -1
+            .includes(column.target)
         )
           return;
 
@@ -816,7 +824,7 @@ export class SubjectExecutor {
         if (subject.updatedRelationMaps.length > 0) {
           subject.updatedRelationMaps.forEach((updatedRelationMap) => {
             updatedRelationMap.relation.joinColumns.forEach((column) => {
-              if (column.isVirtual === true) return;
+              if (column.isVirtual) return;
 
               column.setEntityValue(
                 subject.entity!,
@@ -864,7 +872,7 @@ export class SubjectExecutor {
     const groupingAllowed =
       type === 'delete' ||
       this.queryRunner.connection.driver.isReturningSqlSupported('insert') ||
-      hasReturningDependColumns === false;
+      !hasReturningDependColumns;
 
     subjects.forEach((subject, index) => {
       const key =
@@ -875,7 +883,7 @@ export class SubjectExecutor {
         group[key] = [subject];
         keys.push(key);
       } else {
-        group[key]!.push(subject);
+        group[key].push(subject);
       }
     });
 

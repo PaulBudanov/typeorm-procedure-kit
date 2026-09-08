@@ -1,4 +1,5 @@
 // Configuration
+export type { TIdentifierQuoting } from '../typeorm/data-source/DataSourceOptions.js';
 export type {
   IBaseConfig,
   IDatabaseFactory,
@@ -10,15 +11,20 @@ export type {
   TOracleDbConfig,
   TPostgresDbConfig,
   IDatabaseCredentials,
+  IResourceLimits,
 } from './config.types.js';
 
 // Procedures
 export type {
   IProcedureArgumentBase,
+  IProcedureStructuredField,
+  IProcedureStructuredType,
   TDBMapStructure,
   TProcedureArgumentList,
+  TProcedureArgumentMode,
   TProcedurePayload,
   TProcedurePayloadInput,
+  TProcedureStructuredTypeKind,
 } from './procedure.types.js';
 
 // Notification
@@ -39,15 +45,23 @@ export type {
 
 // Serializer
 export type {
+  ISerializerContext,
   ISerializerValues,
-  ISerialzerValues,
-  ISetSerializer,
+  ISerializerNativeValueMap,
+  TSerializerInput,
+  TSerializerNativeValue,
+  TSerializerStrategy,
+  TSerializerType,
+  TTemporalSerializerType,
+  TSetSerializer,
 } from './serializer.types.js';
 
 // Utility
 export type {
   IBindingsObjectReturn,
   IProcedureBindingLogItem,
+  IProcedureOutBinding,
+  IProcedureResult,
   IProcedureQueryLogContext,
   ISqlBindingLogItem,
   ISqlQueryLogContext,
@@ -72,7 +86,6 @@ export type {
 
 // Strategy
 export type {
-  ICaseStratefyFactory,
   ICaseStrategyFactory,
   IColumnNameTransformStrategy,
   TKeyTransformCase,
@@ -81,6 +94,7 @@ export type {
 // Logger
 export type {
   ILoggerModule,
+  TBindingLogMode,
   TTypeOrmLoggerLevel,
   TTypeOrmLoggerLevels,
 } from './logger.types.js';
@@ -96,15 +110,15 @@ export type {
   TDeleteSerializer,
   TGetDataSource,
   TMakeNotify,
-  TSetSerializer,
+  TSetSerializerHandler,
   TUnlistenNotify,
 } from './nest-decorator.types.js';
 
 // TypeORM Extend
 export type {
   IBuildBaseQueryContext,
-  IEntityTargets,
   IRepositoryContext,
+  TEntityTargets,
   TEntityTargetFactory,
   TExtendPrimaryGeneratedColumnOptions,
   TPrimaryGeneratedColumnOverrideDescriptor,

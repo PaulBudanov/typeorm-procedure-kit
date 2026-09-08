@@ -1,7 +1,8 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
+
+import type { TFunction } from '../../types/utility.types.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 /**
  */

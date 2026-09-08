@@ -1,6 +1,3 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
-
 import { DeleteQueryBuilder } from './DeleteQueryBuilder.js';
 import { InsertQueryBuilder } from './InsertQueryBuilder.js';
 import { QueryBuilder } from './QueryBuilder.js';
@@ -8,6 +5,9 @@ import { RelationQueryBuilder } from './RelationQueryBuilder.js';
 import { SelectQueryBuilder } from './SelectQueryBuilder.js';
 import { SoftDeleteQueryBuilder } from './SoftDeleteQueryBuilder.js';
 import { UpdateQueryBuilder } from './UpdateQueryBuilder.js';
+
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
 
 export function registerQueryBuilders(): void {
   QueryBuilder.registerQueryBuilderClass(

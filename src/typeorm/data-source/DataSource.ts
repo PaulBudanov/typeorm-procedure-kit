@@ -1,45 +1,50 @@
-import type { TFunction } from '../../types/utility.types.js';
 import { ServerError } from '../../utils/server-error.js';
-import type { QueryResultCache } from '../cache/cache.types.js';
 import { DbQueryResultCacheFactory } from '../cache/db-query-result-cache-factory.js';
-import type { EntityTarget } from '../common/EntityTarget.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import { ConnectionMetadataBuilder } from '../connection/ConnectionMetadataBuilder.js';
-import type { Driver } from '../driver/Driver.js';
 import { DriverFactory } from '../driver/DriverFactory.js';
 import { DriverUtils } from '../driver/DriverUtils.js';
-import type { QueryParameterValues } from '../driver/QueryParameters.js';
-import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
-import type { EntityManager } from '../entity-manager/EntityManager.js';
 import { EntityManagerFactory } from '../entity-manager/EntityManagerFactory.js';
-import type { EntitySchema } from '../entity-schema/EntitySchema.js';
 import { CannotConnectAlreadyConnectedError } from '../error/CannotConnectAlreadyConnectedError.js';
 import { CannotExecuteNotConnectedError } from '../error/CannotExecuteNotConnectedError.js';
 import { EntityMetadataNotFoundError } from '../error/EntityMetadataNotFoundError.js';
 import { QueryRunnerProviderAlreadyReleasedError } from '../error/QueryRunnerProviderAlreadyReleasedError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { Logger } from '../logger/Logger.js';
 import { ProcedureKitLogger } from '../logger/ProcedureKitLogger.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { EntityMetadataValidator } from '../metadata-builder/EntityMetadataValidator.js';
-import type { Migration } from '../migration/Migration.js';
 import { MigrationExecutor } from '../migration/MigrationExecutor.js';
-import type { MigrationInterface } from '../migration/MigrationInterface.js';
 import { DefaultNamingStrategy } from '../naming-strategy/DefaultNamingStrategy.js';
-import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
 import { registerQueryBuilders } from '../query-builder/index.js';
 import { RelationIdLoader } from '../query-builder/RelationIdLoader.js';
 import { RelationLoader } from '../query-builder/RelationLoader.js';
 import { SelectQueryBuilder } from '../query-builder/SelectQueryBuilder.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
-import type { Repository } from '../repository/Repository.js';
-import type { TreeRepository } from '../repository/TreeRepository.js';
-import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 import { buildSqlTag } from '../util/SqlTagUtils.js';
 
-import type { DataSourceOptions } from './DataSourceOptions.js';
+import { resolveIdentifierQuoting } from './IdentifierQuoting.js';
+
+import type {
+  DataSourceOptions,
+  TIdentifierQuoting,
+} from './DataSourceOptions.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { QueryResultCache } from '../cache/cache.types.js';
+import type { EntityTarget } from '../common/EntityTarget.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { Driver } from '../driver/Driver.js';
+import type { QueryParameterValues } from '../driver/QueryParameters.js';
+import type { IsolationLevel } from '../driver/types/IsolationLevel.js';
+import type { EntityManager } from '../entity-manager/EntityManager.js';
+import type { EntitySchema } from '../entity-schema/EntitySchema.js';
+import type { Logger } from '../logger/Logger.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
+import type { Migration } from '../migration/Migration.js';
+import type { MigrationInterface } from '../migration/MigrationInterface.js';
+import type { NamingStrategyInterface } from '../naming-strategy/NamingStrategyInterface.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
+import type { Repository } from '../repository/Repository.js';
+import type { TreeRepository } from '../repository/TreeRepository.js';
+import type { EntitySubscriberInterface } from '../subscriber/EntitySubscriberInterface.js';
 
 registerQueryBuilders();
 
@@ -101,7 +106,7 @@ export class DataSource {
   /**
    * Entity subscriber instances that are registered for this connection.
    */
-  public readonly subscribers: Array<EntitySubscriberInterface<unknown>> = [];
+  public readonly subscribers: Array<EntitySubscriberInterface> = [];
 
   /**
    * All entity metadatas that are registered for this connection.
@@ -122,11 +127,8 @@ export class DataSource {
    */
   public queryResultCache?: QueryResultCache;
 
-  /**
-   * When true, query builders return raw identifier names instead of asking the
-   * driver to quote aliases, tables, and columns by default.
-   */
-  public isQuotingDisabled?: boolean;
+  /** Quoting policy used for physical database identifiers in query builders. */
+  public identifierQuoting: TIdentifierQuoting;
 
   /**
    * Used to load relations and work with lazy relations.
@@ -141,7 +143,13 @@ export class DataSource {
 
   public constructor(options: DataSourceOptions) {
     registerQueryBuilders();
-    this.options = options;
+    this.identifierQuoting = resolveIdentifierQuoting(
+      (options as { identifierQuoting?: unknown }).identifierQuoting
+    );
+    this.options = {
+      ...options,
+      identifierQuoting: this.identifierQuoting,
+    };
     this.logger = this.options.logger ?? ProcedureKitLogger.createNoop();
     this.driver = new DriverFactory().create(this);
     this.manager = this.createEntityManager();
@@ -153,7 +161,6 @@ export class DataSource {
     this.relationLoader = new RelationLoader(this);
     this.relationIdLoader = new RelationIdLoader(this);
     this.isInitialized = false;
-    this.isQuotingDisabled = options.isQuotingDisabled;
   }
 
   // -------------------------------------------------------------------------
@@ -176,6 +183,15 @@ export class DataSource {
    * Updates current connection options with provided options.
    */
   public setOptions(options: Partial<DataSourceOptions>): this {
+    if (Object.prototype.hasOwnProperty.call(options, 'identifierQuoting')) {
+      this.identifierQuoting = resolveIdentifierQuoting(
+        (options as { identifierQuoting?: unknown }).identifierQuoting
+      );
+      options = {
+        ...options,
+        identifierQuoting: this.identifierQuoting,
+      };
+    }
     Object.assign(this.options, options);
 
     if (options.logger) this.logger = options.logger;
@@ -322,7 +338,7 @@ export class DataSource {
     const migrationExecutor = new MigrationExecutor(this);
     migrationExecutor.transaction =
       options?.transaction || this.options?.migrationsTransactionMode || 'all';
-    migrationExecutor.fake = (options && options.fake) || false;
+    migrationExecutor.fake = options?.fake || false;
 
     const successMigrations =
       await migrationExecutor.executePendingMigrations();
@@ -341,8 +357,8 @@ export class DataSource {
       throw new CannotExecuteNotConnectedError(DataSource.name);
 
     const migrationExecutor = new MigrationExecutor(this);
-    migrationExecutor.transaction = (options && options.transaction) || 'all';
-    migrationExecutor.fake = (options && options.fake) || false;
+    migrationExecutor.transaction = options?.transaction || 'all';
+    migrationExecutor.fake = options?.fake || false;
 
     await migrationExecutor.undoLastMigration();
   }
@@ -356,7 +372,7 @@ export class DataSource {
       throw new CannotExecuteNotConnectedError(DataSource.name);
     }
     const migrationExecutor = new MigrationExecutor(this);
-    return await migrationExecutor.showMigrations();
+    return migrationExecutor.showMigrations();
   }
 
   /**
@@ -457,7 +473,7 @@ export class DataSource {
       expressions: values,
     });
 
-    return await this.query(query, parameters);
+    return this.query(query, parameters);
   }
 
   /**
@@ -562,12 +578,12 @@ export class DataSource {
     for (const [_, metadata] of this.entityMetadatasMap) {
       if (
         InstanceChecker.isEntitySchema(target) &&
-        metadata.name === (target as EntitySchema).options.name
+        metadata.name === target.options.name
       ) {
         return metadata;
       }
       if (typeof target === 'string') {
-        if (target.indexOf('.') !== -1) {
+        if (target.includes('.')) {
           if (metadata.tablePath === target) {
             return metadata;
           }
@@ -581,7 +597,7 @@ export class DataSource {
         ObjectUtils.isObjectWithName(target) &&
         typeof target.name === 'string'
       ) {
-        if (target.name.indexOf('.') !== -1) {
+        if (target.name.includes('.')) {
           if (metadata.tablePath === target.name) {
             return metadata;
           }
@@ -616,7 +632,7 @@ export class DataSource {
 
     // build entity metadatas
     const flattenedEntities = ObjectUtils.mixedListToArray<
-      string | TFunction | EntitySchema<unknown>
+      string | TFunction | EntitySchema
     >(this.options.entities ?? []);
     const entityMetadatas =
       await connectionMetadataBuilder.buildEntityMetadatas(flattenedEntities);

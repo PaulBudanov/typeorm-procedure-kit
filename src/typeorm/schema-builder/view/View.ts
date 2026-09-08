@@ -76,7 +76,7 @@ export class View {
       name: this.name,
       expression: this.expression,
       materialized: this.materialized,
-    } as ViewOptions);
+    });
   }
 
   /**

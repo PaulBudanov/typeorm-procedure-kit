@@ -1,3 +1,5 @@
+import { OrmUtils } from '../../util/OrmUtils.js';
+
 import type { TFunction } from '../../../types/utility.types.js';
 import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { EntityManager } from '../../entity-manager/EntityManager.js';
@@ -124,26 +126,30 @@ export class PlainObjectToDatabaseEntityTransformer {
       entityMetadata
         .extractRelationValuesFromEntity(entity, metadata.relations)
         .filter((value) => value !== null && value !== undefined)
-        .forEach(([relation, value, inverseEntityMetadata]) =>
+        .forEach(([relation, value, inverseEntityMetadata]) => {
           fillLoadMap(
             value as ObjectLiteral,
             inverseEntityMetadata,
             item,
             relation
-          )
-        );
+          );
+        });
     };
     fillLoadMap(plainObject, metadata);
     // load all entities and store them in the load map
-    await Promise.all(
-      loadMap.groupByTargetIds().map((targetWithIds) => {
-        // todo: fix type hinting
-        return this.manager
-          .findByIds<ObjectLiteral>(targetWithIds.target, targetWithIds.ids)
-          .then((entities) =>
-            loadMap.fillEntities(targetWithIds.target, entities)
+    await OrmUtils.executeTasks(
+      loadMap
+        .groupByTargetIds()
+        .map((targetWithIds) => async (): Promise<void> => {
+          // todo: fix type hinting
+          const entities = await this.manager.findByIds<ObjectLiteral>(
+            targetWithIds.target,
+            targetWithIds.ids
           );
-      })
+          loadMap.fillEntities(targetWithIds.target, entities);
+        }),
+      this.manager.connection.options.type === 'postgres' &&
+        !!this.manager.queryRunner
     );
 
     // go through each item in the load map and set their entity relationship using metadata stored in load map
@@ -151,8 +157,7 @@ export class PlainObjectToDatabaseEntityTransformer {
       if (
         !loadMapItem.relation ||
         !loadMapItem.entity ||
-        !loadMapItem.parentLoadMapItem ||
-        !loadMapItem.parentLoadMapItem.entity
+        !loadMapItem.parentLoadMapItem?.entity
       )
         return;
 

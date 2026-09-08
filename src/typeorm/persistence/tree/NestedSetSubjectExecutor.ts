@@ -1,8 +1,10 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import { formatDataSourceIdentifier } from '../../data-source/IdentifierQuoting.js';
 import { NestedSetMultipleRootError } from '../../error/NestedSetMultipleRootError.js';
+import { OrmUtils } from '../../util/OrmUtils.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { EntityMetadata } from '../../metadata/EntityMetadata.js';
 import type { QueryRunner } from '../../query-runner/QueryRunner.js';
-import { OrmUtils } from '../../util/OrmUtils.js';
 import type { Subject } from '../Subject.js';
 
 class NestedSetIds {
@@ -28,20 +30,20 @@ export class NestedSetSubjectExecutor {
    * Executes operations when subject is being inserted.
    */
   public async insert(subject: Subject): Promise<void> {
-    const escape = (alias: string, isNeedQuote = false): string =>
-      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
     const tableName = this.getTableName(subject.metadata.tablePath);
-    const leftColumnName = escape(
-      subject.metadata.nestedSetLeftColumn!.databaseName
+    const leftColumnName = formatDataSourceIdentifier(
+      subject.metadata.nestedSetLeftColumn!.databaseName,
+      this.queryRunner.connection
     );
-    const rightColumnName = escape(
-      subject.metadata.nestedSetRightColumn!.databaseName
+    const rightColumnName = formatDataSourceIdentifier(
+      subject.metadata.nestedSetRightColumn!.databaseName,
+      this.queryRunner.connection
     );
 
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
-    if (!parent && subject.parentSubject && subject.parentSubject.entity)
+    if (!parent && subject.parentSubject?.entity)
       // if entity was attached via children
       parent = subject.parentSubject.insertedValueSet
         ? subject.parentSubject.insertedValueSet
@@ -63,7 +65,7 @@ export class NestedSetSubjectExecutor {
         .getRawOne()
         .then((result) => {
           const value = result
-            ? (result as Record<string, unknown>)['right']
+            ? (result as Record<string, unknown>).right
             : undefined;
           // CockroachDB returns numeric types as string
           return typeof value === 'string'
@@ -106,7 +108,7 @@ export class NestedSetSubjectExecutor {
     let parent = subject.metadata.treeParentRelation!.getEntityValue(
       subject.entity!
     ); // if entity was attached via parent
-    if (!parent && subject.parentSubject && subject.parentSubject.entity)
+    if (!parent && subject.parentSubject?.entity)
       // if entity was attached via children
       parent = subject.parentSubject.entity;
 
@@ -129,9 +131,8 @@ export class NestedSetSubjectExecutor {
       return;
     }
 
-    const oldParent = subject.metadata.treeParentRelation!.getEntityValue(
-      entity!
-    );
+    const oldParent =
+      subject.metadata.treeParentRelation!.getEntityValue(entity);
     const oldParentId = subject.metadata.getEntityIdMap(oldParent);
     const parentId = subject.metadata.getEntityIdMap(parent);
 
@@ -141,14 +142,14 @@ export class NestedSetSubjectExecutor {
     }
 
     if (parent) {
-      const escape = (alias: string, isNeedQuote = false): string =>
-        this.queryRunner.connection.driver.escape(alias, isNeedQuote);
       const tableName = this.getTableName(subject.metadata.tablePath);
-      const leftColumnName = escape(
-        subject.metadata.nestedSetLeftColumn!.databaseName
+      const leftColumnName = formatDataSourceIdentifier(
+        subject.metadata.nestedSetLeftColumn!.databaseName,
+        this.queryRunner.connection
       );
-      const rightColumnName = escape(
-        subject.metadata.nestedSetRightColumn!.databaseName
+      const rightColumnName = formatDataSourceIdentifier(
+        subject.metadata.nestedSetRightColumn!.databaseName,
+        this.queryRunner.connection
       );
 
       const entityId = subject.metadata.getEntityIdMap(entity);
@@ -240,11 +241,15 @@ export class NestedSetSubjectExecutor {
 
     const metadata = subjects[0]!.metadata;
 
-    const escape = (alias: string, isNeedQuote = false): string =>
-      this.queryRunner.connection.driver.escape(alias, isNeedQuote);
     const tableName = this.getTableName(metadata.tablePath);
-    const leftColumnName = escape(metadata.nestedSetLeftColumn!.databaseName);
-    const rightColumnName = escape(metadata.nestedSetRightColumn!.databaseName);
+    const leftColumnName = formatDataSourceIdentifier(
+      metadata.nestedSetLeftColumn!.databaseName,
+      this.queryRunner.connection
+    );
+    const rightColumnName = formatDataSourceIdentifier(
+      metadata.nestedSetRightColumn!.databaseName,
+      this.queryRunner.connection
+    );
 
     const entitiesIds: Array<ObjectLiteral> = [];
     for (const subject of subjects) {
@@ -326,13 +331,16 @@ export class NestedSetSubjectExecutor {
     subject: Subject,
     parent: unknown
   ): Promise<boolean> {
-    const escape = (alias: string): string =>
+    const escapeAlias = (alias: string): string =>
       this.queryRunner.connection.driver.escape(alias);
     const tableName = this.getTableName(subject.metadata.tablePath);
     const parameters: Array<unknown> = [];
     const whereCondition = subject.metadata
       .treeParentRelation!.joinColumns.map((column) => {
-        const columnName = escape(column.databaseName);
+        const columnName = formatDataSourceIdentifier(
+          column.databaseName,
+          this.queryRunner.connection
+        );
         const parameter = column.getEntityValue(parent as ObjectLiteral);
 
         if (parameter == null) {
@@ -351,7 +359,7 @@ export class NestedSetSubjectExecutor {
 
     const countAlias = 'count';
     const result = await this.queryRunner.query(
-      `SELECT COUNT(1) AS ${escape(
+      `SELECT COUNT(1) AS ${escapeAlias(
         countAlias
       )} FROM ${tableName} WHERE ${whereCondition}`,
       parameters,
@@ -359,9 +367,7 @@ export class NestedSetSubjectExecutor {
     );
 
     return (
-      parseInt(
-        (result.records[0] as Record<string, string>)[countAlias] as string
-      ) === 0
+      parseInt((result.records[0] as Record<string, string>)[countAlias]!) === 0
     );
   }
 
@@ -374,7 +380,9 @@ export class NestedSetSubjectExecutor {
       .split('.')
       .map((i) => {
         // this condition need because in SQL Server driver when custom database name was specified and schema name was not, we got `dbName..tableName` string, and doesn't need to escape middle empty string
-        return i === '' ? i : this.queryRunner.connection.driver.escape(i);
+        return i === ''
+          ? i
+          : formatDataSourceIdentifier(i, this.queryRunner.connection);
       })
       .join('.');
   }

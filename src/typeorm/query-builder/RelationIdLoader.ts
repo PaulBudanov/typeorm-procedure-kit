@@ -1,11 +1,12 @@
+import { DriverUtils } from '../driver/DriverUtils.js';
+
+import type { SelectQueryBuilder } from './SelectQueryBuilder.js';
 import type { ObjectLiteral } from '../common/ObjectLiteral.js';
 import type { DataSource } from '../data-source/DataSource.js';
-import { DriverUtils } from '../driver/DriverUtils.js';
+import type { TIdentifierQuoting } from '../data-source/DataSourceOptions.js';
 import type { ColumnMetadata } from '../metadata/ColumnMetadata.js';
 import type { RelationMetadata } from '../metadata/RelationMetadata.js';
 import type { QueryRunner } from '../query-runner/QueryRunner.js';
-
-import type { SelectQueryBuilder } from './SelectQueryBuilder.js';
 
 /**
  * Loads relation ids for the given entities.
@@ -17,7 +18,8 @@ export class RelationIdLoader {
 
   public constructor(
     private connection: DataSource,
-    protected queryRunner?: QueryRunner | undefined
+    protected queryRunner?: QueryRunner | undefined,
+    private readonly identifierQuoting: TIdentifierQuoting = connection.identifierQuoting
   ) {}
 
   // -------------------------------------------------------------------------
@@ -43,24 +45,20 @@ export class RelationIdLoader {
 
     // load relation ids depend of relation type
     if (relation.isManyToMany) {
-      return this.loadForManyToMany(
-        relation,
-        entities,
-        relatedEntities
-      ) as Promise<Array<ObjectLiteral>>;
+      return this.loadForManyToMany(relation, entities, relatedEntities);
     } else if (relation.isManyToOne || relation.isOneToOneOwner) {
       return this.loadForManyToOneAndOneToOneOwner(
         relation,
         entities,
         relatedEntities
-      ) as Promise<Array<ObjectLiteral>>;
+      );
     } else {
       // if (relation.isOneToMany || relation.isOneToOneNotOwner) {
       return this.loadForOneToManyAndOneToOneNotOwner(
         relation,
         entities,
         relatedEntities
-      ) as Promise<Array<ObjectLiteral>>;
+      );
     }
   }
 
@@ -113,7 +111,7 @@ export class RelationIdLoader {
 
     const _relatedEntities: Array<E2> = Array.isArray(relatedEntityOrEntities)
       ? relatedEntityOrEntities
-      : [relatedEntityOrEntities!];
+      : [relatedEntityOrEntities];
 
     let columns: Array<ColumnMetadata> = [],
       inverseColumns: Array<ColumnMetadata> = [];
@@ -245,7 +243,9 @@ export class RelationIdLoader {
     const inverseColumns = relation.isOwning
       ? junctionMetadata.inverseColumns
       : junctionMetadata.ownerColumns;
-    const qb = this.connection.createQueryBuilder(this.queryRunner);
+    const qb = this.connection
+      .createQueryBuilder(this.queryRunner)
+      .setIdentifierQuoting(this.identifierQuoting);
 
     // select all columns from junction table
     columns.forEach((column) => {
@@ -277,17 +277,9 @@ export class RelationIdLoader {
       const values = entities.map((entity) =>
         columns[0]!.referencedColumn!.getEntityValue(entity)
       );
-      const areAllNumbers = values.every((value) => typeof value === 'number');
-
-      if (areAllNumbers) {
-        condition1 = `${mainAlias}.${
-          columns[0]!.propertyPath
-        } IN (${values.join(', ')})`;
-      } else {
-        qb.setParameter('values1', values);
-        condition1 =
-          mainAlias + '.' + columns[0]!.propertyPath + ' IN (:...values1)'; // todo: use ANY for postgres
-      }
+      qb.setParameter('values1', values);
+      condition1 =
+        mainAlias + '.' + columns[0]!.propertyPath + ' IN (:...values1)'; // todo: use ANY for postgres
     } else {
       condition1 =
         '(' +
@@ -319,22 +311,12 @@ export class RelationIdLoader {
         const values = relatedEntities.map((entity) =>
           inverseColumns[0]!.referencedColumn!.getEntityValue(entity)
         );
-        const areAllNumbers = values.every(
-          (value) => typeof value === 'number'
-        );
-
-        if (areAllNumbers) {
-          condition2 = `${mainAlias}.${
-            inverseColumns[0]!.propertyPath
-          } IN (${values.join(', ')})`;
-        } else {
-          qb.setParameter('values2', values);
-          condition2 =
-            mainAlias +
-            '.' +
-            inverseColumns[0]!.propertyPath +
-            ' IN (:...values2)'; // todo: use ANY for postgres
-        }
+        qb.setParameter('values2', values);
+        condition2 =
+          mainAlias +
+          '.' +
+          inverseColumns[0]!.propertyPath +
+          ' IN (:...values2)'; // todo: use ANY for postgres
       } else {
         condition2 =
           '(' +
@@ -456,7 +438,9 @@ export class RelationIdLoader {
     }
 
     // select all columns we need
-    const qb = this.connection.createQueryBuilder(this.queryRunner);
+    const qb = this.connection
+      .createQueryBuilder(this.queryRunner)
+      .setIdentifierQuoting(this.identifierQuoting);
     relation.entityMetadata.primaryColumns.forEach((primaryColumn) => {
       const columnName = DriverUtils.buildAlias(
         this.connection.driver,
@@ -486,20 +470,12 @@ export class RelationIdLoader {
       const values = entities.map((entity) =>
         relation.entityMetadata.primaryColumns[0]!.getEntityValue(entity)
       );
-      const areAllNumbers = values.every((value) => typeof value === 'number');
-
-      if (areAllNumbers) {
-        condition = `${mainAlias}.${
-          relation.entityMetadata.primaryColumns[0]!.propertyPath
-        } IN (${values.join(', ')})`;
-      } else {
-        qb.setParameter('values', values);
-        condition =
-          mainAlias +
-          '.' +
-          relation.entityMetadata.primaryColumns[0]!.propertyPath +
-          ' IN (:...values)'; // todo: use ANY for postgres
-      }
+      qb.setParameter('values', values);
+      condition =
+        mainAlias +
+        '.' +
+        relation.entityMetadata.primaryColumns[0]!.propertyPath +
+        ' IN (:...values)'; // todo: use ANY for postgres
     } else {
       condition = entities
         .map((entity, entityIndex) => {
@@ -539,7 +515,7 @@ export class RelationIdLoader {
     ) {
       const sameReferencedColumns =
         relation.entityMetadata.primaryColumns.every((column) => {
-          return relation.joinColumns.indexOf(column) !== -1;
+          return relation.joinColumns.includes(column);
         });
       if (sameReferencedColumns) {
         return Promise.resolve(
@@ -569,7 +545,9 @@ export class RelationIdLoader {
     const mainAlias = relation.entityMetadata.targetName;
 
     // select all columns we need
-    const qb = this.connection.createQueryBuilder(this.queryRunner);
+    const qb = this.connection
+      .createQueryBuilder(this.queryRunner)
+      .setIdentifierQuoting(this.identifierQuoting);
     relation.entityMetadata.primaryColumns.forEach((primaryColumn) => {
       const columnName = DriverUtils.buildAlias(
         this.connection.driver,
@@ -599,20 +577,12 @@ export class RelationIdLoader {
       const values = entities.map((entity) =>
         relation.joinColumns[0]!.referencedColumn!.getEntityValue(entity)
       );
-      const areAllNumbers = values.every((value) => typeof value === 'number');
-
-      if (areAllNumbers) {
-        condition = `${mainAlias}.${
-          relation.joinColumns[0]!.propertyPath
-        } IN (${values.join(', ')})`;
-      } else {
-        qb.setParameter('values', values);
-        condition =
-          mainAlias +
-          '.' +
-          relation.joinColumns[0]!.propertyPath +
-          ' IN (:...values)'; // todo: use ANY for postgres
-      }
+      qb.setParameter('values', values);
+      condition =
+        mainAlias +
+        '.' +
+        relation.joinColumns[0]!.propertyPath +
+        ' IN (:...values)'; // todo: use ANY for postgres
     } else {
       condition = entities
         .map((entity, entityIndex) => {

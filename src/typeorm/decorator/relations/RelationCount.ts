@@ -1,5 +1,6 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import { getMetadataArgsStorage } from '../../globals.js';
+
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
 import type { EntityPropertiesMap } from '../../metadata/types/EntityPropertiesMap.js';
 import type { RelationCountMetadataArgs } from '../../metadata-args/RelationCountMetadataArgs.js';
 import type { SelectQueryBuilder } from '../../query-builder/SelectQueryBuilder.js';

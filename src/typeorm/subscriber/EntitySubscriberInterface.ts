@@ -1,5 +1,3 @@
-import type { TFunction } from '../../types/utility.types.js';
-
 import type { InsertEvent } from './event/InsertEvent.js';
 import type { LoadEvent } from './event/LoadEvent.js';
 import type { AfterQueryEvent, BeforeQueryEvent } from './event/QueryEvent.js';
@@ -10,6 +8,7 @@ import type { TransactionCommitEvent } from './event/TransactionCommitEvent.js';
 import type { TransactionRollbackEvent } from './event/TransactionRollbackEvent.js';
 import type { TransactionStartEvent } from './event/TransactionStartEvent.js';
 import type { UpdateEvent } from './event/UpdateEvent.js';
+import type { TFunction } from '../../types/utility.types.js';
 
 /**
  * Classes that implement this interface are subscribers that subscribe for the specific events in the ORM.

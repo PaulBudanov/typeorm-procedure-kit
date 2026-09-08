@@ -1,16 +1,16 @@
 import { DateTime } from 'luxon';
 
-import type { ILoggerModule } from '../types/logger.types.js';
+import { QueryLogContextStorage } from './query-log-context.js';
+import { safeStringify } from './safe-stringify.js';
+
+import type { ServerError } from './server-error.js';
+import type { ILoggerModule, TBindingLogMode } from '../types/logger.types.js';
 import type {
   IBindingsObjectReturn,
   IProcedureBindingLogItem,
   ISqlBindingLogItem,
   TQueryLogContext,
 } from '../types/utility.types.js';
-
-import { QueryLogContextStorage } from './query-log-context.js';
-import { safeStringify } from './safe-stringify.js';
-import type { ServerError } from './server-error.js';
 
 export class QueryTimer {
   private static readonly sensitiveBindingName =
@@ -31,7 +31,8 @@ export class QueryTimer {
     private sql: string,
     private logger: ILoggerModule,
     private queryId: string,
-    private bindings?: IBindingsObjectReturn['bindings']
+    private bindings?: IBindingsObjectReturn['bindings'],
+    private readonly bindingLogMode: TBindingLogMode = 'metadata-only'
   ) {
     this.logContext = QueryLogContextStorage.getStore();
     this.startTime = DateTime.now().toLocal().toMillis();
@@ -73,10 +74,11 @@ export class QueryTimer {
     const durationStr = this.formatDuration(duration);
 
     const bindingsInfo = this.formatBindingsInfo();
+    const safeError = this.formatErrorForLog(error);
 
-    const errorMessage = `${this.formatRequestLabel()} failed in ${durationStr}: ${error.message}.${bindingsInfo}`;
+    const errorMessage = `${this.formatRequestLabel()} failed in ${durationStr}: ${safeError.message}.${bindingsInfo}`;
 
-    this.logger.error(errorMessage, error.stack);
+    this.logger.error(errorMessage, safeError.stack);
   }
 
   private formatDuration(ms: number): string {
@@ -100,7 +102,21 @@ export class QueryTimer {
       return this.formatSqlBindingsInfo(this.logContext.bindings);
     }
     if (!this.hasBindings()) return '';
-    return `; Bindings: ${safeStringify(this.bindings)} value(s)`;
+    if (this.bindingLogMode === 'unsafe-values') {
+      return `; Bindings: ${safeStringify(this.bindings)}`;
+    }
+    if (Array.isArray(this.bindings)) {
+      return `; Bindings: [REDACTED: ${this.bindings.length} positional value(s)]`;
+    }
+    if (this.bindingLogMode === 'metadata-only') {
+      return `; Bindings: ${Object.keys(this.bindings ?? {}).length} named value(s) (values hidden)`;
+    }
+    return `; Bindings: ${Object.entries(this.bindings ?? {})
+      .map(
+        ([name, value]) =>
+          `${name}=${QueryTimer.sensitiveBindingName.test(name) ? '[REDACTED]' : safeStringify(value)}`
+      )
+      .join(', ')}`;
   }
 
   private hasBindings(): boolean {
@@ -118,14 +134,15 @@ export class QueryTimer {
     if (this.logContext?.kind === 'procedure') {
       return `${this.formatRequestLabel()} started${this.formatBindingsInfo()}`;
     }
-    return `SQL request [${this.queryId}] started: ${this.truncateSql(this.sql, 100)}`;
+    return `${this.formatRequestLabel()} started: ${this.truncateSql(this.sql, 100)}`;
   }
 
   private formatRequestLabel(): string {
+    const queryId = this.normalizeWhitespace(this.queryId).slice(0, 128);
     if (this.logContext?.kind === 'procedure') {
-      return `Procedure call [${this.queryId}] ${this.logContext.packageName}.${this.logContext.procedureName}`;
+      return `Procedure call [${queryId}] ${this.logContext.packageName}.${this.logContext.procedureName}`;
     }
-    return `SQL request [${this.queryId}]`;
+    return `SQL request [${queryId}]`;
   }
 
   private formatProcedureBindingsInfo(
@@ -150,11 +167,15 @@ export class QueryTimer {
     binding: IProcedureBindingLogItem
   ): string {
     if (binding.isCursor) return '<cursor>';
-    if (QueryTimer.sensitiveBindingName.test(binding.name)) {
-      return '[REDACTED]';
-    }
     if (binding.value === undefined && /^OUT$/i.test(binding.mode)) {
       return '<out>';
+    }
+    if (
+      this.bindingLogMode === 'metadata-only' ||
+      (this.bindingLogMode === 'redact-by-name' &&
+        QueryTimer.sensitiveBindingName.test(binding.name))
+    ) {
+      return '[REDACTED]';
     }
     return safeStringify(binding.value);
   }
@@ -171,9 +192,72 @@ export class QueryTimer {
   }
 
   private formatSqlBindingValue(binding: ISqlBindingLogItem): string {
-    if (QueryTimer.sensitiveBindingName.test(binding.name)) {
+    if (
+      this.bindingLogMode === 'metadata-only' ||
+      (this.bindingLogMode === 'redact-by-name' &&
+        QueryTimer.sensitiveBindingName.test(binding.name))
+    ) {
       return '[REDACTED]';
     }
     return safeStringify(binding.value);
+  }
+
+  private formatErrorForLog(error: Error): {
+    message: string;
+    stack?: string;
+  } {
+    if (this.bindingLogMode === 'unsafe-values' || !this.hasBindings()) {
+      return {
+        message: this.normalizeWhitespace(error.message),
+        stack: error.stack,
+      };
+    }
+    if (
+      this.bindingLogMode === 'metadata-only' ||
+      (!this.logContext && Array.isArray(this.bindings))
+    ) {
+      return {
+        message: 'Database error details hidden to protect binding values',
+      };
+    }
+
+    const protectedValues = (
+      this.logContext
+        ? this.logContext.bindings
+            .filter((binding) =>
+              QueryTimer.sensitiveBindingName.test(binding.name)
+            )
+            .map((binding) => binding.value)
+        : Object.entries(this.bindings ?? {})
+            .filter(([name]) => QueryTimer.sensitiveBindingName.test(name))
+            .map(([, value]) => value)
+    ).slice(0, 100);
+    if (
+      protectedValues.some(
+        (value) =>
+          value !== undefined &&
+          value !== null &&
+          (typeof value !== 'string' || value.length < 3)
+      )
+    ) {
+      return {
+        message: 'Database error details hidden to protect binding values',
+      };
+    }
+
+    const sanitize = (value: string): string => {
+      let sanitized = value;
+      for (const protectedValue of protectedValues) {
+        if (typeof protectedValue !== 'string' || protectedValue.length === 0) {
+          continue;
+        }
+        sanitized = sanitized.split(protectedValue).join('[REDACTED]');
+      }
+      return sanitized;
+    };
+    return {
+      message: this.normalizeWhitespace(sanitize(error.message)),
+      ...(error.stack === undefined ? {} : { stack: sanitize(error.stack) }),
+    };
   }
 }

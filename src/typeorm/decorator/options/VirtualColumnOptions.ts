@@ -1,6 +1,5 @@
-import type { ColumnType } from '../../driver/types/ColumnTypes.js';
-
 import type { ValueTransformer } from './ValueTransformer.js';
+import type { ColumnType } from '../../driver/types/ColumnTypes.js';
 
 /**
  * Describes all calculated column's options.

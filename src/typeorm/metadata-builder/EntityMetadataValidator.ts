@@ -1,13 +1,13 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { Driver } from '../driver/Driver.js';
-import type { ColumnType } from '../driver/types/ColumnTypes.js';
 import { CircularRelationsError } from '../error/CircularRelationsError.js';
 import { DataTypeNotSupportedError } from '../error/DataTypeNotSupportedError.js';
 import { InitializedRelationError } from '../error/InitializedRelationError.js';
 import { MissingPrimaryColumnError } from '../error/MissingPrimaryColumnError.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 import { DepGraph } from '../util/DepGraph.js';
+
+import type { Driver } from '../driver/Driver.js';
+import type { ColumnType } from '../driver/types/ColumnTypes.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 /// todo: add check if there are multiple tables with the same name
 /// todo: add checks when generated column / table names are too long for the specific driver
@@ -41,9 +41,9 @@ export class EntityMetadataValidator {
     entityMetadatas: Array<EntityMetadata>,
     driver: Driver
   ): void {
-    entityMetadatas.forEach((entityMetadata) =>
-      this.validate(entityMetadata, entityMetadatas, driver)
-    );
+    entityMetadatas.forEach((entityMetadata) => {
+      this.validate(entityMetadata, entityMetadatas, driver);
+    });
     this.validateDependencies(entityMetadatas);
     this.validateEagerRelations(entityMetadatas);
   }
@@ -99,8 +99,8 @@ export class EntityMetadataValidator {
               metadata.tableType === 'entity-child') &&
             metadata.tableName === entityMetadata.tableName &&
             metadata.discriminatorValue === entityMetadata.discriminatorValue &&
-            metadata.inheritanceTree.some(
-              (parent) => entityMetadata.inheritanceTree.indexOf(parent) !== -1
+            metadata.inheritanceTree.some((parent) =>
+              entityMetadata.inheritanceTree.includes(parent)
             )
           );
         }
@@ -162,11 +162,11 @@ export class EntityMetadataValidator {
     // check if relations are all without initialized properties
     const entityInstance = entityMetadata.create(undefined, {
       fromDeserializer: true,
-    }) as ObjectLiteral;
+    });
     entityMetadata.relations.forEach((relation) => {
       if (relation.isManyToMany || relation.isOneToMany) {
         // we skip relations for which persistence is disabled since initialization in them cannot harm somehow
-        if (relation.persistenceEnabled === false) return;
+        if (!relation.persistenceEnabled) return;
 
         // get entity relation value and check if its an array
         const relationInitializedValue =
@@ -255,9 +255,7 @@ export class EntityMetadataValidator {
     // make sure cascade remove is not set for both sides of relationships (can be set in OneToOne decorators)
     entityMetadata.relations.forEach((relation) => {
       const isCircularCascadeRemove =
-        relation.isCascadeRemove &&
-        relation.inverseRelation &&
-        relation.inverseRelation!.isCascadeRemove;
+        relation.isCascadeRemove && relation.inverseRelation?.isCascadeRemove;
       if (isCircularCascadeRemove)
         throw new TypeORMError(
           `Relation ${entityMetadata.name}#${
@@ -306,7 +304,7 @@ export class EntityMetadataValidator {
   ): void {
     entityMetadatas.forEach((entityMetadata) => {
       entityMetadata.eagerRelations.forEach((relation) => {
-        if (relation.inverseRelation && relation.inverseRelation.isEager)
+        if (relation.inverseRelation?.isEager)
           throw new TypeORMError(
             `Circular eager relations are disallowed. ` +
               `${entityMetadata.targetName}#${relation.propertyPath} contains "eager: true", and its inverse side ` +

@@ -1,7 +1,7 @@
 import { TypeORMError } from '../error/index.js';
-import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 import type { Subject } from './Subject.js';
+import type { EntityMetadata } from '../metadata/EntityMetadata.js';
 
 /**
  * Orders insert or remove subjects in proper order (using topological sorting)
@@ -138,7 +138,7 @@ export class SubjectTopologicalSorter {
    * We need to execute insertions first for entities which non-nullable relations.
    */
   protected getNonNullableDependencies(): Array<Array<string>> {
-    return this.metadatas.reduce(
+    return this.metadatas.reduce<Array<Array<string>>>(
       (dependencies, metadata) => {
         metadata.relationsWithJoinColumns.forEach((relation) => {
           if (relation.isNullable) return;
@@ -150,7 +150,7 @@ export class SubjectTopologicalSorter {
         });
         return dependencies;
       },
-      [] as Array<Array<string>>
+      []
     );
   }
 
@@ -159,7 +159,7 @@ export class SubjectTopologicalSorter {
    * We need to execute insertions first for entities which non-nullable relations.
    */
   protected getDependencies(): Array<Array<string>> {
-    return this.metadatas.reduce(
+    return this.metadatas.reduce<Array<Array<string>>>(
       (dependencies, metadata) => {
         metadata.relationsWithJoinColumns.forEach((relation) => {
           // if relation is self-referenced we skip it
@@ -172,7 +172,7 @@ export class SubjectTopologicalSorter {
         });
         return dependencies;
       },
-      [] as Array<Array<string>>
+      []
     );
   }
 

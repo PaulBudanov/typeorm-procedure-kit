@@ -33,7 +33,7 @@ function createDFS(
     edges[currentNode]?.forEach(function (node: string) {
       if (!visited[node]) {
         DFS(node);
-      } else if (currentPath.indexOf(node) >= 0) {
+      } else if (currentPath.includes(node)) {
         currentPath.push(node);
         throw new TypeORMError(
           `Dependency Cycle Found: ${currentPath.join(' -> ')}`
@@ -43,7 +43,7 @@ function createDFS(
     currentPath.pop();
     if (
       (!leavesOnly || edges[currentNode]?.length === 0) &&
-      result.indexOf(currentNode) === -1
+      !result.includes(currentNode)
     ) {
       result.push(currentNode);
     }
@@ -225,7 +225,7 @@ export class DepGraph {
         CycleDFS(n);
       });
 
-      const DFS = createDFS(this.outgoingEdges, leavesOnly as boolean, result);
+      const DFS = createDFS(this.outgoingEdges, leavesOnly!, result);
       // Find all potential starting points (nodes with nothing depending on them) an
       // run a DFS starting at these points to get the order
       keys

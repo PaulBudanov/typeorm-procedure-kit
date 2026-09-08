@@ -1,20 +1,21 @@
-import type {
-  ICaseStrategyFactory,
-  TKeyTransformCase,
-} from '../types/strategy.types.js';
 import { DatabaseNamingCache } from '../utils/database-naming-cache.js';
 import { StringUtilities } from '../utils/string-utilities.js';
 
 import { OrmStrategy } from './orm-strategy.js';
 
-export abstract class CaseStrategyFactory {
-  private static TRANSFORM_STRATEGIES: Record<
+import type {
+  ICaseStrategyFactory,
+  TKeyTransformCase,
+} from '../types/strategy.types.js';
+
+class CaseStrategyFactoryApi {
+  private readonly transformStrategies: Record<
     TKeyTransformCase,
     (str: string) => string
   > = {
-    camelCase: StringUtilities.toCamelCase,
-    lowerCase: StringUtilities.toLowerCase,
-    snakeCase: StringUtilities.toSnakeCase,
+    camelCase: (value) => StringUtilities.toCamelCase(value),
+    lowerCase: (value) => StringUtilities.toLowerCase(value),
+    snakeCase: (value) => StringUtilities.toSnakeCase(value),
   };
 
   /**
@@ -24,12 +25,10 @@ export abstract class CaseStrategyFactory {
    * @param {TKeyTransformCase} [outKeyTransformCase='camelCase'] - The key to the transformation function.
    * @returns {ICaseStrategyFactory} - An instance of ICaseStrategyFactory with the specified transformation function.
    */
-  public static caseStrategyFactory(
+  public caseStrategyFactory(
     outKeyTransformCase: TKeyTransformCase = 'camelCase'
   ): ICaseStrategyFactory {
-    const transformFn =
-      CaseStrategyFactory.TRANSFORM_STRATEGIES[outKeyTransformCase] ??
-      StringUtilities.toCamelCase;
+    const transformFn = this.transformStrategies[outKeyTransformCase];
     const cacheKey = Symbol('columnNameCacheKey');
     const cache = new DatabaseNamingCache<string>();
     cache.createCache(cacheKey);
@@ -37,3 +36,7 @@ export abstract class CaseStrategyFactory {
     return { strategy: new OrmStrategy(cacheKey, transformFn, cache) };
   }
 }
+
+const caseStrategyFactory = new CaseStrategyFactoryApi();
+
+export { caseStrategyFactory as CaseStrategyFactory };

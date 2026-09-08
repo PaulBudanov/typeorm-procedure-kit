@@ -35,7 +35,7 @@ describe('ProcedureKitLogger', (): void => {
     typeormLogger.logQuerySlow(12, 'SELECT 1');
 
     expect(logger.log).toHaveBeenCalledWith(
-      '[TypeORM query]: SELECT * FROM users WHERE id = $1; Bindings: [1]'
+      '[TypeORM query]: SELECT * FROM users WHERE id = $1; Bindings: [values hidden]'
     );
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -54,7 +54,7 @@ describe('ProcedureKitLogger', (): void => {
 
     const message = logger.warn.mock.calls.at(-1)?.[0] as string;
     expect(message).toBe(
-      '[TypeORM slow query (42ms)]: SELECT * FROM users; Bindings: [1]'
+      '[TypeORM slow query (42ms)]: SELECT * FROM users; Bindings: [values hidden]'
     );
     expect(message).not.toContain('\n');
   });
@@ -67,8 +67,60 @@ describe('ProcedureKitLogger', (): void => {
     typeormLogger.logQueryError(error, 'SELECT\n 1', [1]);
 
     expect(logger.error).toHaveBeenCalledWith(
-      '[TypeORM query failed]: SELECT 1; Bindings: [1]; Error: bad query',
-      error.stack
+      '[TypeORM query failed]: SELECT 1; Bindings: [values hidden]; Error: Database query failed; driver details hidden because binding values could not be safely redacted.'
+    );
+  });
+
+  it('only exposes positional values in unsafe-values mode', (): void => {
+    const logger = createLogger();
+    const safeLogger = new ProcedureKitLogger(logger, ['error']);
+    const error = new Error('secret-token failed');
+
+    safeLogger.logQueryError(error, 'SELECT $1', ['secret-token']);
+
+    const safeMessage = logger.error.mock.calls.at(-1)?.[0] as string;
+    const safeStack = logger.error.mock.calls.at(-1)?.[1] as string;
+    expect(safeMessage).not.toContain('secret-token');
+    expect(safeStack).not.toContain('secret-token');
+
+    safeLogger.logQueryError(new Error('x and 1 failed'), 'SELECT $1', [
+      'x',
+      1,
+    ]);
+    const genericMessage = logger.error.mock.calls.at(-1)?.[0] as string;
+    expect(genericMessage).toContain('driver details hidden');
+    expect(genericMessage).not.toContain('x and 1 failed');
+    expect(logger.error.mock.calls.at(-1)).toHaveLength(1);
+
+    const metadataLogger = new ProcedureKitLogger(
+      logger,
+      ['error'],
+      'metadata-only'
+    );
+    metadataLogger.logQueryError(new Error('tenant 1 failed'), 'SELECT :id', {
+      id: 1,
+    });
+    expect(logger.error.mock.calls.at(-1)?.[0]).toContain(
+      'driver details hidden'
+    );
+
+    safeLogger.logQueryError(
+      new Error('password x rejected'),
+      'SELECT :password',
+      { password: 'x' }
+    );
+    expect(logger.error.mock.calls.at(-1)?.[0]).toContain(
+      'driver details hidden'
+    );
+
+    const unsafeLogger = new ProcedureKitLogger(
+      logger,
+      ['query'],
+      'unsafe-values'
+    );
+    unsafeLogger.logQuery('SELECT $1', ['visible-value']);
+    expect(logger.log).toHaveBeenLastCalledWith(
+      '[TypeORM query]: SELECT $1; Bindings: ["visible-value"]'
     );
   });
 

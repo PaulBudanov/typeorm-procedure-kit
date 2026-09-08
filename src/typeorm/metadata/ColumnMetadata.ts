@@ -1,10 +1,3 @@
-import type { TFunction } from '../../types/utility.types.js';
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
-import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
-import type { VirtualColumnOptions } from '../decorator/options/VirtualColumnOptions.js';
-import type { ColumnType } from '../driver/types/ColumnTypes.js';
-import type { ColumnMetadataArgs } from '../metadata-args/ColumnMetadataArgs.js';
 import { ApplyValueTransformers } from '../util/ApplyValueTransformers.js';
 import { InstanceChecker } from '../util/InstanceChecker.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
@@ -13,6 +6,13 @@ import { OrmUtils } from '../util/OrmUtils.js';
 import type { EmbeddedMetadata } from './EmbeddedMetadata.js';
 import type { EntityMetadata } from './EntityMetadata.js';
 import type { RelationMetadata } from './RelationMetadata.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { ValueTransformer } from '../decorator/options/ValueTransformer.js';
+import type { VirtualColumnOptions } from '../decorator/options/VirtualColumnOptions.js';
+import type { ColumnType } from '../driver/types/ColumnTypes.js';
+import type { ColumnMetadataArgs } from '../metadata-args/ColumnMetadataArgs.js';
 
 /**
  * This metadata contains all information about entity's column.
@@ -677,7 +677,7 @@ export class ColumnMetadata {
 
         if (
           value[this.propertyName as keyof typeof value] !== undefined &&
-          (returnNulls === false ||
+          (!returnNulls ||
             value[this.propertyName as keyof typeof value] !== null)
         ) {
           return {
@@ -725,7 +725,7 @@ export class ColumnMetadata {
         } else {
           const value =
             this.relationMetadata.joinColumns[0]?.referencedColumn!.getEntityValue(
-              entity[this.relationMetadata!.propertyName] as ObjectLiteral
+              entity[this.relationMetadata.propertyName] as ObjectLiteral
             );
           if (value) {
             return { [this.propertyName]: value };
@@ -736,7 +736,7 @@ export class ColumnMetadata {
       } else {
         if (
           entity[this.propertyName] !== undefined &&
-          (returnNulls === false || entity[this.propertyName] !== null)
+          (!returnNulls || entity[this.propertyName] !== null)
         ) {
           return { [this.propertyName]: entity[this.propertyName] };
         }
@@ -788,9 +788,8 @@ export class ColumnMetadata {
       ) as ObjectLiteral;
       if (embeddedObject) {
         if (this.relationMetadata && this.referencedColumn) {
-          const relatedEntity = this.relationMetadata.getEntityValue(
-            embeddedObject
-          ) as ObjectLiteral;
+          const relatedEntity =
+            this.relationMetadata.getEntityValue(embeddedObject)!;
           if (
             relatedEntity &&
             ObjectUtils.isObject(relatedEntity) &&
@@ -828,9 +827,7 @@ export class ColumnMetadata {
     } else {
       // no embeds - no problems. Simply return column name by property name of the entity
       if (this.relationMetadata && this.referencedColumn) {
-        const relatedEntity = this.relationMetadata.getEntityValue(
-          entity
-        ) as ObjectLiteral;
+        const relatedEntity = this.relationMetadata.getEntityValue(entity)!;
         if (
           relatedEntity &&
           ObjectUtils.isObject(relatedEntity) &&
@@ -937,7 +934,7 @@ export class ColumnMetadata {
     if (typeof (columnValue as ObjectLiteral)?.equals === 'function') {
       return (
         (columnValue as ObjectLiteral).equals as (value: unknown) => boolean
-      )(valueToCompareWith) as boolean;
+      )(valueToCompareWith);
     }
     return columnValue === valueToCompareWith;
   }
@@ -961,10 +958,7 @@ export class ColumnMetadata {
 
   protected buildPropertyPath(): string {
     let path = '';
-    if (
-      this.embeddedMetadata &&
-      this.embeddedMetadata.parentPropertyNames.length
-    )
+    if (this.embeddedMetadata?.parentPropertyNames.length)
       path = this.embeddedMetadata.parentPropertyNames.join('.') + '.';
 
     path += this.propertyName;
@@ -985,10 +979,7 @@ export class ColumnMetadata {
 
   protected buildDatabasePath(): string {
     let path = '';
-    if (
-      this.embeddedMetadata &&
-      this.embeddedMetadata.parentPropertyNames.length
-    )
+    if (this.embeddedMetadata?.parentPropertyNames.length)
       path = this.embeddedMetadata.parentPropertyNames.join('.') + '.';
 
     path += this.databaseName;

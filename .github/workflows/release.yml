@@ -1,59 +1,320 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - release
-      - 'release/**'
   workflow_dispatch:
+    inputs:
+      verified_sha:
+        description: Release commit that passed the unified CI workflow
+        required: true
+        type: string
+      verified_run_id:
+        description: Successful CI workflow run ID for verified_sha
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NPM_VERSION: 11.19.0
 
 jobs:
-  prepare:
-    name: Prepare release artifact
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies from lockfile
-        run: npm ci --no-audit --no-fund
-
-      - name: Build
-        run: npm run build
-
-      - name: Prepare npm README
-        run: cp docs/README.md README.md
-
-      - name: Upload release artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-build-${{ github.sha }}
-          path: |
-            dist
-            README.md
-          if-no-files-found: error
-          retention-days: 1
-
-  release:
-    name: Publish release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: prepare
-    environment: npm-publish
-
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: read
-      id-token: write
+    outputs:
+      sha: ${{ steps.inputs.outputs.sha }}
+    steps:
+      - name: Validate dispatch inputs
+        id: inputs
+        env:
+          VERIFIED_RUN_ID: ${{ inputs.verified_run_id }}
+          VERIFIED_SHA: ${{ inputs.verified_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
+          if [ "$GITHUB_REF" != 'refs/heads/release' ]; then
+            echo "Release must be dispatched with ref release, got: $GITHUB_REF"
+            exit 1
+          fi
+          if [[ ! "$VERIFIED_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "verified_sha must be a full 40-character Git SHA."
+            exit 1
+          fi
+          if [[ ! "$VERIFIED_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "verified_run_id must be a positive integer."
+            exit 1
+          fi
+
+          echo "sha=${VERIFIED_SHA,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout verified commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ steps.inputs.outputs.sha }}
+
+      - name: Verify CI run and current release ref
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERIFIED_RUN_ID: ${{ inputs.verified_run_id }}
+          VERIFIED_SHA: ${{ steps.inputs.outputs.sha }}
+        run: node scripts/release-state.mjs verify-workflow-run
+
+  release_please:
+    name: Create or update release
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      action_release_created: ${{ steps.release-please.outputs.release_created }}
+    steps:
+      - name: Independently verify CI run and release ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFIED_RUN_ID: ${{ inputs.verified_run_id }}
+          VERIFIED_SHA: ${{ needs.verify.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_json="$(gh api "/repos/$REPOSITORY/actions/runs/$VERIFIED_RUN_ID")"
+          jq -e \
+            --arg repo "$REPOSITORY" \
+            --arg sha "$VERIFIED_SHA" \
+            --argjson run_id "$VERIFIED_RUN_ID" \
+            '.id == $run_id and
+             .name == "CI" and
+             .path == ".github/workflows/tests.yml" and
+             .event == "push" and
+             .head_branch == "release" and
+             .head_sha == $sha and
+             .status == "completed" and
+             .conclusion == "success" and
+             .head_repository.full_name == $repo' \
+            <<< "$run_json" > /dev/null
+
+          release_sha="$(gh api "/repos/$REPOSITORY/git/ref/heads/release" --jq .object.sha)"
+          if [ "$release_sha" != "$VERIFIED_SHA" ]; then
+            echo "release moved from verified commit $VERIFIED_SHA to $release_sha."
+            exit 1
+          fi
+
+      - name: Generate release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Run Release Please
+        id: release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target-branch: release
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  resolve_release:
+    name: Resolve immutable release state
+    needs:
+      - verify
+      - release_please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release_candidate: ${{ steps.release-state.outputs.release_candidate }}
+      name: ${{ steps.release-state.outputs.name }}
+      sha: ${{ steps.release-state.outputs.sha }}
+      tag_name: ${{ steps.release-state.outputs.tag_name }}
+      version: ${{ steps.release-state.outputs.version }}
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.verify.outputs.sha }}
+
+      - name: Resolve idempotent release state
+        id: release-state
+        env:
+          ACTION_RELEASE_CREATED: ${{ needs.release_please.outputs.action_release_created || 'false' }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFIED_SHA: ${{ needs.verify.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_sha="$(gh api "/repos/$REPOSITORY/git/ref/heads/release" --jq .object.sha)"
+          package_name="$(jq -er '.name | select(type == "string" and length > 0)' package.json)"
+          version="$(jq -er '.version | select(type == "string" and length > 0)' package.json)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "package.json contains an unsupported release version: $version"
+            exit 1
+          fi
+
+          tag_name="v$version"
+          tag_error="$RUNNER_TEMP/release-tag-error"
+          tag_sha=''
+          exact_tag_has_published_release=false
+          if gh api "/repos/$REPOSITORY/git/ref/tags/$tag_name" > /dev/null 2> "$tag_error"; then
+            tag_sha="$(gh api "/repos/$REPOSITORY/commits/$tag_name" --jq .sha)"
+            if [ "$tag_sha" = "$VERIFIED_SHA" ]; then
+              release_error="$RUNNER_TEMP/github-release-error"
+              if release_json="$(gh api "/repos/$REPOSITORY/releases/tags/$tag_name" 2> "$release_error")"; then
+                if jq -e '.draft == false and .prerelease == false' <<< "$release_json" > /dev/null; then
+                  exact_tag_has_published_release=true
+                fi
+              elif ! grep -q 'HTTP 404' "$release_error"; then
+                cat "$release_error" >&2
+                exit 1
+              fi
+            fi
+          elif grep -q 'HTTP 404' "$tag_error"; then
+            tag_sha=''
+          else
+            cat "$tag_error" >&2
+            exit 1
+          fi
+
+          has_merged_pending_release_pr=false
+          if [ "$tag_sha" != "$VERIFIED_SHA" ]; then
+            pending_release_prs="$(
+              gh api "/repos/$REPOSITORY/commits/$VERIFIED_SHA/pulls" |
+                jq --arg sha "$VERIFIED_SHA" \
+                  '[.[] | select(.base.ref == "release" and .merged_at != null and .merge_commit_sha == $sha and any(.labels[]; .name == "autorelease: pending"))] | length'
+            )"
+            if [ "$pending_release_prs" -gt 0 ]; then
+              has_merged_pending_release_pr=true
+            fi
+          fi
+
+          export EXACT_TAG_HAS_PUBLISHED_RELEASE="$exact_tag_has_published_release"
+          export HAS_MERGED_PENDING_RELEASE_PR="$has_merged_pending_release_pr"
+          export TAG_SHA="$tag_sha"
+          release_candidate="$(node scripts/release-state.mjs release-candidate)"
+
+          if [ "$release_candidate" = 'false' ]; then
+            if [ "$release_sha" != "$VERIFIED_SHA" ]; then
+              echo "release moved from $VERIFIED_SHA to $release_sha while Release Please was running."
+              exit 1
+            fi
+          fi
+
+          echo "name=$package_name" >> "$GITHUB_OUTPUT"
+          echo "sha=$VERIFIED_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish npm package
+    needs: resolve_release
+    if: needs.resolve_release.outputs.release_candidate == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      result: ${{ steps.publish-result.outputs.result }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.resolve_release.outputs.tag_name }}
+
+      - name: Verify tag commit
+        env:
+          EXPECTED_SHA: ${{ needs.resolve_release.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Use the pinned npm version
+        run: npm install --global "npm@$NPM_VERSION" --ignore-scripts --no-audit --no-fund
+
+      - name: Check whether npm already has this version
+        id: npm-version
+        env:
+          PACKAGE_NAME: ${{ needs.resolve_release.outputs.name }}
+          PACKAGE_VERSION: ${{ needs.resolve_release.outputs.version }}
+        run: node scripts/release-state.mjs npm-version
+
+      - name: Install dependencies from lockfile
+        if: steps.npm-version.outputs.exists == 'false'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build package
+        if: steps.npm-version.outputs.exists == 'false'
+        run: npm run build
+
+      - name: Verify package as an isolated consumer
+        if: steps.npm-version.outputs.exists == 'false'
+        env:
+          PROCEDURE_KIT_CONSUMER_SCENARIO: combined
+        run: npm run check:package-consumer
+
+      - name: Publish with npm trusted publishing
+        if: steps.npm-version.outputs.exists == 'false'
+        run: npm publish --ignore-scripts --access public
+
+      - name: Record publish result
+        id: publish-result
+        env:
+          VERSION_EXISTS: ${{ steps.npm-version.outputs.exists }}
+        shell: bash
+        run: |
+          if [ "$VERSION_EXISTS" = 'true' ]; then
+            echo 'result=already-published' >> "$GITHUB_OUTPUT"
+          else
+            echo 'result=published' >> "$GITHUB_OUTPUT"
+          fi
+
+  sync_master:
+    name: Sync release to master
+    needs:
+      - release_please
+      - resolve_release
+      - publish
+    if: >
+      needs.resolve_release.outputs.release_candidate == 'true' &&
+      needs.publish.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Generate release app token
         id: app-token
@@ -62,75 +323,50 @@ jobs:
           client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
-          permission-discussions: write
-          permission-issues: write
           permission-pull-requests: write
 
-      - name: Checkout release branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ github.ref_name }}
-          token: ${{ steps.app-token.outputs.token }}
-
-      - name: Configure release app git auth
-        env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
-
-          git config --global user.name "${APP_SLUG}[bot]"
-          git config --global user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
-
-          gh auth setup-git
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install release tooling from lockfile
-        env:
-          NPM_CONFIG_IGNORE_SCRIPTS: true
-        run: npm ci --no-audit --no-fund
-
-      - name: Download release build
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: release-build-${{ github.sha }}
-          path: .
-
-      - name: Publish release
+      - name: Create or update release sync PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          NPM_CONFIG_IGNORE_SCRIPTS: true
-        run: npm run semantic-release
-
-      - name: Open release metadata sync PR
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          EXPECTED_SHA: ${{ needs.resolve_release.outputs.sha }}
           REPOSITORY: ${{ github.repository }}
-          RELEASE_BRANCH: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.resolve_release.outputs.tag_name }}
+          VERSION: ${{ needs.resolve_release.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
 
-          git fetch origin "$RELEASE_BRANCH"
+          ahead_by="$(gh api "/repos/$REPOSITORY/compare/master...$EXPECTED_SHA" --jq .ahead_by)"
+          if [ "$ahead_by" -eq 0 ]; then
+            echo "$TAG_NAME is already synchronized with master."
+            exit 0
+          fi
 
-          version="$(jq -r .version package.json)"
+          sync_branch="release-sync/$TAG_NAME"
+          ref_error="$RUNNER_TEMP/release-sync-ref-error"
+          if sync_sha="$(gh api "/repos/$REPOSITORY/git/ref/heads/$sync_branch" --jq .object.sha 2> "$ref_error")"; then
+            if [ "$sync_sha" != "$EXPECTED_SHA" ]; then
+              echo "$sync_branch points to $sync_sha instead of $EXPECTED_SHA."
+              exit 1
+            fi
+          elif grep -q 'HTTP 404' "$ref_error"; then
+            gh api \
+              --method POST \
+              "/repos/$REPOSITORY/git/refs" \
+              -f ref="refs/heads/$sync_branch" \
+              -f sha="$EXPECTED_SHA" > /dev/null
+          else
+            cat "$ref_error" >&2
+            exit 1
+          fi
 
+          title="chore(release): sync v$VERSION to master"
+          body="Sync the released v$VERSION package metadata and changelog back to master. Merge this PR with **Create a merge commit** to preserve shared branch history."
           existing_pr="$(
             gh pr list \
               --repo "$REPOSITORY" \
               --base master \
-              --head "$RELEASE_BRANCH" \
+              --head "$sync_branch" \
               --state open \
               --json number \
               --jq '.[0].number // empty'
@@ -140,9 +376,12 @@ jobs:
             gh pr create \
               --repo "$REPOSITORY" \
               --base master \
-              --head "$RELEASE_BRANCH" \
-              --title "chore(release): sync v$version metadata to master" \
-              --body "Sync the package version and changelog generated by semantic-release for v$version back to master. Merge this PR with **Create a merge commit** to preserve shared branch history."
+              --head "$sync_branch" \
+              --title "$title" \
+              --body "$body"
           else
-            echo "Release metadata sync PR #$existing_pr is already open."
+            gh pr edit "$existing_pr" \
+              --repo "$REPOSITORY" \
+              --title "$title" \
+              --body "$body"
           fi

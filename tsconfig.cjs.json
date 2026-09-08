@@ -3,8 +3,10 @@
   "compilerOptions": {
     "module": "commonjs",
     "moduleResolution": "node",
+    "resolvePackageJsonExports": false,
+    "resolvePackageJsonImports": false,
     "outDir": "./dist/cjs",
-    "tsBuildInfoFile": "./dist/tsconfig.cjs.tsbuildinfo",
+    "tsBuildInfoFile": "./.cache/typescript/cjs.tsbuildinfo",
     "verbatimModuleSyntax": false,
     "esModuleInterop": true,
     "ignoreDeprecations": "6.0"

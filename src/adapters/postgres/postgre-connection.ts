@@ -1,9 +1,11 @@
-import { Client, type ClientConfig } from 'pg';
+import { Client } from 'pg';
+
+import { DatabaseConnection } from '../abstract/database-connection.js';
 
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { PostgresConnectionOptions } from '../../typeorm/driver/postgres/PostgresConnectionOptions.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
-import { DatabaseConnection } from '../abstract/database-connection.js';
+import type { ClientConfig } from 'pg';
 
 export class PostgreConnection extends DatabaseConnection<
   PostgresConnectionOptions,
@@ -18,8 +20,8 @@ export class PostgreConnection extends DatabaseConnection<
    * @param logger - logger used by connection operations.
    */
   public constructor(
-    protected readonly appDataSource: DataSource,
-    protected readonly logger: ILoggerModule
+    protected override readonly appDataSource: DataSource,
+    protected override readonly logger: ILoggerModule
   ) {
     super(appDataSource, logger);
   }
@@ -92,6 +94,19 @@ export class PostgreConnection extends DatabaseConnection<
   ): void {
     let isHandled = false;
 
+    const invokeCallback = async (): Promise<void> => {
+      try {
+        await callback();
+      } catch (error: unknown) {
+        this.logger.error(
+          `Callback error: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          error instanceof Error ? error.stack : undefined
+        );
+      }
+    };
+
     const handleConnectionLoss = (reason: string, error?: Error): void => {
       if (isHandled) return;
       isHandled = true;
@@ -103,14 +118,7 @@ export class PostgreConnection extends DatabaseConnection<
           error.stack
         );
       else this.logger.error(`Postgres client ${reason}`);
-      try {
-        void callback();
-      } catch (callbackError: unknown) {
-        this.logger.error(
-          `Callback error: ${(callbackError as Error).message}`,
-          (callbackError as Error).stack
-        );
-      }
+      void invokeCallback();
     };
 
     const onError = (err: Error): void => {

@@ -1,6 +1,9 @@
 import EventEmitter from 'events';
 
-import type { IEventBusService } from '../types/utility.types.js';
+import type {
+  IEventBusService,
+  TEventBusListener,
+} from '../types/utility.types.js';
 
 export class EventBusService implements IEventBusService {
   private eventEmitter: EventEmitter;
@@ -10,13 +13,16 @@ export class EventBusService implements IEventBusService {
     this.eventEmitter.setMaxListeners(maxListeners ?? 100);
   }
 
-  public emit<T>(event: string | symbol, data?: T): void {
+  public emit(event: string | symbol, data?: unknown): void {
     this.eventEmitter.emit(event, data);
   }
 
-  public async emitAsync<T>(event: string | symbol, data?: T): Promise<void> {
+  public async emitAsync(
+    event: string | symbol,
+    data?: unknown
+  ): Promise<void> {
     const listeners = this.eventEmitter.rawListeners(event) as Array<
-      (data?: T) => unknown
+      (data?: unknown) => unknown
     >;
     const results = listeners.map((listener) =>
       listener.call(this.eventEmitter, data)
@@ -24,21 +30,21 @@ export class EventBusService implements IEventBusService {
     await Promise.all(results);
   }
 
-  public registerListener<T, U extends string | symbol>(
+  public registerListener(
     event: string | symbol,
-    callback: (data: T) => U | Promise<U> | void | Promise<void>
+    callback: TEventBusListener
   ): void {
-    this.eventEmitter.on<U>(event, callback);
+    this.eventEmitter.on(event, callback);
   }
 
-  public registerOnce<T, U extends string | symbol>(
+  public registerOnce(
     event: string | symbol,
-    callback: (data: T) => U | Promise<U> | void | Promise<void>
+    callback: TEventBusListener
   ): { unsubscribe: () => void } {
-    this.eventEmitter.once<U>(event, callback);
+    this.eventEmitter.once(event, callback);
     return {
       unsubscribe: (): void => {
-        return this.eventUnsubscribe<T, U>(event, callback);
+        this.eventUnsubscribe(event, callback);
       },
     };
   }
@@ -47,9 +53,9 @@ export class EventBusService implements IEventBusService {
     return this.eventEmitter.eventNames() as Array<string>;
   }
 
-  public removeListener<T, U>(
+  public removeListener(
     event: string | symbol,
-    callback: (data: T) => U | Promise<U> | void | Promise<void>
+    callback: TEventBusListener
   ): void {
     this.eventEmitter.removeListener(event, callback);
     return;
@@ -71,9 +77,9 @@ export class EventBusService implements IEventBusService {
   public setMaxListeners(maxListeners: number): void {
     this.eventEmitter.setMaxListeners(maxListeners);
   }
-  private eventUnsubscribe<T, U>(
+  private eventUnsubscribe(
     eventName: string | symbol,
-    callback: (data: T) => U | Promise<U> | void | Promise<void>
+    callback: TEventBusListener
   ): void {
     this.eventEmitter.off(eventName, callback);
     return;

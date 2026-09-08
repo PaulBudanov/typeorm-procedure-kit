@@ -21,7 +21,7 @@ const config = {
       password: 'pass',
     },
     poolSize: 1,
-    parseInt8AsBigInt: false,
+    parseInt8AsNumber: false,
   },
   logger: { module: createLogger() },
 } as const;

@@ -72,7 +72,31 @@ describe('ConnectionBase', (): void => {
     );
   });
 
-  it('releases entity managers and swallows release errors', async (): Promise<void> => {
+  it('releases a query runner when acquisition fails after it was created', async (): Promise<void> => {
+    const logger = createLogger();
+    const acquisitionError = new Error('connect failed');
+    const queryRunner = {
+      isReleased: false,
+      connect: vi.fn<() => Promise<void>>().mockRejectedValue(acquisitionError),
+      release: vi.fn<(_error?: Error) => Promise<void>>().mockResolvedValue(),
+      manager: { connection: { isInitialized: true } },
+    };
+    const connectionBase = new ConnectionBase(
+      {
+        isInitialized: true,
+        options: {},
+        createQueryRunner: (): typeof queryRunner => queryRunner,
+      } as never,
+      logger
+    );
+
+    await expect(connectionBase.getEntityManager()).rejects.toBe(
+      acquisitionError
+    );
+    expect(queryRunner.release).toHaveBeenCalledWith(acquisitionError);
+  });
+
+  it('surfaces entity manager release errors after logging them', async (): Promise<void> => {
     const logger = createLogger();
     const connectionBase = new ConnectionBase({} as never, logger);
     const releaseError = new Error('release failed');
@@ -82,10 +106,40 @@ describe('ConnectionBase', (): void => {
 
     await expect(
       connectionBase.releaseEntityManager(manager as never)
-    ).resolves.toBeUndefined();
+    ).rejects.toBe(releaseError);
     expect(logger.error).toHaveBeenCalledWith(
       'Connection release error, err: release failed',
       releaseError.stack
     );
+  });
+
+  it('preserves acquisition and cleanup errors when both fail', async (): Promise<void> => {
+    const logger = createLogger();
+    const acquisitionError = new Error('connect failed');
+    const cleanupError = new Error('release failed');
+    const queryRunner = {
+      isReleased: false,
+      connect: vi.fn<() => Promise<void>>().mockRejectedValue(acquisitionError),
+      release: vi
+        .fn<(_error?: Error) => Promise<void>>()
+        .mockRejectedValue(cleanupError),
+      manager: { connection: { isInitialized: true } },
+    };
+    const connectionBase = new ConnectionBase(
+      {
+        isInitialized: true,
+        options: {},
+        createQueryRunner: (): typeof queryRunner => queryRunner,
+      } as never,
+      logger
+    );
+
+    const result = connectionBase.getEntityManager();
+
+    await expect(result).rejects.toBeInstanceOf(AggregateError);
+    await expect(result).rejects.toMatchObject({
+      errors: [acquisitionError, cleanupError],
+      cause: acquisitionError,
+    });
   });
 });

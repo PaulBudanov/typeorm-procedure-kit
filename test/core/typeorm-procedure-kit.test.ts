@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { SHUTDOWN_SIGNALS } from '../../src/consts/shuwtdown.consts.js';
 import { TypeOrmProcedureKit } from '../../src/core/index.js';
+import { NotifyBase } from '../../src/core/notify-base.js';
 import { QueryLogContextStorage } from '../../src/utils/query-log-context.js';
 import { ServerError } from '../../src/utils/server-error.js';
-import { createLogger } from '../support/helpers.js';
+import { createAdapterMock, createLogger } from '../support/helpers.js';
 
 const SHUTDOWN_ERROR = 'TypeOrmProcedureKit is shutting down or destroyed';
 
@@ -19,10 +21,69 @@ function createKit(): TypeOrmProcedureKit {
         password: 'pass',
       },
       poolSize: 1,
-      parseInt8AsBigInt: false,
+      parseInt8AsNumber: false,
     },
     logger: { module: createLogger() },
   });
+}
+
+interface IMetadataNotificationOptions {
+  sql: string;
+  notifyCallback: (args: unknown) => unknown;
+}
+
+function createMetadataNotificationHarness(
+  metadataNotificationSql: string | undefined
+): {
+  kit: TypeOrmProcedureKit;
+  getPackagesNotifySql: ReturnType<typeof vi.fn<() => string>>;
+  createNotification: ReturnType<
+    typeof vi.fn<(options: IMetadataNotificationOptions) => Promise<string>>
+  >;
+} {
+  const kit = new TypeOrmProcedureKit({
+    config: {
+      type: 'postgres',
+      master: {
+        host: 'localhost',
+        port: 5432,
+        database: 'db',
+        username: 'user',
+        password: 'pass',
+      },
+      poolSize: 1,
+      parseInt8AsNumber: false,
+      packagesSettings: {
+        packages: ['pkg'],
+        procedureObjectList: { run: 'pkg.run' },
+        isNeedDynamicallyUpdatePackagesInfo: true,
+        metadataNotificationSql,
+      },
+    },
+    logger: { module: createLogger() },
+  });
+  const getPackagesNotifySql = vi.fn((): string => 'LISTEN "fallback"');
+  const createNotification = vi
+    .fn<(options: IMetadataNotificationOptions) => Promise<string>>()
+    .mockResolvedValue('package_updates');
+
+  Reflect.set(kit, 'databaseInitializerBase', {
+    initDatabaseModule: vi.fn().mockResolvedValue(undefined),
+    databaseAdapter: {
+      getPackagesNotifySql,
+    },
+  });
+  Reflect.set(kit, 'initMainClasses', (): void => {
+    Reflect.set(kit, 'procedureListBase', {
+      initPackagesMap: vi.fn().mockResolvedValue(undefined),
+    });
+    Reflect.set(kit, 'notifyBase', {
+      createNotification,
+      schedulePackageNotifyCallback: vi.fn(),
+    });
+  });
+
+  return { kit, getPackagesNotifySql, createNotification };
 }
 
 describe('TypeOrmProcedureKit', (): void => {
@@ -30,12 +91,12 @@ describe('TypeOrmProcedureKit', (): void => {
     const kit = createKit();
 
     expect((): void => {
-      kit.call('pkg.run');
+      void kit.call('pkg.run');
     }).toThrow('Procedure packages are not configured');
     expect((): void => {
       kit.setSerializer({
         serializerType: 'DATE',
-        strategy: (value: string | Buffer): string => value.toString(),
+        strategy: ({ value }): string => value.toString(),
       });
     }).toThrow(ServerError);
     expect((): void => {
@@ -43,7 +104,7 @@ describe('TypeOrmProcedureKit', (): void => {
     }).toThrow(ServerError);
   });
 
-  it('registers shutdown handlers when requested', (): void => {
+  it('registers shutdown handlers idempotently and removes them on destroy', async (): Promise<void> => {
     const once = vi
       .spyOn(process, 'once')
       .mockImplementation(
@@ -52,8 +113,16 @@ describe('TypeOrmProcedureKit', (): void => {
           _listener: (...args: Array<unknown>) => void
         ): NodeJS.Process => process
       );
+    const off = vi
+      .spyOn(process, 'off')
+      .mockImplementation(
+        (
+          _event: string | symbol,
+          _listener: (...args: Array<unknown>) => void
+        ): NodeJS.Process => process
+      );
 
-    new TypeOrmProcedureKit({
+    const kit = new TypeOrmProcedureKit({
       config: {
         type: 'postgres',
         master: {
@@ -64,14 +133,61 @@ describe('TypeOrmProcedureKit', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
       },
       logger: { module: createLogger() },
       isRegisterShutdownHandlers: true,
     });
+    kit.registerShutdownHandlers();
 
     expect(once).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+    expect(once).toHaveBeenCalledTimes(SHUTDOWN_SIGNALS.length);
+    await kit.destroy();
+    expect(off).toHaveBeenCalledTimes(SHUTDOWN_SIGNALS.length);
     once.mockRestore();
+    off.mockRestore();
+  });
+
+  it('restores default signal handling during cleanup and re-sends the signal afterwards', async (): Promise<void> => {
+    let signalHandler: (() => void) | undefined;
+    const once = vi
+      .spyOn(process, 'once')
+      .mockImplementation(
+        (
+          event: string | symbol,
+          listener: (...args: Array<unknown>) => void
+        ): NodeJS.Process => {
+          if (event === 'SIGTERM') signalHandler = listener;
+          return process;
+        }
+      );
+    const off = vi.spyOn(process, 'off').mockReturnValue(process);
+    const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
+    try {
+      const kit = createKit();
+      let resolveNotificationDestroy!: () => void;
+      const notificationDestroy = new Promise<void>((resolve) => {
+        resolveNotificationDestroy = resolve;
+      });
+      Reflect.set(kit, 'notifyBase', {
+        destroy: vi.fn(() => notificationDestroy),
+      });
+      kit.registerShutdownHandlers();
+
+      signalHandler?.();
+
+      expect(off).toHaveBeenCalledTimes(SHUTDOWN_SIGNALS.length);
+      expect(kill).not.toHaveBeenCalled();
+
+      resolveNotificationDestroy();
+      await vi.waitFor(() => {
+        expect(kill).toHaveBeenCalledWith(process.pid, 'SIGTERM');
+      });
+    } finally {
+      once.mockRestore();
+      off.mockRestore();
+      kill.mockRestore();
+    }
   });
 
   it('rejects public operations as soon as shutdown begins', async (): Promise<void> => {
@@ -91,12 +207,160 @@ describe('TypeOrmProcedureKit', (): void => {
     expect((): void => {
       kit.setSerializer({
         serializerType: 'DATE',
-        strategy: (value: string | Buffer): string => value.toString(),
+        strategy: ({ value }): string => value.toString(),
       });
     }).toThrow(SHUTDOWN_ERROR);
 
     resolveNotificationsDestroy();
     await destroyPromise;
+  });
+
+  it('shares one initialization promise across concurrent callers', async (): Promise<void> => {
+    const kit = createKit();
+    let resolveDatabaseInitialization!: () => void;
+    const databaseInitialization = new Promise<void>((resolve) => {
+      resolveDatabaseInitialization = resolve;
+    });
+    const initDatabaseModule = vi.fn(() => databaseInitialization);
+    const initPackagesMap = vi.fn().mockResolvedValue(undefined);
+    const kitInternals = kit as unknown as Record<string, unknown>;
+    Object.assign(kitInternals, {
+      databaseInitializerBase: { initDatabaseModule },
+      initMainClasses(): void {
+        kitInternals.procedureListBase = { initPackagesMap };
+      },
+    });
+
+    const firstInitialization = kit.initDatabase();
+    const secondInitialization = kit.initDatabase();
+
+    expect(secondInitialization).toBe(firstInitialization);
+    expect(initDatabaseModule).toHaveBeenCalledOnce();
+    resolveDatabaseInitialization();
+    await firstInitialization;
+    expect(initPackagesMap).toHaveBeenCalledOnce();
+    expect(kitInternals.state).toBe('ready');
+  });
+
+  it('rolls back failed initialization and returns to new state', async (): Promise<void> => {
+    const kit = createKit();
+    const initDatabaseModule = vi.fn().mockResolvedValue(undefined);
+    const initPackagesMap = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('metadata failed'))
+      .mockResolvedValue(undefined);
+    const notifyDestroy = vi.fn().mockResolvedValue(undefined);
+    const procedureListDestroy = vi.fn();
+    const dataSourceDestroy = vi.fn().mockResolvedValue(undefined);
+    const kitInternals = kit as unknown as Record<string, unknown>;
+    Object.assign(kitInternals, {
+      databaseInitializerBase: {
+        initDatabaseModule,
+        isDataSourceInitialized: true,
+        appDataSource: { destroy: dataSourceDestroy },
+        resetAfterFailedInitialization: vi.fn(),
+      },
+      initMainClasses(): void {
+        Object.assign(kitInternals, {
+          procedureListBase: {
+            initPackagesMap,
+            destroy: procedureListDestroy,
+          },
+          notifyBase: { destroy: notifyDestroy },
+        });
+      },
+    });
+
+    await expect(kit.initDatabase()).rejects.toThrow('metadata failed');
+    expect(kitInternals.state).toBe('new');
+    expect(notifyDestroy).toHaveBeenCalledOnce();
+    expect(procedureListDestroy).toHaveBeenCalledOnce();
+    expect(dataSourceDestroy).toHaveBeenCalledOnce();
+
+    await expect(kit.initDatabase()).resolves.toBeUndefined();
+    expect(kitInternals.state).toBe('ready');
+    expect(initDatabaseModule).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses a fresh notifier after rollback and supports dynamic notifications', async (): Promise<void> => {
+    const settings = {
+      packages: ['pkg' as Lowercase<string>],
+      procedureObjectList: { run: 'pkg.run' },
+      isNeedDynamicallyUpdatePackagesInfo: true,
+    };
+    const firstAdapter = createAdapterMock({
+      getPackagesNotifySql: vi.fn(() => 'LISTEN package_updates'),
+      listenNotify: vi.fn().mockRejectedValue(new Error('subscribe failed')),
+      destroyNotifications: vi.fn().mockResolvedValue(undefined),
+    });
+    const secondAdapter = createAdapterMock({
+      getPackagesNotifySql: vi.fn(() => 'LISTEN package_updates'),
+      listenNotify: vi.fn().mockResolvedValue('package_updates'),
+      destroyNotifications: vi.fn().mockResolvedValue(undefined),
+    });
+    let activeAdapter = firstAdapter;
+    let initializationAttempt = 0;
+    const resetAfterFailedInitialization = vi.fn();
+    const databaseInitializerBase = {
+      initDatabaseModule: vi.fn().mockImplementation((): Promise<void> => {
+        activeAdapter =
+          initializationAttempt === 0 ? firstAdapter : secondAdapter;
+        initializationAttempt += 1;
+        return Promise.resolve();
+      }),
+      get databaseAdapter(): typeof firstAdapter {
+        return activeAdapter;
+      },
+      isDataSourceInitialized: false,
+      resetAfterFailedInitialization,
+      caseSettings: { strategy: { destroy: vi.fn() } },
+    };
+    const kit = new TypeOrmProcedureKit({
+      config: {
+        type: 'postgres',
+        master: {
+          host: 'localhost',
+          port: 5432,
+          database: 'db',
+          username: 'user',
+          password: 'pass',
+        },
+        poolSize: 1,
+        parseInt8AsNumber: false,
+        packagesSettings: settings,
+      },
+      logger: { module: createLogger() },
+    });
+    const kitInternals = kit as unknown as Record<string, unknown>;
+    Object.assign(kitInternals, {
+      databaseInitializerBase,
+      initMainClasses(): void {
+        const procedureListBase = {
+          initPackagesMap: vi.fn().mockResolvedValue(undefined),
+          fetchProcedureListWithArguments: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+        };
+        Object.assign(kitInternals, {
+          procedureListBase,
+          notifyBase: new NotifyBase(
+            activeAdapter,
+            procedureListBase as never,
+            createLogger(),
+            settings
+          ),
+        });
+      },
+    });
+
+    await expect(kit.initDatabase()).rejects.toThrow('subscribe failed');
+    expect(firstAdapter.destroyNotifications).toHaveBeenCalledOnce();
+    expect(resetAfterFailedInitialization).toHaveBeenCalledOnce();
+
+    await expect(kit.initDatabase()).resolves.toBeUndefined();
+    await expect(
+      kit.makeNotify({ sql: 'LISTEN manual', notifyCallback: vi.fn() })
+    ).resolves.toBe('package_updates');
+    expect(secondAdapter.listenNotify).toHaveBeenCalledTimes(2);
   });
 
   it('passes procedure metadata to execution logging context', async (): Promise<void> => {
@@ -111,7 +375,7 @@ describe('TypeOrmProcedureKit', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
         packagesSettings: {
           packages: ['pkg'],
           procedureObjectList: { run: 'pkg.run' },
@@ -124,14 +388,23 @@ describe('TypeOrmProcedureKit', (): void => {
       out_cursor: {},
     };
     let capturedContext = QueryLogContextStorage.getStore();
-    const execute = vi.fn().mockImplementation((): Promise<Array<unknown>> => {
-      capturedContext = QueryLogContextStorage.getStore();
-      return Promise.resolve([]);
-    });
+    const executeProcedure = vi
+      .fn()
+      .mockImplementation((): Promise<unknown> => {
+        capturedContext = QueryLogContextStorage.getStore();
+        return Promise.resolve({ rows: [], outBinds: {} });
+      });
     const makeBindings = vi.fn(() => ({
       paramExecuteString: 'BEGIN PKG.RUN (:p_id,:out_cursor); END;',
       bindings,
       cursorsNames: ['out_cursor'],
+      outBindings: [
+        {
+          name: 'out_cursor',
+          type: 'cursor',
+          databaseType: 'REF CURSOR',
+        },
+      ],
     }));
 
     Object.assign(kit as unknown as Record<string, unknown>, {
@@ -162,18 +435,29 @@ describe('TypeOrmProcedureKit', (): void => {
             },
           ],
         ]),
+        parseProcedureName: vi.fn(() => ({
+          packageName: 'pkg',
+          processName: 'run',
+        })),
       },
       executeBase: {
-        execute,
+        executeProcedure,
       },
     });
 
     await kit.call('pkg.run', { id: 7 });
 
-    expect(execute).toHaveBeenCalledWith(
+    expect(executeProcedure).toHaveBeenCalledWith(
       'BEGIN PKG.RUN (:p_id,:out_cursor); END;',
       bindings,
       ['out_cursor'],
+      [
+        {
+          name: 'out_cursor',
+          type: 'cursor',
+          databaseType: 'REF CURSOR',
+        },
+      ],
       undefined
     );
     expect(capturedContext).toEqual({
@@ -282,16 +566,19 @@ describe('TypeOrmProcedureKit', (): void => {
     expect(dataSourceDestroy).toHaveBeenCalledOnce();
     expect(strategyDestroy).toHaveBeenCalledOnce();
     expect((): void => {
-      kit.call('pkg.run');
+      void kit.call('pkg.run');
     }).toThrow(SHUTDOWN_ERROR);
     expect((): void => {
-      kit.callSqlTransaction('SELECT 1');
+      void kit.callSqlTransaction('SELECT 1');
     }).toThrow(SHUTDOWN_ERROR);
     expect(makeSqlBindings).not.toHaveBeenCalled();
   });
 
   it('keeps failed destroy terminal for future calls', async (): Promise<void> => {
     const kit = createKit();
+    const once = vi.spyOn(process, 'once').mockReturnValue(process);
+    const off = vi.spyOn(process, 'off').mockReturnValue(process);
+    kit.registerShutdownHandlers();
     const notifyDestroy = vi
       .fn<() => Promise<void>>()
       .mockRejectedValue(new Error('notify failed'));
@@ -329,18 +616,23 @@ describe('TypeOrmProcedureKit', (): void => {
     expect((): void => {
       kit.setSerializer({
         serializerType: 'DATE',
-        strategy: (value: string | Buffer): string => value.toString(),
+        strategy: ({ value }): string => value.toString(),
       });
     }).toThrow(SHUTDOWN_ERROR);
     expect((): void => {
-      kit.callSqlTransaction('SELECT 1');
+      void kit.callSqlTransaction('SELECT 1');
     }).toThrow(SHUTDOWN_ERROR);
     expect(makeSqlBindings).not.toHaveBeenCalled();
 
-    await expect(kit.destroy()).resolves.toBeUndefined();
+    await expect(kit.destroy()).rejects.toThrow(
+      'Some resources failed to cleanup during shutdown'
+    );
     expect(notifyDestroy).toHaveBeenCalledOnce();
     expect(dataSourceDestroy).toHaveBeenCalledOnce();
     expect(strategyDestroy).toHaveBeenCalledOnce();
+    expect(off).toHaveBeenCalledTimes(SHUTDOWN_SIGNALS.length);
+    once.mockRestore();
+    off.mockRestore();
   });
 
   it('does not double-close resources on repeated destroy', async (): Promise<void> => {
@@ -374,65 +666,39 @@ describe('TypeOrmProcedureKit', (): void => {
     expect(strategyDestroy).toHaveBeenCalledOnce();
   });
 
-  it('uses custom metadata notification SQL during initialization', async (): Promise<void> => {
-    const kit = new TypeOrmProcedureKit({
-      config: {
-        type: 'postgres',
-        master: {
-          host: 'localhost',
-          port: 5432,
-          database: 'db',
-          username: 'user',
-          password: 'pass',
-        },
-        poolSize: 1,
-        parseInt8AsBigInt: false,
-        packagesSettings: {
-          packages: ['pkg'],
-          procedureObjectList: { run: 'pkg.run' },
-          isNeedDynamicallyUpdatePackagesInfo: true,
-          metadataNotificationSql: 'LISTEN "package_updates"',
-        },
-      },
-      logger: { module: createLogger() },
-    });
-    const getPackagesNotifySql = vi.fn((): string => 'LISTEN "fallback"');
-    const createNotification = vi
-      .fn<
-        (_options: {
-          sql: string;
-          notifyCallback: (args: unknown) => unknown;
-        }) => Promise<string>
-      >()
-      .mockResolvedValue('package_updates');
-    const kitInternals = kit as unknown as Record<string, unknown>;
-
-    Object.assign(kitInternals, {
-      databaseInitializerBase: {
-        initDatabaseModule: vi.fn().mockResolvedValue(undefined),
-        databaseAdapter: {
-          getPackagesNotifySql,
-        },
-      },
-      initMainClasses(): void {
-        Object.assign(kitInternals, {
-          procedureListBase: {
-            initPackagesMap: vi.fn().mockResolvedValue(undefined),
-          },
-          notifyBase: {
-            createNotification,
-            packageNotifyCallback: vi.fn(),
-          },
-        });
-      },
-    });
+  it('trims custom metadata notification SQL during initialization', async (): Promise<void> => {
+    const { kit, getPackagesNotifySql, createNotification } =
+      createMetadataNotificationHarness(' \n\t LISTEN "package_updates" \t');
 
     await kit.initDatabase();
 
     expect(createNotification).toHaveBeenCalledOnce();
-    const [notificationOptions] = createNotification.mock.calls[0]!;
+    const notificationCall = createNotification.mock.calls.at(0);
+    expect(notificationCall).toBeDefined();
+    if (!notificationCall)
+      throw new Error('Notification call was not recorded');
+    const [notificationOptions] = notificationCall;
     expect(notificationOptions.sql).toBe('LISTEN "package_updates"');
     expect(typeof notificationOptions.notifyCallback).toBe('function');
     expect(getPackagesNotifySql).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, '', ' \n\t '])(
+    'uses adapter metadata notification SQL when custom SQL is %j',
+    async (metadataNotificationSql): Promise<void> => {
+      const { kit, getPackagesNotifySql, createNotification } =
+        createMetadataNotificationHarness(metadataNotificationSql);
+
+      await kit.initDatabase();
+
+      expect(getPackagesNotifySql).toHaveBeenCalledOnce();
+      expect(getPackagesNotifySql).toHaveBeenCalledWith(['pkg']);
+      expect(createNotification).toHaveBeenCalledOnce();
+      const notificationCall = createNotification.mock.calls.at(0);
+      expect(notificationCall).toBeDefined();
+      if (!notificationCall)
+        throw new Error('Notification call was not recorded');
+      expect(notificationCall[0].sql).toBe('LISTEN "fallback"');
+    }
+  );
 });

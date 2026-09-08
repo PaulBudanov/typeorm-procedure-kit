@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CaseStrategyFactory } from '../../src/case-strategy/case-strategy-factory.js';
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
 import { EntitySchema } from '../../src/typeorm/entity-schema/EntitySchema.js';
+import { RelationCountLoader } from '../../src/typeorm/query-builder/relation-count/RelationCountLoader.js';
+import { RelationIdLoader } from '../../src/typeorm/query-builder/relation-id/RelationIdLoader.js';
+import { RawSqlResultsToEntityTransformer } from '../../src/typeorm/query-builder/transformer/RawSqlResultsToEntityTransformer.js';
+
 import type { ObjectLiteral } from '../../src/typeorm/index.js';
 import type { QueryExpressionMap } from '../../src/typeorm/query-builder/QueryExpressionMap.js';
-import { RawSqlResultsToEntityTransformer } from '../../src/typeorm/query-builder/transformer/RawSqlResultsToEntityTransformer.js';
 import type { TFunction } from '../../src/types/utility.types.js';
 
 class ManEntity implements ObjectLiteral {
@@ -548,8 +551,6 @@ describe('QueryBuilder', (): void => {
     expect(countExpression).toBe(
       'COUNT(DISTINCT("ord".TENANT_ID, "ord".ORDER_NO))'
     );
-    expect(countExpression).not.toContain('"TENANT_ID"');
-    expect(countExpression).not.toContain('"ORDER_NO"');
   });
 
   it('builds fallback count distinct with composite primary columns', async (): Promise<void> => {
@@ -567,8 +568,6 @@ describe('QueryBuilder', (): void => {
     expect(countExpression).toBe(
       'COUNT(DISTINCT("ord".TENANT_ID || \'|;|\' || "ord".ORDER_NO))'
     );
-    expect(countExpression).not.toContain('"TENANT_ID"');
-    expect(countExpression).not.toContain('"ORDER_NO"');
   });
 
   it('replaces database column names across a complex select query', async (): Promise<void> => {
@@ -641,8 +640,6 @@ describe('QueryBuilder', (): void => {
       'ORDER BY "ord".CREATED_AT DESC, "message".UUID4 ASC'
     );
     expect(query).toContain('OFFSET 10 ROWS FETCH NEXT 25 ROWS ONLY');
-    expect(query).not.toContain('"ord"."TENANT_ID"');
-    expect(query).not.toContain('"message"."UUID4"');
     expect(countExpression).toBe(
       'COUNT(DISTINCT("ord".TENANT_ID || \'|;|\' || "ord".ORDER_NO))'
     );
@@ -749,5 +746,542 @@ describe('QueryBuilder', (): void => {
     expect(softDeleteQuery).toContain('UPDATED_AT = CURRENT_TIMESTAMP');
     expect(softDeleteQuery).toContain('WHERE STATUS = :status');
     expect(softDeleteQuery).toContain('RETURNING ID, DELETED_AT');
+  });
+
+  it('keeps public escape explicit and scopes quoting policy to physical identifiers', (): void => {
+    const defaultDataSource = new DataSource({ type: 'postgres' });
+    const quotedDataSource = new DataSource({
+      type: 'postgres',
+      identifierQuoting: 'enabled',
+    });
+
+    expect(defaultDataSource.options.identifierQuoting).toBe('disabled');
+    expect(defaultDataSource.createQueryBuilder().escape('select')).toBe(
+      '"select"'
+    );
+    expect(quotedDataSource.createQueryBuilder().escape('select')).toBe(
+      '"select"'
+    );
+    expect(
+      defaultDataSource
+        .createQueryBuilder()
+        .setIdentifierQuoting('enabled')
+        .escape('select')
+    ).toBe('"select"');
+
+    expect(
+      () =>
+        new DataSource({
+          type: 'postgres',
+          identifierQuoting: 'invalid' as 'disabled',
+        })
+    ).toThrow('identifierQuoting');
+
+    defaultDataSource.setOptions({ identifierQuoting: 'enabled' });
+    expect(defaultDataSource.identifierQuoting).toBe('enabled');
+    expect(defaultDataSource.options.identifierQuoting).toBe('enabled');
+    expect(() =>
+      defaultDataSource.setOptions({
+        identifierQuoting: 'invalid' as 'disabled',
+      })
+    ).toThrow('identifierQuoting');
+    expect(defaultDataSource.identifierQuoting).toBe('enabled');
+  });
+
+  it('quotes only aliases by default and quotes every generated identifier when enabled', async (): Promise<void> => {
+    const entity = new EntitySchema<ManEntity>({
+      target: ManEntity as unknown as TFunction,
+      name: 'QuotingManEntity',
+      tableName: 'MAN',
+      schema: 'SOLUTION_MED',
+      columns: {
+        keyId: { type: 'integer', primary: true, name: 'KEYID' },
+        lockStatus: { type: 'integer', nullable: true, name: 'LOCK_STATUS' },
+        status: { type: 'integer', name: 'STATUS' },
+        text: { type: 'text', nullable: true, name: 'TEXT' },
+      },
+    });
+    const defaultDataSource = new DataSource({
+      type: 'postgres',
+      entities: [entity],
+    });
+    const quotedDataSource = new DataSource({
+      type: 'postgres',
+      identifierQuoting: 'enabled',
+      entities: [entity],
+    });
+    await Promise.all([
+      buildMetadata(defaultDataSource),
+      buildMetadata(quotedDataSource),
+    ]);
+
+    const buildQuery = (dataSource: DataSource): string =>
+      dataSource
+        .createQueryBuilder(ManEntity, 'm')
+        .select('m.keyId', 'resultId')
+        .where('m.lockStatus = :locked', { locked: 0 })
+        .getQuery();
+
+    expect(buildQuery(defaultDataSource)).toContain(
+      'SELECT "m".KEYID AS "resultId" FROM SOLUTION_MED.MAN "m" WHERE "m".LOCK_STATUS = :locked'
+    );
+    expect(buildQuery(quotedDataSource)).toContain(
+      'SELECT "m"."KEYID" AS "resultId" FROM "SOLUTION_MED"."MAN" "m" WHERE "m"."LOCK_STATUS" = :locked'
+    );
+  });
+
+  it('inherits per-builder quoting through clones and subqueries', (): void => {
+    const dataSource = new DataSource({ type: 'postgres' });
+    const builder = dataSource
+      .createQueryBuilder()
+      .select('*')
+      .from('APP.ITEMS', 'item')
+      .setIdentifierQuoting('enabled');
+
+    expect(builder.clone().getQuery()).toContain('FROM "APP"."ITEMS" "item"');
+    expect(
+      builder.subQuery().select('*').from('APP.DETAILS', 'detail').getQuery()
+    ).toContain('FROM "APP"."DETAILS" "detail"');
+    expect(
+      dataSource
+        .createQueryBuilder()
+        .select('*')
+        .from('APP.ITEMS', 'item')
+        .getQuery()
+    ).toContain('FROM APP.ITEMS "item"');
+    expect(() => builder.setIdentifierQuoting('invalid' as 'disabled')).toThrow(
+      'identifierQuoting'
+    );
+  });
+
+  it.each([
+    { builderQuoting: 'enabled', globalQuoting: 'disabled' },
+    { builderQuoting: 'disabled', globalQuoting: 'enabled' },
+  ] as const)(
+    'passes $builderQuoting per-builder quoting to relation loaders when the global policy is $globalQuoting',
+    async ({ builderQuoting, globalQuoting }): Promise<void> => {
+      const dataSource = new DataSource({
+        type: 'postgres',
+        identifierQuoting: globalQuoting,
+        entities: createMessageEntitySchemas(),
+      });
+      await buildMetadata(dataSource);
+
+      const queryRunner = dataSource.createQueryRunner();
+      vi.spyOn(queryRunner, 'query').mockResolvedValue({
+        affected: 1,
+        raw: [],
+        records: [
+          {
+            message_ADDITIONAL_MESSAGES_UUID: 'related-id',
+            message_IS_DELETED: 0,
+            message_UUID4: 'message-id',
+          },
+        ],
+      });
+
+      const relationIdModes: Array<unknown> = [];
+      const relationCountModes: Array<unknown> = [];
+      const queryRelationModes: Array<unknown> = [];
+      const relationIdSpy = vi
+        .spyOn(RelationIdLoader.prototype, 'load')
+        .mockImplementation(function (this: RelationIdLoader) {
+          relationIdModes.push(Reflect.get(this, 'identifierQuoting'));
+          return Promise.resolve([]);
+        });
+      const relationCountSpy = vi
+        .spyOn(RelationCountLoader.prototype, 'load')
+        .mockImplementation(function (this: RelationCountLoader) {
+          relationCountModes.push(Reflect.get(this, 'identifierQuoting'));
+          return Promise.resolve([]);
+        });
+      const queryRelationSpy = vi
+        .spyOn(dataSource.relationLoader, 'load')
+        .mockImplementation((_relation, _entities, _runner, queryBuilder) => {
+          queryRelationModes.push(
+            queryBuilder?.expressionMap.identifierQuoting
+          );
+          return Promise.resolve([]);
+        });
+
+      try {
+        await dataSource
+          .createQueryBuilder(MessageEntity, 'message', queryRunner)
+          .setIdentifierQuoting(builderQuoting)
+          .setFindOptions({
+            relationLoadStrategy: 'query',
+            relations: { additionalMessage: true },
+          })
+          .getMany();
+
+        expect(relationIdModes).toEqual([builderQuoting]);
+        expect(relationCountModes).toEqual([builderQuoting]);
+        expect(queryRelationModes).toEqual([builderQuoting]);
+      } finally {
+        relationIdSpy.mockRestore();
+        relationCountSpy.mockRestore();
+        queryRelationSpy.mockRestore();
+      }
+    }
+  );
+
+  it('always quotes CTE names, CTE outputs, and generated output aliases', (): void => {
+    const dataSource = new DataSource({ type: 'postgres' });
+    const query = dataSource
+      .createQueryBuilder()
+      .addCommonTableExpression('SELECT 1 AS id', 'MixedCte', {
+        columnNames: ['ResultId'],
+      })
+      .select('cte.ResultId', 'OutputId')
+      .from('MixedCte', 'cte')
+      .getQuery();
+
+    expect(query).toContain('WITH "MixedCte"("ResultId") AS (SELECT 1 AS id)');
+    expect(query).toContain('FROM "MixedCte" "cte"');
+    expect(query).toContain('AS "OutputId"');
+  });
+
+  it('validates unquoted physical identifiers without rewriting raw SQL', (): void => {
+    const postgres = new DataSource({ type: 'postgres' });
+    const oracle = new DataSource({ type: 'oracle' });
+
+    expect(
+      postgres
+        .createQueryBuilder()
+        .select('*')
+        .from('схема.таблица_1$', 'данные')
+        .getQuery()
+    ).toContain('FROM схема.таблица_1$ "данные"');
+
+    expect(() =>
+      postgres
+        .createQueryBuilder()
+        .select('*')
+        .from('schema.table#name', 'item')
+        .getQuery()
+    ).toThrow('Unsafe unquoted SQL identifier');
+    expect(
+      oracle
+        .createQueryBuilder()
+        .select('*')
+        .from('СХЕМА.ТАБЛИЦА_1$#', 'данные')
+        .getQuery()
+    ).toContain('FROM СХЕМА.ТАБЛИЦА_1$# "данные"');
+    expect(() =>
+      oracle
+        .createQueryBuilder()
+        .select('*')
+        .from('_PRIVATE_TABLE', 'item')
+        .getQuery()
+    ).toThrow('Unsafe unquoted SQL identifier');
+
+    for (const tableName of [
+      'bad name',
+      'bad-name',
+      'safe.bad name',
+      'name/*comment*/',
+      'name"quoted',
+      'select',
+    ]) {
+      expect(() =>
+        postgres
+          .createQueryBuilder()
+          .select('*')
+          .from(tableName, 'item')
+          .getQuery()
+      ).toThrow();
+    }
+    expect(() =>
+      postgres
+        .createQueryBuilder()
+        .select('*')
+        .from('safe_table', 'item')
+        .where({ 'unsafe column': 1 })
+        .getQuery()
+    ).toThrow('Unsafe unquoted SQL identifier');
+    expect(
+      postgres
+        .createQueryBuilder()
+        .select('*')
+        .from('safe_table', 'item')
+        .where({ safe_column: 1 })
+        .getQuery()
+    ).toContain('WHERE "item".safe_column = :orm_param_0');
+    expect(() =>
+      oracle.createQueryBuilder().select('*').from('order', 'item').getQuery()
+    ).toThrow('Reserved SQL word');
+    for (const reservedWord of [
+      'ARRAYLEN',
+      'COLUMN_VALUE',
+      'NESTED_TABLE_ID',
+      'NOTFOUND',
+      'ROWLABEL',
+      'SQLBUF',
+    ]) {
+      expect(() =>
+        oracle
+          .createQueryBuilder()
+          .select('*')
+          .from(reservedWord, 'item')
+          .getQuery()
+      ).toThrow('Reserved SQL word');
+    }
+
+    expect(
+      new DataSource({ type: 'postgres', identifierQuoting: 'enabled' })
+        .createQueryBuilder()
+        .select('*')
+        .from('bad-name', 'item')
+        .getQuery()
+    ).toContain('FROM "bad-name" "item"');
+
+    const rawWhere = `item.payload ->> 'x-y' = :value /* raw predicate */`;
+    expect(
+      postgres
+        .createQueryBuilder()
+        .select("item.payload ->> 'x-y'", 'RawValue')
+        .from('safe_table', 'item')
+        .where(rawWhere, { value: 'yes' })
+        .getQuery()
+    ).toContain(rawWhere);
+  });
+
+  it('applies enabled quoting to DML columns while always quoting constraint names', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'postgres',
+      identifierQuoting: 'enabled',
+      entities: [createAuditLogEntitySchema()],
+    });
+    await buildMetadata(dataSource);
+
+    const insertQuery = dataSource
+      .createQueryBuilder()
+      .insert()
+      .into(AuditLogEntity, ['ID', 'STATUS'])
+      .values({ id: 1, status: 'ready' })
+      .orUpdate(['STATUS'], 'uq_audit_status')
+      .getQuery();
+    const updateQuery = dataSource
+      .createQueryBuilder()
+      .update(AuditLogEntity)
+      .set({ status: 'done' })
+      .where({ id: 1 })
+      .returning(['STATUS', 'UPDATED_AT'])
+      .getQuery();
+    const deleteQuery = dataSource
+      .createQueryBuilder()
+      .delete()
+      .from(AuditLogEntity)
+      .where({ status: 'done' })
+      .returning(['ID'])
+      .getQuery();
+
+    expect(insertQuery).toContain('INSERT INTO "AUDIT_LOG"("ID", "STATUS")');
+    expect(insertQuery).toContain('ON CONSTRAINT "uq_audit_status"');
+    expect(insertQuery).toContain('DO UPDATE SET "STATUS" = EXCLUDED."STATUS"');
+    expect(updateQuery).toContain(
+      'UPDATE "AUDIT_LOG" SET "STATUS" = :orm_param_1'
+    );
+    expect(updateQuery).toContain('WHERE "ID" = :orm_param_0');
+    expect(updateQuery).toContain('RETURNING "STATUS", "UPDATED_AT"');
+    expect(deleteQuery).toContain('DELETE FROM "AUDIT_LOG"');
+    expect(deleteQuery).toContain('WHERE "STATUS" = :orm_param_0');
+    expect(deleteQuery).toContain('RETURNING "ID"');
+  });
+
+  it('applies the physical policy to generated aggregate expressions', async (): Promise<void> => {
+    const captureAggregateQuery = async (
+      identifierQuoting: 'disabled' | 'enabled'
+    ): Promise<string> => {
+      const dataSource = new DataSource({
+        type: 'postgres',
+        identifierQuoting,
+        entities: [createAuditLogEntitySchema()],
+      });
+      await buildMetadata(dataSource);
+      const aggregateBuilder = dataSource.createQueryBuilder(
+        AuditLogEntity,
+        'audit'
+      );
+      let generatedQuery = '';
+      vi.spyOn(aggregateBuilder, 'getRawOne').mockImplementation(() => {
+        generatedQuery = aggregateBuilder.getQuery();
+        return Promise.resolve({ SUM: '3' });
+      });
+      vi.spyOn(dataSource.manager, 'createQueryBuilder').mockReturnValue(
+        aggregateBuilder
+      );
+
+      await dataSource.manager.sum(AuditLogEntity, 'version');
+      return generatedQuery;
+    };
+
+    await expect(captureAggregateQuery('disabled')).resolves.toContain(
+      'SELECT SUM(ROW_VERSION) AS "SUM" FROM AUDIT_LOG "audit"'
+    );
+    await expect(captureAggregateQuery('enabled')).resolves.toContain(
+      'SELECT SUM("ROW_VERSION") AS "SUM" FROM "AUDIT_LOG" "audit"'
+    );
+  });
+
+  it('applies invalid where behavior to direct write query builders', async (): Promise<void> => {
+    const throwDataSource = new DataSource({
+      type: 'postgres',
+      entities: [createAuditLogEntitySchema()],
+      invalidWhereValuesBehavior: { undefined: 'throw' },
+    });
+    const sqlNullDataSource = new DataSource({
+      type: 'postgres',
+      entities: [createAuditLogEntitySchema()],
+      invalidWhereValuesBehavior: { null: 'sql-null' },
+    });
+    const defaultDataSource = new DataSource({
+      type: 'postgres',
+      entities: [createAuditLogEntitySchema()],
+    });
+    await Promise.all([
+      buildMetadata(throwDataSource),
+      buildMetadata(sqlNullDataSource),
+      buildMetadata(defaultDataSource),
+    ]);
+
+    expect(() =>
+      throwDataSource
+        .createQueryBuilder()
+        .update(AuditLogEntity)
+        .set({ status: 'done' })
+        .where({ id: undefined })
+        .getQuery()
+    ).toThrow("Undefined value encountered in property 'id'");
+
+    expect(
+      sqlNullDataSource
+        .createQueryBuilder()
+        .delete()
+        .from(AuditLogEntity)
+        .where({ deletedAt: null })
+        .getQuery()
+    ).toContain('WHERE DELETED_AT IS NULL');
+
+    expect(() =>
+      defaultDataSource
+        .createQueryBuilder()
+        .delete()
+        .from(AuditLogEntity)
+        .where({ id: undefined })
+        .getQuery()
+    ).toThrow("Undefined value encountered in property 'id'");
+
+    expect(() =>
+      defaultDataSource
+        .createQueryBuilder()
+        .update(AuditLogEntity)
+        .set({ status: 'done' })
+        .where({ status: 'ready', id: undefined })
+        .getQuery()
+    ).toThrow("Undefined value encountered in property 'id'");
+  });
+
+  it('only accepts finite non-negative safe integer pagination values', (): void => {
+    const dataSource = new DataSource({ type: 'postgres' });
+    const validValues = [0, Number.MAX_SAFE_INTEGER];
+    const invalidValues = [-1, 1.5, Infinity, NaN];
+
+    for (const value of validValues) {
+      expect(() =>
+        dataSource.createQueryBuilder().select().limit(value)
+      ).not.toThrow();
+    }
+    for (const value of invalidValues) {
+      expect(() =>
+        dataSource.createQueryBuilder().select().limit(value)
+      ).toThrow('finite, non-negative safe integer');
+      expect(() =>
+        dataSource.createQueryBuilder().update('items').limit(value)
+      ).toThrow('finite, non-negative safe integer');
+    }
+  });
+
+  it('parameterizes finite increment/decrement deltas and subtracts on decrement', async (): Promise<void> => {
+    const dataSource = new DataSource({
+      type: 'postgres',
+      entities: [createAuditLogEntitySchema()],
+    });
+    await buildMetadata(dataSource);
+    const manager = dataSource.manager;
+
+    const incrementBuilder = dataSource
+      .createQueryBuilder()
+      .update(AuditLogEntity);
+    vi.spyOn(incrementBuilder, 'update').mockReturnValue(incrementBuilder);
+    vi.spyOn(incrementBuilder, 'execute').mockResolvedValue({} as never);
+    const createQueryBuilder = vi
+      .spyOn(manager, 'createQueryBuilder')
+      .mockReturnValue(incrementBuilder as never);
+
+    await manager.increment(AuditLogEntity, { id: 1 }, 'version', 2.5);
+    const [incrementSql, incrementParameters] =
+      incrementBuilder.getQueryAndParameters();
+    expect(incrementSql).toContain('ROW_VERSION = ROW_VERSION + $1');
+    expect(incrementParameters).toEqual([2.5, 1]);
+
+    const decrementBuilder = dataSource
+      .createQueryBuilder()
+      .update(AuditLogEntity);
+    vi.spyOn(decrementBuilder, 'update').mockReturnValue(decrementBuilder);
+    vi.spyOn(decrementBuilder, 'execute').mockResolvedValue({} as never);
+    createQueryBuilder.mockReturnValue(decrementBuilder as never);
+
+    await manager.decrement(AuditLogEntity, { id: 1 }, 'version', '3.25');
+    const [decrementSql, decrementParameters] =
+      decrementBuilder.getQueryAndParameters();
+    expect(decrementSql).toContain('ROW_VERSION = ROW_VERSION - $1');
+    expect(decrementParameters).toEqual([3.25, 1]);
+
+    const quotedDataSource = new DataSource({
+      type: 'postgres',
+      identifierQuoting: 'enabled',
+      entities: [createAuditLogEntitySchema()],
+    });
+    await buildMetadata(quotedDataSource);
+    const quotedManager = quotedDataSource.manager;
+    const quotedIncrementBuilder = quotedDataSource
+      .createQueryBuilder()
+      .update(AuditLogEntity);
+    vi.spyOn(quotedIncrementBuilder, 'update').mockReturnValue(
+      quotedIncrementBuilder
+    );
+    vi.spyOn(quotedIncrementBuilder, 'execute').mockResolvedValue({} as never);
+    const createQuotedQueryBuilder = vi
+      .spyOn(quotedManager, 'createQueryBuilder')
+      .mockReturnValue(quotedIncrementBuilder as never);
+
+    await quotedManager.increment(AuditLogEntity, { id: 1 }, 'version', 1);
+    expect(quotedIncrementBuilder.getQueryAndParameters()[0]).toContain(
+      '"ROW_VERSION" = "ROW_VERSION" + $1'
+    );
+
+    const quotedDecrementBuilder = quotedDataSource
+      .createQueryBuilder()
+      .update(AuditLogEntity);
+    vi.spyOn(quotedDecrementBuilder, 'update').mockReturnValue(
+      quotedDecrementBuilder
+    );
+    vi.spyOn(quotedDecrementBuilder, 'execute').mockResolvedValue({} as never);
+    createQuotedQueryBuilder.mockReturnValue(quotedDecrementBuilder as never);
+    await quotedManager.decrement(AuditLogEntity, { id: 1 }, 'version', 1);
+    expect(quotedDecrementBuilder.getQueryAndParameters()[0]).toContain(
+      '"ROW_VERSION" = "ROW_VERSION" - $1'
+    );
+
+    await expect(
+      manager.increment(AuditLogEntity, { id: 1 }, 'version', '')
+    ).rejects.toThrow('is not a number');
+    await expect(
+      manager.increment(AuditLogEntity, { id: 1 }, 'version', Infinity)
+    ).rejects.toThrow('is not a number');
+    await expect(
+      manager.decrement(AuditLogEntity, { id: 1 }, 'version', '1e309')
+    ).rejects.toThrow('is not a number');
   });
 });

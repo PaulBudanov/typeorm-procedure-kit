@@ -1,13 +1,15 @@
-import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
-import type { DataSource } from '../../data-source/DataSource.js';
+import { formatDatabaseIdentifier } from '../../data-source/IdentifierQuoting.js';
 import { DriverUtils } from '../../driver/DriverUtils.js';
 import { TypeORMError } from '../../error/TypeORMError.js';
-import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
-import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 import { OrmUtils } from '../../util/OrmUtils.js';
 
 import type { RelationIdAttribute } from './RelationIdAttribute.js';
 import type { RelationIdLoadResult } from './RelationIdLoadResult.js';
+import type { ObjectLiteral } from '../../common/ObjectLiteral.js';
+import type { DataSource } from '../../data-source/DataSource.js';
+import type { TIdentifierQuoting } from '../../data-source/DataSourceOptions.js';
+import type { ColumnMetadata } from '../../metadata/ColumnMetadata.js';
+import type { QueryRunner } from '../../query-runner/QueryRunner.js';
 
 export class RelationIdLoader {
   // -------------------------------------------------------------------------
@@ -17,7 +19,8 @@ export class RelationIdLoader {
   public constructor(
     protected connection: DataSource,
     protected queryRunner: QueryRunner | undefined,
-    protected relationIdAttributes: Array<RelationIdAttribute>
+    protected relationIdAttributes: Array<RelationIdAttribute>,
+    protected readonly identifierQuoting: TIdentifierQuoting = connection.identifierQuoting
   ) {}
 
   // -------------------------------------------------------------------------
@@ -27,8 +30,8 @@ export class RelationIdLoader {
   public async load(
     rawEntities: Array<unknown>
   ): Promise<Array<RelationIdLoadResult>> {
-    const promises = this.relationIdAttributes.map(
-      async (relationIdAttr): Promise<RelationIdLoadResult> => {
+    const tasks = this.relationIdAttributes.map(
+      (relationIdAttr) => async (): Promise<RelationIdLoadResult> => {
         if (
           relationIdAttr.relation.isManyToOne ||
           relationIdAttr.relation.isOneToOneOwner
@@ -63,7 +66,7 @@ export class RelationIdLoader {
                 const duplicatePart = `${
                   joinColumn.databaseName
                 }:${result[joinColumn.databaseName]}`;
-                if (duplicateParts.indexOf(duplicatePart) === -1) {
+                if (!duplicateParts.includes(duplicatePart)) {
                   duplicateParts.push(duplicatePart);
                 }
               });
@@ -82,7 +85,7 @@ export class RelationIdLoader {
                   const duplicatePart = `${
                     primaryColumn.databaseName
                   }:${result[primaryColumn.databaseName]}`;
-                  if (duplicateParts.indexOf(duplicatePart) === -1) {
+                  if (!duplicateParts.includes(duplicatePart)) {
                     duplicateParts.push(duplicatePart);
                   }
                 }
@@ -140,7 +143,7 @@ export class RelationIdLoader {
                   );
                   const parameterValue = entityRecord[alias];
                   const duplicatePart = `${tableAlias}:${joinColumn.propertyPath}:${parameterValue}`;
-                  if (duplicateParts.indexOf(duplicatePart) !== -1) {
+                  if (duplicateParts.includes(duplicatePart)) {
                     return '';
                   }
                   duplicateParts.push(duplicatePart);
@@ -178,7 +181,9 @@ export class RelationIdLoader {
 
           // generate query:
           // SELECT category.id, category.postId FROM category category ON category.postId = :postId
-          const qb = this.connection.createQueryBuilder(this.queryRunner);
+          const qb = this.connection
+            .createQueryBuilder(this.queryRunner)
+            .setIdentifierQuoting(this.identifierQuoting);
 
           const columns = OrmUtils.uniq(
             [
@@ -203,7 +208,7 @@ export class RelationIdLoader {
           if (relationIdAttr.queryBuilderFactory)
             relationIdAttr.queryBuilderFactory(qb);
 
-          const results = (await qb.getRawMany()) as Array<ObjectLiteral>;
+          const results = await qb.getRawMany<Record<string, unknown>>();
           results.forEach((result) => {
             joinColumns.forEach((column) => {
               result[column.databaseName] = this.prepareHydratedValue(
@@ -250,7 +255,7 @@ export class RelationIdLoader {
 
           const mappedColumns = rawEntities.map((rawEntity) => {
             const entityRecord = rawEntity as Record<string, unknown>;
-            return joinColumns.reduce((map, joinColumn) => {
+            return joinColumns.reduce<ObjectLiteral>((map, joinColumn) => {
               const referencedColumn = joinColumn.referencedColumn;
               if (!referencedColumn) {
                 return map;
@@ -263,7 +268,7 @@ export class RelationIdLoader {
               );
               map[joinColumn.databaseName] = entityRecord[alias];
               return map;
-            }, {} as ObjectLiteral);
+            }, {});
           });
 
           // ensure we won't perform redundant queries for joined data which was not found in selection
@@ -285,7 +290,7 @@ export class RelationIdLoader {
                   const parameterName = key + index;
                   const parameterValue = mappedColumn[key];
                   const duplicatePart = `${junctionAlias}:${key}:${parameterValue}`;
-                  if (duplicateParts.indexOf(duplicatePart) !== -1) {
+                  if (duplicateParts.includes(duplicatePart)) {
                     return '';
                   }
                   duplicateParts.push(duplicatePart);
@@ -335,7 +340,9 @@ export class RelationIdLoader {
             })
             .join(' OR ');
 
-          const qb = this.connection.createQueryBuilder(this.queryRunner);
+          const qb = this.connection
+            .createQueryBuilder(this.queryRunner)
+            .setIdentifierQuoting(this.identifierQuoting);
 
           inverseJoinColumns.forEach((joinColumn) => {
             const selection = this.escapeAliasColumn(
@@ -365,7 +372,7 @@ export class RelationIdLoader {
           if (relationIdAttr.queryBuilderFactory)
             relationIdAttr.queryBuilderFactory(qb);
 
-          const results = (await qb.getRawMany()) as Array<ObjectLiteral>;
+          const results = await qb.getRawMany<Record<string, unknown>>();
           results.forEach((result) => {
             [...joinColumns, ...inverseJoinColumns].forEach((column) => {
               result[column.databaseName] = this.prepareHydratedValue(
@@ -383,13 +390,21 @@ export class RelationIdLoader {
       }
     );
 
-    return Promise.all(promises);
+    return OrmUtils.executeTasks(
+      tasks,
+      this.connection.options.type === 'postgres' && !!this.queryRunner
+    );
   }
 
   private escapeAliasColumn(alias: string, columnName: string): string {
     const { driver } = this.connection;
 
-    return `${driver.escape(alias)}.${driver.escape(columnName)}`;
+    return `${driver.escape(alias)}.${formatDatabaseIdentifier(
+      columnName,
+      this.identifierQuoting,
+      this.connection.options.type,
+      (identifier) => driver.escape(identifier)
+    )}`;
   }
 
   // -------------------------------------------------------------------------

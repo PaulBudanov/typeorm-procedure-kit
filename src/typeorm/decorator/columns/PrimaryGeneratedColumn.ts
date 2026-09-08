@@ -1,7 +1,8 @@
 import { getMetadataArgsStorage } from '../../globals.js';
+import { ObjectUtils } from '../../util/ObjectUtils.js';
+
 import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs.js';
-import { ObjectUtils } from '../../util/ObjectUtils.js';
 import type { ColumnOptions } from '../options/ColumnOptions.js';
 import type { PrimaryGeneratedColumnNumericOptions } from '../options/PrimaryGeneratedColumnNumericOptions.js';
 import type { PrimaryGeneratedColumnUUIDOptions } from '../options/PrimaryGeneratedColumnUUIDOptions.js';
@@ -53,8 +54,7 @@ export function PrimaryGeneratedColumn(
   const options: ColumnOptions = {};
   let strategy: 'increment' | 'uuid';
   if (strategyOrOptions) {
-    if (typeof strategyOrOptions === 'string')
-      strategy = strategyOrOptions as 'increment' | 'uuid';
+    if (typeof strategyOrOptions === 'string') strategy = strategyOrOptions;
 
     if (ObjectUtils.isObject(strategyOrOptions)) {
       strategy = 'increment';

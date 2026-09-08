@@ -14,10 +14,18 @@ describe('ServerError', (): void => {
 
     expect(error.name).toBe('ServerError');
     expect(error.errorId).toBe('err-1');
-    expect(error.unsafeGetContextAs<{ payload: boolean }>()).toEqual({
+    expect(error.unsafeGetContextAs()).toEqual({
       payload: true,
     });
     expect(error.timestamp).toBeInstanceOf(Date);
+    expect(JSON.parse(JSON.stringify(error))).toEqual({
+      name: 'ServerError',
+      message: 'broken',
+      errorId: 'err-1',
+      timestamp: error.timestamp.toISOString(),
+    });
+    expect(Object.keys(error)).not.toContain('errorContext');
+    expect(Object.keys(error)).not.toContain('options');
   });
 
   it('returns existing ServerError instances', (): void => {
@@ -37,7 +45,7 @@ describe('ServerError', (): void => {
 
     expect(wrapped.message).toBe('node');
     expect(wrapped.errorId).toBe('node-id');
-    expect(wrapped.unsafeGetContextAs<Error>()).toBe(nodeError);
+    expect(wrapped.unsafeGetContextAs()).toBe(nodeError);
 
     expect(
       ServerError.ENSURE_SERVER_ERROR({ error: { code: 1 } }).message

@@ -1,12 +1,13 @@
-import type { ObjectLiteral } from '../common/ObjectLiteral.js';
-import type { DataSource } from '../data-source/DataSource.js';
 import { TypeORMError } from '../error/index.js';
-import type { QueryRunner } from '../query-runner/QueryRunner.js';
 import { ObjectUtils } from '../util/ObjectUtils.js';
 
 import { QueryBuilder } from './QueryBuilder.js';
 import { RelationRemover } from './RelationRemover.js';
 import { RelationUpdater } from './RelationUpdater.js';
+
+import type { ObjectLiteral } from '../common/ObjectLiteral.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { QueryRunner } from '../query-runner/QueryRunner.js';
 
 /**
  * Allows to work with entity relations and perform specific operations with those relations.
@@ -16,7 +17,7 @@ import { RelationUpdater } from './RelationUpdater.js';
 export class RelationQueryBuilder<
   Entity extends ObjectLiteral,
 > extends QueryBuilder<Entity> {
-  public readonly '@instanceof' = Symbol.for('RelationQueryBuilder');
+  public override readonly '@instanceof' = Symbol.for('RelationQueryBuilder');
 
   // -------------------------------------------------------------------------
   // Constructor
@@ -218,12 +219,12 @@ export class RelationQueryBuilder<
       of = metadata.primaryColumns[0]!.createValueMap(of);
     }
 
-    const connection = this.connection!;
+    const connection = this.connection;
     const relationLoader = connection.relationLoader;
     return relationLoader.load(
-      this.expressionMap.relationMetadata!,
+      this.expressionMap.relationMetadata,
       of as ObjectLiteral,
-      this.queryRunner!
+      this.queryRunner
     ) as Promise<Array<T>>;
   }
 }

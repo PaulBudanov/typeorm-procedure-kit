@@ -1,6 +1,6 @@
-import type { Subject } from '../persistence/Subject.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { Subject } from '../persistence/Subject.js';
 
 /**
  * Thrown when operation is going to be executed on a subject without identifier.

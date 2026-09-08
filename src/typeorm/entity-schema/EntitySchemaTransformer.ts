@@ -1,3 +1,13 @@
+import { MetadataArgsStorage } from '../metadata-args/MetadataArgsStorage.js';
+
+import { EntitySchemaEmbeddedError } from './EntitySchemaEmbeddedError.js';
+
+import type { EntitySchema } from './EntitySchema.js';
+import type { EntitySchemaColumnOptions } from './EntitySchemaColumnOptions.js';
+import type { EntitySchemaEmbeddedColumnOptions } from './EntitySchemaEmbeddedColumnOptions.js';
+import type { EntitySchemaOptions } from './EntitySchemaOptions.js';
+import type { EntitySchemaRelationIdOptions } from './EntitySchemaRelationIdOptions.js';
+import type { EntitySchemaRelationOptions } from './EntitySchemaRelationOptions.js';
 import type { JoinTableMultipleColumnsOptions } from '../decorator/options/JoinTableMultipleColumnsOptions.js';
 import type { JoinTableOptions } from '../decorator/options/JoinTableOptions.js';
 import type { CheckMetadataArgs } from '../metadata-args/CheckMetadataArgs.js';
@@ -6,23 +16,13 @@ import type { ExclusionMetadataArgs } from '../metadata-args/ExclusionMetadataAr
 import type { ForeignKeyMetadataArgs } from '../metadata-args/ForeignKeyMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../metadata-args/GeneratedMetadataArgs.js';
 import type { IndexMetadataArgs } from '../metadata-args/IndexMetadataArgs.js';
-import type { InheritanceMetadataArgs } from '../metadata-args/InheritanceMetadataArgs.js';
 import type { JoinColumnMetadataArgs } from '../metadata-args/JoinColumnMetadataArgs.js';
 import type { JoinTableMetadataArgs } from '../metadata-args/JoinTableMetadataArgs.js';
-import { MetadataArgsStorage } from '../metadata-args/MetadataArgsStorage.js';
 import type { RelationIdMetadataArgs } from '../metadata-args/RelationIdMetadataArgs.js';
 import type { RelationMetadataArgs } from '../metadata-args/RelationMetadataArgs.js';
 import type { TableMetadataArgs } from '../metadata-args/TableMetadataArgs.js';
 import type { ColumnMode } from '../metadata-args/types/ColumnMode.js';
 import type { UniqueMetadataArgs } from '../metadata-args/UniqueMetadataArgs.js';
-
-import type { EntitySchema } from './EntitySchema.js';
-import type { EntitySchemaColumnOptions } from './EntitySchemaColumnOptions.js';
-import type { EntitySchemaEmbeddedColumnOptions } from './EntitySchemaEmbeddedColumnOptions.js';
-import { EntitySchemaEmbeddedError } from './EntitySchemaEmbeddedError.js';
-import type { EntitySchemaOptions } from './EntitySchemaOptions.js';
-import type { EntitySchemaRelationIdOptions } from './EntitySchemaRelationIdOptions.js';
-import type { EntitySchemaRelationOptions } from './EntitySchemaRelationOptions.js';
 
 /**
  * Transforms entity schema into metadata args storage.
@@ -36,7 +36,7 @@ export class EntitySchemaTransformer {
   /**
    * Transforms entity schema into new metadata args storage object.
    */
-  public transform(schemas: Array<EntitySchema<unknown>>): MetadataArgsStorage {
+  public transform(schemas: Array<EntitySchema>): MetadataArgsStorage {
     const metadataArgsStorage = new MetadataArgsStorage();
 
     schemas.forEach((entitySchema) => {
@@ -67,7 +67,7 @@ export class EntitySchemaTransformer {
               ? { name: inheritance.column }
               : inheritance.column
             : undefined,
-        } as InheritanceMetadataArgs);
+        });
       }
 
       const { discriminatorValue } = options;
@@ -92,7 +92,7 @@ export class EntitySchemaTransformer {
     // add columns metadata args from the schema
     Object.keys(options.columns).forEach((columnName) => {
       const column =
-        options.columns[columnName as keyof typeof options.columns]!;
+        options.columns[columnName as keyof typeof options.columns];
 
       const regularColumn = column as EntitySchemaColumnOptions;
       let mode: ColumnMode = 'regular';
@@ -185,7 +185,7 @@ export class EntitySchemaTransformer {
       Object.keys(options.relations).forEach((relationName) => {
         const relationSchema = options.relations![
           relationName as keyof typeof options.relations
-        ]! as EntitySchemaRelationOptions;
+        ] as EntitySchemaRelationOptions;
         const relation: RelationMetadataArgs = {
           target: options.target || options.name,
           propertyName: relationName,
@@ -280,7 +280,7 @@ export class EntitySchemaTransformer {
       Object.keys(options.relationIds).forEach((relationIdName) => {
         const relationIdOptions = options.relationIds![
           relationIdName as keyof typeof options.relationIds
-        ]! as EntitySchemaRelationIdOptions;
+        ] as EntitySchemaRelationIdOptions;
         const relationId: RelationIdMetadataArgs = {
           propertyName: relationIdName,
           relation: relationIdOptions.relationName,

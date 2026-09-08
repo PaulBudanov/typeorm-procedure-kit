@@ -204,15 +204,39 @@ describe('SQL security hardening', (): void => {
   });
 
   it('keeps QueryFailedError raw parameters out of enumerable serialization', (): void => {
+    const driverError = Object.assign(
+      new Error('secret-password database failed'),
+      {
+        code: '23505',
+        detail: 'secret-password violates a constraint',
+        internalQuery: 'select secret-password',
+      }
+    );
     const error = new QueryFailedError(
       'select * from users where password = $1',
-      [{ password: 'secret-password' }],
-      new Error('database failed')
+      ['secret-password'],
+      driverError
     );
 
-    expect(error.parameters).toEqual([{ password: 'secret-password' }]);
+    expect(error.query).toContain('password = $1');
+    expect(error.message).toContain('secret-password');
+    expect(error.parameters).toEqual(['secret-password']);
+    expect((error as unknown as { code: string }).code).toBe('23505');
+    expect((error as unknown as { detail: string }).detail).toContain(
+      'secret-password'
+    );
+    expect(error.safeParameters).toBe('1 positional value(s)');
     expect(Object.keys(error)).not.toContain('parameters');
-    expect(JSON.stringify(error)).toContain('[REDACTED]');
-    expect(JSON.stringify(error)).not.toContain('secret-password');
+    expect(Object.keys(error)).not.toContain('code');
+    expect(Object.keys(error)).not.toContain('detail');
+    expect(Object.keys(error)).not.toContain('internalQuery');
+
+    const serialized = JSON.stringify(error);
+    expect(serialized).toContain('"code":"23505"');
+    expect(serialized).toContain('"message":"Database query failed"');
+    expect(serialized).not.toContain('secret-password');
+    expect(serialized).not.toContain('password = $1');
+    expect(serialized).not.toContain('internalQuery');
+    expect(serialized).not.toContain('detail');
   });
 });

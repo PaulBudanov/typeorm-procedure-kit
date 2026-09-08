@@ -1,11 +1,12 @@
 import oracledb from 'oracledb';
 
-import type { DataSource } from '../../typeorm/data-source/DataSource.js';
-import type { OracleConnectionOptions } from '../../typeorm/driver/oracle/OracleConnectionOptions.js';
-import type { ILoggerModule } from '../../types/logger.types.js';
 import { normalizeQueryTimeoutMs } from '../../utils/query-timeout.js';
 import { ServerError } from '../../utils/server-error.js';
 import { DatabaseConnection } from '../abstract/database-connection.js';
+
+import type { DataSource } from '../../typeorm/data-source/DataSource.js';
+import type { OracleConnectionOptions } from '../../typeorm/driver/oracle/OracleConnectionOptions.js';
+import type { ILoggerModule } from '../../types/logger.types.js';
 
 export class OracleConnection extends DatabaseConnection<
   OracleConnectionOptions,
@@ -17,8 +18,8 @@ export class OracleConnection extends DatabaseConnection<
    * @param logger - logger used by connection operations.
    */
   public constructor(
-    protected readonly appDataSource: DataSource,
-    protected readonly logger: ILoggerModule
+    protected override readonly appDataSource: DataSource,
+    protected override readonly logger: ILoggerModule
   ) {
     super(appDataSource, logger);
   }

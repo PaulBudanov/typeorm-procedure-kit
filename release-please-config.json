@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "group-pull-request-title-pattern": "chore${scope}: release${component} ${version}",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "typeorm-procedure-kit",
+      "changelog-path": "CHANGELOG.md",
+      "pull-request-title-pattern": "chore${scope}: release${component} ${version}",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true
+    }
+  }
+}

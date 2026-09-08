@@ -1,6 +1,6 @@
-import type { Subject } from '../persistence/Subject.js';
-
 import { TypeORMError } from './TypeORMError.js';
+
+import type { Subject } from '../persistence/Subject.js';
 
 /**
  * Thrown when same object is scheduled for remove and updation at the same time.

@@ -50,6 +50,32 @@ describe('QueueManager', (): void => {
     expect(queue.dequeue()).toBeUndefined();
   });
 
+  it('returns false and suppresses enqueue events for Set duplicates', async (): Promise<void> => {
+    const queue = new QueueManager<string>('items', 'set');
+    const onEnqueue = vi.fn<(data: { item: string }) => void>();
+
+    queue.subscribeToEnqueue(onEnqueue);
+
+    expect(queue.enqueue(undefined, 'a')).toBe(true);
+    await expect(queue.enqueueAsync(undefined, 'a')).resolves.toBe(false);
+    expect(queue.size()).toBe(1);
+    expect(onEnqueue).toHaveBeenCalledOnce();
+  });
+
+  it('emits for new or changed Map values but not exact duplicates', async (): Promise<void> => {
+    const queue = new QueueManager<number>('items', 'map');
+    const onEnqueue = vi.fn<(data: { item: number }) => void>();
+
+    queue.subscribeToEnqueue(onEnqueue);
+
+    expect(queue.enqueue('a', 1)).toBe(true);
+    expect(queue.enqueue('a', 1)).toBe(false);
+    await expect(queue.enqueueAsync('a', 2)).resolves.toBe(true);
+    await expect(queue.enqueueAsync('a', 2)).resolves.toBe(false);
+    expect(queue.getQueue()).toEqual(new Map<string, number>([['a', 2]]));
+    expect(onEnqueue).toHaveBeenCalledTimes(2);
+  });
+
   it('throws for invalid collection operations', (): void => {
     expect((): void => {
       new QueueManager<string>('items', 'wrong' as never);

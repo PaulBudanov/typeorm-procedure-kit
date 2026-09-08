@@ -1,4 +1,15 @@
 import { SHUTDOWN_SIGNALS } from '../consts/shuwtdown.consts.js';
+import { QueryLogContextBuilder } from '../utils/query-log-context-builder.js';
+import { QueryLogContextStorage } from '../utils/query-log-context.js';
+import { ServerError } from '../utils/server-error.js';
+
+import { ConnectionBase } from './connection-base.js';
+import { DatabaseInitializerBase } from './database-initializer-base.js';
+import { ExecuteBase } from './execute-base.js';
+import { NotifyBase } from './notify-base.js';
+import { ProcedureListBase } from './procedure-list-base.js';
+import { SerializerBase } from './serializer-base.js';
+
 import type { DataSource } from '../typeorm/data-source/DataSource.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
@@ -13,25 +24,16 @@ import type {
   IOracleOptionsNotify,
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
+import type { TProcedureKitState } from '../types/procedure-kit.types.js';
 import type {
   TProcedurePayload,
   TProcedurePayloadInput,
 } from '../types/procedure.types.js';
 import type {
-  ISetSerializer,
   TSerializerTypeCastWithoutFormat,
+  TSetSerializer,
 } from '../types/serializer.types.js';
-import { procedureNameParser } from '../utils/procedure-name-parser.js';
-import { QueryLogContextBuilder } from '../utils/query-log-context-builder.js';
-import { QueryLogContextStorage } from '../utils/query-log-context.js';
-import { ServerError } from '../utils/server-error.js';
-
-import { ConnectionBase } from './connection-base.js';
-import { DatabaseInitializerBase } from './database-initializer-base.js';
-import { ExecuteBase } from './execute-base.js';
-import { NotifyBase } from './notify-base.js';
-import { ProcedureListBase } from './procedure-list-base.js';
-import { SerializerBase } from './serializer-base.js';
+import type { IProcedureResult } from '../types/utility.types.js';
 
 export class TypeOrmProcedureKit {
   private readonly databaseInitializerBase: DatabaseInitializerBase;
@@ -41,8 +43,10 @@ export class TypeOrmProcedureKit {
   private notifyBase: NotifyBase | null = null;
   private procedureListBase: ProcedureListBase | null = null;
   private serialzierBase: SerializerBase | null = null;
-  private isDestroyed = false;
+  private state: TProcedureKitState = 'new';
+  private initPromise: Promise<void> | null = null;
   private destroyPromise: Promise<void> | null = null;
+  private readonly shutdownHandlers = new Map<NodeJS.Signals, () => void>();
   /**
    * Creates a new instance of the TypeOrmProcedureKit class.
    *
@@ -78,13 +82,15 @@ export class TypeOrmProcedureKit {
     this.executeBase = new ExecuteBase(
       this.connectionBase,
       this.databaseInitializerBase.databaseAdapter,
-      this.logger
+      this.logger,
+      this.settings.logger.bindingLogMode
     );
     this.procedureListBase = new ProcedureListBase(
       this.logger,
       this.databaseInitializerBase.databaseAdapter,
       this.executeBase,
-      this.settings.config.packagesSettings
+      this.settings.config.packagesSettings,
+      this.databaseInitializerBase.resolvedResourceLimits.maxMetadataRows
     );
     this.notifyBase = new NotifyBase(
       this.databaseInitializerBase.databaseAdapter,
@@ -98,7 +104,7 @@ export class TypeOrmProcedureKit {
   }
 
   private assertNotDestroyed(): void {
-    if (this.isDestroyed) {
+    if (this.state === 'destroying' || this.state === 'destroyed') {
       throw new ServerError(
         'TypeOrmProcedureKit is shutting down or destroyed'
       );
@@ -144,28 +150,79 @@ export class TypeOrmProcedureKit {
    * If packages are set in the settings, it also creates a notification channel for the packages and subscribes to it.
    * @returns {Promise<void>} - promise that resolves when the database is initialized
    */
-  public async initDatabase(): Promise<void> {
+  public initDatabase(): Promise<void> {
     this.assertNotDestroyed();
-    await this.databaseInitializerBase.initDatabaseModule();
-    this.initMainClasses();
-    const procedureListBase = this.requireProcedureListBase();
-    await procedureListBase.initPackagesMap();
-    const packagesSettings = this.settings.config.packagesSettings;
-    if (
-      packagesSettings &&
-      packagesSettings.packages.length > 0 &&
-      packagesSettings.isNeedDynamicallyUpdatePackagesInfo
-    ) {
-      const notifyBase = this.requireNotifyBase();
-      const metadataNotificationSql =
-        packagesSettings.metadataNotificationSql?.trim() ||
-        this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
-          packagesSettings.packages
+    if (this.state === 'ready') return Promise.resolve();
+    if (this.initPromise) return this.initPromise;
+
+    this.state = 'initializing';
+    const initPromise = this.initDatabaseInternal();
+    this.initPromise = initPromise;
+    const clearInitPromise = (): void => {
+      if (this.initPromise === initPromise) this.initPromise = null;
+    };
+    void initPromise.then(clearInitPromise, clearInitPromise);
+    return initPromise;
+  }
+
+  private async initDatabaseInternal(): Promise<void> {
+    try {
+      await this.databaseInitializerBase.initDatabaseModule();
+      this.initMainClasses();
+      const procedureListBase = this.requireProcedureListBase();
+      await procedureListBase.initPackagesMap();
+      const packagesSettings = this.settings.config.packagesSettings;
+      if (
+        packagesSettings &&
+        packagesSettings.packages.length > 0 &&
+        packagesSettings.isNeedDynamicallyUpdatePackagesInfo
+      ) {
+        const notifyBase = this.requireNotifyBase();
+        const configuredNotificationSql =
+          packagesSettings.metadataNotificationSql?.trim();
+        const metadataNotificationSql =
+          configuredNotificationSql && configuredNotificationSql.length > 0
+            ? configuredNotificationSql
+            : this.databaseInitializerBase.databaseAdapter.getPackagesNotifySql(
+                packagesSettings.packages
+              );
+        await notifyBase.createNotification<TNotifyPackageCallback>({
+          sql: metadataNotificationSql,
+          notifyCallback:
+            notifyBase.schedulePackageNotifyCallback.bind(notifyBase),
+        });
+      }
+      if (this.state === 'initializing') this.state = 'ready';
+    } catch (initializationError) {
+      const rollbackErrors = await this.cleanupResources(false);
+      if (this.state !== 'destroying') {
+        if (rollbackErrors.length === 0) {
+          try {
+            this.databaseInitializerBase.resetAfterFailedInitialization();
+            this.state = 'new';
+          } catch (error) {
+            rollbackErrors.push(ServerError.ENSURE_SERVER_ERROR({ error }));
+            this.state = 'destroyed';
+          }
+        } else {
+          this.state = 'destroyed';
+        }
+        if (this.state === 'destroyed') this.removeShutdownHandlers();
+      }
+
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError(
+          [
+            ServerError.ENSURE_SERVER_ERROR({
+              error: initializationError,
+            }),
+            ...rollbackErrors,
+          ],
+          'Database initialization failed and rollback was incomplete',
+          { cause: initializationError }
         );
-      await notifyBase.createNotification<TNotifyPackageCallback>({
-        sql: metadataNotificationSql,
-        notifyCallback: notifyBase.packageNotifyCallback.bind(notifyBase),
-      });
+      }
+      throw initializationError;
     }
   }
 
@@ -178,14 +235,18 @@ export class TypeOrmProcedureKit {
    * @param executeString - the string to be parsed
    * @param params - typed object or array with data to be passed to the procedure, or undefined/null
    * @param executionOptions - options for connection mode, setup commands, and query id
-   * @returns Promise<Array<T>> - promise that resolves with an array of result objects
+   * @returns result envelope containing flattened cursor rows and all output bindings
    * @throws ServerError - if the executeString cannot be parsed into a procedure name and package name
    */
-  public call<T, U extends TProcedurePayload = TProcedurePayload>(
+  public call<
+    TRow,
+    TPayload extends TProcedurePayload = TProcedurePayload,
+    TOut extends Record<string, unknown> = Record<string, unknown>,
+  >(
     executeString: string,
-    params?: TProcedurePayloadInput<U>,
+    params?: TProcedurePayloadInput<TPayload>,
     executionOptions?: IExecutionOptions
-  ): Promise<Array<T>> {
+  ): Promise<IProcedureResult<TRow, TOut>> {
     this.assertNotDestroyed();
     const packages = this.settings.config.packagesSettings?.packages;
     if (!packages || packages.length < 1) {
@@ -194,9 +255,8 @@ export class TypeOrmProcedureKit {
       );
     }
     const procedureListBase = this.requireProcedureListBase();
-    const { processName, packageName } = procedureNameParser.parse(
+    const { processName, packageName } = procedureListBase.parseProcedureName(
       executeString,
-      procedureListBase.packagesWithProceduresList,
       packages
     );
     const procedureArguments =
@@ -207,7 +267,8 @@ export class TypeOrmProcedureKit {
       paramExecuteString,
       bindings,
       cursorsNames = [],
-    } = this.databaseInitializerBase.databaseAdapter.makeBindings<U>(
+      outBindings = [],
+    } = this.databaseInitializerBase.databaseAdapter.makeBindings<TPayload>(
       packageName,
       processName,
       procedureListBase.packagesWithProceduresList.get(packageName),
@@ -221,10 +282,11 @@ export class TypeOrmProcedureKit {
       cursorsNames
     );
     return QueryLogContextStorage.run(logContext, () =>
-      this.requireExecuteBase().execute<T>(
+      this.requireExecuteBase().executeProcedure<TRow, TOut>(
         paramExecuteString,
         bindings,
         cursorsNames,
+        outBindings,
         executionOptions
       )
     );
@@ -296,12 +358,12 @@ export class TypeOrmProcedureKit {
   /**
    * Registers a custom serializer for the given type.
    * If a serializer with the same type already exists, it will be overridden.
-   * @param {ISetSerializer} serializer - an object with the following properties:
+   * @param {TSetSerializer} serializer - an object with the following properties:
    *   serializerType - The type of the data to be serialized (e.g. 'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ').
    *   strategy - A function that takes a value of the given type and returns a serialized string.
    * @throws {Error} - If the serializer type is unknown.
    */
-  public setSerializer(serializer: ISetSerializer): void {
+  public setSerializer(serializer: TSetSerializer): void {
     this.requireSerializerBase().setSerializer(serializer);
   }
 
@@ -310,7 +372,7 @@ export class TypeOrmProcedureKit {
    * @param serializerType - The type of the serializer to delete.
    */
   public deleteSerializer(
-    serializerType: Pick<ISetSerializer, 'serializerType'>
+    serializerType: Pick<TSetSerializer, 'serializerType'>
   ): void {
     this.requireSerializerBase().deleteSerializer(serializerType);
   }
@@ -384,59 +446,100 @@ export class TypeOrmProcedureKit {
    * - Cleans up all database connections
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
-  public async destroy(): Promise<void> {
+  public destroy(): Promise<void> {
     if (this.destroyPromise) return this.destroyPromise;
-    if (this.isDestroyed) {
+    if (this.state === 'destroyed') {
       this.logger.warn('TypeOrmProcedureKit already destroyed');
-      return;
+      return Promise.resolve();
     }
 
-    this.isDestroyed = true;
-    this.destroyPromise = this.destroyInternal().finally(() => {
-      this.destroyPromise = null;
-    });
+    this.state = 'destroying';
+    this.destroyPromise = this.destroyInternal();
     return this.destroyPromise;
   }
 
   private async destroyInternal(): Promise<void> {
     const errors: Array<Error> = [];
-    // destroy notify
     try {
-      if (this.notifyBase) {
-        await this.notifyBase.destroy();
+      const pendingInitialization = this.initPromise;
+      if (pendingInitialization) {
+        try {
+          await pendingInitialization;
+        } catch {
+          // Initialization reports its own failure and performs rollback. Final
+          // shutdown still proceeds for any resources that survived rollback.
+        }
+      }
+      errors.push(...(await this.cleanupResources(true)));
+    } finally {
+      this.removeShutdownHandlers();
+      this.state = 'destroyed';
+      this.logger.log('TypeOrmProcedureKit shutdown completed');
+    }
+
+    if (errors.length > 0)
+      throw new AggregateError(
+        errors,
+        'Some resources failed to cleanup during shutdown'
+      );
+  }
+
+  private async cleanupResources(
+    isDestroyCaseStrategy: boolean
+  ): Promise<Array<Error>> {
+    const errors: Array<Error> = [];
+    const notifyBase = this.notifyBase;
+    const procedureListBase = this.procedureListBase;
+    this.notifyBase = null;
+    this.procedureListBase = null;
+    this.connectionBase = null;
+    this.executeBase = null;
+    this.serialzierBase = null;
+
+    try {
+      if (notifyBase) {
+        await notifyBase.destroy();
         this.logger.log('Notifications cleanup completed');
       }
-    } catch (error) {
-      errors.push(error as Error);
+    } catch (error: unknown) {
+      const cleanupError = ServerError.ENSURE_SERVER_ERROR({ error });
+      errors.push(cleanupError);
+      this.logger.error(`Notification cleanup error: ${cleanupError.message}`);
+    }
+
+    try {
+      await procedureListBase?.destroy();
+    } catch (error: unknown) {
+      const cleanupError = ServerError.ENSURE_SERVER_ERROR({ error });
+      errors.push(cleanupError);
       this.logger.error(
-        `Notification cleanup error: ${(error as Error).message}`
+        `Procedure metadata cleanup error: ${cleanupError.message}`
       );
     }
-    // destroy datasource
+
     try {
       if (this.databaseInitializerBase.isDataSourceInitialized) {
         await this.databaseInitializerBase.appDataSource.destroy();
         this.logger.log('DataSource destroyed');
       }
-    } catch (error) {
-      errors.push(error as Error);
-      this.logger.error(
-        `DataSource destroy error: ${(error as Error).message}`
-      );
-    }
-    // destroy cache
-    procedureNameParser.destroy();
-    this.databaseInitializerBase.caseSettings.strategy.destroy();
-
-    if (errors.length > 0) {
-      throw new AggregateError(
-        errors,
-        'Some resources failed to cleanup during shutdown'
-      );
+    } catch (error: unknown) {
+      const cleanupError = ServerError.ENSURE_SERVER_ERROR({ error });
+      errors.push(cleanupError);
+      this.logger.error(`DataSource destroy error: ${cleanupError.message}`);
     }
 
-    this.isDestroyed = true;
-    this.logger.log('TypeOrmProcedureKit shutdown completed');
+    if (isDestroyCaseStrategy) {
+      try {
+        this.databaseInitializerBase.caseSettings.strategy.destroy();
+      } catch (error: unknown) {
+        const cleanupError = ServerError.ENSURE_SERVER_ERROR({ error });
+        errors.push(cleanupError);
+        this.logger.error(
+          `Case strategy cleanup error: ${cleanupError.message}`
+        );
+      }
+    }
+    return errors;
   }
 
   /**
@@ -447,17 +550,43 @@ export class TypeOrmProcedureKit {
    */
   public registerShutdownHandlers(): void {
     this.assertNotDestroyed();
-    const shutdownHandler = async (signal: string): Promise<void> => {
-      this.logger.log(`Received ${signal}, initiating shutdown...`);
-      try {
-        await this.destroy();
-      } catch (error) {
-        this.logger.error(`Shutdown error: ${(error as Error).message}`);
-      }
-    };
+    if (this.shutdownHandlers.size > 0) return;
 
     SHUTDOWN_SIGNALS.forEach((signal) => {
-      process.once(signal, () => void shutdownHandler(signal));
+      const shutdownHandler = (): void => {
+        // Restore the process default immediately so a second signal can force
+        // termination while graceful cleanup is still running.
+        this.removeShutdownHandlers();
+        this.logger.log(`Received ${signal}, initiating shutdown...`);
+        void this.shutdownFromSignal(signal);
+      };
+      this.shutdownHandlers.set(signal, shutdownHandler);
+      process.once(signal, shutdownHandler);
     });
+  }
+
+  private async shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
+    try {
+      await this.destroy();
+    } catch (error: unknown) {
+      const shutdownError = ServerError.ENSURE_SERVER_ERROR({ error });
+      this.logger.error(`Shutdown error: ${shutdownError.message}`);
+    } finally {
+      try {
+        process.kill(process.pid, signal);
+      } catch (error: unknown) {
+        const signalError = ServerError.ENSURE_SERVER_ERROR({ error });
+        this.logger.error(
+          `Failed to re-send ${signal} after shutdown: ${signalError.message}`
+        );
+      }
+    }
+  }
+
+  private removeShutdownHandlers(): void {
+    for (const [signal, shutdownHandler] of this.shutdownHandlers) {
+      process.off(signal, shutdownHandler);
+    }
+    this.shutdownHandlers.clear();
   }
 }

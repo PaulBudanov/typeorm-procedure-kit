@@ -17,7 +17,7 @@ describe('TypeOrmProcedureKitNestService', (): void => {
           password: 'pass',
         },
         poolSize: 1,
-        parseInt8AsBigInt: false,
+        parseInt8AsNumber: false,
       },
       logger: { module: logger },
     });

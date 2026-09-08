@@ -1,7 +1,4 @@
-import type { TFunction } from '../../types/utility.types.js';
-import type { DataSource } from '../data-source/DataSource.js';
 import { TypeORMError } from '../error/TypeORMError.js';
-import type { EmbeddedMetadataArgs } from '../metadata-args/EmbeddedMetadataArgs.js';
 
 import type { ColumnMetadata } from './ColumnMetadata.js';
 import type { EntityListenerMetadata } from './EntityListenerMetadata.js';
@@ -11,6 +8,9 @@ import type { RelationCountMetadata } from './RelationCountMetadata.js';
 import type { RelationIdMetadata } from './RelationIdMetadata.js';
 import type { RelationMetadata } from './RelationMetadata.js';
 import type { UniqueMetadata } from './UniqueMetadata.js';
+import type { TFunction } from '../../types/utility.types.js';
+import type { DataSource } from '../data-source/DataSource.js';
+import type { EmbeddedMetadataArgs } from '../metadata-args/EmbeddedMetadataArgs.js';
 
 /**
  * Contains all information about entity's embedded property.

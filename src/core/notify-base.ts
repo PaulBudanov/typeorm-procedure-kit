@@ -1,3 +1,4 @@
+import type { ProcedureListBase } from './procedure-list-base.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type { TDbConfig } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
@@ -6,21 +7,17 @@ import type {
   IOracleOptionsNotify,
   TNotifyPackageCallback,
 } from '../types/notification.types.js';
-import { QueueManager } from '../utils/queue-manager.js';
-
-import type { ProcedureListBase } from './procedure-list-base.js';
 
 export class NotifyBase {
-  private queueManager = new QueueManager<string>('packageUpdateSet', 'set');
-  private queueCallback: ((data: { item: string }) => Promise<void>) | null =
-    null;
+  private readonly activeRefreshes = new Set<Promise<void>>();
+  private destroyPromise: Promise<void> | null = null;
+  private isDestroyed = false;
 
   /**
    * Creates the package notification coordinator.
    *
-   * The coordinator receives database package-change events, deduplicates them
-   * through an internal queue, and asks ProcedureListBase to refresh procedure
-   * metadata for configured packages.
+   * The coordinator receives database package-change events and delegates
+   * refresh coalescing to ProcedureListBase.
    *
    * @param databaseAdapter - Adapter used to create and manage database notifications.
    * @param procedureListBase - Procedure metadata registry to refresh after package changes.
@@ -32,41 +29,35 @@ export class NotifyBase {
     private readonly procedureListBase: ProcedureListBase,
     private readonly logger: ILoggerModule,
     private readonly packagesSettings?: TDbConfig['packagesSettings']
-  ) {
-    // Subscribe to queue and get packages from it
-    this.queueCallback = async (data: { item: string }): Promise<void> => {
-      if (typeof data.item === 'string') {
-        try {
-          await this.procedureListBase.fetchProcedureListWithArguments(
-            data.item.toLowerCase() as Lowercase<string>
-          );
-          this.queueManager.dequeue(data.item);
-        } catch (error) {
-          this.logger.error(
-            `Failed to refresh procedure metadata for package ${data.item}: ${
-              (error as Error).message
-            }`,
-            (error as Error).stack
-          );
-        }
-      }
-    };
-    this.queueManager.subscribeToEnqueue(this.queueCallback);
-  }
+  ) {}
 
   /**
-   * Gracefully shuts down all notification subscriptions and queue manager
+   * Gracefully waits for delegated refreshes and shuts down subscriptions.
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
-  public async destroy(): Promise<void> {
-    // Destroy notification subscriptions through database adapter
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.isDestroyed = true;
+    this.destroyPromise = this.destroyInternal();
+    return this.destroyPromise;
+  }
+
+  private async destroyInternal(): Promise<void> {
+    await Promise.allSettled(this.activeRefreshes);
     await this.databaseAdapter.destroyNotifications();
-
-    // Clear queue manager
-    this.queueManager.clear();
-    this.logger.log('QueueManager cleared');
-
     this.logger.log('NotifyBase shutdown completed');
+  }
+
+  private refreshPackage(packageName: Lowercase<string>): Promise<void> {
+    if (this.isDestroyed) return Promise.resolve();
+    const refresh =
+      this.procedureListBase.fetchProcedureListWithArguments(packageName);
+    this.activeRefreshes.add(refresh);
+    const clear = (): void => {
+      this.activeRefreshes.delete(refresh);
+    };
+    void refresh.then(clear, clear);
+    return refresh;
   }
 
   /**
@@ -99,27 +90,72 @@ export class NotifyBase {
   public async packageNotifyCallback(
     notifyData: TNotifyPackageCallback
   ): Promise<void> {
+    if (this.isDestroyed) return;
+
+    const configuredPackages = new Set(
+      (this.packagesSettings?.packages ?? []).map((packageName) =>
+        packageName.toLowerCase()
+      )
+    );
+
     const processPackage = async (packageNameRaw: string): Promise<void> => {
-      const packageName = packageNameRaw.toLowerCase() as Lowercase<string>;
-      if (
-        this.packagesSettings &&
-        this.packagesSettings.packages.includes(packageName)
-      ) {
-        await this.queueManager.enqueueAsync(undefined, packageName);
+      const packageName = packageNameRaw
+        .trim()
+        .toLowerCase() as Lowercase<string>;
+      if (packageName.length > 0 && configuredPackages.has(packageName)) {
+        await this.refreshPackage(packageName);
       }
     };
 
     if (Array.isArray(notifyData)) {
-      await Promise.all(notifyData.map((item) => processPackage(item.name)));
+      await Promise.all(
+        notifyData.map(async (item) => {
+          const packageName = this.readStringField(item, 'name');
+          if (!packageName) {
+            this.logger.warn(
+              'Ignoring Oracle package notification without a string NAME field'
+            );
+            return;
+          }
+          await processPackage(packageName);
+        })
+      );
     } else {
+      const event = this.readStringField(notifyData, 'event');
+      const packageName = this.readStringField(notifyData, 'object');
       if (
-        notifyData.event &&
-        (notifyData.event.toUpperCase() === 'DROP' ||
-          notifyData.event.toUpperCase() === 'CREATE')
-      )
-        await processPackage(notifyData.object);
+        packageName &&
+        event &&
+        (event.toUpperCase() === 'DROP' || event.toUpperCase() === 'CREATE')
+      ) {
+        await processPackage(packageName);
+      }
     }
     return;
+  }
+
+  /**
+   * Starts metadata refresh work without holding the adapter's per-channel
+   * notification queue until the database metadata query completes. Bursts are
+   * coalesced by ProcedureListBase.
+   */
+  public schedulePackageNotifyCallback(
+    notifyData: TNotifyPackageCallback
+  ): void {
+    void this.packageNotifyCallback(notifyData).catch((error: unknown) => {
+      this.logger.error(
+        `Failed to process package notification: ${(error as Error).message}`,
+        (error as Error).stack
+      );
+    });
+  }
+
+  private readStringField(value: unknown, fieldName: string): string | null {
+    if (value === null || typeof value !== 'object') return null;
+    const entry = Object.entries(value).find(
+      ([key]) => key.toLowerCase() === fieldName.toLowerCase()
+    );
+    return typeof entry?.[1] === 'string' ? entry[1] : null;
   }
 
   /**

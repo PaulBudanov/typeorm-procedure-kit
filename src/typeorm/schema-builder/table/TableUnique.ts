@@ -49,7 +49,7 @@ export class TableUnique {
       name: this.name,
       columnNames: [...this.columnNames],
       deferrable: this.deferrable,
-    } as TableUniqueOptions);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -64,6 +64,6 @@ export class TableUnique {
       name: uniqueMetadata.name,
       columnNames: uniqueMetadata.columns.map((column) => column.databaseName),
       deferrable: uniqueMetadata.deferrable,
-    } as TableUniqueOptions);
+    });
   }
 }

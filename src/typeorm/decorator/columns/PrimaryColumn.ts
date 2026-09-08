@@ -1,7 +1,8 @@
-import type { TFunction } from '../../../types/utility.types.js';
-import type { ColumnType } from '../../driver/types/ColumnTypes.js';
 import { PrimaryColumnCannotBeNullableError } from '../../error/PrimaryColumnCannotBeNullableError.js';
 import { getMetadataArgsStorage } from '../../globals.js';
+
+import type { TFunction } from '../../../types/utility.types.js';
+import type { ColumnType } from '../../driver/types/ColumnTypes.js';
 import type { ColumnMetadataArgs } from '../../metadata-args/ColumnMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../../metadata-args/GeneratedMetadataArgs.js';
 import type { ColumnOptions } from '../options/ColumnOptions.js';
