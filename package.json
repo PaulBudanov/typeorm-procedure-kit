@@ -120,8 +120,8 @@
   },
   "dependencies": {
     "@types/luxon": "^3.7.1",
-    "@types/oracledb": "^7.0.1",
-    "@types/pg": "^8.16.0",
+    "@types/oracledb": "^7.0.3",
+    "@types/pg": "^8.23.1",
     "app-root-path": "^3.1.0",
     "dedent": "^1.7.1",
     "dotenv": "^17.3.1",
@@ -136,7 +136,7 @@
     "@nestjs/common": "^10.4.16 || ^11.0.16",
     "oracledb": "^6.0.0 || ^7.0.0",
     "pg": "^8.5.1",
-    "pg-query-stream": "^4.12.0"
+    "pg-query-stream": "^4.17.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -155,21 +155,21 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nestjs/common": "^10.4.16 || ^11.0.16",
-    "@types/lodash": "^4.17.24",
+    "@types/lodash": "^4.17.25",
     "@types/node": "^26.4.1",
-    "eslint": "^10.5.0",
+    "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
-    "eslint-plugin-import-x": "^4.17.0",
+    "eslint-plugin-import-x": "^4.17.1",
     "eslint-plugin-prettier": "^5.5.6",
-    "globals": "^17.7.0",
+    "globals": "^17.12.0",
     "madge-ts6": "^8.1.0",
-    "oracledb": "^7.0.0",
-    "pg": "^8.17.2",
-    "pg-query-stream": "^4.12.0",
-    "prettier": "^3.8.4",
+    "oracledb": "^7.0.1",
+    "pg": "^8.23.0",
+    "pg-query-stream": "^4.17.0",
+    "prettier": "^3.9.6",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.0",
+    "typescript-eslint": "^8.69.0",
     "vitest": "^4.1.5"
   },
   "engines": {
