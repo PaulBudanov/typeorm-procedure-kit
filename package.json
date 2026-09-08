@@ -156,7 +156,7 @@
     "@eslint/js": "^10.0.1",
     "@nestjs/common": "^10.4.16 || ^11.0.16",
     "@types/lodash": "^4.17.24",
-    "@types/node": "^20.19.0",
+    "@types/node": "^26.4.1",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
