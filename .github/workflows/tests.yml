@@ -28,10 +28,10 @@ jobs:
         node-version: [20, 22, 24]
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -67,10 +67,10 @@ jobs:
       PROCEDURE_KIT_CONSUMER_SCENARIO: ${{ matrix.scenario }}
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -133,10 +133,10 @@ jobs:
       ORACLE_PASSWORD: typeorm
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22
           cache: npm
@@ -168,7 +168,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
@@ -186,10 +186,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
           cache: npm
@@ -253,10 +253,10 @@ jobs:
       ORACLE_PASSWORD: typeorm
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
           cache: npm
@@ -285,7 +285,22 @@ jobs:
           fi
 
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libaio1 libaio1t64 unzip
+          sudo apt-get install --yes --no-install-recommends libaio1t64 unzip
+
+          # Oracle Instant Client requires libaio.so.1.
+          # Ubuntu 24.04 may install the library under a t64-compatible name.
+          if ! ldconfig -p | grep -q 'libaio\.so\.1 '; then
+            libaio_path="$(dpkg -L libaio1t64 | grep -E '/libaio\.so\.1(t64)?$' | head -n 1)"
+
+            if [ -z "$libaio_path" ]; then
+              echo "libaio.so.1-compatible library was not found."
+              dpkg -L libaio1t64
+              exit 1
+            fi
+
+            sudo ln -s "$libaio_path" "$(dirname "$libaio_path")/libaio.so.1"
+            sudo ldconfig
+          fi
           mkdir -p "$destination"
           unzip -q "$archive" -d "$destination"
           client_dir="$(find "$destination" -mindepth 1 -maxdepth 1 -type d -name 'instantclient_*' -print -quit)"
@@ -295,6 +310,7 @@ jobs:
           fi
           echo "$client_dir" | sudo tee /etc/ld.so.conf.d/oracle-instant-client.conf > /dev/null
           sudo ldconfig
+          ldd "$client_dir/libclntsh.so"
           echo "ORACLE_CLIENT_LIB_DIR=$client_dir" >> "$GITHUB_ENV"
 
       - name: Run Oracle Thick integration tests
