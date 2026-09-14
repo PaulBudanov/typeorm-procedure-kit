@@ -1,6 +1,6 @@
 {
   "name": "typeorm-procedure-kit",
-  "version": "2.3.1",
+  "version": "3.0.0",
   "packageManager": "npm@11.19.0",
   "description": "Enterprise TypeORM toolkit for Oracle and PostgreSQL with strongly-typed repositories, stored procedures, multi-database entity inheritance, raw SQL orchestration, notifications, and an enhanced bundled TypeORM runtime",
   "type": "module",

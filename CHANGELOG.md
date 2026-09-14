@@ -24,6 +24,26 @@
 
 * **typeorm:** support session time zones and database column paths ([feabb8d](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/feabb8de7a4def945e30ae0847f9a4ad408396d2))
 
+## [3.0.0](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.3.1...v3.0.0) (2026-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* call() now resolves to a { rows, outBinds } envelope instead of an array. Custom serializer strategies receive { serializerType, value, context }. Temporal formats changed and sessionTimeZone defaults to UTC. The boolean quoting switch is replaced by identifierQuoting, and optionsCommands accepts only transaction-local PostgreSQL or restored Oracle NLS forms. Database errors are recognized only in a strict top-level envelope, and procedureObjectList is always a strict allowlist. parseInt8AsBigInt is renamed to parseInt8AsNumber and callTimeout is replaced by maxQueryExecutionTime. The misspelled ISerialzerValues and ICaseStratefyFactory aliases, TypeGuards.clone() and TypeGuards.deepEqual() were removed. @nestjs/core is no longer a peer dependency and @nestjs/common narrows to ^10.4.16 || ^11.0.16. Node.js 20 or newer is required, published ESM and CJS builds target ES2022, and source and declaration maps are excluded from the package. See docs/MIGRATION_V3.md for the full upgrade checklist.
+
+### Features
+
+* added get oracle version method ([8434bbe](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/8434bbe901244c7ae78090ed75994586cbef644e))
+* release the v3 procedure, serializer and temporal contracts ([bb706ea](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/bb706eaadd60e7f27362f02019a7461776e80213))
+
+
+### Bug Fixes
+
+* address audit findings and Oracle metadata compatibility ([d70673a](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/d70673a333a58468272aa42c9f45227847b977e3))
+* address audit findings and Oracle metadata compatibility ([0378123](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/037812373d502163b08abbf4f71a18bd66a3da5f))
+* **ci:** stop pinning the release manifest version in the release gate ([fe9c6fe](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/fe9c6fe2284c2edc149e96b64e8b219f7de459d8))
+* error handling logic ([1e41d1a](https://github.com/PaulBudanov/typeorm-procedure-kit/commit/1e41d1a0dd305a684b644c7c5189296c1f4eb2a9))
+
 ## [2.2.2](https://github.com/PaulBudanov/typeorm-procedure-kit/compare/v2.2.1...v2.2.2) (2026-06-23)
 
 
