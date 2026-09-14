@@ -259,26 +259,29 @@ export class TypeOrmProcedureKit {
       executeString,
       packages
     );
+    const procedures =
+      procedureListBase.packagesWithProceduresList.get(packageName);
     const procedureArguments =
-      procedureListBase.packagesWithProceduresList.get(packageName)?.[
-        processName
-      ];
+      procedures && Object.hasOwn(procedures, processName)
+        ? procedures[processName]
+        : undefined;
     const {
       paramExecuteString,
       bindings,
+      logBindings,
       cursorsNames = [],
       outBindings = [],
     } = this.databaseInitializerBase.databaseAdapter.makeBindings<TPayload>(
       packageName,
       processName,
-      procedureListBase.packagesWithProceduresList.get(packageName),
+      procedures,
       params
     );
     const logContext = QueryLogContextBuilder.createProcedureContext(
       packageName,
       processName,
       procedureArguments,
-      bindings,
+      logBindings ?? bindings,
       cursorsNames
     );
     return QueryLogContextStorage.run(logContext, () =>

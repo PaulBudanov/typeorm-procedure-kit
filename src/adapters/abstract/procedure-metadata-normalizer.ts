@@ -17,7 +17,10 @@ export class ProcedureMetadataNormalizer {
   ): TProcedureArgumentList {
     const configuredNames = new Set<string>(procedureListBase);
     const normalizedPackage = packageName.toLowerCase();
-    const procedures: TProcedureArgumentList = {};
+    const procedures = new Map<
+      Lowercase<string>,
+      TProcedureArgumentList[Lowercase<string>]
+    >();
     const overloads = new Map<string, unknown>();
 
     for (const item of rawArguments) {
@@ -47,8 +50,8 @@ export class ProcedureMetadataNormalizer {
         continue;
       }
       const argumentName = item.argumentName.toLowerCase();
-      const argumentsList = procedures[procedureName] ?? [];
-      procedures[procedureName] = argumentsList;
+      const argumentsList = procedures.get(procedureName) ?? [];
+      procedures.set(procedureName, argumentsList);
       if (argumentName === options.noArgumentSentinel?.toLowerCase()) continue;
 
       const argument: Omit<IProcedureArgumentBase, 'procedureName'> = {
@@ -72,9 +75,9 @@ export class ProcedureMetadataNormalizer {
       argumentsList.push(argument);
     }
 
-    for (const argumentsList of Object.values(procedures)) {
+    for (const argumentsList of procedures.values()) {
       argumentsList.sort((left, right) => left.order - right.order);
     }
-    return procedures;
+    return Object.fromEntries(procedures);
   }
 }

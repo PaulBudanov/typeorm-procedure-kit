@@ -41,6 +41,8 @@ export interface IProcedureResult<
 export interface IBindingsObjectReturn {
   paramExecuteString: string;
   bindings: TProcedureBindings;
+  /** Logical argument values when driver bindings use an internal representation. */
+  logBindings?: TProcedureBindings;
   cursorsNames?: Array<string>;
   outNames?: Array<string>;
   outBindings?: Array<IProcedureOutBinding>;

@@ -24,9 +24,9 @@ export class EventBusService implements IEventBusService {
     const listeners = this.eventEmitter.rawListeners(event) as Array<
       (data?: unknown) => unknown
     >;
-    const results = listeners.map((listener) =>
-      listener.call(this.eventEmitter, data)
-    );
+    const results = listeners.map(async (listener) => {
+      await listener.call(this.eventEmitter, data);
+    });
     await Promise.all(results);
   }
 

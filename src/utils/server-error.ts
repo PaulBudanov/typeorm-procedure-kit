@@ -43,7 +43,8 @@ export class ServerError<TContext = unknown> extends Error {
       },
     });
     Object.setPrototypeOf(this, new.target.prototype);
-    if (!options?.stack) Error.captureStackTrace(this, this.constructor);
+    if (options?.stack !== undefined) this.stack = options.stack;
+    else Error.captureStackTrace(this, this.constructor);
   }
 
   /**
@@ -86,7 +87,7 @@ export class ServerError<TContext = unknown> extends Error {
         errorObject.message ?? errorObject.error.message,
         errorObject.error,
         {
-          cause: errorObject.error.cause,
+          cause: errorObject.error,
           stack: errorObject.error.stack,
           errorId: errorObject.errorId,
         }

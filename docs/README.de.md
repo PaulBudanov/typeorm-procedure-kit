@@ -583,6 +583,10 @@ Runtime scope:
   gebunden; REF-CURSOR rows werden anhand ihrer ResultSet metadata transformiert;
 - der Oracle adapter setzt `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
+Serializer-Registrierung und -Loeschung sind pro Kit-Instanz isoliert. PostgreSQL JSON-Strategien gelten fuer JSON und JSONB; beim Loeschen werden beide Standardparser wiederhergestellt. Kollidierende Spaltennamen nach der Case-Konvertierung erzeugen einen Fehler.
+
+`DateFormatter.convertTimeZone()` verwendet standardmaessig den tatsaechlichen numerischen Offset, etwa `2024-01-02T03:00:00.000+03:00`; UTC-Serializer behalten `Z`. Map-Queues entfernen bei `dequeue()` ohne Schluessel den ersten Eintrag und melden dessen Schluessel. Retry delays erlauben ganze Millisekunden in `0..2_147_483_647`. Unquoted LISTEN-Namen werden kleingeschrieben; quoted Namen behalten ihre Schreibweise.
+
 ## NestJS Integration
 
 ```ts
@@ -725,6 +729,8 @@ export class UserPostgres extends UserBase {
 }
 ```
 
+`ExtendColumn` aendert UNIQUE-Metadaten nur bei explizitem `unique`. Zusammengesetzte und funktionsbasierte Constraints bleiben erhalten; geerbte einzelne Constraints werden nicht dupliziert. Das Entfernen eines geerbten UNIQUE nur fuer ein Child wird vor jeder Metadatenmutation abgelehnt. Gemeinsame Felder stattdessen in einer neutralen Basisklasse definieren und UNIQUE an der jeweiligen konkreten Entity setzen. Eigene einzelne Constraints lassen sich mit `unique: false` entfernen.
+
 Repository helper:
 
 ```ts
@@ -765,6 +771,8 @@ Das `property` object ist eine database column path map, compatible with
 fragments, die echte database column names brauchen; relation fields sind per dot
 access fuer joined aliases verfuegbar, zum Beispiel liefert
 `property.additionalMessage.isDeleted` den Wert `IS_DELETED`.
+
+Repository maps erlauben direkten typisierten Zugriff auf Spalten und Relationen. Die Laufzeitstruktur folgt den ORM-Metadaten: JSON-/Array-Spalten bleiben Spaltennamen, und zyklische Relationen enden mit einem Pfad oder einem ausgelassenen Eintrag.
 
 Migration note: Dies ist ein breaking repository API behavior change fuer Code,
 der QueryBuilder property paths in `property` oder database column names in

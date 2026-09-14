@@ -197,10 +197,11 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   }
 
   private parseListenChannel(sqlCommand: string): string {
-    const match = /^LISTEN\s+"?([A-Za-z_][A-Za-z0-9_$#]*)"?\s*;?$/i.exec(
-      sqlCommand.trim()
-    );
-    const channelName = match?.[1];
+    const match =
+      /^LISTEN\s+(?:"([A-Za-z_][A-Za-z0-9_$#]*)"|([A-Za-z_][A-Za-z0-9_$#]*))\s*;?$/i.exec(
+        sqlCommand.trim()
+      );
+    const channelName = match?.[1] ?? match?.[2]?.toLowerCase();
     if (!channelName) {
       throw new ServerError(
         'SQL command must contain LISTEN for notification, example: LISTEN'

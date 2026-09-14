@@ -173,7 +173,9 @@ export class OracleAdapter extends DatabaseAdapter<
     payload?: TProcedurePayloadInput<U>
   ): IBindingsObjectReturn {
     if (
-      procedures?.[processName]?.some(
+      procedures &&
+      Object.hasOwn(procedures, processName) &&
+      procedures[processName]?.some(
         ({ structuredType }) => structuredType?.kind === 'oracle-record'
       )
     ) {
@@ -216,8 +218,14 @@ export class OracleAdapter extends DatabaseAdapter<
       packageName,
       'oracle package'
     ).toUpperCase();
+    const isModernMetadataSupported = this.isSupportedRecordVersion(
+      this.appDataSource.driver.version
+    );
+    const defaultSql = isModernMetadataSupported
+      ? OracleSqlCommand.SQL_GET_PACKAGE_INFO
+      : OracleSqlCommand.SQL_GET_PACKAGE_INFO_LEGACY;
     const query = this.replacePackageNamePlaceholder(
-      procedureMetadataSql ?? OracleSqlCommand.SQL_GET_PACKAGE_INFO,
+      procedureMetadataSql ?? defaultSql,
       `'${safePackageName}'`
     );
     if (procedureMetadataSql) return query;
@@ -228,7 +236,9 @@ export class OracleAdapter extends DatabaseAdapter<
       maxMetadataRows + 1,
       Number.MAX_SAFE_INTEGER
     );
-    return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
+    if (isModernMetadataSupported)
+      return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
+    return `SELECT * FROM (\n${query.trimEnd()}\n) WHERE ROWNUM <= ${detectionLimit}`;
   }
 
   /** Combines a package RECORD argument with its dictionary field rows. */

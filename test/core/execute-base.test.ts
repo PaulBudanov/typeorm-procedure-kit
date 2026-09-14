@@ -158,6 +158,68 @@ describe('ExecuteBase', (): void => {
     await expect(executeBase.execute('select 1')).rejects.toBe(releaseError);
   });
 
+  it.each(['rows', 'outBinds'] as const)(
+    'logs a procedure %s error only through the binding-safe timer',
+    async (location): Promise<void> => {
+      const manager = {};
+      const connectionBase = {
+        getEntityManager: vi.fn().mockResolvedValue(manager),
+        releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+      };
+      const logger = createLogger();
+      const secret = 'FAKE_SECRET_SENTINEL';
+      const envelope = { error_code: 1, error_text: `Rejected ${secret}` };
+      const executeBase = new ExecuteBase(
+        connectionBase as never,
+        createAdapterMock({
+          executeProcedure: vi.fn().mockResolvedValue({
+            rows: location === 'rows' ? [envelope] : [],
+            outBinds: location === 'outBinds' ? envelope : {},
+          }),
+        }),
+        logger
+      );
+
+      await expect(
+        executeBase.executeProcedure('CALL example', [secret], [], [], {
+          queryId: 'private-query',
+        })
+      ).rejects.toMatchObject({
+        errorId: 'private-query',
+        message: `Database error: Rejected ${secret}`,
+      });
+      expect(logger.error).toHaveBeenCalledOnce();
+      for (const method of [logger.log, logger.warn, logger.error]) {
+        expect(JSON.stringify(method.mock.calls)).not.toContain(secret);
+      }
+      expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
+    }
+  );
+
+  it('preserves the query id for a raw SQL error envelope', async (): Promise<void> => {
+    const manager = {};
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const logger = createLogger();
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi
+          .fn()
+          .mockResolvedValue([{ error_code: 1, error_text: 'raw failure' }]),
+      }),
+      logger
+    );
+
+    await expect(
+      executeBase.execute('select example', [], [], { queryId: 'raw-query' })
+    ).rejects.toMatchObject({ errorId: 'raw-query' });
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
+  });
+
   it('preserves operation and release failures in an AggregateError', async (): Promise<void> => {
     const manager = {};
     const operationError = new Error('query failed');

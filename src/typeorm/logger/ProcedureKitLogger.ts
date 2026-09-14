@@ -1,3 +1,4 @@
+import { QueryLogContextStorage } from '../../utils/query-log-context.js';
 import { safeStringify } from '../../utils/safe-stringify.js';
 
 import type { Logger } from './Logger.js';
@@ -39,6 +40,7 @@ export class ProcedureKitLogger implements Logger {
     _queryRunner?: QueryRunner
   ): void {
     if (!this.isEnabled('query')) return;
+    parameters = this.getLogParameters(parameters);
     this.logger.log(
       `[TypeORM query]: ${this.formatSql(query)}${this.formatParameters(parameters)}`
     );
@@ -51,6 +53,7 @@ export class ProcedureKitLogger implements Logger {
     _queryRunner?: QueryRunner
   ): void {
     if (!this.isEnabled('error')) return;
+    parameters = this.getLogParameters(parameters);
 
     const formattedError = this.formatError(error, parameters);
     const message = `[TypeORM query failed]: ${this.formatSql(query)}${this.formatParameters(parameters)}; Error: ${formattedError.message}`;
@@ -69,6 +72,7 @@ export class ProcedureKitLogger implements Logger {
     _queryRunner?: QueryRunner
   ): void {
     if (!this.isEnabled('warn')) return;
+    parameters = this.getLogParameters(parameters);
     this.logger.warn(
       `[TypeORM slow query (${time}ms)]: ${this.formatSql(query)}${this.formatParameters(parameters)}`
     );
@@ -105,6 +109,18 @@ export class ProcedureKitLogger implements Logger {
 
   private formatSql(sql: string): string {
     return this.normalizeWhitespace(sql);
+  }
+
+  private getLogParameters(
+    parameters?: QueryParameterValues
+  ): QueryParameterValues | undefined {
+    const context = QueryLogContextStorage.getStore();
+    if (!parameters || context?.kind !== 'procedure') return parameters;
+    // Procedure fields may be transported under generated driver bind names.
+    // Use logical names so redaction still protects the original argument.
+    return Object.fromEntries(
+      context.bindings.map(({ name, value }) => [name, value])
+    );
   }
 
   private formatParameters(parameters?: QueryParameterValues): string {

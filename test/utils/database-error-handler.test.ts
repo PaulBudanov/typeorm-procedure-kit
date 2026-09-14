@@ -54,6 +54,24 @@ describe('DatabaseErrorHandler', (): void => {
     }).toThrow('Database error: short transformed failure');
   });
 
+  it('preserves query id and optional logging for a single-row envelope', (): void => {
+    const logger = createLogger();
+    const operation = (): void => {
+      DatabaseErrorHandler.checkForDatabaseError(
+        [{ error_code: 500, error_text: 'broken' }],
+        'array-query',
+        logger
+      );
+    };
+
+    expect(operation).toThrow(
+      expect.objectContaining({ errorId: 'array-query' })
+    );
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith(
+      'Detected database error: Database error: broken'
+    );
+  });
+
   it('does not scan business rows or nested objects for error fields', (): void => {
     expect((): void => {
       DatabaseErrorHandler.checkForDatabaseError([

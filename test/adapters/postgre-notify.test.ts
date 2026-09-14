@@ -262,6 +262,48 @@ describe('PostgreNotify', (): void => {
     await notify.unlistenNotify('secure_channel');
   });
 
+  it.each(['LISTEN "broken', 'LISTEN broken"'])(
+    'rejects unpaired identifier quotes in %s',
+    async (sql): Promise<void> => {
+      const connection = { createSingleConnection: vi.fn() };
+      const notify = new PostgreNotify(connection as never, createLogger());
+      await expect(notify.listenNotify(sql, vi.fn())).rejects.toThrow(
+        'SQL command must contain LISTEN'
+      );
+      expect(connection.createSingleConnection).not.toHaveBeenCalled();
+    }
+  );
+
+  it('folds unquoted channel names and keeps quoted mixed-case channels distinct', async (): Promise<void> => {
+    const lowerClient = new FakePgClient();
+    const quotedClient = new FakePgClient();
+    const connection = {
+      createSingleConnection: vi
+        .fn()
+        .mockResolvedValueOnce(lowerClient)
+        .mockResolvedValueOnce(quotedClient),
+      closeSingleConnection: vi.fn().mockResolvedValue(undefined),
+      registerConnectionErrorHandler: vi.fn(),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+    };
+    const notify = new PostgreNotify(connection as never, createLogger());
+    try {
+      await expect(
+        notify.listenNotify('LISTEN MixedCase', vi.fn())
+      ).resolves.toBe('mixedcase');
+      expect(lowerClient.query).toHaveBeenCalledWith('LISTEN "mixedcase"');
+      await expect(
+        notify.listenNotify('LISTEN mixedcase', vi.fn())
+      ).rejects.toThrow('already registered');
+      await expect(
+        notify.listenNotify('LISTEN "MixedCase"', vi.fn())
+      ).resolves.toBe('MixedCase');
+      expect(quotedClient.query).toHaveBeenCalledWith('LISTEN "MixedCase"');
+    } finally {
+      await notify.destroy();
+    }
+  });
+
   it('rejects invalid LISTEN SQL and duplicate listeners', async (): Promise<void> => {
     const client = new FakePgClient();
     client.query.mockResolvedValue(undefined);

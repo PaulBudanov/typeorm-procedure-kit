@@ -6,6 +6,7 @@ import oracledb from 'oracledb';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OracleNotify } from '../../src/adapters/oracle/oracle-notify.js';
+import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
 import type {
@@ -830,6 +831,7 @@ describe('OracleNotify', (): void => {
           subscribeStarted();
           return subscribePromise;
         }),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
     };
     const oracleConnection = {
       createSingleConnection: vi
@@ -864,6 +866,12 @@ describe('OracleNotify', (): void => {
       connection
     );
     expect(oracleConnection.closeSingleConnection).toHaveBeenCalledOnce();
+    expect(connection.unsubscribe).toHaveBeenCalledWith(
+      connection.subscribe.mock.calls[0]?.[0]
+    );
+    expect(connection.unsubscribe.mock.invocationCallOrder[0]).toBeLessThan(
+      oracleConnection.closeSingleConnection.mock.invocationCallOrder[0]!
+    );
     expect(notify.getNotificationPool().size).toBe(0);
   });
 
@@ -876,6 +884,7 @@ describe('OracleNotify', (): void => {
       });
       const connection = {
         subscribe: vi.fn().mockReturnValue(pendingSubscribe),
+        unsubscribe: vi.fn().mockResolvedValue(undefined),
       };
       const oracleConnection = {
         createSingleConnection: vi.fn().mockResolvedValue(connection),
@@ -905,9 +914,89 @@ describe('OracleNotify', (): void => {
         'Database notification adapter is shutting down'
       );
       expect(oracleConnection.closeSingleConnection).toHaveBeenCalledOnce();
+      expect(connection.unsubscribe).toHaveBeenCalledOnce();
       expect(notify.getNotificationPool().size).toBe(0);
       await notify.destroy();
       expect(oracleConnection.closeSingleConnection).toHaveBeenCalledOnce();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the shutdown error and unsubscribe failure while still closing the connection', async (): Promise<void> => {
+    let completeSubscribe!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      completeSubscribe = resolve;
+    });
+    const unsubscribeError = new Error('unsubscribe failed');
+    const connection = {
+      subscribe: vi.fn().mockImplementation(() => {
+        markStarted();
+        return pending;
+      }),
+      unsubscribe: vi.fn().mockRejectedValue(unsubscribeError),
+    };
+    const oracleConnection = {
+      createSingleConnection: vi.fn().mockResolvedValue(connection),
+      closeSingleConnection: vi.fn().mockResolvedValue(undefined),
+    };
+    const notify = new OracleNotify(oracleConnection as never, createLogger());
+    const registration = notify
+      .listenNotify('SELECT * FROM table_name', vi.fn())
+      .catch((error: unknown) => error);
+    await started;
+    const destruction = notify.destroy();
+    completeSubscribe();
+    const error = await registration;
+    await destruction;
+    expect(error).toBeInstanceOf(AggregateError);
+    if (!(error instanceof AggregateError))
+      throw new Error('Expected aggregate cleanup failure');
+    expect(error.cause).toBeInstanceOf(ServerError);
+    expect(error.cause).toHaveProperty(
+      'message',
+      'Database notification adapter is shutting down'
+    );
+    expect(error.errors).toEqual([error.cause, unsubscribeError]);
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledOnce();
+    expect(notify.getNotificationPool().size).toBe(0);
+  });
+
+  it('cleans published subscription state when registration finalization fails', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const registrationError = new Error('registration finalization failed');
+      const connection = {
+        subscribe: vi.fn().mockResolvedValue(undefined),
+        unsubscribe: vi.fn().mockResolvedValue(undefined),
+      };
+      const oracleConnection = {
+        createSingleConnection: vi.fn().mockResolvedValue(connection),
+        closeSingleConnection: vi.fn().mockResolvedValue(undefined),
+        isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      };
+      const logger = createLogger();
+      logger.log.mockImplementation((message: unknown) => {
+        if (
+          typeof message === 'string' &&
+          message.startsWith('Successfully registered subscription')
+        )
+          throw registrationError;
+      });
+      const notify = new OracleNotify(oracleConnection as never, logger);
+      await expect(
+        notify.listenNotify('SELECT * FROM table_name', vi.fn())
+      ).rejects.toBe(registrationError);
+      expect(connection.unsubscribe).toHaveBeenCalledOnce();
+      expect(oracleConnection.closeSingleConnection).toHaveBeenCalledOnce();
+      expect(notify.getNotificationPool().size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      await notify.destroy();
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();

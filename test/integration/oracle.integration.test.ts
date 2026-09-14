@@ -56,7 +56,10 @@ async function dropOracleProcedureFixture(
 }
 
 async function createOracleProcedureFixture(
-  integrationSettings: TOracleIntegrationSettings
+  integrationSettings: TOracleIntegrationSettings,
+  recordTimestampType:
+    | 'TIMESTAMP WITH TIME ZONE'
+    | 'TIMESTAMP WITH LOCAL TIME ZONE' = 'TIMESTAMP WITH TIME ZONE'
 ): Promise<void> {
   await dropOracleProcedureFixture(integrationSettings);
   await withOracleConnection(integrationSettings, async (connection) => {
@@ -65,7 +68,7 @@ async function createOracleProcedureFixture(
         TYPE SHIP_RECORD IS RECORD (
           SHIP_NAME VARCHAR2(40),
           WEIGHT NUMBER,
-          SAILED_AT TIMESTAMP WITH TIME ZONE,
+          SAILED_AT ${recordTimestampType},
           TOKEN RAW(4)
         );
         PROCEDURE ECHO_VALUES(
@@ -541,35 +544,40 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
     }
   });
 
-  it('binds and materializes a package-spec PL/SQL RECORD', async (): Promise<void> => {
-    await createOracleProcedureFixture(settings!);
+  it.each([
+    'TIMESTAMP WITH TIME ZONE',
+    'TIMESTAMP WITH LOCAL TIME ZONE',
+  ] as const)(
+    'binds and materializes a package-spec PL/SQL RECORD with %s',
+    async (recordTimestampType): Promise<void> => {
+      await createOracleProcedureFixture(settings!, recordTimestampType);
 
-    const kit = new TypeOrmProcedureKit({
-      ...settings!,
-      config: {
-        ...settings!.config,
-        isNeedRegisterDefaultSerializers: true,
-        sessionTimeZone: 'UTC',
-        packagesSettings: {
-          packages: [procedurePackage],
-          procedureObjectList: {
-            transformRecord: `${procedurePackage}.transform_record`,
+      const kit = new TypeOrmProcedureKit({
+        ...settings!,
+        config: {
+          ...settings!.config,
+          isNeedRegisterDefaultSerializers: true,
+          sessionTimeZone: 'UTC',
+          packagesSettings: {
+            packages: [procedurePackage],
+            procedureObjectList: {
+              transformRecord: `${procedurePackage}.transform_record`,
+            },
           },
         },
-      },
-    });
-    const token = Buffer.from([1, 2, 3, 4]);
+      });
+      const token = Buffer.from([1, 2, 3, 4]);
 
-    try {
-      const recordMetadata = await withOracleConnection(
-        settings!,
-        async (connection) => {
-          const result = await connection.execute<{
-            typeCode: string;
-            name: string;
-            argumentType: string;
-          }>(
-            `SELECT
+      try {
+        const recordMetadata = await withOracleConnection(
+          settings!,
+          async (connection) => {
+            const result = await connection.execute<{
+              typeCode: string;
+              name: string;
+              argumentType: string;
+            }>(
+              `SELECT
                record_type.TYPECODE AS "typeCode",
                type_attr.ATTR_NAME AS "name",
                type_attr.ATTR_TYPE_NAME AS "argumentType"
@@ -582,89 +590,116 @@ describe.skipIf(!settings)('Oracle integration', (): void => {
                AND record_type.PACKAGE_NAME = :PACKAGE_NAME
                AND record_type.TYPE_NAME = 'SHIP_RECORD'
              ORDER BY type_attr.ATTR_NO`,
-            { PACKAGE_NAME: procedurePackage.toUpperCase() },
-            { outFormat: oracledb.OUT_FORMAT_OBJECT }
-          );
-          return result.rows;
-        }
-      );
-      const recordTypeCode = expect.stringMatching(/^(?:PL\/SQL )?RECORD$/u);
-      expect(recordMetadata).toEqual([
-        {
-          typeCode: recordTypeCode,
-          name: 'SHIP_NAME',
-          argumentType: 'VARCHAR2',
-        },
-        { typeCode: recordTypeCode, name: 'WEIGHT', argumentType: 'NUMBER' },
-        {
-          typeCode: recordTypeCode,
-          name: 'SAILED_AT',
-          argumentType: expect.stringMatching(
-            /^TIMESTAMP WITH (?:TIME ZONE|TZ)$/u
-          ),
-        },
-        { typeCode: recordTypeCode, name: 'TOKEN', argumentType: 'RAW' },
-      ]);
+              { PACKAGE_NAME: procedurePackage.toUpperCase() },
+              { outFormat: oracledb.OUT_FORMAT_OBJECT }
+            );
+            return result.rows;
+          }
+        );
+        const recordTypeCode = expect.stringMatching(/^(?:PL\/SQL )?RECORD$/u);
+        expect(recordMetadata).toEqual([
+          {
+            typeCode: recordTypeCode,
+            name: 'SHIP_NAME',
+            argumentType: 'VARCHAR2',
+          },
+          { typeCode: recordTypeCode, name: 'WEIGHT', argumentType: 'NUMBER' },
+          {
+            typeCode: recordTypeCode,
+            name: 'SAILED_AT',
+            argumentType: expect.stringMatching(
+              recordTimestampType === 'TIMESTAMP WITH TIME ZONE'
+                ? /^TIMESTAMP WITH (?:TIME ZONE|TZ)$/u
+                : /^TIMESTAMP WITH LOCAL (?:TIME ZONE|TZ)$/u
+            ),
+          },
+          { typeCode: recordTypeCode, name: 'TOKEN', argumentType: 'RAW' },
+        ]);
 
-      await kit.initDatabase();
+        await kit.initDatabase();
 
-      const result = await kit.call<
-        never,
-        {
+        const result = await kit.call<
+          never,
+          {
+            input: {
+              ship_name: string;
+              weight: number;
+              sailed_at: string;
+              token: Buffer;
+            };
+            in_out: { ship_name: string };
+          },
+          {
+            p_in_out: {
+              ship_name: string;
+              weight: number;
+              sailed_at: string;
+              token: Buffer;
+            };
+            p_output: {
+              ship_name: string;
+              weight: number;
+              sailed_at: string;
+              token: Buffer;
+            };
+          }
+        >(`${procedurePackage}.transform_record`, {
           input: {
-            ship_name: string;
-            weight: number;
-            sailed_at: string;
-            token: Buffer;
-          };
-          in_out: { ship_name: string };
-        },
-        {
-          p_in_out: {
-            ship_name: string;
-            weight: number;
-            sailed_at: string;
-            token: Buffer;
-          };
-          p_output: {
-            ship_name: string;
-            weight: number;
-            sailed_at: string;
-            token: Buffer;
-          };
-        }
-      >(`${procedurePackage}.transform_record`, {
-        input: {
-          ship_name: 'Aurora',
-          weight: 1200,
-          sailed_at: '2026-07-16 12:30:45.123 +03:00',
-          token,
-        },
-        in_out: { ship_name: 'Before' },
-      });
+            ship_name: 'Aurora',
+            weight: 1200,
+            sailed_at: '2026-07-16 12:30:45.123 +03:00',
+            token,
+          },
+          in_out: { ship_name: 'Before' },
+        });
 
-      expect(result).toEqual({
-        rows: [],
-        outBinds: {
-          p_in_out: {
-            ship_name: 'Before-inout',
-            weight: 1,
-            sailed_at: '2026-07-16T09:30:45.123Z',
-            token,
+        expect(result).toEqual({
+          rows: [],
+          outBinds: {
+            p_in_out: {
+              ship_name: 'Before-inout',
+              weight: 1,
+              sailed_at: '2026-07-16T09:30:45.123Z',
+              token,
+            },
+            p_output: {
+              ship_name: 'Aurora-out',
+              weight: 1210,
+              sailed_at: '2026-07-16T09:30:45.123Z',
+              token,
+            },
           },
-          p_output: {
-            ship_name: 'Aurora-out',
-            weight: 1210,
-            sailed_at: '2026-07-16T09:30:45.123Z',
-            token,
-          },
-        },
-      });
-    } finally {
-      await kit.destroy();
-      await dropOracleProcedureFixture(settings!);
+        });
+        for (const input of [null, {}, { sailed_at: null, token: null }]) {
+          await expect(
+            kit.call(`${procedurePackage}.transform_record`, {
+              input,
+              in_out: null,
+            })
+          ).resolves.toEqual({
+            rows: [],
+            outBinds: {
+              p_in_out: {
+                ship_name: '-inout',
+                weight: 1,
+                sailed_at: null,
+                token: null,
+              },
+              p_output: {
+                ship_name: '-out',
+                weight: 10,
+                sailed_at: null,
+                token: null,
+              },
+            },
+          });
+        }
+      } finally {
+        await kit.destroy();
+        await dropOracleProcedureFixture(settings!);
+      }
     }
-  });
+  );
 
   it('serializes all Oracle temporal fetch types in a UTC session', async (): Promise<void> => {
     const kit = new TypeOrmProcedureKit({

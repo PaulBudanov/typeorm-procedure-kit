@@ -81,6 +81,7 @@ describe('OracleAdapter', (): void => {
     expect(sql).toContain('COALESCE(a.DATA_LEVEL, 0) AS "data_level"');
     expect(sql).toContain('a.SEQUENCE AS "sequence"');
     expect(sql).toContain('ALL_PLSQL_TYPE_ATTRS');
+    expect(sql).toContain('a.ARGUMENT_NAME IS NOT NULL');
     expect(sql).toContain(
       "argument_rows.\"plsql_typecode\" IN ('PL/SQL RECORD', 'RECORD')"
     );
@@ -91,6 +92,151 @@ describe('OracleAdapter', (): void => {
     expect((): void => {
       adapter.generatePackageInfoSql('pkg;drop');
     }).toThrow(ServerError);
+  });
+
+  it.each(['10.2.0.5.0', '11.2.0.4.0', '12.0.0.0.0', '', 'unknown'])(
+    'uses legacy dictionary views and an ordered ROWNUM limit on Oracle %s',
+    (databaseVersion): void => {
+      const adapter = createOracleAdapter(
+        false,
+        { maxMetadataRows: 25 },
+        databaseVersion
+      );
+
+      const sql = adapter.generatePackageInfoSql('pkg');
+
+      expect(sql).toMatch(/^SELECT \* FROM \(/);
+      expect(sql).toContain('FROM ALL_PROCEDURES p');
+      expect(sql).toContain('LEFT JOIN ALL_ARGUMENTS a');
+      expect(sql).toContain("p.OBJECT_NAME = 'PKG'");
+      expect(sql).toContain(
+        "p.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
+      );
+      expect(sql).toContain('a.SUBPROGRAM_ID = p.SUBPROGRAM_ID');
+      expect(sql).toContain('a.POSITION > 0');
+      expect(sql).toContain('a.DATA_LEVEL = 0');
+      expect(sql).toContain('a.ARGUMENT_NAME IS NOT NULL');
+      expect(sql).toContain('return_arg.POSITION = 0');
+      expect(sql).toContain("'__TPK_NO_ARGUMENT__'");
+      expect(sql).toMatch(
+        /ORDER BY "procedure_name", "subprogram_id", "order"\s*\) WHERE ROWNUM <= 26$/
+      );
+      expect(sql).not.toContain('ALL_PLSQL_');
+      expect(sql).not.toContain('FETCH FIRST');
+      expect(sql).not.toContain(':PACKAGE_NAME');
+    }
+  );
+
+  it.each(['12.1.0.1.0', '12.2.0.1.0', '19.0.0.0.0', '23.0.0.0.0'])(
+    'uses package type dictionaries and FETCH FIRST on Oracle %s',
+    (databaseVersion): void => {
+      const adapter = createOracleAdapter(
+        false,
+        { maxMetadataRows: 25 },
+        databaseVersion
+      );
+
+      const sql = adapter.generatePackageInfoSql('pkg');
+
+      expect(sql).toContain('ALL_PLSQL_TYPES');
+      expect(sql).toContain('ALL_PLSQL_TYPE_ATTRS');
+      expect(sql).toMatch(/FETCH FIRST 26 ROWS ONLY$/);
+      expect(sql).not.toContain('ROWNUM');
+    }
+  );
+
+  it.each(['11.2.0.4.0', '12.1.0.1.0', '19.0.0.0.0'])(
+    'preserves custom metadata SQL on Oracle %s',
+    (databaseVersion): void => {
+      const adapter = createOracleAdapter(false, undefined, databaseVersion);
+
+      expect(
+        adapter.generatePackageInfoSql(
+          'pkg',
+          'SELECT * FROM CUSTOM_ARGS WHERE PACKAGE_NAME = :PACKAGE_NAME'
+        )
+      ).toBe("SELECT * FROM CUSTOM_ARGS WHERE PACKAGE_NAME = 'PKG'");
+    }
+  );
+
+  it('normalizes legacy scalar, cursor and no-argument metadata', async (): Promise<void> => {
+    const adapter = createOracleAdapter(false, undefined, '11.2.0.4.0');
+    const rows = [
+      {
+        procedure_name: 'RUN',
+        argument_name: 'P_VALUE',
+        order: 1,
+        argument_type: 'NUMBER',
+        mode: 'IN',
+        data_level: 0,
+        plsql_typecode: 'NUMBER',
+        subprogram_id: 1,
+      },
+      {
+        procedure_name: 'RUN',
+        argument_name: 'OUT_CURSOR',
+        order: 2,
+        argument_type: 'REF CURSOR',
+        mode: 'OUT',
+        data_level: 0,
+        plsql_typecode: 'REF CURSOR',
+        subprogram_id: 1,
+      },
+      {
+        procedure_name: 'PING',
+        argument_name: '__TPK_NO_ARGUMENT__',
+        order: 0,
+        argument_type: 'VOID',
+        mode: 'IN',
+        size: null,
+        data_level: 0,
+        plsql_typecode: null,
+        subprogram_id: 2,
+      },
+    ];
+    const procedureList = new ProcedureListBase(
+      createLogger(),
+      adapter,
+      { execute: vi.fn().mockResolvedValue(rows) } as never,
+      {
+        packages: ['pkg'],
+        procedureObjectList: { run: 'pkg.run', ping: 'pkg.ping' },
+      }
+    );
+
+    try {
+      await procedureList.initPackagesMap();
+      expect(procedureList.packagesWithProceduresList.get('pkg')).toEqual({
+        run: [
+          {
+            argumentName: 'p_value',
+            argumentType: 'NUMBER',
+            order: 1,
+            mode: 'IN',
+            subprogramId: 1,
+          },
+          {
+            argumentName: 'out_cursor',
+            argumentType: 'REF CURSOR',
+            order: 2,
+            mode: 'OUT',
+            subprogramId: 1,
+          },
+        ],
+        ping: [],
+      });
+      expect(() =>
+        adapter.prepareProcedureMetadataRows([
+          {
+            argumentType: 'PL/SQL RECORD',
+            dataLevel: 0,
+            plsqlTypecode: 'PL/SQL RECORD',
+          },
+        ])
+      ).toThrow('requires Oracle Database 12.1 or newer');
+    } finally {
+      await procedureList.destroy();
+    }
   });
 
   it.each([
@@ -736,7 +882,7 @@ describe('OracleAdapter', (): void => {
 
     expect(
       adapter.makeBindings('pkg', 'run', procedures, { record: null }).bindings
-    ).toMatchObject({ p_record: { val: null } });
+    ).toMatchObject({ p_record: { val: { NAME: null, TOKEN: null } } });
     expect(() =>
       adapter.makeBindings('pkg', 'run', procedures, {
         record: { name: 'known', extra: true },

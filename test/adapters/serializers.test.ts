@@ -38,6 +38,159 @@ function getOracleConverter(
 }
 
 describe('database serializers', (): void => {
+  it('isolates registrations and deletion across database instances', (): void => {
+    const first = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy,
+    });
+    const second = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy,
+    });
+    const oracle = createOracleSerializer();
+    first.setSerializer({ serializerType: 'VARCHAR', strategy: () => 'first' });
+    second.setSerializer({
+      serializerType: 'VARCHAR',
+      strategy: () => 'second',
+    });
+    oracle.setSerializer({
+      serializerType: 'VARCHAR',
+      strategy: () => 'oracle',
+    });
+
+    const firstParser = first
+      .getTypeOverrides()
+      .getTypeParser(pgTypes.builtins.VARCHAR);
+    const secondParser = second
+      .getTypeOverrides()
+      .getTypeParser(pgTypes.builtins.VARCHAR);
+    expect(firstParser('value')).toBe('first');
+    expect(secondParser('value')).toBe('second');
+    expect(
+      getOracleConverter(oracle, oracledb.DB_TYPE_VARCHAR)?.('value')
+    ).toBe('oracle');
+
+    second.deleteSerializer({ serializerType: 'VARCHAR' });
+    oracle.deleteAllSerializers();
+    expect(firstParser('value')).toBe('first');
+    expect(first.serializerMapping.has('VARCHAR')).toBe(true);
+    expect(second.serializerMapping.size).toBe(0);
+    expect(oracle.serializerMapping.size).toBe(0);
+  });
+
+  it.each(['single', 'all'] as const)(
+    'applies JSON strategies to JSON and JSONB and restores both after %s deletion',
+    (deletion): void => {
+      const serializer = new PostgreSerializer(createLogger(), {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy,
+      });
+      const strategy = vi.fn(() => 'custom-json');
+      serializer.setSerializer({ serializerType: 'JSON', strategy });
+      for (const oid of [pgTypes.builtins.JSON, pgTypes.builtins.JSONB]) {
+        expect(
+          serializer.getTypeOverrides().getTypeParser(oid)('{"value":1}')
+        ).toBe('custom-json');
+        expect(strategy).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            context: expect.objectContaining({ databaseType: String(oid) }),
+          })
+        );
+      }
+      if (deletion === 'single')
+        serializer.deleteSerializer({ serializerType: 'JSON' });
+      else serializer.deleteAllSerializers();
+      for (const oid of [pgTypes.builtins.JSON, pgTypes.builtins.JSONB]) {
+        expect(serializer.getTypeOverrides().getTypeParser(oid)).toBe(
+          pgTypes.getTypeParser(oid)
+        );
+        expect(
+          serializer.getTypeOverrides().getTypeParser(oid)('{"value":1}')
+        ).toEqual({ value: 1 });
+      }
+    }
+  );
+
+  it.each(['TIMESTAMP_TZ', 'TIMESTAMP_LTZ'] as const)(
+    'preserves the other temporal strategy after deleting %s',
+    (deletedType): void => {
+      const serializer = new PostgreSerializer(createLogger(), {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy,
+      });
+      serializer.setSerializer({
+        serializerType: 'TIMESTAMP_TZ',
+        strategy: () => 'tz',
+      });
+      serializer.setSerializer({
+        serializerType: 'TIMESTAMP_LTZ',
+        strategy: () => 'ltz',
+      });
+      const oid = pgTypes.builtins.TIMESTAMPTZ;
+      expect(
+        serializer.getTypeOverrides().getTypeParser(oid)('2024-01-02T03:04:05Z')
+      ).toBe('ltz');
+      serializer.deleteSerializer({ serializerType: deletedType });
+      expect(
+        serializer.getTypeOverrides().getTypeParser(oid)('2024-01-02T03:04:05Z')
+      ).toBe(deletedType === 'TIMESTAMP_TZ' ? 'ltz' : 'tz');
+      serializer.deleteSerializer({
+        serializerType:
+          deletedType === 'TIMESTAMP_TZ' ? 'TIMESTAMP_LTZ' : 'TIMESTAMP_TZ',
+      });
+      expect(serializer.getTypeOverrides().getTypeParser(oid)).toBe(
+        pgTypes.getTypeParser(oid)
+      );
+    }
+  );
+
+  it('rejects transformed column collisions without including values', (): void => {
+    const serializer = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy,
+    });
+    expect(() =>
+      serializer.transformRows(
+        [{ FOO: 'private-first', foo: 'private-second' }],
+        []
+      )
+    ).toThrow(
+      /^PostgreSQL result columns "FOO" and "foo" have conflicting transformed name "foo"$/
+    );
+  });
+
+  it('reports both source columns for collisions from a custom strategy', (): void => {
+    const serializer = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy: {
+        ...caseStrategy,
+        transformColumnName: () => 'merged',
+      },
+    });
+    expect(() =>
+      serializer.transformRows(
+        [{ left: 'private-first', right: 'private-second' }],
+        []
+      )
+    ).toThrow(
+      /^PostgreSQL result columns "left" and "right" have conflicting transformed name "merged"$/
+    );
+  });
+
+  it('preserves prototype-like result columns as own properties', (): void => {
+    const serializer = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy,
+    });
+    const source = Object.fromEntries([
+      ['__proto__', { value: 1 }],
+      ['constructor', 'own-value'],
+    ]);
+    const rows = serializer.transformRows([source], []);
+    expect(rows).toStrictEqual([source]);
+    expect(Object.getPrototypeOf(rows[0])).toBe(Object.prototype);
+  });
+
   it('passes discriminated inputs and context to PostgreSQL strategies', (): void => {
     const logger = createLogger();
     const globalDateParser = pgTypes.getTypeParser(pgTypes.builtins.DATE) as (
