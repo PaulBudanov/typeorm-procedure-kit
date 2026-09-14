@@ -352,9 +352,11 @@ export class OracleNotify extends DatabaseNotify<
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: TOracleNormilizeOptionsNotify
   ): Promise<string> {
+    let isSubscribed = false;
     try {
       this.assertCanRegisterNotification();
       await connection.subscribe(channelName, subscribeOptions);
+      isSubscribed = true;
       this.assertCanRegisterNotification();
       this.notificationPool.set(channelName, connection);
       this.markNotificationActive(channelName);
@@ -381,7 +383,26 @@ export class OracleNotify extends DatabaseNotify<
         `Subscription error: ${(error as Error).message}`,
         (error as Error).stack
       );
-      await this.oracleConnection.closeSingleConnection(connection);
+      if (this.notificationPool.get(channelName) === connection) {
+        this.notificationPool.delete(channelName);
+        this.stopConnectionHealthCheck(channelName);
+        this.clearNotificationRestoreState(channelName);
+      }
+      const errors: Array<unknown> = [error];
+      try {
+        if (isSubscribed) await connection.unsubscribe(channelName);
+      } catch (unsubscribeError) {
+        errors.push(unsubscribeError);
+      } finally {
+        await this.oracleConnection.closeSingleConnection(connection);
+      }
+      if (errors.length > 1) {
+        throw new AggregateError(
+          errors,
+          'Oracle subscription registration and cleanup failed',
+          { cause: error }
+        );
+      }
       throw error;
     }
   }

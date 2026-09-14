@@ -65,7 +65,7 @@ describe('typeorm-extend decorators', (): void => {
     });
   });
 
-  it('extends column metadata, generation metadata, and unique metadata', (): void => {
+  it('extends column and generation metadata while retaining inherited uniqueness', (): void => {
     const storage = getMetadataArgsStorage();
     storage.columns.push({
       target: BaseEntity as unknown as TFunction,
@@ -88,7 +88,7 @@ describe('typeorm-extend decorators', (): void => {
       name: 'uq_base_id',
     });
 
-    ExtendColumn({ type: 'varchar', unique: false, generated: false } as never)(
+    ExtendColumn({ type: 'varchar', unique: true, generated: false } as never)(
       ExtendedEntity.prototype,
       'id'
     );
@@ -97,7 +97,7 @@ describe('typeorm-extend decorators', (): void => {
     expect(storage.columns[0]).toMatchObject({
       target: ExtendedEntity,
       propertyName: 'id',
-      options: { type: 'varchar', unique: false, generated: false },
+      options: { type: 'varchar', unique: true, generated: false },
     });
     expect(storage.columns[1]).toMatchObject({ target: BaseEntity });
     expect(storage.generations).toHaveLength(1);

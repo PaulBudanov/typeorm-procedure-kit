@@ -4,6 +4,8 @@ import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { ProcedureResourceTracker } from '../abstract/procedure-resource-tracker.js';
 
+import { OracleRecordOutBinding } from './oracle-bindings.js';
+
 import type { IOracleValueSerializer } from '../../interfaces/oracle-result-materializer.interfaces.js';
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
@@ -61,7 +63,19 @@ export class OracleProcedureResultMaterializer {
           outBinding.name
         );
         const rawKey = rawKeys.get(outBinding.name.toLowerCase());
-        const rawValue = rawRecord[rawKey ?? outBinding.name];
+        let rawValue: unknown = rawRecord[rawKey ?? outBinding.name];
+        if (outBinding instanceof OracleRecordOutBinding) {
+          const record: Record<string, unknown> = {};
+          for (const [fieldName, bindName] of outBinding.fieldBindings) {
+            const fieldKey = rawKeys.get(bindName.toLowerCase());
+            if (fieldKey === undefined)
+              throw new ServerError(
+                `Oracle RECORD field "${outBinding.name}.${fieldName}" was not returned`
+              );
+            record[fieldName] = rawRecord[fieldKey];
+          }
+          rawValue = record;
+        }
         if (!cursorSet.has(outBinding.name)) {
           if (outBinding.structuredType) {
             const objectValue = await this.materializeStructuredOut(

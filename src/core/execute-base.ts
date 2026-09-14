@@ -69,7 +69,7 @@ export class ExecuteBase {
           bindings,
           cursorsNames
         );
-      DatabaseErrorHandler.checkForDatabaseError(result, queryId, this.logger);
+      DatabaseErrorHandler.checkForDatabaseError(result, queryId);
       queryTimer.success(result.length);
       return result;
     } catch (error: unknown) {
@@ -123,16 +123,8 @@ export class ExecuteBase {
         cursorsNames,
         outBindings
       );
-      DatabaseErrorHandler.checkForDatabaseError(
-        result.rows,
-        queryId,
-        this.logger
-      );
-      DatabaseErrorHandler.checkForDatabaseError(
-        result.outBinds,
-        queryId,
-        this.logger
-      );
+      DatabaseErrorHandler.checkForDatabaseError(result.rows, queryId);
+      DatabaseErrorHandler.checkForDatabaseError(result.outBinds, queryId);
       queryTimer.success(result.rows.length);
       return result;
     } catch (error: unknown) {

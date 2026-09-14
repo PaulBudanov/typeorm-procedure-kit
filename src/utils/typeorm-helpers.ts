@@ -1,6 +1,8 @@
 import cloneDeep from 'lodash/cloneDeep.js';
 import merge from 'lodash/merge.js';
 
+import { ServerError } from './server-error.js';
+
 import type { ColumnMetadataArgs } from '../typeorm/metadata-args/ColumnMetadataArgs.js';
 import type { GeneratedMetadataArgs } from '../typeorm/metadata-args/GeneratedMetadataArgs.js';
 import type { MetadataArgsStorage } from '../typeorm/metadata-args/MetadataArgsStorage.js';
@@ -41,8 +43,7 @@ class TypeOrmHelpersApi {
       const foundUnique = metadataArgs.uniques.find(
         (unique) =>
           unique.target === currentTarget &&
-          Array.isArray(unique.columns) &&
-          unique.columns.includes(propertyKey)
+          this.isSingleColumnUnique(unique, propertyKey)
       );
       if (foundMetadata)
         return {
@@ -178,53 +179,65 @@ class TypeOrmHelpersApi {
   }
 
   /**
-   * Adds, updates, or removes single-column unique metadata for an extended column.
+   * Adds or removes single-column unique metadata for an extended column.
+   * Inherited uniqueness cannot be disabled without changing the ancestor.
    * @param storage - TypeORM metadata storage to update.
    * @param targetRegister - Target class where unique metadata should be registered.
    * @param propertyKey - Column property name.
    * @param isUnique - Whether the column should be unique.
-   * @param unique - Existing unique metadata inherited from the source column.
+   * @param _unique - Retained for compatibility; metadata is resolved from the full target hierarchy.
    */
   public updateUniqueMetadata(
     storage: MetadataArgsStorage,
     targetRegister: object,
     propertyKey: string,
     isUnique: boolean,
-    unique?: UniqueMetadataArgs
+    _unique?: UniqueMetadataArgs
   ): void {
-    if (isUnique)
-      if (!unique)
-        storage.uniques.push({
-          target: targetRegister as TFunction,
-          columns: [propertyKey],
-        });
-      else {
-        const copyUnique = cloneDeep(unique);
-        Object.assign(unique, {
-          target: targetRegister as TFunction,
-          columns: [propertyKey],
-        });
-        if (
-          storage.uniques.findIndex(
-            (col) =>
-              col.target === copyUnique.target && col.name === copyUnique.name
-          ) === -1
-        )
-          storage.uniques.push(copyUnique);
+    let currentTarget: object | null = targetRegister;
+    while (currentTarget && currentTarget !== Function.prototype) {
+      const hasUnique = storage.uniques.some(
+        (unique) =>
+          unique.target === currentTarget &&
+          this.isSingleColumnUnique(unique, propertyKey)
+      );
+      if (hasUnique) {
+        if (isUnique) return;
+        if (currentTarget !== targetRegister)
+          throw new ServerError(
+            `Cannot disable inherited unique constraint for column "${propertyKey}". Register uniqueness on concrete entities instead.`
+          );
       }
-    else {
-      const existingIndex = storage.uniques.findIndex((unique) => {
-        return (
-          unique.target === targetRegister &&
-          Array.isArray(unique.columns) &&
-          unique.columns.includes(propertyKey)
-        );
-      });
-      if (existingIndex !== -1) {
-        storage.uniques.splice(existingIndex, 1);
-      }
+      currentTarget = Object.getPrototypeOf(currentTarget) as object | null;
     }
-    return;
+
+    if (isUnique) {
+      storage.uniques.push({
+        target: targetRegister as TFunction,
+        columns: [propertyKey],
+      });
+      return;
+    }
+
+    for (let index = storage.uniques.length - 1; index >= 0; index--) {
+      const unique = storage.uniques[index];
+      if (
+        unique?.target === targetRegister &&
+        this.isSingleColumnUnique(unique, propertyKey)
+      )
+        storage.uniques.splice(index, 1);
+    }
+  }
+
+  private isSingleColumnUnique(
+    unique: UniqueMetadataArgs,
+    propertyKey: string
+  ): boolean {
+    return (
+      Array.isArray(unique.columns) &&
+      unique.columns.length === 1 &&
+      unique.columns[0] === propertyKey
+    );
   }
 }
 

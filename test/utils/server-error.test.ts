@@ -51,4 +51,30 @@ describe('ServerError', (): void => {
       ServerError.ENSURE_SERVER_ERROR({ error: { code: 1 } }).message
     ).toBe('{"code":1}');
   });
+
+  it('preserves the original stack and complete cause chain', (): void => {
+    const rootCause = new Error('connection failed');
+    const original = new Error('driver failed', { cause: rootCause });
+    original.stack = 'Error: driver failed\n    at original-driver.js:42:1';
+    const wrapped = ServerError.ENSURE_SERVER_ERROR({ error: original });
+
+    expect(wrapped.stack).toBe(original.stack);
+    expect(wrapped.cause).toBe(original);
+    expect(original.cause).toBe(rootCause);
+    expect(wrapped.unsafeGetContextAs()).toBe(original);
+    expect(Object.keys(wrapped.toJSON())).toEqual([
+      'name',
+      'message',
+      'errorId',
+      'timestamp',
+    ]);
+  });
+
+  it('applies an explicitly supplied stack', (): void => {
+    const error = new ServerError('wrapped', undefined, {
+      stack: 'custom stack',
+    });
+
+    expect(error.stack).toBe('custom stack');
+  });
 });

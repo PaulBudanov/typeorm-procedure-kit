@@ -605,6 +605,10 @@ Runtime scope:
 - Oracle fetch handlers are attached to the package DataSource execution path;
 - the Oracle adapter sets `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
+Serializer registration and deletion are isolated per kit instance. PostgreSQL `JSON` strategies cover both JSON and JSONB; deleting the strategy restores both default parsers. Output column names that collide after case conversion raise an error instead of overwriting data.
+
+`DateFormatter.convertTimeZone()` now includes the actual numeric offset by default (for example, `2024-01-02T03:00:00.000+03:00`). UTC serializers keep their `Z` format. Map-backed `QueueManager.dequeue()` without a key removes the first inserted entry and emits its actual key. Notification retry delays must be integers in `0..2_147_483_647` milliseconds. Unquoted PostgreSQL LISTEN names are folded to lowercase; quoted names retain their case.
+
 ## NestJS integration
 
 ```ts
@@ -745,6 +749,8 @@ export class UserPostgres extends UserBase {
 }
 ```
 
+`ExtendColumn` changes uniqueness only when `unique` is explicitly provided. Composite and function-based entity constraints are preserved; an existing inherited single-column UNIQUE is not duplicated. Removing an inherited UNIQUE only for a child is unsupported and throws before metadata changes. Use a neutral shared-fields base with UNIQUE on the relevant concrete entity instead. An own single-column UNIQUE can be removed with `unique: false`.
+
 Repository helper:
 
 ```ts
@@ -784,6 +790,8 @@ dot access, for example `propertyPaths.additionalMessage.isDeleted` resolves to
 need real database column names; relation fields are available through dot
 access for joined aliases, for example `property.additionalMessage.isDeleted`
 resolves to `IS_DELETED`.
+
+Repository maps support direct typed access to mapped columns and relations. Their runtime structure follows ORM metadata: JSON/array columns remain column strings, and cyclic relations stop at a terminal path or an omitted entry.
 
 Migration note: this is a breaking repository API behavior change for code that
 expected QueryBuilder property paths in `property` or database column names in

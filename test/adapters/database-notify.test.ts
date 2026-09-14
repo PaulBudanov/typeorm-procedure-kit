@@ -183,10 +183,12 @@ describe('DatabaseNotify', (): void => {
     { option: 'retryDelayMs', value: 1.5 },
     { option: 'retryDelayMs', value: Number.NaN },
     { option: 'retryDelayMs', value: Infinity },
+    { option: 'retryDelayMs', value: 2_147_483_648 },
     { option: 'retryAfterMaxDelayMs', value: -1 },
     { option: 'retryAfterMaxDelayMs', value: 1.5 },
     { option: 'retryAfterMaxDelayMs', value: Number.NaN },
     { option: 'retryAfterMaxDelayMs', value: Infinity },
+    { option: 'retryAfterMaxDelayMs', value: 2_147_483_648 },
   ])('rejects invalid $option value $value', ({ option, value }): void => {
     const notify = new TestDatabaseNotify(createLogger());
 
@@ -196,4 +198,18 @@ describe('DatabaseNotify', (): void => {
       })
     ).toThrow(RangeError);
   });
+
+  it.each([0, 2_147_483_647])(
+    'accepts retry delays at the supported boundary %s',
+    async (delay): Promise<void> => {
+      const notify = new TestDatabaseNotify(createLogger());
+      const restore = vi.fn().mockResolvedValue(undefined);
+      await notify.restore('channel', restore, {
+        retryDelayMs: delay,
+        retryAfterMaxDelayMs: delay,
+      });
+      expect(restore).toHaveBeenCalledOnce();
+      await notify.destroy();
+    }
+  );
 });

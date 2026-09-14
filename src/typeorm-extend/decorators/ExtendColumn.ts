@@ -43,6 +43,13 @@ export function ExtendColumn(
     const targetRegister = isRegisterToParentTarget
       ? columnMetadata.foundTarget
       : targetConstructor;
+    if (overrideSource?.unique !== undefined)
+      TypeOrmHelpers.updateUniqueMetadata(
+        storage,
+        targetRegister,
+        propertyKey.toString(),
+        overrideSource.unique
+      );
     TypeOrmHelpers.updateColumnMetadata(
       storage,
       columnMetadata.column,
@@ -55,13 +62,6 @@ export function ExtendColumn(
       propertyKey.toString(),
       columnMetadata.generation,
       overrideSource?.generated ?? columnMetadata.column.options.generated
-    );
-    TypeOrmHelpers.updateUniqueMetadata(
-      storage,
-      targetRegister,
-      propertyKey.toString(),
-      overrideSource?.unique ?? columnMetadata.column.options.unique ?? false,
-      columnMetadata.unique
     );
   };
 }

@@ -329,9 +329,11 @@ export abstract class DatabaseNotify<
   ): void {
     if (
       delayMs !== undefined &&
-      (!Number.isSafeInteger(delayMs) || delayMs < 0)
+      (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > 2_147_483_647)
     ) {
-      throw new RangeError(`${optionName} must be a non-negative safe integer`);
+      throw new RangeError(
+        `${optionName} must be an integer between 0 and 2147483647`
+      );
     }
   }
 

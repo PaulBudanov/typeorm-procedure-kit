@@ -72,6 +72,36 @@ describe('DateFormatter', (): void => {
     ).toBe('2024-01-02T06:34:05.678Z');
   });
 
+  it.each([
+    ['Europe/Moscow', '2024-01-02T03:00:00.000+03:00'],
+    ['UTC-3:30', '2024-01-01T20:30:00.000-03:30'],
+    ['UTC', '2024-01-02T00:00:00.000+00:00'],
+  ])(
+    'preserves the instant when converting to %s by default',
+    (zone, expected): void => {
+      const input = '2024-01-02T00:00:00Z';
+      const result = DateFormatter.convertTimeZone(input, zone);
+
+      expect(result).toBe(expected);
+      expect(Date.parse(result)).toBe(Date.parse(input));
+    }
+  );
+
+  it.each([
+    ['2024-03-31T00:30:00Z', '2024-03-31T01:30:00.000+01:00'],
+    ['2024-03-31T01:30:00Z', '2024-03-31T03:30:00.000+02:00'],
+    ['2024-10-27T00:30:00Z', '2024-10-27T02:30:00.000+02:00'],
+    ['2024-10-27T01:30:00Z', '2024-10-27T02:30:00.000+01:00'],
+  ])(
+    'preserves the instant and Berlin offset around DST for %s',
+    (input, expected): void => {
+      const result = DateFormatter.convertTimeZone(input, 'Europe/Berlin');
+
+      expect(result).toBe(expected);
+      expect(Date.parse(result)).toBe(Date.parse(input));
+    }
+  );
+
   it('keeps the deprecated boolean wrapper semantically correct', (): void => {
     const preserved = DateFormatter.formatSqlDate(
       '2024-01-02 03:04:05 +05:00',

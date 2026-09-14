@@ -1,4 +1,46 @@
 class OracleSqlCommandApi {
+  /** Oracle 11g and earlier lack the ALL_PLSQL_* dictionary views. */
+  public readonly ['SQL_GET_PACKAGE_INFO_LEGACY'] = `
+    SELECT
+      p.PROCEDURE_NAME AS "procedure_name",
+      COALESCE(a.ARGUMENT_NAME, '__TPK_NO_ARGUMENT__') AS "argument_name",
+      COALESCE(a.POSITION, 0) AS "order",
+      COALESCE(a.DATA_TYPE, 'VOID') AS "argument_type",
+      COALESCE(a.IN_OUT, 'IN') AS "mode",
+      a.DATA_LENGTH AS "size",
+      p.OWNER AS "owner",
+      p.SUBPROGRAM_ID AS "subprogram_id",
+      p.OVERLOAD AS "overload",
+      COALESCE(a.DATA_LEVEL, 0) AS "data_level",
+      a.SEQUENCE AS "sequence",
+      a.TYPE_OWNER AS "type_owner",
+      a.TYPE_NAME AS "type_name",
+      a.TYPE_SUBNAME AS "type_subname",
+      a.DATA_TYPE AS "plsql_typecode"
+    FROM ALL_PROCEDURES p
+    LEFT JOIN ALL_ARGUMENTS a
+      ON a.OWNER = p.OWNER
+      AND a.PACKAGE_NAME = p.OBJECT_NAME
+      AND a.OBJECT_NAME = p.PROCEDURE_NAME
+      AND a.SUBPROGRAM_ID = p.SUBPROGRAM_ID
+      AND a.POSITION > 0
+      AND a.DATA_LEVEL = 0
+      AND a.ARGUMENT_NAME IS NOT NULL
+    WHERE p.OBJECT_NAME = :PACKAGE_NAME
+      AND p.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+      AND p.PROCEDURE_NAME IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ALL_ARGUMENTS return_arg
+        WHERE return_arg.OWNER = p.OWNER
+          AND return_arg.PACKAGE_NAME = p.OBJECT_NAME
+          AND return_arg.OBJECT_NAME = p.PROCEDURE_NAME
+          AND return_arg.SUBPROGRAM_ID = p.SUBPROGRAM_ID
+          AND return_arg.POSITION = 0
+      )
+    ORDER BY "procedure_name", "subprogram_id", "order"
+  `;
+
   /** Oracle 12.1+ package procedure metadata with package RECORD fields. */
   public readonly ['SQL_GET_PACKAGE_INFO'] = `
     WITH procedure_arguments AS (
@@ -26,6 +68,7 @@ class OracleSqlCommandApi {
         AND a.SUBPROGRAM_ID = p.SUBPROGRAM_ID
         AND a.POSITION > 0
         AND a.DATA_LEVEL = 0
+        AND a.ARGUMENT_NAME IS NOT NULL
       LEFT JOIN ALL_PLSQL_TYPES plsql_type
         ON plsql_type.OWNER = a.TYPE_OWNER
         AND plsql_type.PACKAGE_NAME = a.TYPE_NAME

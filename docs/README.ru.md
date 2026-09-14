@@ -600,6 +600,10 @@ Runtime scope:
 - Oracle fetch handlers привязаны к execution path package DataSource;
 - Oracle adapter sets `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
+Регистрация и удаление serializers изолированы между экземплярами kit. PostgreSQL strategy `JSON` применяется к JSON и JSONB; удаление восстанавливает оба стандартных parser. Коллизии имён колонок после case conversion вызывают ошибку вместо перезаписи данных.
+
+`DateFormatter.convertTimeZone()` по умолчанию возвращает действительное числовое смещение, например `2024-01-02T03:00:00.000+03:00`. UTC serializers сохраняют формат с `Z`. `QueueManager.dequeue()` для Map без ключа удаляет первую добавленную пару и передаёт её ключ в событие. Retry delays уведомлений принимают целые миллисекунды `0..2_147_483_647`. PostgreSQL LISTEN без кавычек приводит имя канала к lowercase, с кавычками сохраняет регистр.
+
 ## NestJS integration
 
 ```ts
@@ -742,6 +746,8 @@ export class UserPostgres extends UserBase {
 }
 ```
 
+`ExtendColumn` меняет уникальность только при явном `unique`. Составные и функциональные entity-level constraints сохраняются, унаследованный одиночный UNIQUE не дублируется. Снять унаследованный UNIQUE только у Child нельзя: операция бросает ошибку до изменения метаданных. Для такого случая используйте нейтральный класс общих полей и UNIQUE на нужной конкретной entity. Собственный одиночный UNIQUE можно снять через `unique: false`.
+
 Repository helper:
 
 ```ts
@@ -781,6 +787,8 @@ dot access, например `propertyPaths.additionalMessage.isDeleted` воз�
 fragments, где нужны реальные database column names; relation fields доступны
 через dot access для joined aliases, например
 `property.additionalMessage.isDeleted` возвращает `IS_DELETED`.
+
+Repository maps поддерживают прямой типизированный доступ к колонкам и связям. Структура в runtime определяется ORM metadata: JSON/array columns остаются строками колонок, а циклические связи заканчиваются конечным путём или отсутствующим узлом.
 
 Migration note: это breaking repository API behavior change для кода, который
 ожидал QueryBuilder property paths в `property` или database column names в

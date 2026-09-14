@@ -115,7 +115,7 @@ class DateFormatterApi {
   public convertTimeZone(
     input: string | Date,
     timeZone: string,
-    format: string = this.defaultTimestampTzFormat,
+    format = "yyyy-MM-dd'T'HH:mm:ss.SSSZZ",
     sourceZone?: string
   ): string {
     try {

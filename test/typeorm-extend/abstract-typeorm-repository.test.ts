@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import { DataSource } from '../../src/typeorm/data-source/DataSource.js';
 import { EntitySchema } from '../../src/typeorm/entity-schema/EntitySchema.js';
@@ -33,6 +33,24 @@ class MessageEntity {
   public additionalMessagesUuid!: string;
 }
 
+class OwnerEntity {
+  public id!: number;
+  public metadata!: { label: string };
+  public tags!: Array<string>;
+  public posts!: Array<PostEntity>;
+}
+
+class PostEntity {
+  public id!: number;
+  public owner!: OwnerEntity;
+}
+
+class OwnerRepository extends AbstractTypeormRepository<OwnerEntity, string> {
+  public exposeRepositoryContext(): IRepositoryContext<OwnerEntity> {
+    return this.getRepositoryContext();
+  }
+}
+
 class ManRepository extends AbstractTypeormRepository<ManEntity, string> {
   public exposeEntityTarget(): string {
     return this.getEntityTarget();
@@ -59,9 +77,6 @@ class MessageRepository extends AbstractTypeormRepository<
     return this.buildBaseQueryContext(alias);
   }
 }
-
-const assertString = <TValue extends string>(_value?: TValue): void =>
-  undefined;
 
 async function buildMetadata(dataSource: TestDataSource): Promise<void> {
   await dataSource.buildTestMetadatas();
@@ -182,18 +197,14 @@ describe('AbstractTypeormRepository', (): void => {
 
     const repositoryContext = repository.exposeRepositoryContext();
     const baseQueryContext = repository.exposeBaseQueryContext('message');
+    const relationPaths = repositoryContext.propertyPaths.additionalMessage;
+    const relationProperty = repositoryContext.property.additionalMessage;
 
     expect(repositoryContext.propertyPaths.uuid4).toBe('uuid4');
     expect(repositoryContext.propertyPaths.isDeleted).toBe('isDeleted');
-    expect(repositoryContext.propertyPaths.additionalMessage.$path).toBe(
-      'additionalMessage'
-    );
-    expect(repositoryContext.propertyPaths.additionalMessage.uuid4).toBe(
-      'additionalMessage.uuid4'
-    );
-    expect(repositoryContext.propertyPaths.additionalMessage.isDeleted).toBe(
-      'additionalMessage.isDeleted'
-    );
+    expect(relationPaths.$path).toBe('additionalMessage');
+    expect(relationPaths.uuid4).toBe('additionalMessage.uuid4');
+    expect(relationPaths.isDeleted).toBe('additionalMessage.isDeleted');
     expect(repositoryContext.propertyPaths.additionalMessagesUuid).toBe(
       'additionalMessagesUuid'
     );
@@ -204,20 +215,14 @@ describe('AbstractTypeormRepository', (): void => {
     expect(repositoryContext.property.additionalMessagesUuid).toBe(
       'ADDITIONAL_MESSAGES_UUID'
     );
-    expect(repositoryContext.property.additionalMessage.uuid4).toBe('UUID4');
-    expect(repositoryContext.property.additionalMessage.isDeleted).toBe(
-      'IS_DELETED'
-    );
+    expect(relationProperty.uuid4).toBe('UUID4');
+    expect(relationProperty.isDeleted).toBe('IS_DELETED');
     expect(baseQueryContext.propertyPaths).toStrictEqual(
       repositoryContext.propertyPaths
     );
     expect(baseQueryContext.property).toStrictEqual(repositoryContext.property);
-    assertString<
-      IRepositoryContext<MessageEntity>['propertyPaths']['additionalMessage']['isDeleted']
-    >();
-    assertString<
-      IRepositoryContext<MessageEntity>['property']['additionalMessage']['isDeleted']
-    >();
+    expectTypeOf(relationPaths.isDeleted).toEqualTypeOf<string>();
+    expectTypeOf(relationProperty.isDeleted).toEqualTypeOf<string>();
   });
 
   it('builds query builder joins, order and take through property paths', async (): Promise<void> => {
@@ -240,5 +245,106 @@ describe('AbstractTypeormRepository', (): void => {
       .getQuery();
 
     expect(query).toContain('ORDER BY "am".IS_DELETED DESC');
+  });
+
+  it('represents JSON and array columns as strings and cyclic relations as terminal or missing entries', async (): Promise<void> => {
+    const owner = new EntitySchema<OwnerEntity>({
+      name: 'Owner',
+      columns: {
+        id: { type: 'integer', primary: true },
+        metadata: { type: 'jsonb' },
+        tags: { type: 'text', array: true },
+      },
+      relations: {
+        posts: { type: 'one-to-many', target: 'Post', inverseSide: 'owner' },
+      },
+    });
+    const post = new EntitySchema<PostEntity>({
+      name: 'Post',
+      columns: { id: { type: 'integer', primary: true } },
+      relations: {
+        owner: {
+          type: 'many-to-one',
+          target: 'Owner',
+          inverseSide: 'posts',
+          joinColumn: true,
+        },
+      },
+    });
+    const dataSource = new TestDataSource({
+      type: 'postgres',
+      entities: [owner, post],
+    });
+    await buildMetadata(dataSource);
+    const repository = new OwnerRepository(
+      () => dataSource,
+      () => 'Owner'
+    );
+    const { propertyPaths, property } = repository.exposeRepositoryContext();
+    const expectedPaths = {
+      id: 'id',
+      metadata: 'metadata',
+      tags: 'tags',
+      posts: { $path: 'posts', id: 'posts.id', owner: 'posts.owner' },
+    };
+    const expectedProperty = {
+      id: 'id',
+      metadata: 'metadata',
+      tags: 'tags',
+      posts: { id: 'id' },
+    };
+
+    expect(propertyPaths).toEqual(expectedPaths);
+    expect(property).toEqual(expectedProperty);
+    expectTypeOf(propertyPaths.id).toEqualTypeOf<string>();
+    expectTypeOf(propertyPaths.posts.$path).toEqualTypeOf<string>();
+    expect(propertyPaths.posts.owner).toBe('posts.owner');
+  });
+
+  it('allows a self-referencing relation to end in a string or a missing map entry', async (): Promise<void> => {
+    class NodeEntity {
+      public id!: number;
+      public parent!: NodeEntity | null;
+    }
+
+    class NodeRepository extends AbstractTypeormRepository<NodeEntity, string> {
+      public exposeRepositoryContext(): IRepositoryContext<NodeEntity> {
+        return this.getRepositoryContext();
+      }
+    }
+
+    const entity = new EntitySchema<NodeEntity>({
+      name: 'Node',
+      columns: { id: { type: 'integer', primary: true } },
+      relations: {
+        parent: {
+          type: 'many-to-one',
+          target: 'Node',
+          joinColumn: true,
+          nullable: true,
+        },
+      },
+    });
+    const dataSource = new TestDataSource({
+      type: 'postgres',
+      entities: [entity],
+    });
+    await buildMetadata(dataSource);
+    const repository = new NodeRepository(
+      () => dataSource,
+      () => 'Node'
+    );
+    const { propertyPaths, property } = repository.exposeRepositoryContext();
+    const expectedPaths = {
+      id: 'id',
+      parent: { $path: 'parent', id: 'parent.id', parent: 'parent.parent' },
+    };
+    const expectedProperty = {
+      id: 'id',
+      parent: { id: 'id' },
+    };
+
+    expect(propertyPaths).toEqual(expectedPaths);
+    expect(property).toEqual(expectedProperty);
   });
 });

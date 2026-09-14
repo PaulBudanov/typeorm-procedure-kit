@@ -34,7 +34,10 @@ export class PostgreProcedureBindings {
     procedures: TProcedureArgumentList | undefined,
     payload?: TProcedurePayload | null
   ): IBindingsObjectReturn {
-    const procedureArguments = procedures?.[processName];
+    const procedureArguments =
+      procedures && Object.hasOwn(procedures, processName)
+        ? procedures[processName]
+        : undefined;
     if (!procedureArguments) {
       throw new ServerError(
         `Package "${packageName}" or process "${processName}" not found`

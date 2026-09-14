@@ -545,6 +545,10 @@ value 会跳过 custom code，并统一为 `null`。支持的 keys 包括 `DATE`
   根据 ResultSet metadata 执行大小写转换和 temporal serialization；
 - Oracle 适配器会设置 `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`。
 
+Serializer 的注册和删除按 kit 实例隔离。PostgreSQL JSON strategy 同时处理 JSON 和 JSONB，删除时恢复两种默认 parser。列名转换后发生冲突会抛错，不再覆盖数据。
+
+`DateFormatter.convertTimeZone()` 默认包含真实数字偏移，例如 `2024-01-02T03:00:00.000+03:00`；UTC serializers 保留 `Z` 格式。Map 队列调用无键 `dequeue()` 时删除最早插入的条目，并在事件中提供实际键。通知重试延迟仅接受 `0..2_147_483_647` 范围的整数毫秒。未加引号的 LISTEN 名称转换为小写，加引号的名称保留大小写。
+
 ## NestJS 集成
 
 ```ts
@@ -682,6 +686,8 @@ export class UserPostgres extends UserBase {
 }
 ```
 
+`ExtendColumn` 仅在显式指定 `unique` 时修改唯一约束。复合约束和基于函数的 entity 约束保持不变，继承的单列 UNIQUE 不会重复添加。不支持仅为 Child 移除继承的 UNIQUE；此操作会在修改任何元数据前抛错。可将公共字段放在不含 UNIQUE 的基类中，再为需要约束的具体 entity 添加 UNIQUE。自身的单列约束可以通过 `unique: false` 移除。
+
 仓储辅助类：
 
 ```ts
@@ -720,6 +726,8 @@ access 访问，例如 `propertyPaths.additionalMessage.isDeleted` 会返回
 column path map。只在 raw SQL fragments 需要真实数据库列名时使用它；relation
 fields 可以通过 dot access 用于 joined aliases，例如
 `property.additionalMessage.isDeleted` 会返回 `IS_DELETED`。
+
+Repository maps 支持直接的类型化列和关系访问。运行时结构由 ORM 元数据决定：JSON/array 列仍为列名字符串，循环关系以终止路径或缺失条目结束。
 
 Migration note：这对曾经期望 `property` 返回数据库列名的代码是 breaking
 repository API behavior change。QueryBuilder usages 应迁移到

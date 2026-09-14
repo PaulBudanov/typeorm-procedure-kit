@@ -13,7 +13,7 @@ import type {
 } from '../../types/serializer.types.js';
 
 export abstract class DatabaseSerializer {
-  private static readonly TYPE_SERIALIZER_REGISTRY: TSerializerRegistry = {};
+  private readonly serializerRegistry: TSerializerRegistry = {};
 
   public constructor(
     protected readonly logger: ILoggerModule,
@@ -63,64 +63,61 @@ export abstract class DatabaseSerializer {
 
     switch (serializerType) {
       case 'DATE': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.DATE;
+        const serializer = this.serializerRegistry.DATE;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'TIMESTAMP': {
-        const serializer =
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP;
+        const serializer = this.serializerRegistry.TIMESTAMP;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'TIMESTAMP_TZ': {
-        const serializer =
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_TZ;
+        const serializer = this.serializerRegistry.TIMESTAMP_TZ;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'TIMESTAMP_LTZ': {
-        const serializer =
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_LTZ;
+        const serializer = this.serializerRegistry.TIMESTAMP_LTZ;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'BOOLEAN': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BOOLEAN;
+        const serializer = this.serializerRegistry.BOOLEAN;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'CHAR': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.CHAR;
+        const serializer = this.serializerRegistry.CHAR;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'VARCHAR': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.VARCHAR;
+        const serializer = this.serializerRegistry.VARCHAR;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'JSON': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.JSON;
+        const serializer = this.serializerRegistry.JSON;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'BINARY': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BINARY;
+        const serializer = this.serializerRegistry.BINARY;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
       }
       case 'XML': {
-        const serializer = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.XML;
+        const serializer = this.serializerRegistry.XML;
         if (!serializer) return value;
         this.assertNativeValue(serializerType, value);
         return serializer.strategy({ serializerType, value, context });
@@ -140,7 +137,7 @@ export abstract class DatabaseSerializer {
 
   public get serializerMapping(): TSerializerTypeCastWithoutFormat {
     const snapshot = new Map<TSerializerType, TSetSerializer>();
-    const registry = DatabaseSerializer.TYPE_SERIALIZER_REGISTRY;
+    const registry = this.serializerRegistry;
 
     if (registry.DATE) snapshot.set('DATE', registry.DATE);
     if (registry.TIMESTAMP) snapshot.set('TIMESTAMP', registry.TIMESTAMP);
@@ -161,104 +158,93 @@ export abstract class DatabaseSerializer {
   protected hasSerializer(serializerType: TSerializerType): boolean {
     switch (serializerType) {
       case 'DATE':
-        return DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.DATE !== undefined;
+        return this.serializerRegistry.DATE !== undefined;
       case 'TIMESTAMP':
-        return (
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP !== undefined
-        );
+        return this.serializerRegistry.TIMESTAMP !== undefined;
       case 'TIMESTAMP_TZ':
-        return (
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_TZ !== undefined
-        );
+        return this.serializerRegistry.TIMESTAMP_TZ !== undefined;
       case 'TIMESTAMP_LTZ':
-        return (
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_LTZ !==
-          undefined
-        );
+        return this.serializerRegistry.TIMESTAMP_LTZ !== undefined;
       case 'BOOLEAN':
-        return (
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BOOLEAN !== undefined
-        );
+        return this.serializerRegistry.BOOLEAN !== undefined;
       case 'CHAR':
-        return DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.CHAR !== undefined;
+        return this.serializerRegistry.CHAR !== undefined;
       case 'VARCHAR':
-        return (
-          DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.VARCHAR !== undefined
-        );
+        return this.serializerRegistry.VARCHAR !== undefined;
       case 'JSON':
-        return DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.JSON !== undefined;
+        return this.serializerRegistry.JSON !== undefined;
       case 'BINARY':
-        return DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BINARY !== undefined;
+        return this.serializerRegistry.BINARY !== undefined;
       case 'XML':
-        return DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.XML !== undefined;
+        return this.serializerRegistry.XML !== undefined;
     }
   }
 
   protected registerSerializer(options: TSetSerializer): void {
     switch (options.serializerType) {
       case 'DATE':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.DATE = options;
+        this.serializerRegistry.DATE = options;
         return;
       case 'TIMESTAMP':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP = options;
+        this.serializerRegistry.TIMESTAMP = options;
         return;
       case 'TIMESTAMP_TZ':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_TZ = options;
+        this.serializerRegistry.TIMESTAMP_TZ = options;
         return;
       case 'TIMESTAMP_LTZ':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_LTZ = options;
+        this.serializerRegistry.TIMESTAMP_LTZ = options;
         return;
       case 'BOOLEAN':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BOOLEAN = options;
+        this.serializerRegistry.BOOLEAN = options;
         return;
       case 'CHAR':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.CHAR = options;
+        this.serializerRegistry.CHAR = options;
         return;
       case 'VARCHAR':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.VARCHAR = options;
+        this.serializerRegistry.VARCHAR = options;
         return;
       case 'JSON':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.JSON = options;
+        this.serializerRegistry.JSON = options;
         return;
       case 'BINARY':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BINARY = options;
+        this.serializerRegistry.BINARY = options;
         return;
       case 'XML':
-        DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.XML = options;
+        this.serializerRegistry.XML = options;
     }
   }
 
   protected unregisterSerializer(serializerType: TSerializerType): void {
     switch (serializerType) {
       case 'DATE':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.DATE;
+        delete this.serializerRegistry.DATE;
         return;
       case 'TIMESTAMP':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP;
+        delete this.serializerRegistry.TIMESTAMP;
         return;
       case 'TIMESTAMP_TZ':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_TZ;
+        delete this.serializerRegistry.TIMESTAMP_TZ;
         return;
       case 'TIMESTAMP_LTZ':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.TIMESTAMP_LTZ;
+        delete this.serializerRegistry.TIMESTAMP_LTZ;
         return;
       case 'BOOLEAN':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BOOLEAN;
+        delete this.serializerRegistry.BOOLEAN;
         return;
       case 'CHAR':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.CHAR;
+        delete this.serializerRegistry.CHAR;
         return;
       case 'VARCHAR':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.VARCHAR;
+        delete this.serializerRegistry.VARCHAR;
         return;
       case 'JSON':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.JSON;
+        delete this.serializerRegistry.JSON;
         return;
       case 'BINARY':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.BINARY;
+        delete this.serializerRegistry.BINARY;
         return;
       case 'XML':
-        delete DatabaseSerializer.TYPE_SERIALIZER_REGISTRY.XML;
+        delete this.serializerRegistry.XML;
     }
   }
 

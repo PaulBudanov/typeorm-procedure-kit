@@ -65,4 +65,37 @@ describe('EventBusService', (): void => {
     eventBus.removeAllListeners('changed');
     expect(eventBus.getListenerCount('changed')).toBe(0);
   });
+
+  it('collects async and sync listener failures without skipping later listeners', async (): Promise<void> => {
+    const eventBus = EventBusService.getNewInstance();
+    const starts: Array<string> = [];
+    const asyncFailure = new Error('async listener failed');
+    const syncFailure = new Error('sync listener failed');
+    const receivers: Array<unknown> = [];
+
+    eventBus.registerListener(
+      'changed',
+      function (this: unknown): Promise<void> {
+        receivers.push(this);
+        starts.push('async');
+        return Promise.reject(asyncFailure);
+      }
+    );
+    eventBus.registerOnce('changed', (): void => {
+      starts.push('sync');
+      throw syncFailure;
+    });
+    eventBus.registerListener('changed', function (this: unknown): void {
+      receivers.push(this);
+      starts.push('last');
+    });
+
+    await expect(eventBus.emitAsync('changed')).rejects.toBeInstanceOf(Error);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(starts).toEqual(['async', 'sync', 'last']);
+    expect(receivers[0]).toBeDefined();
+    expect(receivers[1]).toBe(receivers[0]);
+    expect(eventBus.getListenerCount('changed')).toBe(2);
+  });
 });

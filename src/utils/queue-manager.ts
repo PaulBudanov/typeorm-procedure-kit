@@ -75,23 +75,33 @@ export class QueueManager<TQueueItem> {
   }
 
   public dequeue(key?: TMapKey | TQueueItem): TQueueItem | undefined {
+    const previousSize = this.size();
     let removedItem: TQueueItem | undefined;
+    let removedKey = key;
     if (this.queue instanceof Array) {
       removedItem = this.dequeueFromArray(key);
-    } else if (
-      this.queue instanceof Map &&
-      (typeof key === 'string' ||
-        typeof key === 'number' ||
-        typeof key === 'symbol')
-    ) {
-      removedItem = this.dequeueFromMap(key);
+    } else if (this.queue instanceof Map) {
+      const requestedKey: unknown = key;
+      if (
+        requestedKey !== undefined &&
+        typeof requestedKey !== 'string' &&
+        typeof requestedKey !== 'number' &&
+        typeof requestedKey !== 'symbol'
+      ) {
+        throw new ReferenceError('Invalid key for Map collection');
+      }
+      const mapKey = requestedKey ?? this.queue.keys().next().value;
+      if (mapKey === undefined) return undefined;
+      removedItem = this.queue.get(mapKey);
+      this.queue.delete(mapKey);
+      removedKey = mapKey;
     } else {
       removedItem = this.dequeueFromSet(key as TQueueItem | undefined);
     }
 
-    if (removedItem !== undefined) {
+    if (this.size() < previousSize) {
       this.eventBusService.emit(`${this.queueName}:dequeue`, {
-        key,
+        key: removedKey,
         item: removedItem,
       });
     }
@@ -190,21 +200,14 @@ export class QueueManager<TQueueItem> {
     }
   }
 
-  private dequeueFromMap(key: TMapKey): TQueueItem | undefined {
-    const map = this.queue as Map<TMapKey, TQueueItem>;
-    const item = map.get(key);
-    map.delete(key);
-    return item;
-  }
-
   private dequeueFromSet(key?: TQueueItem): TQueueItem | undefined {
     const set = this.queue as Set<TQueueItem>;
     if (key === undefined) {
       const iterator = set.values();
-      const firstItem = iterator.next().value as TQueueItem;
-      if (firstItem !== undefined) {
-        set.delete(firstItem);
-        return firstItem;
+      const firstItem = iterator.next();
+      if (!firstItem.done) {
+        set.delete(firstItem.value);
+        return firstItem.value;
       }
     } else {
       if (set.has(key)) {

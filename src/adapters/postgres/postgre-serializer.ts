@@ -11,27 +11,27 @@ import type { CustomTypesConfig, FieldDef } from 'pg';
 
 export class PostgreSerializer extends DatabaseSerializer {
   private static readonly OBJECT_TYPE_CAST: Partial<
-    Record<TSerializerType, number>
+    Record<TSerializerType, ReadonlyArray<number>>
   > = {
-    BINARY: types.builtins.BYTEA,
-    BOOLEAN: types.builtins.BOOL,
-    CHAR: types.builtins.CHAR,
-    DATE: types.builtins.DATE,
-    VARCHAR: types.builtins.VARCHAR,
-    JSON: types.builtins.JSON,
-    TIMESTAMP: types.builtins.TIMESTAMP,
-    TIMESTAMP_TZ: types.builtins.TIMESTAMPTZ,
-    TIMESTAMP_LTZ: types.builtins.TIMESTAMPTZ,
-    XML: types.builtins.XML,
+    BINARY: [types.builtins.BYTEA],
+    BOOLEAN: [types.builtins.BOOL],
+    CHAR: [types.builtins.CHAR],
+    DATE: [types.builtins.DATE],
+    VARCHAR: [types.builtins.VARCHAR],
+    JSON: [types.builtins.JSON, types.builtins.JSONB],
+    TIMESTAMP: [types.builtins.TIMESTAMP],
+    TIMESTAMP_TZ: [types.builtins.TIMESTAMPTZ],
+    TIMESTAMP_LTZ: [types.builtins.TIMESTAMPTZ],
+    XML: [types.builtins.XML],
   };
   private readonly typeOverrides = new TypeOverrides();
   private readonly defaultTypeParsers = new Map<
     number,
     (value: string) => unknown
   >(
-    Array.from(new Set(Object.values(PostgreSerializer.OBJECT_TYPE_CAST))).map(
-      (oid) => [oid, types.getTypeParser(oid)]
-    )
+    Array.from(
+      new Set(Object.values(PostgreSerializer.OBJECT_TYPE_CAST).flat())
+    ).map((oid) => [oid, types.getTypeParser(oid)])
   );
 
   public override registerFetchHandlerHook(): void {
@@ -45,30 +45,25 @@ export class PostgreSerializer extends DatabaseSerializer {
 
   public transformRows(
     rows: Array<unknown>,
-    fields: Array<FieldDef>
+    _fields: Array<FieldDef>
   ): Array<unknown> {
-    const refCursorOid: number = types.builtins.REFCURSOR;
-    const refCursorFields = new Set(
-      fields
-        .filter((field) => field.dataTypeID === refCursorOid)
-        .map((field) => field.name)
-    );
     return rows.map((row) => {
       if (row === null || typeof row !== 'object' || Array.isArray(row))
         return row;
-      return Object.entries(row as Record<string, unknown>).reduce<
-        Record<string, unknown>
-      >((result, [key, value]) => {
-        const outputName = this.options.caseStrategy.transformColumnName(key);
-        // REFCURSOR values are portal names. Preserve the driver-provided
-        // string verbatim; the adapter validates and quotes it before SQL use.
-        if (refCursorFields.has(key)) {
-          result[outputName] = value;
-          return result;
-        }
-        result[outputName] = value;
-        return result;
-      }, {});
+      const outputNames = new Map<string, string>();
+      return Object.fromEntries(
+        Object.entries(row as Record<string, unknown>).map(([key, value]) => {
+          const outputName = this.options.caseStrategy.transformColumnName(key);
+          const originalName = outputNames.get(outputName);
+          if (originalName !== undefined) {
+            throw new ServerError(
+              `PostgreSQL result columns "${originalName}" and "${key}" have conflicting transformed name "${outputName}"`
+            );
+          }
+          outputNames.set(outputName, key);
+          return [outputName, value];
+        })
+      );
     });
   }
 
@@ -88,16 +83,16 @@ export class PostgreSerializer extends DatabaseSerializer {
       );
       this.unregisterSerializer(options.serializerType);
     }
-    const dbTypeClass =
+    const dbTypeClasses =
       PostgreSerializer.OBJECT_TYPE_CAST[options.serializerType];
-    if (!dbTypeClass)
+    if (!dbTypeClasses)
       throw new ServerError(
         `Unknown serializer type: ${options.serializerType}`
       );
     this.registerSerializer(options);
     this.registerTypeParser(options.serializerType);
     this.logger.log(
-      `Serializer with type ${options.serializerType} and dbType ${dbTypeClass} set successfully`
+      `Serializer with type ${options.serializerType} and dbType ${dbTypeClasses.join(', ')} set successfully`
     );
     return;
   }
@@ -111,23 +106,27 @@ export class PostgreSerializer extends DatabaseSerializer {
   ): void {
     if (this.hasSerializer(serializerType.serializerType))
       this.unregisterSerializer(serializerType.serializerType);
-    const dbTypeClass =
+    const dbTypeClasses =
       PostgreSerializer.OBJECT_TYPE_CAST[serializerType.serializerType];
-    if (dbTypeClass === undefined) return;
-    const replacementType = this.registeredSerializerTypes.find(
-      (registeredType) =>
-        PostgreSerializer.OBJECT_TYPE_CAST[registeredType] === dbTypeClass
-    );
-    if (replacementType) {
-      this.registerTypeParser(replacementType);
-    } else {
-      const defaultParser = this.defaultTypeParsers.get(dbTypeClass);
-      if (defaultParser === undefined) {
-        throw new ServerError(
-          `Default PostgreSQL parser is missing for dbType ${dbTypeClass}`
-        );
+    if (dbTypeClasses === undefined) return;
+    for (const dbTypeClass of dbTypeClasses) {
+      const replacementType = this.registeredSerializerTypes.find(
+        (registeredType) =>
+          PostgreSerializer.OBJECT_TYPE_CAST[registeredType]?.includes(
+            dbTypeClass
+          )
+      );
+      if (replacementType) {
+        this.registerTypeParser(replacementType);
+      } else {
+        const defaultParser = this.defaultTypeParsers.get(dbTypeClass);
+        if (defaultParser === undefined) {
+          throw new ServerError(
+            `Default PostgreSQL parser is missing for dbType ${dbTypeClass}`
+          );
+        }
+        this.typeOverrides.setTypeParser(dbTypeClass, defaultParser);
       }
-      this.typeOverrides.setTypeParser(dbTypeClass, defaultParser);
     }
     return;
   }
@@ -146,16 +145,18 @@ export class PostgreSerializer extends DatabaseSerializer {
   }
 
   private registerTypeParser(serializerType: TSerializerType): void {
-    const dbTypeClass = PostgreSerializer.OBJECT_TYPE_CAST[serializerType];
-    if (dbTypeClass === undefined) {
+    const dbTypeClasses = PostgreSerializer.OBJECT_TYPE_CAST[serializerType];
+    if (dbTypeClasses === undefined) {
       throw new ServerError(`Unknown serializer type: ${serializerType}`);
     }
-    this.typeOverrides.setTypeParser(dbTypeClass, (value: string) =>
-      this.serializeValue(serializerType, value, {
-        source: 'fetch',
-        database: 'postgres',
-        databaseType: String(dbTypeClass),
-      })
-    );
+    for (const dbTypeClass of dbTypeClasses) {
+      this.typeOverrides.setTypeParser(dbTypeClass, (value: string) =>
+        this.serializeValue(serializerType, value, {
+          source: 'fetch',
+          database: 'postgres',
+          databaseType: String(dbTypeClass),
+        })
+      );
+    }
   }
 }

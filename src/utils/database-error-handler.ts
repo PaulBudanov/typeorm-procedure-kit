@@ -41,7 +41,11 @@ class DatabaseErrorHandlerApi {
     if (Array.isArray(responseData)) {
       if (responseData.length > 1) return;
       const checkDataObject = responseData[0];
-      this.checkForDatabaseError<typeof checkDataObject>(checkDataObject);
+      this.checkForDatabaseError<typeof checkDataObject>(
+        checkDataObject,
+        queryId,
+        logger
+      );
       return;
     }
 

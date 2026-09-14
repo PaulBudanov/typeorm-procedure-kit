@@ -15,6 +15,18 @@ import type {
   IProcedureOutBinding,
 } from '../../types/utility.types.js';
 
+/** Internal transport descriptor for RECORD fields returned as scalar binds. */
+export class OracleRecordOutBinding implements IProcedureOutBinding {
+  public readonly type = 'object';
+
+  public constructor(
+    public readonly name: string,
+    public readonly databaseType: string,
+    public readonly structuredType: IProcedureStructuredType,
+    public readonly fieldBindings: ReadonlyMap<string, string>
+  ) {}
+}
+
 /** Builds Oracle PL/SQL bindings without owning execution or result fetching. */
 export class OracleProcedureBindings {
   private static readonly CURSOR_TYPE = 'REF CURSOR';
@@ -51,6 +63,37 @@ export class OracleProcedureBindings {
     'RAW',
   ]);
   private static readonly LOB_TYPES = new Set(['CLOB', 'BLOB']);
+  private static readonly VARIABLE_SIZE_RECORD_TYPES = new Set<oracledb.DbType>(
+    [
+      oracledb.DB_TYPE_CHAR,
+      oracledb.DB_TYPE_NCHAR,
+      oracledb.DB_TYPE_VARCHAR,
+      oracledb.DB_TYPE_NVARCHAR,
+      oracledb.DB_TYPE_RAW,
+    ]
+  );
+  private readonly recordFieldTypeMapping = {
+    ...this.typeMapping,
+    CHAR: oracledb.DB_TYPE_CHAR,
+    NCHAR: oracledb.DB_TYPE_NCHAR,
+    VARCHAR: oracledb.DB_TYPE_VARCHAR,
+    NVARCHAR2: oracledb.DB_TYPE_NVARCHAR,
+    BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
+    'PL/SQL BOOLEAN': oracledb.DB_TYPE_BOOLEAN,
+    BINARY_INTEGER: oracledb.DB_TYPE_BINARY_INTEGER,
+    PLS_INTEGER: oracledb.DB_TYPE_BINARY_INTEGER,
+    'PL/SQL BINARY INTEGER': oracledb.DB_TYPE_BINARY_INTEGER,
+    'PL/SQL PLS INTEGER': oracledb.DB_TYPE_BINARY_INTEGER,
+    INTEGER: oracledb.DB_TYPE_NUMBER,
+    SMALLINT: oracledb.DB_TYPE_NUMBER,
+    DECIMAL: oracledb.DB_TYPE_NUMBER,
+    NUMERIC: oracledb.DB_TYPE_NUMBER,
+    REAL: oracledb.DB_TYPE_NUMBER,
+    FLOAT: oracledb.DB_TYPE_NUMBER,
+    'DOUBLE PRECISION': oracledb.DB_TYPE_NUMBER,
+    BINARY_FLOAT: oracledb.DB_TYPE_BINARY_FLOAT,
+    BINARY_DOUBLE: oracledb.DB_TYPE_BINARY_DOUBLE,
+  } as const;
 
   public build(
     packageName: Lowercase<string>,
@@ -58,7 +101,10 @@ export class OracleProcedureBindings {
     procedures: TProcedureArgumentList | undefined,
     payload?: TProcedurePayload | null
   ): IBindingsObjectReturn {
-    const procedureArguments = procedures?.[processName];
+    const procedureArguments =
+      procedures && Object.hasOwn(procedures, processName)
+        ? procedures[processName]
+        : undefined;
     if (!procedureArguments) {
       throw new ServerError(
         `Package "${packageName}" or process "${processName}" not found`
@@ -71,13 +117,38 @@ export class OracleProcedureBindings {
     }
 
     const bindings: Record<string, oracledb.BindParameter> = {};
+    const recordLogBindings: Record<string, oracledb.BindParameter> = {};
     const cursorsNames: Array<string> = [];
     const outBindings: Array<IProcedureOutBinding> = [];
     const placeholders: Array<string> = [];
+    const declarations: Array<string> = [];
+    const inputAssignments: Array<string> = [];
+    const outputAssignments: Array<string> = [];
+    const reservedNames = new Set([
+      packageName.toLowerCase(),
+      ...procedureArguments.map(({ argumentName }) =>
+        argumentName.toLowerCase()
+      ),
+      ...procedureArguments.flatMap(({ structuredType }) =>
+        structuredType
+          ? [structuredType.owner ?? '', structuredType.packageName ?? ''].map(
+              (name) => name.toLowerCase()
+            )
+          : []
+      ),
+    ]);
+    let generatedNameIndex = 0;
+    const createName = (): string => {
+      for (;;) {
+        const name = `tpk_record_${generatedNameIndex++}`;
+        if (reservedNames.has(name)) continue;
+        reservedNames.add(name);
+        return name;
+      }
+    };
 
     for (const [index, argument] of procedureArguments.entries()) {
       SqlIdentifier.validateIdentifier(argument.argumentName, 'oracle bind');
-      placeholders.push(`:${argument.argumentName}`);
       const dataType = argument.argumentType.toUpperCase();
       const structuredType = argument.structuredType;
       if (structuredType) {
@@ -87,18 +158,88 @@ export class OracleProcedureBindings {
           );
         }
         const typeName = this.getRecordTypeName(structuredType);
-        let value = this.readPayloadValue(
+        const inputValue = this.readPayloadValue(
           payload,
           index,
           argument.argumentName
         );
-        if (argument.mode !== 'OUT') {
-          value = this.prepareRecordInput(
-            value,
-            structuredType,
-            argument.argumentName
-          );
+        const value =
+          argument.mode === 'OUT'
+            ? null
+            : this.prepareRecordInput(
+                // A native null INOUT object retains its null indicator after PL/SQL writes fields.
+                inputValue ?? (argument.mode === 'IN/OUT' ? {} : null),
+                structuredType,
+                argument.argumentName
+              );
+        // OCI 23.26.2 fails to transport RECORDs containing zoned timestamps.
+        // Scalar field binds avoid ORA-01891 without retrying the procedure.
+        if (
+          !oracledb.thin &&
+          structuredType.fields.some(
+            ({ argumentType }) =>
+              argumentType === 'TIMESTAMP WITH TIME ZONE' ||
+              argumentType === 'TIMESTAMP WITH LOCAL TIME ZONE'
+          )
+        ) {
+          recordLogBindings[argument.argumentName] = {
+            dir: OracleProcedureBindings.BINDING_DIRECTIONS[argument.mode],
+            type: typeName,
+            ...(argument.mode === 'OUT' ? {} : { val: value }),
+          };
+          const variable = createName();
+          declarations.push(`${variable} ${typeName};`);
+          placeholders.push(variable);
+          const fieldBindings = new Map<string, string>();
+          for (const field of structuredType.fields) {
+            const fieldName = `"${SqlIdentifier.validateIdentifier(
+              field.name,
+              'oracle record field'
+            )}"`;
+            const fieldType = field.argumentType.toUpperCase();
+            if (!this.isValidRecordFieldType(fieldType))
+              throw new ServerError(
+                `Unsupported scalar type ${fieldType} for Oracle RECORD field "${argument.argumentName}.${field.name}"`
+              );
+            const type = this.recordFieldTypeMapping[fieldType];
+            const bindName = createName();
+            const isVariableSize =
+              OracleProcedureBindings.VARIABLE_SIZE_RECORD_TYPES.has(type);
+            bindings[bindName] = {
+              dir: OracleProcedureBindings.BINDING_DIRECTIONS[argument.mode],
+              type,
+              ...(argument.mode === 'OUT'
+                ? {}
+                : { val: value?.[field.name] ?? null }),
+              ...(argument.mode !== 'IN' && isVariableSize
+                ? {
+                    maxSize: OracleProcedureBindings.DEFAULT_PLSQL_OUT_MAX_SIZE,
+                  }
+                : {}),
+            };
+            if (argument.mode !== 'OUT')
+              inputAssignments.push(
+                `${variable}.${fieldName} := :${bindName};`
+              );
+            if (argument.mode !== 'IN') {
+              outputAssignments.push(
+                `:${bindName} := ${variable}.${fieldName};`
+              );
+              fieldBindings.set(field.name, bindName);
+            }
+          }
+          if (argument.mode !== 'IN')
+            outBindings.push(
+              new OracleRecordOutBinding(
+                argument.argumentName,
+                typeName,
+                structuredType,
+                fieldBindings
+              )
+            );
+          continue;
         }
+        placeholders.push(`:${argument.argumentName}`);
         bindings[argument.argumentName] = {
           dir: OracleProcedureBindings.BINDING_DIRECTIONS[argument.mode],
           type: typeName,
@@ -117,6 +258,7 @@ export class OracleProcedureBindings {
       if (!this.isValidDataType(dataType)) {
         throw new ServerError(`Invalid data type: ${dataType}`);
       }
+      placeholders.push(`:${argument.argumentName}`);
 
       if (argument.mode !== 'IN') {
         outBindings.push({
@@ -166,14 +308,19 @@ export class OracleProcedureBindings {
       bindings[argument.argumentName] = binding;
     }
 
+    const procedureCall = `${SqlIdentifier.formatOracleQualifiedIdentifier([packageName, processName])} (${placeholders.join(',')});`;
     return {
       bindings,
+      ...(declarations.length === 0
+        ? {}
+        : { logBindings: { ...bindings, ...recordLogBindings } }),
       cursorsNames,
       outNames: outBindings.map(({ name }) => name),
       outBindings,
-      paramExecuteString: `BEGIN ${SqlIdentifier.formatOracleQualifiedIdentifier(
-        [packageName, processName]
-      )} (${placeholders.join(',')}); END;`,
+      paramExecuteString:
+        declarations.length === 0
+          ? `BEGIN ${procedureCall} END;`
+          : `DECLARE ${declarations.join(' ')} BEGIN ${inputAssignments.join(' ')} ${procedureCall} ${outputAssignments.join(' ')} END;`,
     };
   }
 
@@ -181,6 +328,12 @@ export class OracleProcedureBindings {
     value: string
   ): value is keyof typeof this.typeMapping {
     return value in this.typeMapping;
+  }
+
+  private isValidRecordFieldType(
+    value: string
+  ): value is keyof typeof this.recordFieldTypeMapping {
+    return Object.hasOwn(this.recordFieldTypeMapping, value);
   }
 
   private readPayloadValue(

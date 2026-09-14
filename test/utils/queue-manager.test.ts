@@ -50,6 +50,77 @@ describe('QueueManager', (): void => {
     expect(queue.dequeue()).toBeUndefined();
   });
 
+  it('dequeues Map entries in insertion order and emits the removed key', (): void => {
+    const queue = new QueueManager<number>('items', 'map');
+    const onDequeue = vi.fn();
+    queue.subscribeToDequeue(onDequeue);
+    queue.enqueue('first', 2);
+    queue.enqueue(2, 3);
+
+    expect(queue.dequeue()).toBe(2);
+    expect(queue.getQueue()).toEqual(new Map([[2, 3]]));
+    expect(onDequeue).toHaveBeenLastCalledWith({ key: 'first', item: 2 });
+    expect(queue.dequeue()).toBe(3);
+    expect(queue.size()).toBe(0);
+    expect(onDequeue).toHaveBeenLastCalledWith({ key: 2, item: 3 });
+    expect(queue.dequeue()).toBeUndefined();
+    expect(onDequeue).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects an invalid Map key without mutating or notifying', (): void => {
+    const item = { id: 1 };
+    const queue = new QueueManager<typeof item>('items', 'map');
+    const onDequeue = vi.fn();
+    queue.subscribeToDequeue(onDequeue);
+    queue.enqueue('first', item);
+
+    expect(() => queue.dequeue(item)).toThrow('Invalid key for Map collection');
+    expect(queue.getQueue()).toEqual(new Map([['first', item]]));
+    expect(onDequeue).not.toHaveBeenCalled();
+  });
+
+  it('emits only for Map keys that exist, including undefined values', (): void => {
+    const queue = new QueueManager<undefined>('items', 'map');
+    const onDequeue = vi.fn();
+    queue.subscribeToDequeue(onDequeue);
+    queue.enqueue('first', undefined);
+    queue.enqueue('second', undefined);
+
+    expect(queue.dequeue('missing')).toBeUndefined();
+    expect(onDequeue).not.toHaveBeenCalled();
+    expect(queue.dequeue('second')).toBeUndefined();
+    expect(onDequeue).toHaveBeenLastCalledWith({
+      key: 'second',
+      item: undefined,
+    });
+    expect(queue.dequeue()).toBeUndefined();
+    expect(onDequeue).toHaveBeenLastCalledWith({
+      key: 'first',
+      item: undefined,
+    });
+    expect(queue.size()).toBe(0);
+    expect(onDequeue).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['array', 'set'] as const)(
+    'removes and emits undefined items from %s queues',
+    (collection): void => {
+      const queue = new QueueManager<undefined>('items', collection);
+      const onDequeue = vi.fn();
+      queue.subscribeToDequeue(onDequeue);
+      queue.enqueue(undefined, undefined);
+
+      expect(queue.dequeue()).toBeUndefined();
+      expect(queue.size()).toBe(0);
+      expect(onDequeue).toHaveBeenCalledExactlyOnceWith({
+        key: undefined,
+        item: undefined,
+      });
+      expect(queue.dequeue()).toBeUndefined();
+      expect(onDequeue).toHaveBeenCalledOnce();
+    }
+  );
+
   it('returns false and suppresses enqueue events for Set duplicates', async (): Promise<void> => {
     const queue = new QueueManager<string>('items', 'set');
     const onEnqueue = vi.fn<(data: { item: string }) => void>();
