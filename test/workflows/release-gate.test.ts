@@ -6,6 +6,12 @@ import { describe, expect, it } from 'vitest';
 const projectFile = (relativePath: string): string =>
   fileURLToPath(new URL(`../../${relativePath}`, import.meta.url));
 
+/**
+ * Mirrors the release version grammar enforced by the resolve_release job in
+ * .github/workflows/release.yml.
+ */
+const releaseVersionPattern = /^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$/;
+
 describe('release workflow wiring', (): void => {
   it('dispatches only successful release pushes from the unified CI run', async (): Promise<void> => {
     const dispatcher = await readFile(
@@ -23,17 +29,21 @@ describe('release workflow wiring', (): void => {
     expect(dispatcher).not.toContain('actions/checkout');
   });
 
-  it('uses a pinned Release Please action and a 2.3.1 manifest baseline', async (): Promise<void> => {
-    const [workflow, configText, manifestText] = await Promise.all([
-      readFile(projectFile('.github/workflows/release.yml'), 'utf8'),
-      readFile(projectFile('release-please-config.json'), 'utf8'),
-      readFile(projectFile('.release-please-manifest.json'), 'utf8'),
-    ]);
+  it('uses a pinned Release Please action and a synchronized manifest', async (): Promise<void> => {
+    const [workflow, configText, manifestText, packageText] = await Promise.all(
+      [
+        readFile(projectFile('.github/workflows/release.yml'), 'utf8'),
+        readFile(projectFile('release-please-config.json'), 'utf8'),
+        readFile(projectFile('.release-please-manifest.json'), 'utf8'),
+        readFile(projectFile('package.json'), 'utf8'),
+      ]
+    );
     const config = JSON.parse(configText) as {
       'group-pull-request-title-pattern': string;
       packages: Record<string, Record<string, unknown>>;
     };
     const manifest = JSON.parse(manifestText) as Record<string, string>;
+    const packageJson = JSON.parse(packageText) as { version: string };
 
     expect(workflow).toContain(
       'googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7'
@@ -49,7 +59,9 @@ describe('release workflow wiring', (): void => {
     expect(config['group-pull-request-title-pattern']).toBe(
       'chore${scope}: release${component} ${version}'
     );
-    expect(manifest).toEqual({ '.': '2.3.1' });
+    expect(Object.keys(manifest)).toEqual(Object.keys(config.packages));
+    expect(manifest['.']).toMatch(releaseVersionPattern);
+    expect(manifest['.']).toBe(packageJson.version);
   });
 
   it('separates release creation, npm publishing, and master synchronization', async (): Promise<void> => {
