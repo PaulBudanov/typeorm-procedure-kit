@@ -179,16 +179,26 @@ export class ProcedureResourceTracker {
     return bytes;
   }
 
+  /**
+   * Memoises key sizes across procedure calls. The cache is process-wide, and
+   * keys come from result data (including keys nested inside JSON values), not
+   * just from the schema, so it must evict rather than stop accepting entries:
+   * a burst of high-cardinality keys would otherwise pin the first
+   * MAX_CACHED_KEYS strings for the life of the process and leave the cache
+   * permanently unable to memoise the keys that are actually hot - including
+   * for any tracker created after a `destroy()` and re-initialisation.
+   */
   private measureKey(key: string): number {
     const cached = ProcedureResourceTracker.keyByteLengths.get(key);
     if (cached !== undefined) return cached;
     const bytes = this.measureUtf8(key);
     if (
-      ProcedureResourceTracker.keyByteLengths.size <
+      ProcedureResourceTracker.keyByteLengths.size >=
       ProcedureResourceTracker.MAX_CACHED_KEYS
     ) {
-      ProcedureResourceTracker.keyByteLengths.set(key, bytes);
+      ProcedureResourceTracker.keyByteLengths.clear();
     }
+    ProcedureResourceTracker.keyByteLengths.set(key, bytes);
     return bytes;
   }
 
