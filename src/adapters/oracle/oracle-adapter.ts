@@ -189,11 +189,26 @@ export class OracleAdapter extends DatabaseAdapter<
     );
   }
 
+  /**
+   * Collects positional bindings for uppercase named placeholders, leaving the
+   * SQL text untouched so Oracle keeps resolving `:NAME` itself.
+   *
+   * Oracle treats every occurrence of the same `:NAME` as a single bind
+   * variable, so a placeholder repeated in the query consumes exactly one
+   * positional slot. Each distinct name therefore contributes one value, in
+   * order of its first occurrence; emitting one value per occurrence instead
+   * makes the driver reject the call (`NJS-098` on thin, `ORA-01036` /
+   * `ORA-01008` on thick).
+   * @param sqlQuery - SQL query with uppercase named placeholders.
+   * @param params - values keyed by placeholder name, case-insensitive.
+   * @returns the unchanged SQL and one binding value per distinct placeholder.
+   */
   public override makeSqlBindings(
     sqlQuery: string,
     params?: Record<string, unknown>
   ): ISqlBindingsObjectReturn {
     const bindings: Array<unknown> = [];
+    const boundNames = new Set<string>();
     const paramsInUpperCase = Object.fromEntries(
       params
         ? Object.entries(params).map(([key, value]) => [
@@ -204,7 +219,10 @@ export class OracleAdapter extends DatabaseAdapter<
     );
     replaceNamedParameters(sqlQuery, ({ full, key }) => {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase[key.toUpperCase()] ?? null);
+      const bindName = key.toUpperCase();
+      if (boundNames.has(bindName)) return full;
+      boundNames.add(bindName);
+      bindings.push(paramsInUpperCase[bindName] ?? null);
       return full;
     });
     return { bindings, sqlString: sqlQuery };
