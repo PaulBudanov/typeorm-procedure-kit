@@ -37,53 +37,34 @@ export class OracleProcedureBindings {
     OUT: oracledb.BIND_OUT,
     'IN/OUT': oracledb.BIND_INOUT,
   } as const;
+  /**
+   * Scalar bind types accepted both for procedure arguments and for the fields
+   * of an Oracle RECORD. One whitelist serves both: a type that is safe to bind
+   * as a RECORD field is equally safe as a standalone argument, and keeping two
+   * lists is what let `p_flag IN CHAR` fail with "Invalid data type" while the
+   * same CHAR passed as a RECORD field was accepted.
+   *
+   * Values are node-oracledb bind types, each accepted by the driver as a
+   * `BindParameter.type` for IN, OUT and IN/OUT binds. Types with a
+   * variable-length bind buffer are listed in `VARIABLE_SIZE_BIND_TYPES` and get
+   * an explicit `maxSize` when bound for output; without it the driver falls
+   * back to its 200 byte default and truncates longer values.
+   *
+   * Deliberately left out until each has a result-materializer path and a test:
+   * - `NCLOB`, `BFILE`, `LONG`, `LONG RAW` — only `CLOB` and `BLOB` are drained
+   *   by the materializer, so these would hand back a raw driver handle.
+   * - `ROWID`, `UROWID` — input values must be validated as ROWIDs first.
+   * - `JSON`, `VECTOR`, `XMLTYPE` — driver support depends on the database
+   *   version, and no serializer covers them on the scalar OUT path.
+   * - `INTERVAL YEAR TO MONTH`, `INTERVAL DAY TO SECOND` — the driver binds them
+   *   as `IntervalYM`/`IntervalDS` instances and nothing converts input values
+   *   into those.
+   * - PL/SQL collections (index-by tables, VARRAY, nested tables) and object or
+   *   `REF` types — they need `maxArraySize` or DbObject handling; PL/SQL
+   *   RECORD arguments are bound through `structuredType` instead.
+   */
   private readonly typeMapping = {
     NUMBER: oracledb.NUMBER,
-    STRING: oracledb.STRING,
-    VARCHAR2: oracledb.STRING,
-    RAW: oracledb.BUFFER,
-    [OracleProcedureBindings.CURSOR_TYPE]: oracledb.CURSOR,
-    BUFFER: oracledb.BUFFER,
-    DATE: oracledb.DB_TYPE_DATE,
-    TIMESTAMP: oracledb.DB_TYPE_TIMESTAMP,
-    'TIMESTAMP WITH TIME ZONE': oracledb.DB_TYPE_TIMESTAMP_TZ,
-    'TIMESTAMP WITH LOCAL TIME ZONE': oracledb.DB_TYPE_TIMESTAMP_LTZ,
-    CLOB: oracledb.CLOB,
-    BLOB: oracledb.BLOB,
-  } as const;
-  private static readonly TEMPORAL_TYPES = new Set([
-    'DATE',
-    'TIMESTAMP',
-    'TIMESTAMP WITH TIME ZONE',
-    'TIMESTAMP WITH LOCAL TIME ZONE',
-  ]);
-  private static readonly VARIABLE_SIZE_OUT_TYPES = new Set([
-    'STRING',
-    'VARCHAR2',
-    'RAW',
-  ]);
-  private static readonly LOB_TYPES = new Set(['CLOB', 'BLOB']);
-  private static readonly VARIABLE_SIZE_RECORD_TYPES = new Set<oracledb.DbType>(
-    [
-      oracledb.DB_TYPE_CHAR,
-      oracledb.DB_TYPE_NCHAR,
-      oracledb.DB_TYPE_VARCHAR,
-      oracledb.DB_TYPE_NVARCHAR,
-      oracledb.DB_TYPE_RAW,
-    ]
-  );
-  private readonly recordFieldTypeMapping = {
-    ...this.typeMapping,
-    CHAR: oracledb.DB_TYPE_CHAR,
-    NCHAR: oracledb.DB_TYPE_NCHAR,
-    VARCHAR: oracledb.DB_TYPE_VARCHAR,
-    NVARCHAR2: oracledb.DB_TYPE_NVARCHAR,
-    BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
-    'PL/SQL BOOLEAN': oracledb.DB_TYPE_BOOLEAN,
-    BINARY_INTEGER: oracledb.DB_TYPE_BINARY_INTEGER,
-    PLS_INTEGER: oracledb.DB_TYPE_BINARY_INTEGER,
-    'PL/SQL BINARY INTEGER': oracledb.DB_TYPE_BINARY_INTEGER,
-    'PL/SQL PLS INTEGER': oracledb.DB_TYPE_BINARY_INTEGER,
     INTEGER: oracledb.DB_TYPE_NUMBER,
     SMALLINT: oracledb.DB_TYPE_NUMBER,
     DECIMAL: oracledb.DB_TYPE_NUMBER,
@@ -93,7 +74,47 @@ export class OracleProcedureBindings {
     'DOUBLE PRECISION': oracledb.DB_TYPE_NUMBER,
     BINARY_FLOAT: oracledb.DB_TYPE_BINARY_FLOAT,
     BINARY_DOUBLE: oracledb.DB_TYPE_BINARY_DOUBLE,
+    BINARY_INTEGER: oracledb.DB_TYPE_BINARY_INTEGER,
+    PLS_INTEGER: oracledb.DB_TYPE_BINARY_INTEGER,
+    'PL/SQL BINARY INTEGER': oracledb.DB_TYPE_BINARY_INTEGER,
+    'PL/SQL PLS INTEGER': oracledb.DB_TYPE_BINARY_INTEGER,
+    BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
+    'PL/SQL BOOLEAN': oracledb.DB_TYPE_BOOLEAN,
+    STRING: oracledb.STRING,
+    VARCHAR: oracledb.DB_TYPE_VARCHAR,
+    VARCHAR2: oracledb.STRING,
+    NVARCHAR2: oracledb.DB_TYPE_NVARCHAR,
+    CHAR: oracledb.DB_TYPE_CHAR,
+    NCHAR: oracledb.DB_TYPE_NCHAR,
+    RAW: oracledb.BUFFER,
+    BUFFER: oracledb.BUFFER,
+    DATE: oracledb.DB_TYPE_DATE,
+    TIMESTAMP: oracledb.DB_TYPE_TIMESTAMP,
+    'TIMESTAMP WITH TIME ZONE': oracledb.DB_TYPE_TIMESTAMP_TZ,
+    'TIMESTAMP WITH LOCAL TIME ZONE': oracledb.DB_TYPE_TIMESTAMP_LTZ,
+    CLOB: oracledb.CLOB,
+    BLOB: oracledb.BLOB,
+    [OracleProcedureBindings.CURSOR_TYPE]: oracledb.CURSOR,
   } as const;
+  private static readonly TEMPORAL_TYPES = new Set([
+    'DATE',
+    'TIMESTAMP',
+    'TIMESTAMP WITH TIME ZONE',
+    'TIMESTAMP WITH LOCAL TIME ZONE',
+  ]);
+  private static readonly LOB_TYPES = new Set(['CLOB', 'BLOB']);
+  /**
+   * Bind types whose buffer length is not implied by the type itself. Keyed by
+   * driver type rather than by type name so that every alias (`STRING`,
+   * `VARCHAR`, `VARCHAR2`, `RAW`, `BUFFER`, …) is covered by construction.
+   */
+  private static readonly VARIABLE_SIZE_BIND_TYPES = new Set<oracledb.DbType>([
+    oracledb.DB_TYPE_CHAR,
+    oracledb.DB_TYPE_NCHAR,
+    oracledb.DB_TYPE_VARCHAR,
+    oracledb.DB_TYPE_NVARCHAR,
+    oracledb.DB_TYPE_RAW,
+  ]);
 
   public build(
     packageName: Lowercase<string>,
@@ -197,14 +218,14 @@ export class OracleProcedureBindings {
               'oracle record field'
             )}"`;
             const fieldType = field.argumentType.toUpperCase();
-            if (!this.isValidRecordFieldType(fieldType))
+            if (!this.isValidDataType(fieldType))
               throw new ServerError(
                 `Unsupported scalar type ${fieldType} for Oracle RECORD field "${argument.argumentName}.${field.name}"`
               );
-            const type = this.recordFieldTypeMapping[fieldType];
+            const type = this.typeMapping[fieldType];
             const bindName = createName();
             const isVariableSize =
-              OracleProcedureBindings.VARIABLE_SIZE_RECORD_TYPES.has(type);
+              OracleProcedureBindings.VARIABLE_SIZE_BIND_TYPES.has(type);
             bindings[bindName] = {
               dir: OracleProcedureBindings.BINDING_DIRECTIONS[argument.mode],
               type,
@@ -292,16 +313,17 @@ export class OracleProcedureBindings {
           argument.argumentName
         );
       }
+      const type = this.typeMapping[dataType];
       const binding: oracledb.BindParameter = {
         dir: OracleProcedureBindings.BINDING_DIRECTIONS[argument.mode],
-        type: this.typeMapping[dataType],
+        type,
         ...(argument.mode === 'OUT'
           ? {}
           : {
               val: this.rejectArrayValue(value, argument.argumentName),
             }),
         ...(argument.mode !== 'IN' &&
-        OracleProcedureBindings.VARIABLE_SIZE_OUT_TYPES.has(dataType)
+        OracleProcedureBindings.VARIABLE_SIZE_BIND_TYPES.has(type)
           ? { maxSize: this.getVariableOutMaxSize(argument.size) }
           : {}),
       };
@@ -327,13 +349,7 @@ export class OracleProcedureBindings {
   private isValidDataType(
     value: string
   ): value is keyof typeof this.typeMapping {
-    return value in this.typeMapping;
-  }
-
-  private isValidRecordFieldType(
-    value: string
-  ): value is keyof typeof this.recordFieldTypeMapping {
-    return Object.hasOwn(this.recordFieldTypeMapping, value);
+    return Object.hasOwn(this.typeMapping, value);
   }
 
   private readPayloadValue(
