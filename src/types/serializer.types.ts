@@ -60,10 +60,6 @@ export type TSetSerializer<T extends TSerializerType = TSerializerType> =
       }
     : never;
 
-export type TSerializerRegistry = {
-  [T in TSerializerType]?: TSetSerializer<T>;
-};
-
 export type TSerializerTypeCastWithoutFormat = ReadonlyMap<
   TSerializerType,
   TSetSerializer
