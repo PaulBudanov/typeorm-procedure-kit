@@ -88,6 +88,12 @@ export abstract class DatabaseNotify<
 
     this.notificationPool.clear();
     this.restoreStates.clear();
+    // Waiting above is bounded by DESTROY_RESTORE_WAIT_TIMEOUT_MS, so a driver
+    // close or registration that never settles would otherwise keep its promise
+    // - and the connection its closure captures - reachable from this notifier
+    // for the lifetime of the destroyed adapter.
+    this.notificationClosePromises.clear();
+    this.pendingNotificationRegistrations.clear();
     this.logger.log('DatabaseNotify shutdown completed');
   }
 
