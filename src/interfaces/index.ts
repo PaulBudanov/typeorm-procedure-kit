@@ -45,8 +45,6 @@ export type {
 } from './typeorm-extend.interfaces.js';
 export type {
   IBindingsObjectReturn,
-  ICollectionStrategy,
-  IEventBusService,
   IProcedureBindingLogItem,
   IProcedureOutBinding,
   IProcedureQueryLogContext,

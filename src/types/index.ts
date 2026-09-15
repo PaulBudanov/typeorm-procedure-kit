@@ -67,11 +67,7 @@ export type {
   ISqlQueryLogContext,
   ISqlBindingsObjectReturn,
   ISqlError,
-  IEventBusService,
-  ICollectionStrategy,
-  TMapKey,
   TQueryLogContext,
-  TQueueType,
 } from './utility.types.js';
 
 // Adapter
