@@ -251,12 +251,20 @@ export class OracleProcedureResultMaterializer {
     }
 
     const transformed: Record<string, unknown> = {};
+    const outputNames = new Map<string, string>();
     const rowArray = Array.isArray(row) ? (row as Array<unknown>) : undefined;
     const rowRecord = rowArray ? undefined : (row as Record<string, unknown>);
     for (const [index, column] of metadata.entries()) {
       const rawName = column.name;
       if (rowRecord && !(rawName in rowRecord)) continue;
       const outputName = this.options.caseStrategy.transformColumnName(rawName);
+      const originalName = outputNames.get(outputName);
+      if (originalName !== undefined) {
+        throw new ServerError(
+          `Oracle result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`
+        );
+      }
+      outputNames.set(outputName, rawName);
       const value = await this.materializeLobValue(
         rowRecord ? rowRecord[rawName] : rowArray?.[index]
       );
