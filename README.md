@@ -605,7 +605,7 @@ Runtime scope:
 - Oracle fetch handlers are attached to the package DataSource execution path;
 - the Oracle adapter sets `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
-Serializer registration and deletion are isolated per kit instance. PostgreSQL `JSON` strategies cover both JSON and JSONB; deleting the strategy restores both default parsers. Output column names that collide after case conversion raise an error instead of overwriting data.
+Serializer registration and deletion are isolated per kit instance. PostgreSQL `JSON` strategies cover both JSON and JSONB; deleting the strategy restores both default parsers. Output column names that are already duplicated in the query, as in `SELECT a.ID, b.ID`, and names that only collide after case conversion both raise an error instead of overwriting data.
 
 `DateFormatter.convertTimeZone()` now includes the actual numeric offset by default (for example, `2024-01-02T03:00:00.000+03:00`). UTC serializers keep their `Z` format. Notification retry delays must be integers in `0..2_147_483_647` milliseconds. Unquoted PostgreSQL LISTEN names are folded to lowercase; quoted names retain their case.
 
