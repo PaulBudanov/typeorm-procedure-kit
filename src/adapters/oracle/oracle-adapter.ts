@@ -190,15 +190,18 @@ export class OracleAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Collects positional bindings for uppercase named placeholders, leaving the
-   * SQL text untouched so Oracle keeps resolving `:NAME` itself.
+   * Collects named bindings for uppercase placeholders, leaving the SQL text
+   * untouched so Oracle keeps resolving `:NAME` itself.
    *
-   * Oracle treats every occurrence of the same `:NAME` as a single bind
-   * variable, so a placeholder repeated in the query consumes exactly one
-   * positional slot. Each distinct name therefore contributes one value, in
-   * order of its first occurrence; emitting one value per occurrence instead
-   * makes the driver reject the call (`NJS-098` on thin, `ORA-01036` /
-   * `ORA-01008` on thick).
+   * The bindings are returned as an object keyed by placeholder name rather
+   * than as a positional array, because Oracle's bind slots are not positional
+   * in a way the caller can predict: node-oracledb allocates one slot per
+   * placeholder *occurrence* in plain SQL but only one per *distinct name* in
+   * PL/SQL. A named object sidesteps that split entirely -- the driver matches
+   * each value by name, fans it out to every occurrence of that name, and
+   * rejects any name the statement does not declare -- so one entry per
+   * distinct placeholder is correct for both statement kinds and no value can
+   * ever land on a placeholder other than its own.
    * @param sqlQuery - SQL query with uppercase named placeholders.
    * @param params - values keyed by placeholder name, case-insensitive.
    * @returns the unchanged SQL and one binding value per distinct placeholder.
@@ -207,8 +210,7 @@ export class OracleAdapter extends DatabaseAdapter<
     sqlQuery: string,
     params?: Record<string, unknown>
   ): ISqlBindingsObjectReturn {
-    const bindings: Array<unknown> = [];
-    const boundNames = new Set<string>();
+    const bindings: Record<string, unknown> = {};
     const paramsInUpperCase = Object.fromEntries(
       params
         ? Object.entries(params).map(([key, value]) => [
@@ -220,9 +222,8 @@ export class OracleAdapter extends DatabaseAdapter<
     replaceNamedParameters(sqlQuery, ({ full, key }) => {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
       const bindName = key.toUpperCase();
-      if (boundNames.has(bindName)) return full;
-      boundNames.add(bindName);
-      bindings.push(paramsInUpperCase[bindName] ?? null);
+      if (Object.hasOwn(bindings, bindName)) return full;
+      bindings[bindName] = paramsInUpperCase[bindName] ?? null;
       return full;
     });
     return { bindings, sqlString: sqlQuery };

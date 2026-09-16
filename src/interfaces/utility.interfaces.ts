@@ -46,7 +46,12 @@ export interface IBindingsObjectReturn {
 }
 
 export interface ISqlBindingsObjectReturn {
-  bindings: Array<unknown>;
+  /**
+   * Positional values for adapters that rewrite placeholders (PostgreSQL), or
+   * values keyed by placeholder name for adapters that leave the SQL text
+   * alone and let the driver resolve `:NAME` itself (Oracle).
+   */
+  bindings: TProcedureBindings;
   sqlString: string;
 }
 

@@ -300,7 +300,8 @@ export class TypeOrmProcedureKit {
    *
    * Parameters are read from uppercase `:PARAM_NAME` placeholders. PostgreSQL
    * rewrites them to positional `$1`, `$2` bindings, while Oracle keeps the
-   * original placeholders and passes the binding array to the driver.
+   * original placeholders and passes bindings keyed by placeholder name to the
+   * driver.
    *
    * @param sql - SQL query string with optional uppercase named parameters.
    * @param [params] - Object with values for the named SQL parameters.
