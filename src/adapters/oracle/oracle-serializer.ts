@@ -37,11 +37,24 @@ export class OracleSerializer extends DatabaseSerializer {
       this.registerDefaultSerializers();
   }
 
-  /** Creates an instance-scoped handler for an Oracle execute call. */
+  /**
+   * Creates an instance-scoped handler for an Oracle execute call.
+   *
+   * node-oracledb invokes the handler once per column and supplies the whole
+   * rowset metadata array as the second argument. That array is rebuilt for
+   * every execute, so `rowsetMetaData[0] === metaData` marks the first column
+   * of one statement while every name is still raw. The collision check runs
+   * there and keeps no state between calls, which is why two separate queries
+   * sharing a column name can never be reported as a conflict.
+   *
+   * Drivers that do not pass the rowset metadata simply skip the check.
+   */
   public createFetchTypeHandler(): (
-    metaData: oracledb.Metadata<unknown>
+    metaData: oracledb.Metadata<unknown>,
+    rowsetMetaData?: ReadonlyArray<oracledb.Metadata<unknown>>
   ) => FetchTypeResponse | undefined {
-    return (metaData): FetchTypeResponse | undefined => {
+    return (metaData, rowsetMetaData): FetchTypeResponse | undefined => {
+      this.assertNoRowsetColumnCollision(metaData, rowsetMetaData);
       if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
         metaData.name = this.options.caseStrategy.transformColumnName(
           metaData.name
@@ -67,6 +80,41 @@ export class OracleSerializer extends DatabaseSerializer {
       }
       return;
     };
+  }
+
+  /**
+   * Rejects a rowset whose columns would share one output name.
+   *
+   * The check runs only on the first column of a rowset, while every name in
+   * the array is still raw, and does nothing on the remaining columns or when
+   * the driver supplies no rowset metadata. REF CURSOR columns keep their raw
+   * name because the handler never renames them, so they take part in the
+   * check under that raw name.
+   * @param metaData - the column the driver is currently asking about.
+   * @param rowsetMetaData - every column of a single Oracle statement.
+   * @throws ServerError - when two columns map onto the same output name.
+   */
+  private assertNoRowsetColumnCollision(
+    metaData: oracledb.Metadata<unknown>,
+    rowsetMetaData?: ReadonlyArray<oracledb.Metadata<unknown>>
+  ): void {
+    if (rowsetMetaData === undefined) return;
+    if (rowsetMetaData[0] !== metaData) return;
+    const outputNames = new Map<string, string>();
+    for (const column of rowsetMetaData) {
+      const rawName = column.name;
+      const outputName =
+        column.dbType === oracledb.DB_TYPE_CURSOR
+          ? rawName
+          : this.options.caseStrategy.transformColumnName(rawName);
+      const originalName = outputNames.get(outputName);
+      if (originalName !== undefined) {
+        throw new ServerError(
+          `Oracle result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`
+        );
+      }
+      outputNames.set(outputName, rawName);
+    }
   }
 
   /**
