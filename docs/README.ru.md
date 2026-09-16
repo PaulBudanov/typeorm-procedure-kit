@@ -600,7 +600,7 @@ Runtime scope:
 - Oracle fetch handlers привязаны к execution path package DataSource;
 - Oracle adapter sets `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
-Регистрация и удаление serializers изолированы между экземплярами kit. PostgreSQL strategy `JSON` применяется к JSON и JSONB; удаление восстанавливает оба стандартных parser. Коллизии имён колонок после case conversion вызывают ошибку вместо перезаписи данных.
+Регистрация и удаление serializers изолированы между экземплярами kit. PostgreSQL strategy `JSON` применяется к JSON и JSONB; удаление восстанавливает оба стандартных parser. Имена колонок, уже дублирующиеся в самом запросе, как в `SELECT a.ID, b.ID`, и имена, которые сталкиваются только после case conversion, одинаково вызывают ошибку вместо перезаписи данных.
 
 `DateFormatter.convertTimeZone()` по умолчанию возвращает действительное числовое смещение, например `2024-01-02T03:00:00.000+03:00`. UTC serializers сохраняют формат с `Z`. Retry delays уведомлений принимают целые миллисекунды `0..2_147_483_647`. PostgreSQL LISTEN без кавычек приводит имя канала к lowercase, с кавычками сохраняет регистр.
 
