@@ -56,6 +56,26 @@ describe('serializer type exhaustiveness', (): void => {
     expect([...listed].sort()).toEqual([...witness].sort());
   });
 
+  it('keeps the canonical order that serializerMapping exposes to consumers', (): void => {
+    // Asserted against a literal, not against SERIALIZER_TYPES: every other
+    // assertion in this file derives both sides from that same list, so a
+    // reordering of the source of truth would be invisible to all of them.
+    // `serializerMapping` is a public getter, so its iteration order is part of
+    // the observable contract.
+    expect([...SERIALIZER_TYPES]).toEqual([
+      'DATE',
+      'TIMESTAMP',
+      'TIMESTAMP_TZ',
+      'TIMESTAMP_LTZ',
+      'BOOLEAN',
+      'CHAR',
+      'VARCHAR',
+      'JSON',
+      'BINARY',
+      'XML',
+    ]);
+  });
+
   it('registers, reports and clears every serializer type', (): void => {
     const serializer = createProbeSerializer();
     // Reverse registration order: the registry views must still use the canonical order, which
