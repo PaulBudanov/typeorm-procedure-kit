@@ -12,7 +12,14 @@ import type { Client } from 'pg';
 
 class TestDatabaseNotify extends DatabaseNotify<Client> {
   public constructor(logger: ILoggerModule) {
-    super(logger);
+    super(logger, {
+      closeSingleConnection: (): Promise<void> => Promise.resolve(),
+      isSingleConnectionHealthy: (): Promise<boolean> => Promise.resolve(false),
+    });
+  }
+
+  protected override unsubscribeNotificationConnection(): Promise<void> {
+    return Promise.resolve();
   }
 
   public override async unlistenNotify(channel: string): Promise<void> {

@@ -41,7 +41,7 @@ export abstract class DatabaseNotify<
      * Vendor helper owning the standalone notification connections. The shared
      * close choreography probes and closes connections through it.
      */
-    private readonly notificationConnection?: Pick<
+    private readonly notificationConnection: Pick<
       DatabaseConnection<TConnectionOptions, T>,
       'closeSingleConnection' | 'isSingleConnectionHealthy'
     >
@@ -227,16 +227,17 @@ export abstract class DatabaseNotify<
   /**
    * Releases the vendor subscription on a connection that answered the pre-close
    * probe. This is the only step of the close choreography that differs between
-   * adapters; adapters without a vendor-side unsubscribe keep the default.
-   * @param _channelName - channel or subscription name being closed.
-   * @param _connection - live notification connection about to be closed.
+   * adapters. It is abstract on purpose: a default would let an adapter that
+   * never implements it report a successful unsubscribe without performing one.
+   * An adapter with no server-side registration to release returns a resolved
+   * promise explicitly, so that choice is visible in its own source.
+   * @param channelName - channel or subscription name being closed.
+   * @param connection - live notification connection about to be closed.
    */
-  protected unsubscribeNotificationConnection(
-    _channelName: string,
-    _connection: T
-  ): Promise<void> {
-    return Promise.resolve();
-  }
+  protected abstract unsubscribeNotificationConnection(
+    channelName: string,
+    connection: T
+  ): Promise<void>;
 
   private async performNotificationSubscriptionClose(
     channelName: string,
@@ -266,7 +267,7 @@ export abstract class DatabaseNotify<
         (error as Error).stack
       );
     } finally {
-      await this.notificationConnection?.closeSingleConnection(connection);
+      await this.notificationConnection.closeSingleConnection(connection);
     }
   }
 
@@ -275,7 +276,6 @@ export abstract class DatabaseNotify<
    * dead connection skips the vendor unsubscribe instead of hanging on it.
    */
   private isNotificationConnectionAlive(connection: T): Promise<boolean> {
-    if (!this.notificationConnection) return Promise.resolve(false);
     return this.notificationConnection.isSingleConnectionHealthy(
       connection,
       DatabaseNotify.CLOSE_HEALTH_CHECK_TIMEOUT_MS
