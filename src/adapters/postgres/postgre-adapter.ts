@@ -1,5 +1,5 @@
+import { NO_ARGUMENT_SENTINEL } from '../../consts/procedure.consts.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
-import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
@@ -38,7 +38,6 @@ export class PostgreAdapter extends DatabaseAdapter<
   INotifyRetryOptions,
   Client
 > {
-  private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
   private readonly procedureBindings: PostgreProcedureBindings;
   private readonly resultMaterializer: PostgreProcedureResultMaterializer;
 
@@ -55,7 +54,7 @@ export class PostgreAdapter extends DatabaseAdapter<
       packagesLength,
       {
         vendor: 'PostgreSQL',
-        noArgumentSentinel: PostgreAdapter.NO_ARGUMENT_SENTINEL,
+        noArgumentSentinel: NO_ARGUMENT_SENTINEL,
         getOverloadIdentity: ({ specificName }) => specificName,
       }
     );
@@ -112,44 +111,24 @@ export class PostgreAdapter extends DatabaseAdapter<
     );
   }
 
-  /**
-   * Generates a SQL query that loads PostgreSQL procedure metadata from a schema.
-   * @param packageName - schema name to inspect.
-   * @returns SQL query string for procedure metadata loading.
-   */
-  public override generatePackageInfoSql(
-    packageName: string,
-    procedureMetadataSql?: string
-  ): string {
-    const safePackageName = SqlIdentifier.validateIdentifier(
+  /** Validates the schema name and lowercases it for the PostgreSQL catalog. */
+  protected override normalizePackageIdentifier(packageName: string): string {
+    return SqlIdentifier.validateIdentifier(
       packageName,
       'postgres package'
     ).toLowerCase();
-    const query = this.replacePackageNamePlaceholder(
-      procedureMetadataSql ?? PostgreSqlCommand.SQL_GET_PACKAGE_INFO,
-      `'${safePackageName}'`
-    );
-    if (procedureMetadataSql) return query;
-    const maxMetadataRows =
-      this.handlerOptions.resourceLimits?.maxMetadataRows ??
-      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
-    const detectionLimit = Math.min(
-      maxMetadataRows + 1,
-      Number.MAX_SAFE_INTEGER
-    );
-    return `${query.trimEnd()}\nLIMIT ${detectionLimit}`;
   }
 
-  private replacePackageNamePlaceholder(
-    sql: string,
-    packageNameLiteral: string
+  /**
+   * Default SQL query that loads PostgreSQL procedure metadata from a schema,
+   * with the `LIMIT` clause appended.
+   * @param detectionLimit - maximum number of rows the query may return.
+   * @returns metadata SQL template limited with the PostgreSQL syntax.
+   */
+  protected override buildDefaultPackageInfoSql(
+    detectionLimit: number
   ): string {
-    if (!sql.includes(':PACKAGE_NAME')) {
-      throw new ServerError(
-        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
-      );
-    }
-    return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
+    return `${PostgreSqlCommand.SQL_GET_PACKAGE_INFO.trimEnd()}\nLIMIT ${detectionLimit}`;
   }
 
   /** Builds the shared structured-type contract from PostgreSQL catalog rows. */

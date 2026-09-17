@@ -1313,7 +1313,7 @@ describe('OracleAdapter', (): void => {
     ).rejects.toThrow('conflicting transformed field "value"');
   });
 
-  it('keeps Oracle named parameters and returns bindings in occurrence order', (): void => {
+  it('keeps Oracle named parameters and returns bindings keyed by name', (): void => {
     const adapter = createOracleAdapter();
 
     expect(
@@ -1322,7 +1322,7 @@ describe('OracleAdapter', (): void => {
       })
     ).toEqual({
       sqlString: 'select * from users where id = :ID and x = :X',
-      bindings: [1, null],
+      bindings: { ID: 1, X: null },
     });
   });
 
@@ -1339,7 +1339,7 @@ describe('OracleAdapter', (): void => {
       })
     ).toEqual({
       sqlString: sql,
-      bindings: [1, 2],
+      bindings: { ID: 1, X: 2 },
     });
   });
 

@@ -25,6 +25,9 @@ export class OracleSerializer extends DatabaseSerializer {
     TIMESTAMP_LTZ: oracledb.DB_TYPE_TIMESTAMP_LTZ,
     XML: oracledb.DB_TYPE_XMLTYPE,
   };
+  /** Numeric code node-oracledb Thick mode reports for a REF CURSOR column. */
+  private static readonly CURSOR_DB_TYPE_NUMBER: number =
+    oracledb.DB_TYPE_CURSOR.num;
   private objectDbTypeHandlerCast: TOracleObjectDbTypeHandlerCast = new Map();
 
   /**
@@ -37,11 +40,26 @@ export class OracleSerializer extends DatabaseSerializer {
       this.registerDefaultSerializers();
   }
 
-  /** Creates an instance-scoped handler for an Oracle execute call. */
+  /**
+   * Creates an instance-scoped handler for an Oracle execute call.
+   *
+   * node-oracledb invokes the handler once per column and supplies the whole
+   * rowset metadata array as the second argument. That array is rebuilt for
+   * every execute, so `rowsetMetaData[0] === metaData` marks the first column
+   * of one statement while every name is still raw. The collision check runs
+   * there and keeps no state between calls, which is why two separate queries
+   * sharing a column name can never be reported as a conflict.
+   *
+   * That second argument is not part of the declared driver contract, so a
+   * driver that omits it, or passes something other than an array, simply skips
+   * the check instead of failing the query.
+   */
   public createFetchTypeHandler(): (
-    metaData: oracledb.Metadata<unknown>
+    metaData: oracledb.Metadata<unknown>,
+    rowsetMetaData?: ReadonlyArray<oracledb.Metadata<unknown>>
   ) => FetchTypeResponse | undefined {
-    return (metaData): FetchTypeResponse | undefined => {
+    return (metaData, rowsetMetaData): FetchTypeResponse | undefined => {
+      this.assertNoRowsetColumnCollision(metaData, rowsetMetaData);
       if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
         metaData.name = this.options.caseStrategy.transformColumnName(
           metaData.name
@@ -67,6 +85,101 @@ export class OracleSerializer extends DatabaseSerializer {
       }
       return;
     };
+  }
+
+  /**
+   * Rejects a rowset whose columns would share one output name.
+   *
+   * The check runs only on the first column of a rowset, while every name in
+   * the array is still raw, and does nothing on the remaining columns or when
+   * the driver supplies no rowset metadata. REF CURSOR columns keep their raw
+   * name because the handler never renames them, so they take part in the
+   * check under that raw name.
+   *
+   * The second argument is undeclared by `@types/oracledb` and was only
+   * verified on node-oracledb 7.0.0, while the supported peer range is
+   * `^6.0.0 || ^7.0.0`. It is therefore validated rather than trusted: anything
+   * that is not a real array is ignored, and an entry without a string name is
+   * skipped. Either way the check is quietly lost, never turned into an error
+   * on a query the driver would have run.
+   * @param metaData - the column the driver is currently asking about.
+   * @param rowsetMetaData - every column of a single Oracle statement.
+   * @throws ServerError - when two columns map onto the same output name.
+   */
+  private assertNoRowsetColumnCollision(
+    metaData: oracledb.Metadata<unknown>,
+    rowsetMetaData?: ReadonlyArray<oracledb.Metadata<unknown>>
+  ): void {
+    if (!OracleSerializer.isRowsetArray(rowsetMetaData)) return;
+    if (rowsetMetaData[0] !== metaData) return;
+    const outputNames = new Map<string, string>();
+    for (const column of rowsetMetaData) {
+      const rawName = OracleSerializer.readColumnName(column);
+      if (rawName === undefined) continue;
+      const outputName = OracleSerializer.isCursorColumn(column)
+        ? rawName
+        : this.options.caseStrategy.transformColumnName(rawName);
+      const originalName = outputNames.get(outputName);
+      if (originalName !== undefined) {
+        throw new ServerError(
+          `Oracle result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`
+        );
+      }
+      outputNames.set(outputName, rawName);
+    }
+  }
+
+  /**
+   * Narrows the driver's undeclared second argument to a genuine array.
+   * @param rowsetMetaData - whatever the driver passed as the second argument.
+   * @returns true only for a real array, which alone is safe to iterate.
+   */
+  private static isRowsetArray(
+    rowsetMetaData: ReadonlyArray<oracledb.Metadata<unknown>> | undefined
+  ): rowsetMetaData is ReadonlyArray<oracledb.Metadata<unknown>> {
+    return Array.isArray(rowsetMetaData);
+  }
+
+  /**
+   * Reads a rowset entry's raw column name, if it has a usable one.
+   * @param column - one entry of the rowset metadata array.
+   * @returns the raw name, or undefined when the entry carries no string name.
+   */
+  private static readColumnName(column: unknown): string | undefined {
+    if (typeof column !== 'object' || column === null) return undefined;
+    if (!('name' in column)) return undefined;
+    const { name } = column;
+    return typeof name === 'string' ? name : undefined;
+  }
+
+  /**
+   * Reports whether a rowset column is a REF CURSOR, in either `dbType` form.
+   *
+   * node-oracledb normalises `dbType` from its numeric code to a `DbType`
+   * object one column at a time, in the same loop that invokes the fetch type
+   * handler and immediately before each invocation (`lib/impl/resultset.js`
+   * `_setup` calling `addTypeProperties`). The rowset check runs on the first
+   * column, so in Thick mode — the mode that reports numbers — every later
+   * column is still unnormalised and an identity comparison against
+   * `oracledb.DB_TYPE_CURSOR` would miss it. `dbTypeName` is no help either:
+   * `addTypeProperties` derives it from that very normalisation step. The
+   * numeric code is the one form both modes agree on, so the comparison goes
+   * through it.
+   * @param column - one entry of the rowset metadata array.
+   * @returns true when the column fetches as a REF CURSOR.
+   */
+  private static isCursorColumn(column: unknown): boolean {
+    if (typeof column !== 'object' || column === null) return false;
+    if (!('dbType' in column)) return false;
+    const { dbType } = column;
+    if (typeof dbType === 'number')
+      return dbType === OracleSerializer.CURSOR_DB_TYPE_NUMBER;
+    if (typeof dbType !== 'object' || dbType === null) return false;
+    if (!('num' in dbType)) return false;
+    const { num } = dbType;
+    return (
+      typeof num === 'number' && num === OracleSerializer.CURSOR_DB_TYPE_NUMBER
+    );
   }
 
   /**

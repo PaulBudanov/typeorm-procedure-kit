@@ -1,4 +1,6 @@
 import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
+import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { ServerError } from '../../utils/server-error.js';
 
 import { ProcedureMetadataNormalizer } from './procedure-metadata-normalizer.js';
 
@@ -8,7 +10,10 @@ import type {
 } from './adapter-capabilities.js';
 import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
-import type { IDatabaseAdapterContract } from '../../types/adapter.types.js';
+import type {
+  IDatabaseAdapterContract,
+  IRegisteredFetchHandlerOptions,
+} from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   INotifyRetryOptions,
@@ -40,8 +45,12 @@ export abstract class DatabaseAdapter<
   TNotifyOptions extends INotifyRetryOptions = INotifyRetryOptions,
   TNotificationConnection = unknown,
 > implements IDatabaseAdapterContract<TNotifyOptions> {
+  /** Placeholder every procedure-metadata SQL template must expose. */
+  private static readonly PACKAGE_NAME_PLACEHOLDER = ':PACKAGE_NAME';
   private readonly procedureMetadataNormalizer =
     new ProcedureMetadataNormalizer();
+  /** Adapter options supplied by the concrete vendor adapter. */
+  protected abstract readonly handlerOptions: IRegisteredFetchHandlerOptions;
   /**
    * Creates a database adapter facade around serializer, notification, and
    * single-connection helpers for one database vendor.
@@ -167,14 +176,76 @@ export abstract class DatabaseAdapter<
   /**
    * Builds the vendor-specific SQL query used to load procedure metadata for a
    * package or schema.
+   *
+   * Template method: the shared sequence is validated identifier to package
+   * literal substitution, while the concrete adapter supplies the vendor
+   * identifier casing and the complete default metadata query, row limit
+   * included. A caller-supplied template is substituted as is and never
+   * receives a row limit.
    * @param packageName - package or schema name to inspect.
    * @param procedureMetadataSql - optional SQL template with `:PACKAGE_NAME`.
    * @returns SQL query string for procedure metadata loading.
    */
-  public abstract generatePackageInfoSql(
+  public generatePackageInfoSql(
     packageName: string,
     procedureMetadataSql?: string
-  ): string;
+  ): string {
+    const safePackageName = this.normalizePackageIdentifier(packageName);
+    const sql =
+      procedureMetadataSql ??
+      this.buildDefaultPackageInfoSql(this.resolveMetadataDetectionLimit());
+    return this.replacePackageNamePlaceholder(sql, `'${safePackageName}'`);
+  }
+
+  /**
+   * Validates the requested package or schema name and returns it in the
+   * identifier case used by the vendor data dictionary.
+   * @param packageName - package or schema name requested by the caller.
+   * @returns validated identifier ready to be inlined as a SQL literal.
+   */
+  protected abstract normalizePackageIdentifier(packageName: string): string;
+
+  /**
+   * Builds the complete vendor metadata query used when the caller supplies no
+   * template of its own, with the row limit already woven in. Vendors that
+   * wrap rather than append, and vendors whose limit form depends on the same
+   * server capability as the template choice, decide both at once here.
+   * @param detectionLimit - maximum number of rows the query may return.
+   * @returns SQL template containing the `:PACKAGE_NAME` placeholder.
+   */
+  protected abstract buildDefaultPackageInfoSql(detectionLimit: number): string;
+
+  /**
+   * Replaces every `:PACKAGE_NAME` placeholder with the quoted package literal.
+   * @param sql - metadata SQL template.
+   * @param packageNameLiteral - quoted package or schema literal.
+   * @returns SQL with every placeholder occurrence substituted.
+   */
+  private replacePackageNamePlaceholder(
+    sql: string,
+    packageNameLiteral: string
+  ): string {
+    if (!sql.includes(DatabaseAdapter.PACKAGE_NAME_PLACEHOLDER)) {
+      throw new ServerError(
+        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
+      );
+    }
+    return sql
+      .split(DatabaseAdapter.PACKAGE_NAME_PLACEHOLDER)
+      .join(packageNameLiteral);
+  }
+
+  /**
+   * Row limit applied to metadata queries: one row above the configured
+   * maximum so that an overflow can be detected.
+   * @returns metadata row detection limit.
+   */
+  protected resolveMetadataDetectionLimit(): number {
+    const maxMetadataRows =
+      this.handlerOptions.resourceLimits?.maxMetadataRows ??
+      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
+    return Math.min(maxMetadataRows + 1, Number.MAX_SAFE_INTEGER);
+  }
 
   /** Returns common metadata rows unchanged unless a vendor must collapse them. */
   public prepareProcedureMetadataRows(

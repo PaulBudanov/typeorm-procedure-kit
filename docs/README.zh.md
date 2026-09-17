@@ -545,9 +545,9 @@ value 会跳过 custom code，并统一为 `null`。支持的 keys 包括 `DATE`
   根据 ResultSet metadata 执行大小写转换和 temporal serialization；
 - Oracle 适配器会设置 `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`。
 
-Serializer 的注册和删除按 kit 实例隔离。PostgreSQL JSON strategy 同时处理 JSON 和 JSONB，删除时恢复两种默认 parser。列名转换后发生冲突会抛错，不再覆盖数据。
+Serializer 的注册和删除按 kit 实例隔离。PostgreSQL JSON strategy 同时处理 JSON 和 JSONB，删除时恢复两种默认 parser。查询中本就重复的列名（例如 `SELECT a.ID, b.ID`），以及仅在大小写转换后才冲突的列名，都会抛错，不再覆盖数据。
 
-`DateFormatter.convertTimeZone()` 默认包含真实数字偏移，例如 `2024-01-02T03:00:00.000+03:00`；UTC serializers 保留 `Z` 格式。Map 队列调用无键 `dequeue()` 时删除最早插入的条目，并在事件中提供实际键。通知重试延迟仅接受 `0..2_147_483_647` 范围的整数毫秒。未加引号的 LISTEN 名称转换为小写，加引号的名称保留大小写。
+`DateFormatter.convertTimeZone()` 默认包含真实数字偏移，例如 `2024-01-02T03:00:00.000+03:00`；UTC serializers 保留 `Z` 格式。通知重试延迟仅接受 `0..2_147_483_647` 范围的整数毫秒。未加引号的 LISTEN 名称转换为小写，加引号的名称保留大小写。
 
 ## NestJS 集成
 
