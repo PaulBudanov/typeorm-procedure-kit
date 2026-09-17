@@ -1,4 +1,5 @@
 import { DateFormatter } from '../../utils/date-formatter.js';
+import { isPlainObject } from '../../utils/plain-object.js';
 import { ServerError } from '../../utils/server-error.js';
 
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
@@ -204,19 +205,13 @@ export abstract class DatabaseSerializer {
           typeof value === 'boolean' ||
           Buffer.isBuffer(value) ||
           Array.isArray(value) ||
-          this.isPlainRecord(value)
+          isPlainObject(value)
         )
           return;
         break;
     }
 
     this.throwUnsupportedNativeValue(serializerType, value);
-  }
-
-  private isPlainRecord(value: unknown): value is Record<string, unknown> {
-    if (typeof value !== 'object' || value === null) return false;
-    const prototype: unknown = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
   }
 
   private throwUnsupportedNativeValue(
