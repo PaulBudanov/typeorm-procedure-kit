@@ -1,7 +1,7 @@
 import oracledb from 'oracledb';
 
+import { NO_ARGUMENT_SENTINEL } from '../../consts/procedure.consts.js';
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
-import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
@@ -41,7 +41,6 @@ export class OracleAdapter extends DatabaseAdapter<
   IOracleOptionsNotify,
   oracledb.Connection
 > {
-  private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
   private static readonly MINIMUM_RECORD_VERSION = [12, 1] as const;
   private static readonly RECORD_FIELD_TYPE_ALIASES = new Map([
     ['TIMESTAMP WITH TZ', 'TIMESTAMP WITH TIME ZONE'],
@@ -98,7 +97,7 @@ export class OracleAdapter extends DatabaseAdapter<
       packagesLength,
       {
         vendor: 'Oracle',
-        noArgumentSentinel: OracleAdapter.NO_ARGUMENT_SENTINEL,
+        noArgumentSentinel: NO_ARGUMENT_SENTINEL,
         getOverloadIdentity: ({ overload, subprogramId }) =>
           overload ?? subprogramId,
       }
@@ -229,35 +228,40 @@ export class OracleAdapter extends DatabaseAdapter<
     return { bindings, sqlString: sqlQuery };
   }
 
-  public override generatePackageInfoSql(
-    packageName: string,
-    procedureMetadataSql?: string
-  ): string {
-    const safePackageName = SqlIdentifier.validateIdentifier(
+  /** Validates the package name and uppercases it for the Oracle dictionary. */
+  protected override normalizePackageIdentifier(packageName: string): string {
+    return SqlIdentifier.validateIdentifier(
       packageName,
       'oracle package'
     ).toUpperCase();
-    const isModernMetadataSupported = this.isSupportedRecordVersion(
-      this.appDataSource.driver.version
-    );
-    const defaultSql = isModernMetadataSupported
+  }
+
+  /**
+   * Picks the package type dictionary query on Oracle 12.1 and newer and the
+   * legacy `ALL_ARGUMENTS` query on older releases.
+   */
+  protected override getDefaultPackageInfoSql(): string {
+    return this.isModernMetadataSupported()
       ? OracleSqlCommand.SQL_GET_PACKAGE_INFO
       : OracleSqlCommand.SQL_GET_PACKAGE_INFO_LEGACY;
-    const query = this.replacePackageNamePlaceholder(
-      procedureMetadataSql ?? defaultSql,
-      `'${safePackageName}'`
-    );
-    if (procedureMetadataSql) return query;
-    const maxMetadataRows =
-      this.handlerOptions.resourceLimits?.maxMetadataRows ??
-      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
-    const detectionLimit = Math.min(
-      maxMetadataRows + 1,
-      Number.MAX_SAFE_INTEGER
-    );
-    if (isModernMetadataSupported)
+  }
+
+  /**
+   * Applies `FETCH FIRST` on Oracle 12.1 and newer, and wraps the query in an
+   * ordered `ROWNUM` filter on older releases, which lack row-limiting clauses.
+   */
+  protected override applyMetadataRowLimit(
+    query: string,
+    detectionLimit: number
+  ): string {
+    if (this.isModernMetadataSupported())
       return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
     return `SELECT * FROM (\n${query.trimEnd()}\n) WHERE ROWNUM <= ${detectionLimit}`;
+  }
+
+  /** True when the connected Oracle release supports the modern metadata SQL. */
+  private isModernMetadataSupported(): boolean {
+    return this.isSupportedRecordVersion(this.appDataSource.driver.version);
   }
 
   /** Combines a package RECORD argument with its dictionary field rows. */
@@ -356,18 +360,6 @@ export class OracleAdapter extends DatabaseAdapter<
         'Oracle optionsCommands cannot override TIME_ZONE because ALTER SESSION state persists after the connection returns to the pool. Configure sessionTimeZone instead.'
       );
     }
-  }
-
-  private replacePackageNamePlaceholder(
-    sql: string,
-    packageNameLiteral: string
-  ): string {
-    if (!sql.includes(':PACKAGE_NAME')) {
-      throw new ServerError(
-        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
-      );
-    }
-    return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
   }
 
   private createRecordMetadata(
