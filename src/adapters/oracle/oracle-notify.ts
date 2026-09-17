@@ -42,7 +42,7 @@ export class OracleNotify extends DatabaseNotify<
     private readonly maxNotificationQueue = DEFAULT_RESOURCE_LIMITS.maxNotificationQueue,
     private readonly maxNotificationRows = DEFAULT_RESOURCE_LIMITS.maxNotificationRows
   ) {
-    super(logger);
+    super(logger, oracleConnection);
   }
   /**
    * Builds the CQN query used to watch package metadata changes.
@@ -88,52 +88,20 @@ export class OracleNotify extends DatabaseNotify<
       )
     );
     await Promise.all(
-      channelNames.map((name) => this.closeSubscription(name, true))
+      channelNames.map((name) => this.closeNotificationSubscription(name))
     );
   }
 
-  private async closeSubscription(
+  /**
+   * Releases one Oracle CQN registration on a live connection.
+   * @param channelName - subscription name to unsubscribe.
+   * @param connection - live notification connection.
+   */
+  protected override unsubscribeNotificationConnection(
     channelName: string,
-    shouldCancelRestore: boolean,
-    shouldDrainCallbacks = true
+    connection: oracledb.Connection
   ): Promise<void> {
-    if (shouldCancelRestore) this.cancelNotificationRestore(channelName);
-    this.stopConnectionHealthCheck(channelName);
-    if (!shouldDrainCallbacks) {
-      await this.performCloseSubscription(channelName, shouldCancelRestore);
-      return;
-    }
-    return this.closeNotificationChannel(channelName, () =>
-      this.performCloseSubscription(channelName, shouldCancelRestore)
-    );
-  }
-
-  private async performCloseSubscription(
-    channelName: string,
-    shouldCancelRestore: boolean
-  ): Promise<void> {
-    const connection = this.notificationPool.get(channelName);
-    this.notificationPool.delete(channelName);
-    if (shouldCancelRestore) this.clearNotificationRestoreState(channelName);
-    if (!connection) {
-      this.logger.warn(`No active subscription for channel: ${channelName}`);
-      return;
-    }
-    try {
-      const isConnectionAlive =
-        await this.oracleConnection.isSingleConnectionHealthy(connection, 500);
-      if (isConnectionAlive) await connection.unsubscribe(channelName);
-      this.logger.log(`Unsubscribed from channel: ${channelName}`);
-    } catch (error) {
-      this.logger.error(
-        `Error unsubscribing from channel ${channelName}: ${
-          (error as Error).message
-        }`,
-        (error as Error).stack
-      );
-    } finally {
-      await this.oracleConnection.closeSingleConnection(connection);
-    }
+    return connection.unsubscribe(channelName);
   }
 
   protected override beginNotificationQueueClose(
@@ -727,7 +695,7 @@ export class OracleNotify extends DatabaseNotify<
     let connection: oracledb.Connection | undefined;
     try {
       try {
-        await this.closeSubscription(channelName, false, false);
+        await this.closeNotificationSubscription(channelName, false, false);
         if (this.isNotificationRestoreCancelled(channelName)) return;
       } catch {
         const newChannelName = randomUUID();
@@ -753,7 +721,7 @@ export class OracleNotify extends DatabaseNotify<
         settings.options
       );
       if (this.isNotificationRestoreCancelled(channelName)) {
-        await this.closeSubscription(channelName, false, false);
+        await this.closeNotificationSubscription(channelName, false, false);
         return;
       }
     } catch (error: unknown) {

@@ -1,6 +1,10 @@
 import { ServerError } from '../../utils/server-error.js';
 
-import type { TConnectionTypes } from '../../types/adapter.types.js';
+import type { DatabaseConnection } from './database-connection.js';
+import type {
+  TConnectionOptions,
+  TConnectionTypes,
+} from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   INotifyHealthCheckOptions,
@@ -21,6 +25,7 @@ export abstract class DatabaseNotify<
   protected static readonly RESTORE_MAX_RETRIES: number = 5;
   protected static readonly RESTORE_CURRENT_RETRY: number = 1;
   protected static readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
+  protected static readonly CLOSE_HEALTH_CHECK_TIMEOUT_MS: number = 500;
 
   private readonly restoreStates = new Map<string, IRestoreState>();
   private readonly notificationClosePromises = new Map<string, Promise<void>>();
@@ -30,7 +35,17 @@ export abstract class DatabaseNotify<
   private isDestroyed = false;
   private destroyPromise?: Promise<void>;
   protected readonly notificationPool = new Map<string, T>();
-  protected constructor(protected readonly logger: ILoggerModule) {}
+  protected constructor(
+    protected readonly logger: ILoggerModule,
+    /**
+     * Vendor helper owning the standalone notification connections. The shared
+     * close choreography probes and closes connections through it.
+     */
+    private readonly notificationConnection?: Pick<
+      DatabaseConnection<TConnectionOptions, T>,
+      'closeSingleConnection' | 'isSingleConnectionHealthy'
+    >
+  ) {}
 
   /**
    * Returns the active notification pool for diagnostics and external cleanup.
@@ -88,8 +103,9 @@ export abstract class DatabaseNotify<
 
     this.notificationPool.clear();
     this.restoreStates.clear();
-    // Waiting above is bounded by DESTROY_RESTORE_WAIT_TIMEOUT_MS, so a driver
-    // close or registration that never settles would otherwise keep its promise
+    // Every wait above - unsubscribe, restore and registration alike - is
+    // bounded by DESTROY_RESTORE_WAIT_TIMEOUT_MS, so a driver close or
+    // registration that never settles would otherwise keep its promise
     // - and the connection its closure captures - reachable from this notifier
     // for the lifetime of the destroyed adapter.
     this.notificationClosePromises.clear();
@@ -100,17 +116,24 @@ export abstract class DatabaseNotify<
   private unsubscribeChannels(
     channels: Iterable<string>
   ): Array<Promise<void>> {
-    return Array.from(channels, async (channel) => {
-      try {
-        await this.unlistenNotify(channel);
-      } catch (error) {
-        this.logger.error(
-          `Error unsubscribing from channel ${channel}: ${
-            (error as Error).message
-          }`
-        );
-      }
-    });
+    return Array.from(channels, (channel) =>
+      this.waitForShutdownTask(
+        this.unsubscribeChannel(channel),
+        `notification unsubscribe on channel ${channel}`
+      )
+    );
+  }
+
+  private async unsubscribeChannel(channel: string): Promise<void> {
+    try {
+      await this.unlistenNotify(channel);
+    } catch (error) {
+      this.logger.error(
+        `Error unsubscribing from channel ${channel}: ${
+          (error as Error).message
+        }`
+      );
+    }
   }
 
   /**
@@ -166,6 +189,97 @@ export abstract class DatabaseNotify<
     };
     void closePromise.then(clearClosePromise, clearClosePromise);
     return closePromise;
+  }
+
+  /**
+   * Closes one notification subscription with the shared close choreography.
+   * The order is owned here so every adapter shuts a channel down the same way:
+   * cancel restore -> stop the health check -> drain the callback tail -> take
+   * the connection out of the pool -> clear restore bookkeeping -> probe the
+   * connection -> vendor unsubscribe -> close the connection.
+   * @param channelName - channel or subscription name.
+   * @param shouldCancelRestore - false while restoring, so the in-flight
+   * restore keeps its state; true for manual unlisten and shutdown.
+   * @param shouldDrainCallbacks - false when the caller is already inside the
+   * callback queue of this channel and must not wait for its own tail.
+   */
+  protected closeNotificationSubscription(
+    channelName: string,
+    shouldCancelRestore = true,
+    shouldDrainCallbacks = true
+  ): Promise<void> {
+    if (shouldCancelRestore) this.cancelNotificationRestore(channelName);
+    this.stopConnectionHealthCheck(channelName);
+    if (!shouldDrainCallbacks) {
+      return this.performNotificationSubscriptionClose(
+        channelName,
+        shouldCancelRestore
+      );
+    }
+    return this.closeNotificationChannel(channelName, () =>
+      this.performNotificationSubscriptionClose(
+        channelName,
+        shouldCancelRestore
+      )
+    );
+  }
+
+  /**
+   * Releases the vendor subscription on a connection that answered the pre-close
+   * probe. This is the only step of the close choreography that differs between
+   * adapters; adapters without a vendor-side unsubscribe keep the default.
+   * @param _channelName - channel or subscription name being closed.
+   * @param _connection - live notification connection about to be closed.
+   */
+  protected unsubscribeNotificationConnection(
+    _channelName: string,
+    _connection: T
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  private async performNotificationSubscriptionClose(
+    channelName: string,
+    shouldCancelRestore: boolean
+  ): Promise<void> {
+    const connection = this.notificationPool.get(channelName);
+    this.notificationPool.delete(channelName);
+    if (shouldCancelRestore) this.clearNotificationRestoreState(channelName);
+    if (!connection) {
+      this.logger.warn(
+        `No active notification connection for channel: ${channelName}`
+      );
+      return;
+    }
+    try {
+      const isConnectionAlive =
+        await this.isNotificationConnectionAlive(connection);
+      if (isConnectionAlive) {
+        await this.unsubscribeNotificationConnection(channelName, connection);
+      }
+      this.logger.log(`Unsubscribed from channel: ${channelName}`);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Error unsubscribing from channel ${channelName}: ${
+          (error as Error).message
+        }`,
+        (error as Error).stack
+      );
+    } finally {
+      await this.notificationConnection?.closeSingleConnection(connection);
+    }
+  }
+
+  /**
+   * Probes a notification connection with the bounded pre-close timeout, so a
+   * dead connection skips the vendor unsubscribe instead of hanging on it.
+   */
+  private isNotificationConnectionAlive(connection: T): Promise<boolean> {
+    if (!this.notificationConnection) return Promise.resolve(false);
+    return this.notificationConnection.isSingleConnectionHealthy(
+      connection,
+      DatabaseNotify.CLOSE_HEALTH_CHECK_TIMEOUT_MS
+    );
   }
 
   /**
