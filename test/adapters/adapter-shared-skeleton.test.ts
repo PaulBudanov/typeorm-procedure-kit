@@ -57,6 +57,30 @@ function createPostgreAdapter(
   );
 }
 
+function createVersionCountingOracleAdapter(databaseVersion: string): {
+  adapter: OracleAdapter;
+  countVersionReads: () => number;
+} {
+  let versionReads = 0;
+  const driver = {
+    setFetchTypeHandler: vi.fn(),
+    get version(): string {
+      versionReads += 1;
+      return databaseVersion;
+    },
+  };
+  const adapter = new OracleAdapter(
+    { options: { replication: { master: {} } }, driver } as never,
+    createLogger(),
+    {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy: { transformColumnName: (value: string): string => value },
+    }
+  );
+  versionReads = 0;
+  return { adapter, countVersionReads: (): number => versionReads };
+}
+
 function inlinePackageName(template: string, literal: string): string {
   return template.split(':PACKAGE_NAME').join(literal);
 }
@@ -212,6 +236,31 @@ describe('adapter shared package-info skeleton', (): void => {
     expect((): void => {
       createPostgreAdapter().generatePackageInfoSql('public', 'select 1');
     }).toThrow(ServerError);
+  });
+
+  it.each([
+    ['modern', MODERN_ORACLE_VERSION],
+    ['legacy', LEGACY_ORACLE_VERSION],
+  ] as const)(
+    'reads the Oracle %s server version exactly once per default metadata build',
+    (_label, databaseVersion): void => {
+      const { adapter, countVersionReads } =
+        createVersionCountingOracleAdapter(databaseVersion);
+
+      adapter.generatePackageInfoSql('pkg');
+
+      expect(countVersionReads()).toBe(1);
+    }
+  );
+
+  it('never reads the Oracle server version for caller supplied metadata SQL', (): void => {
+    const { adapter, countVersionReads } = createVersionCountingOracleAdapter(
+      LEGACY_ORACLE_VERSION
+    );
+
+    adapter.generatePackageInfoSql('pkg', CUSTOM_ORACLE_SQL);
+
+    expect(countVersionReads()).toBe(0);
   });
 
   it('shares one no-argument sentinel between both adapters', (): void => {

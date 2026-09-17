@@ -237,26 +237,19 @@ export class OracleAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Picks the package type dictionary query on Oracle 12.1 and newer and the
-   * legacy `ALL_ARGUMENTS` query on older releases.
+   * Reads the server version once and picks dictionary query and row-limit
+   * form together: the package type query with `FETCH FIRST` on Oracle 12.1
+   * and newer, and the legacy `ALL_ARGUMENTS` query wrapped in a `ROWNUM`
+   * filter on older releases, which lack row-limiting clauses.
+   * @param detectionLimit - maximum number of rows the query may return.
+   * @returns metadata SQL template limited with the matching Oracle syntax.
    */
-  protected override getDefaultPackageInfoSql(): string {
-    return this.isModernMetadataSupported()
-      ? OracleSqlCommand.SQL_GET_PACKAGE_INFO
-      : OracleSqlCommand.SQL_GET_PACKAGE_INFO_LEGACY;
-  }
-
-  /**
-   * Applies `FETCH FIRST` on Oracle 12.1 and newer, and wraps the query in an
-   * ordered `ROWNUM` filter on older releases, which lack row-limiting clauses.
-   */
-  protected override applyMetadataRowLimit(
-    query: string,
+  protected override buildDefaultPackageInfoSql(
     detectionLimit: number
   ): string {
     if (this.isModernMetadataSupported())
-      return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
-    return `SELECT * FROM (\n${query.trimEnd()}\n) WHERE ROWNUM <= ${detectionLimit}`;
+      return `${OracleSqlCommand.SQL_GET_PACKAGE_INFO.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
+    return `SELECT * FROM (\n${OracleSqlCommand.SQL_GET_PACKAGE_INFO_LEGACY.trimEnd()}\n) WHERE ROWNUM <= ${detectionLimit}`;
   }
 
   /** True when the connected Oracle release supports the modern metadata SQL. */

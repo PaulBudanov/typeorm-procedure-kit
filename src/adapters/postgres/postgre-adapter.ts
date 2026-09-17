@@ -119,17 +119,16 @@ export class PostgreAdapter extends DatabaseAdapter<
     ).toLowerCase();
   }
 
-  /** Default SQL query that loads PostgreSQL procedure metadata from a schema. */
-  protected override getDefaultPackageInfoSql(): string {
-    return PostgreSqlCommand.SQL_GET_PACKAGE_INFO;
-  }
-
-  /** Appends the PostgreSQL `LIMIT` clause to a metadata query. */
-  protected override applyMetadataRowLimit(
-    query: string,
+  /**
+   * Default SQL query that loads PostgreSQL procedure metadata from a schema,
+   * with the `LIMIT` clause appended.
+   * @param detectionLimit - maximum number of rows the query may return.
+   * @returns metadata SQL template limited with the PostgreSQL syntax.
+   */
+  protected override buildDefaultPackageInfoSql(
     detectionLimit: number
   ): string {
-    return `${query.trimEnd()}\nLIMIT ${detectionLimit}`;
+    return `${PostgreSqlCommand.SQL_GET_PACKAGE_INFO.trimEnd()}\nLIMIT ${detectionLimit}`;
   }
 
   /** Builds the shared structured-type contract from PostgreSQL catalog rows. */
