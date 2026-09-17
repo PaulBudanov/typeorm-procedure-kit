@@ -1,6 +1,7 @@
 import oracledb from 'oracledb';
 
 import { DateFormatter } from '../../utils/date-formatter.js';
+import { isPlainObject } from '../../utils/plain-object.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 
@@ -390,7 +391,7 @@ export class OracleProcedureBindings {
     argumentName: string
   ): Record<string, unknown> | null {
     if (value === null || value === undefined) return null;
-    if (!this.isPlainObject(value)) {
+    if (!isPlainObject(value)) {
       throw new ServerError(
         `Oracle RECORD bind "${argumentName}" must be a plain object or null`
       );
@@ -464,14 +465,6 @@ export class OracleProcedureBindings {
       );
     }
     return value;
-  }
-
-  private isPlainObject(value: unknown): value is Record<string, unknown> {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      return false;
-    }
-    const prototype = Object.getPrototypeOf(value) as object | null;
-    return prototype === Object.prototype || prototype === null;
   }
 
   private getVariableOutMaxSize(metadataSize?: number): number {

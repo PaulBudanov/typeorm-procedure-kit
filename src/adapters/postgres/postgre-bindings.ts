@@ -1,3 +1,4 @@
+import { isPlainObject } from '../../utils/plain-object.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 
@@ -184,13 +185,13 @@ export class PostgreProcedureBindings {
     argumentName: string
   ): string | null {
     if (value === null || value === undefined) return null;
-    if (!this.isPlainObject(value)) {
+    if (!isPlainObject(value)) {
       throw new TypeError(
         `PostgreSQL composite argument "${argumentName}" must be a plain object or null`
       );
     }
 
-    const input = value as Record<string, unknown>;
+    const input = value;
     const acceptedKeys = this.indexCompositeInputKeys(structuredType);
     for (const key of Object.keys(input)) {
       if (!acceptedKeys.has(key)) {
@@ -262,10 +263,5 @@ export class PostgreProcedureBindings {
       return `\\x${value.toString('hex')}`;
     }
     return value;
-  }
-
-  private isPlainObject(value: object): boolean {
-    const prototype = Object.getPrototypeOf(value) as unknown;
-    return prototype === Object.prototype || prototype === null;
   }
 }
