@@ -49,14 +49,11 @@ export class ProcedureResourceTracker {
    * repeated-reference accounting exactly.
    */
   private measureRow(value: unknown): number {
-    if (
-      value === null ||
-      typeof value !== 'object' ||
-      Buffer.isBuffer(value) ||
-      value instanceof Date
-    ) {
+    if (value === null || typeof value !== 'object') {
       return this.measureValue(value);
     }
+    const rowScalarBytes = this.measureScalar(value);
+    if (rowScalarBytes !== undefined) return rowScalarBytes;
 
     let bytes = 0;
     const cachedShape = this.rowShape;
@@ -84,32 +81,9 @@ export class ProcedureResourceTracker {
       keyIndex += 1;
       bytes += keyBytes;
       const nestedValue = (value as Record<string, unknown>)[key];
-      if (nestedValue === null || nestedValue === undefined) continue;
-      if (typeof nestedValue === 'string') {
-        bytes += this.measureUtf8(nestedValue);
-        continue;
-      }
-      if (typeof nestedValue === 'number') {
-        bytes += this.measureNumber(nestedValue);
-        continue;
-      }
-      if (typeof nestedValue === 'boolean') {
-        bytes += 1;
-        continue;
-      }
-      if (typeof nestedValue === 'bigint') {
-        bytes += String(nestedValue).length;
-        continue;
-      }
-      if (Buffer.isBuffer(nestedValue)) {
-        bytes += nestedValue.byteLength;
-        continue;
-      }
-      if (nestedValue instanceof Date) {
-        bytes += nestedValue.toISOString().length;
-        continue;
-      }
-      if (typeof nestedValue === 'object') return this.measureValue(value);
+      const nestedBytes = this.measureScalar(nestedValue);
+      if (nestedBytes === undefined) return this.measureValue(value);
+      bytes += nestedBytes;
     }
     if (
       !isShapeChanged &&
@@ -127,56 +101,63 @@ export class ProcedureResourceTracker {
   }
 
   private measureValue(value: unknown): number {
-    if (value === null || value === undefined) return 0;
-    if (Buffer.isBuffer(value)) return value.byteLength;
-    if (typeof value === 'string') return this.measureUtf8(value);
-    if (typeof value === 'number') return this.measureNumber(value);
-    if (typeof value === 'bigint') return String(value).length;
-    if (typeof value === 'boolean') return 1;
-    if (value instanceof Date) return value.toISOString().length;
-    if (typeof value !== 'object') return 0;
+    const scalarBytes = this.measureScalar(value);
+    if (scalarBytes !== undefined) return scalarBytes;
+    return this.measureObjectGraph(value);
+  }
 
+  /** Iterative walk that charges every reachable object exactly once. */
+  private measureObjectGraph(root: unknown): number {
     let bytes = 0;
     const objectGraph = new WeakSet();
-    const pendingObjects: Array<object> = [value];
+    const pendingObjects: Array<unknown> = [root];
     while (pendingObjects.length > 0) {
       const current = pendingObjects.pop();
-      if (current === undefined || objectGraph.has(current)) continue;
+      if (current === null || typeof current !== 'object') continue;
+      if (objectGraph.has(current)) continue;
       objectGraph.add(current);
 
       for (const key in current) {
         if (!Object.hasOwn(current, key)) continue;
         bytes += this.measureKey(key);
         const nestedValue = (current as Record<string, unknown>)[key];
-        if (nestedValue === null || nestedValue === undefined) continue;
-        if (Buffer.isBuffer(nestedValue)) {
-          bytes += nestedValue.byteLength;
+        const nestedBytes = this.measureScalar(nestedValue);
+        if (nestedBytes === undefined) {
+          pendingObjects.push(nestedValue);
           continue;
         }
-        if (typeof nestedValue === 'string') {
-          bytes += this.measureUtf8(nestedValue);
-          continue;
-        }
-        if (typeof nestedValue === 'number') {
-          bytes += this.measureNumber(nestedValue);
-          continue;
-        }
-        if (typeof nestedValue === 'bigint') {
-          bytes += String(nestedValue).length;
-          continue;
-        }
-        if (typeof nestedValue === 'boolean') {
-          bytes += 1;
-          continue;
-        }
-        if (nestedValue instanceof Date) {
-          bytes += nestedValue.toISOString().length;
-          continue;
-        }
-        if (typeof nestedValue === 'object') pendingObjects.push(nestedValue);
+        bytes += nestedBytes;
       }
     }
     return bytes;
+  }
+
+  /**
+   * The single dispatcher for "how many bytes does this value occupy?". Both
+   * the `measureRow` fast path and the graph walk route every value through it,
+   * so the two paths cannot report different sizes for the same value.
+   *
+   * Returns `undefined` for a value that still has to be walked as an object
+   * graph, and `0` for a value that carries no payload of its own.
+   */
+  private measureScalar(value: unknown): number | undefined {
+    if (value === null || value === undefined) return 0;
+    if (Buffer.isBuffer(value)) return value.byteLength;
+    switch (typeof value) {
+      case 'string':
+        return this.measureUtf8(value);
+      case 'number':
+        return this.measureNumber(value);
+      case 'bigint':
+        return String(value).length;
+      case 'boolean':
+        return 1;
+      case 'object':
+        if (value instanceof Date) return value.toISOString().length;
+        return undefined;
+      default:
+        return 0;
+    }
   }
 
   /**
