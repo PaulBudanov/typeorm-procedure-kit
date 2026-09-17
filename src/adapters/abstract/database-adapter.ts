@@ -178,10 +178,10 @@ export abstract class DatabaseAdapter<
    * package or schema.
    *
    * Template method: the shared sequence is validated identifier to package
-   * literal substitution to row limit, while the concrete adapter supplies the
-   * vendor identifier casing, the default metadata SQL, and the row-limit
-   * syntax. A caller-supplied template is returned right after substitution and
-   * never receives a row limit.
+   * literal substitution, while the concrete adapter supplies the vendor
+   * identifier casing and the complete default metadata query, row limit
+   * included. A caller-supplied template is substituted as is and never
+   * receives a row limit.
    * @param packageName - package or schema name to inspect.
    * @param procedureMetadataSql - optional SQL template with `:PACKAGE_NAME`.
    * @returns SQL query string for procedure metadata loading.
@@ -191,16 +191,10 @@ export abstract class DatabaseAdapter<
     procedureMetadataSql?: string
   ): string {
     const safePackageName = this.normalizePackageIdentifier(packageName);
-    const defaultSql = this.getDefaultPackageInfoSql();
-    const query = this.replacePackageNamePlaceholder(
-      procedureMetadataSql ?? defaultSql,
-      `'${safePackageName}'`
-    );
-    if (procedureMetadataSql) return query;
-    return this.applyMetadataRowLimit(
-      query,
-      this.resolveMetadataDetectionLimit()
-    );
+    const sql =
+      procedureMetadataSql ??
+      this.buildDefaultPackageInfoSql(this.resolveMetadataDetectionLimit());
+    return this.replacePackageNamePlaceholder(sql, `'${safePackageName}'`);
   }
 
   /**
@@ -212,22 +206,14 @@ export abstract class DatabaseAdapter<
   protected abstract normalizePackageIdentifier(packageName: string): string;
 
   /**
-   * Returns the vendor metadata SQL template used when the caller supplies no
-   * template of its own.
+   * Builds the complete vendor metadata query used when the caller supplies no
+   * template of its own, with the row limit already woven in. Vendors that
+   * wrap rather than append, and vendors whose limit form depends on the same
+   * server capability as the template choice, decide both at once here.
+   * @param detectionLimit - maximum number of rows the query may return.
    * @returns SQL template containing the `:PACKAGE_NAME` placeholder.
    */
-  protected abstract getDefaultPackageInfoSql(): string;
-
-  /**
-   * Applies the vendor row-limit syntax to a built metadata query.
-   * @param query - metadata query with the package literal already inlined.
-   * @param detectionLimit - maximum number of rows the query may return.
-   * @returns metadata query limited with vendor-specific syntax.
-   */
-  protected abstract applyMetadataRowLimit(
-    query: string,
-    detectionLimit: number
-  ): string;
+  protected abstract buildDefaultPackageInfoSql(detectionLimit: number): string;
 
   /**
    * Replaces every `:PACKAGE_NAME` placeholder with the quoted package literal.
@@ -235,7 +221,7 @@ export abstract class DatabaseAdapter<
    * @param packageNameLiteral - quoted package or schema literal.
    * @returns SQL with every placeholder occurrence substituted.
    */
-  protected replacePackageNamePlaceholder(
+  private replacePackageNamePlaceholder(
     sql: string,
     packageNameLiteral: string
   ): string {
