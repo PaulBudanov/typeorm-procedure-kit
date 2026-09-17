@@ -9,6 +9,7 @@ import { DatabaseAdapter } from '../abstract/database-adapter.js';
 import { OracleProcedureBindings } from './oracle-bindings.js';
 import { OracleConnection } from './oracle-connection.js';
 import { OracleNotify } from './oracle-notify.js';
+import { OracleRecordMetadataParser } from './oracle-record-metadata-parser.js';
 import { OracleProcedureResultMaterializer } from './oracle-result-materializer.js';
 import { OracleSerializer } from './oracle-serializer.js';
 import { OracleSqlCommand } from './oracle-sql.js';
@@ -21,8 +22,6 @@ import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IOracleOptionsNotify } from '../../types/notification.types.js';
 import type {
   IProcedureArgumentBase,
-  IProcedureStructuredField,
-  IProcedureStructuredType,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
@@ -42,23 +41,8 @@ export class OracleAdapter extends DatabaseAdapter<
   oracledb.Connection
 > {
   private static readonly MINIMUM_RECORD_VERSION = [12, 1] as const;
-  private static readonly RECORD_FIELD_TYPE_ALIASES = new Map([
-    ['TIMESTAMP WITH TZ', 'TIMESTAMP WITH TIME ZONE'],
-    ['TIMESTAMP WITH LOCAL TZ', 'TIMESTAMP WITH LOCAL TIME ZONE'],
-  ]);
-  private static readonly UNSUPPORTED_RECORD_FIELD_TYPES = new Set([
-    'BFILE',
-    'BLOB',
-    'CLOB',
-    'NCLOB',
-    'OBJECT',
-    'PL/SQL RECORD',
-    'PL/SQL TABLE',
-    'REF CURSOR',
-    'TABLE',
-    'VARRAY',
-  ]);
   private readonly procedureBindings: OracleProcedureBindings;
+  private readonly recordMetadataParser: OracleRecordMetadataParser;
   private readonly resultMaterializer: OracleProcedureResultMaterializer;
 
   public constructor(
@@ -76,6 +60,9 @@ export class OracleAdapter extends DatabaseAdapter<
     const serializer = new OracleSerializer(logger, handlerOptions);
     super(logger, serializer, notifier);
     this.procedureBindings = new OracleProcedureBindings();
+    this.recordMetadataParser = new OracleRecordMetadataParser((): void => {
+      this.assertRecordVersionSupport();
+    });
     this.resultMaterializer = new OracleProcedureResultMaterializer(
       logger,
       handlerOptions,
@@ -228,6 +215,13 @@ export class OracleAdapter extends DatabaseAdapter<
     return { bindings, sqlString: sqlQuery };
   }
 
+  /** Delegates the Oracle dictionary row folding to the record parser. */
+  public override prepareProcedureMetadataRows(
+    rows: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
+    return this.recordMetadataParser.prepareRows(rows);
+  }
+
   /** Validates the package name and uppercases it for the Oracle dictionary. */
   protected override normalizePackageIdentifier(packageName: string): string {
     return SqlIdentifier.validateIdentifier(
@@ -257,77 +251,6 @@ export class OracleAdapter extends DatabaseAdapter<
     return this.isSupportedRecordVersion(this.appDataSource.driver.version);
   }
 
-  /** Combines a package RECORD argument with its dictionary field rows. */
-  public override prepareProcedureMetadataRows(
-    rows: Array<Record<string, unknown>>
-  ): Array<Record<string, unknown>> {
-    const preparedRows: Array<Record<string, unknown>> = [];
-    let activeRecord: IProcedureStructuredType | undefined;
-
-    for (const [index, row] of rows.entries()) {
-      if (!Object.hasOwn(row, 'dataLevel')) {
-        preparedRows.push(row);
-        activeRecord = undefined;
-        continue;
-      }
-
-      const dataLevel = this.readMetadataInteger(row.dataLevel, index, {
-        name: 'dataLevel',
-        minimum: 0,
-      });
-      if (dataLevel === 0) {
-        activeRecord = undefined;
-        const argumentType = this.readMetadataString(
-          row.argumentType,
-          index,
-          'argumentType'
-        ).toUpperCase();
-        if (this.isCollectionType(argumentType, row.plsqlTypecode)) {
-          throw new ServerError(
-            `Oracle collection argument at metadata row ${index + 1} is not supported`
-          );
-        }
-        if (!this.isRecordType(row)) {
-          preparedRows.push(row);
-          continue;
-        }
-
-        this.assertRecordVersionSupport();
-        activeRecord = this.createRecordMetadata(row, index);
-        preparedRows.push({ ...row, size: null, structuredType: activeRecord });
-        continue;
-      }
-
-      if (!activeRecord) {
-        throw new ServerError(
-          `Oracle nested argument metadata row ${index + 1} has no package RECORD parent`
-        );
-      }
-      if (dataLevel !== 1) {
-        throw new ServerError(
-          `Oracle nested RECORD fields are not supported (metadata row ${index + 1})`
-        );
-      }
-      activeRecord.fields.push(this.createRecordFieldMetadata(row, index));
-    }
-
-    for (const [index, row] of preparedRows.entries()) {
-      const structuredType = row.structuredType;
-      if (
-        structuredType !== null &&
-        typeof structuredType === 'object' &&
-        !Array.isArray(structuredType) &&
-        (structuredType as { kind?: unknown }).kind === 'oracle-record' &&
-        (structuredType as IProcedureStructuredType).fields.length === 0
-      ) {
-        throw new ServerError(
-          `Oracle package RECORD at prepared metadata row ${index + 1} has no fields`
-        );
-      }
-    }
-    return preparedRows;
-  }
-
   protected override createProcedureResult<
     TRow,
     TOut extends Record<string, unknown> = Record<string, unknown>,
@@ -353,134 +276,6 @@ export class OracleAdapter extends DatabaseAdapter<
         'Oracle optionsCommands cannot override TIME_ZONE because ALTER SESSION state persists after the connection returns to the pool. Configure sessionTimeZone instead.'
       );
     }
-  }
-
-  private createRecordMetadata(
-    row: Record<string, unknown>,
-    index: number
-  ): IProcedureStructuredType {
-    const owner = this.readMetadataString(row.typeOwner, index, 'typeOwner');
-    const packageName = this.readMetadataString(
-      row.typeName,
-      index,
-      'typeName'
-    );
-    const typeName = this.readMetadataString(
-      row.typeSubname,
-      index,
-      'typeSubname'
-    );
-    if (
-      owner.includes('%ROWTYPE') ||
-      packageName.includes('%ROWTYPE') ||
-      typeName.includes('%ROWTYPE')
-    ) {
-      throw new ServerError(
-        'Oracle PL/SQL %ROWTYPE arguments are not supported'
-      );
-    }
-    SqlIdentifier.validateIdentifier(owner, 'oracle record owner');
-    SqlIdentifier.validateIdentifier(packageName, 'oracle record package');
-    SqlIdentifier.validateIdentifier(typeName, 'oracle record type');
-    return {
-      kind: 'oracle-record',
-      owner,
-      packageName,
-      typeName,
-      fields: [],
-    };
-  }
-
-  private createRecordFieldMetadata(
-    row: Record<string, unknown>,
-    index: number
-  ): IProcedureStructuredField {
-    const name = this.readMetadataString(
-      row.argumentName,
-      index,
-      'argumentName'
-    );
-    const dictionaryType = this.readMetadataString(
-      row.argumentType,
-      index,
-      'argumentType'
-    ).toUpperCase();
-    // Object attribute metadata abbreviates time zones, unlike ALL_ARGUMENTS.
-    const argumentType =
-      OracleAdapter.RECORD_FIELD_TYPE_ALIASES.get(dictionaryType) ??
-      dictionaryType;
-    const order = this.readMetadataInteger(row.sequence, index, {
-      name: 'sequence',
-      minimum: 0,
-    });
-    SqlIdentifier.validateIdentifier(name, 'oracle record field');
-    if (
-      OracleAdapter.UNSUPPORTED_RECORD_FIELD_TYPES.has(argumentType) ||
-      argumentType.includes('%ROWTYPE') ||
-      row.typeOwner != null ||
-      row.typeName != null ||
-      row.typeSubname != null
-    ) {
-      throw new ServerError(
-        `Oracle RECORD field "${name}" uses unsupported type ${argumentType}`
-      );
-    }
-    return { name, argumentType, order };
-  }
-
-  private isRecordType(row: Record<string, unknown>): boolean {
-    const typeCode =
-      typeof row.plsqlTypecode === 'string'
-        ? row.plsqlTypecode.trim().toUpperCase()
-        : undefined;
-    return typeCode === 'PL/SQL RECORD' || typeCode === 'RECORD';
-  }
-
-  private isCollectionType(
-    argumentType: string,
-    rawTypeCode: unknown
-  ): boolean {
-    const typeCode =
-      typeof rawTypeCode === 'string'
-        ? rawTypeCode.trim().toUpperCase()
-        : undefined;
-    return (
-      typeCode === 'COLLECTION' ||
-      argumentType === 'PL/SQL TABLE' ||
-      argumentType === 'TABLE' ||
-      argumentType === 'VARRAY'
-    );
-  }
-
-  private readMetadataString(
-    value: unknown,
-    index: number,
-    name: string
-  ): string {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new ServerError(
-        `Invalid Oracle metadata row ${index + 1}: ${name} must be a non-empty string`
-      );
-    }
-    return value.trim();
-  }
-
-  private readMetadataInteger(
-    value: unknown,
-    index: number,
-    options: { name: string; minimum: number }
-  ): number {
-    const parsed =
-      typeof value === 'number' ||
-      (typeof value === 'string' && value.trim().length > 0)
-        ? Number(value)
-        : Number.NaN;
-    if (!Number.isSafeInteger(parsed) || parsed < options.minimum) {
-      throw new ServerError(
-        `Invalid Oracle metadata row ${index + 1}: ${options.name} must be a safe integer greater than or equal to ${options.minimum}`
-      );
-    }
-    return parsed;
   }
 
   private assertRecordVersionSupport(): void {
