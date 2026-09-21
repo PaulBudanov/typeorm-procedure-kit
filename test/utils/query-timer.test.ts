@@ -5,10 +5,24 @@ import { QueryTimer } from '../../src/utils/query-timer.js';
 import { createLogger } from '../support/helpers.js';
 
 describe('QueryTimer', (): void => {
+  it('does not log the start message until the query actually starts', (): void => {
+    const logger = createLogger();
+    const timer = new QueryTimer('SELECT 1', logger, 'pending-query');
+
+    expect(logger.log).not.toHaveBeenCalled();
+
+    timer.start();
+
+    expect(logger.log).toHaveBeenCalledExactlyOnceWith(
+      'SQL request [pending-query] started: SELECT 1'
+    );
+  });
+
   it('logs start and success messages', (): void => {
     const logger = createLogger();
     const timer = new QueryTimer('SELECT * FROM users', logger, 'query-1', [1]);
 
+    timer.start();
     timer.success(2);
 
     expect(logger.log).toHaveBeenCalledWith(
@@ -33,7 +47,7 @@ describe('QueryTimer', (): void => {
        FROM users`,
       logger,
       'query-1'
-    );
+    ).start();
 
     expect(logger.log).toHaveBeenCalledWith(
       'SQL request [query-1] started: SELECT * FROM users'
@@ -78,6 +92,7 @@ describe('QueryTimer', (): void => {
         )
     );
 
+    timer.start();
     timer.success(1);
 
     expect(logger.log).toHaveBeenCalledWith(
@@ -112,6 +127,7 @@ describe('QueryTimer', (): void => {
         )
     );
 
+    timer.start();
     timer.success(1);
 
     expect(logger.log).toHaveBeenCalledWith(
