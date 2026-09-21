@@ -34,27 +34,13 @@ export class TypeOrmProcedureKitNestModule {
     options: IModuleConfig,
     isGlobal = false
   ): DynamicModule {
-    return {
-      module: TypeOrmProcedureKitNestModule,
-      global: isGlobal,
-      providers: [
-        {
-          provide: DATABASE_CONFIG_TOKEN,
-          useValue: options,
-        },
-        TypeOrmProcedureKitNestService,
-        {
-          provide: DATABASE_SERVICE_TOKEN,
-          useExisting: TypeOrmProcedureKitNestService,
-        },
-        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
-      ],
-      exports: [
-        TypeOrmProcedureKitNestService,
-        DATABASE_SERVICE_TOKEN,
-        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
-      ],
-    };
+    return buildDynamicModule(
+      {
+        provide: DATABASE_CONFIG_TOKEN,
+        useValue: options,
+      },
+      { global: isGlobal }
+    );
   }
   /**
    * Returns a dynamic module for the given options.
@@ -82,29 +68,52 @@ export class TypeOrmProcedureKitNestModule {
     >;
     isGlobal?: boolean;
   }): DynamicModule {
-    const configProvider: Provider = {
-      provide: DATABASE_CONFIG_TOKEN,
-      useFactory: options.useFactory,
-      inject: options.inject ?? [],
-    };
-    return {
-      module: TypeOrmProcedureKitNestModule,
-      global: options.isGlobal ?? false,
-      imports: options.imports ?? [],
-      providers: [
-        configProvider,
-        TypeOrmProcedureKitNestService,
-        {
-          provide: DATABASE_SERVICE_TOKEN,
-          useExisting: TypeOrmProcedureKitNestService,
-        },
-        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
-      ],
-      exports: [
-        TypeOrmProcedureKitNestService,
-        DATABASE_SERVICE_TOKEN,
-        ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
-      ],
-    };
+    return buildDynamicModule(
+      {
+        provide: DATABASE_CONFIG_TOKEN,
+        useFactory: options.useFactory,
+        inject: options.inject ?? [],
+      },
+      {
+        global: options.isGlobal ?? false,
+        imports: options.imports ?? [],
+      }
+    );
   }
+}
+
+/**
+ * Assembles the dynamic module both registration paths share.
+ *
+ * Only the provider that supplies IModuleConfig differs between them, so it
+ * is passed in; everything else - the service, its DATABASE_SERVICE_TOKEN
+ * alias, the method providers and the exported tokens - is identical.
+ *
+ * @param configProvider - The provider that resolves DATABASE_CONFIG_TOKEN.
+ * @param moduleOptions - The registration-specific module declarations; keys
+ *  left out here stay absent from the returned dynamic module.
+ * @returns The assembled dynamic module.
+ */
+function buildDynamicModule(
+  configProvider: Provider,
+  moduleOptions: Pick<DynamicModule, 'global' | 'imports'>
+): DynamicModule {
+  return {
+    module: TypeOrmProcedureKitNestModule,
+    ...moduleOptions,
+    providers: [
+      configProvider,
+      TypeOrmProcedureKitNestService,
+      {
+        provide: DATABASE_SERVICE_TOKEN,
+        useExisting: TypeOrmProcedureKitNestService,
+      },
+      ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS,
+    ],
+    exports: [
+      TypeOrmProcedureKitNestService,
+      DATABASE_SERVICE_TOKEN,
+      ...TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDER_TOKENS,
+    ],
+  };
 }
