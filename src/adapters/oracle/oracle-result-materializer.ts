@@ -10,10 +10,7 @@ import type { IOracleValueSerializer } from '../../interfaces/oracle-result-mate
 import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IProcedureStructuredField } from '../../types/procedure.types.js';
-import type {
-  TSerializerType,
-  TTemporalSerializerType,
-} from '../../types/serializer.types.js';
+import type { TSerializerType } from '../../types/serializer.types.js';
 import type {
   IProcedureOutBinding,
   IProcedureResult,
@@ -104,11 +101,18 @@ export class OracleProcedureResultMaterializer {
           );
         }
 
-        const metadata = this.getResultSetMetadata(rawValue);
+        const metadata = this.getResultSetMetadata(rawValue) ?? [];
+        if (metadata.length === 0) {
+          this.logger.warn(
+            `Oracle cursor "${outBinding.name}" came back without a usable column description, so its rows are returned as the driver produced them, without the duplicate column name check`
+          );
+        }
         const cursorRows = await this.handleQueryStream<TRow>(
           rawValue.toQueryStream(),
           async (row) => {
+            this.trackRowLobs(row, pendingLobs);
             const transformed = await this.transformCursorRow(row, metadata);
+            this.untrackRowLobs(row, pendingLobs);
             tracker.addRow(transformed);
             rows.push(transformed);
             return transformed;
@@ -157,6 +161,45 @@ export class OracleProcedureResultMaterializer {
       else if (this.isLob(value)) lobs.add(value);
     }
     return { resultSets, lobs };
+  }
+
+  /**
+   * Registers the LOB handles of one cursor row as pending resources.
+   *
+   * Only top-level out binds are registered when the call starts, so a LOB
+   * that arrives inside a cursor row is unknown to the cleanup path until this
+   * runs. Without it, a column that throws part-way through a row — the name
+   * collision check, `resourceLimits.maxLobBytes`, a tracker limit — leaves
+   * every handle of that row that had not been drained yet open until the
+   * pool closes the connection.
+   * @param row - one row as the driver produced it.
+   * @param pendingLobs - the set the cleanup path destroys.
+   */
+  private trackRowLobs(row: unknown, pendingLobs: Set<oracledb.Lob>): void {
+    for (const value of this.readRowValues(row)) {
+      if (this.isLob(value)) pendingLobs.add(value);
+    }
+  }
+
+  /**
+   * Drops a fully materialized row's LOB handles from the pending set.
+   * `materializeLobValue` has already destroyed each of them, so keeping them
+   * would only grow the set for the lifetime of the call.
+   * @param row - the row whose handles were all drained.
+   * @param pendingLobs - the set the cleanup path destroys.
+   */
+  private untrackRowLobs(row: unknown, pendingLobs: Set<oracledb.Lob>): void {
+    for (const value of this.readRowValues(row)) {
+      if (this.isLob(value)) pendingLobs.delete(value);
+    }
+  }
+
+  /** Reads a row's values, whichever `outFormat` the driver produced it in. */
+  private readRowValues(row: unknown): Array<unknown> {
+    if (row === null || typeof row !== 'object') return [];
+    return Array.isArray(row)
+      ? (row as Array<unknown>)
+      : Object.values(row as Record<string, unknown>);
   }
 
   private async closePendingResultSets<T>(
@@ -208,9 +251,20 @@ export class OracleProcedureResultMaterializer {
     return results;
   }
 
+  /**
+   * Reads a result set's column description, if it has a usable one.
+   *
+   * Returning `undefined` rather than an empty array keeps "the driver could
+   * not describe this result set" apart from "the driver described no
+   * columns", so the caller can say which one it is degrading on instead of
+   * degrading in silence, which is what hid the loss of the duplicate column
+   * name check the README promises.
+   * @param resultSet - the REF CURSOR result set to describe.
+   * @returns the column metadata, or undefined when it is missing or unusable.
+   */
   private getResultSetMetadata<T>(
     resultSet: oracledb.ResultSet<T>
-  ): Array<oracledb.Metadata<T>> {
+  ): Array<oracledb.Metadata<T>> | undefined {
     const candidate = resultSet as unknown;
     if (
       candidate === null ||
@@ -225,11 +279,35 @@ export class OracleProcedureResultMaterializer {
           typeof metadata.name === 'string'
       )
     ) {
-      return [];
+      return undefined;
     }
     return candidate.metaData as Array<oracledb.Metadata<T>>;
   }
 
+  /**
+   * Turns one row of a REF CURSOR into the row the caller receives.
+   *
+   * Naming and serialization of cursor columns belong to node-oracledb's fetch
+   * type handler, which this package installs on the driver. The handler runs
+   * for a nested REF CURSOR result set exactly as it runs for a plain query
+   * (`ResultSetImpl._setup` is given the same execute options), so by the time
+   * a row reaches this method its column names have already been through the
+   * case strategy and its values through the registered serializer. Doing
+   * either again is not a no-op: a strategy that does not map its own output
+   * onto itself corrupts the name (`A_B_C` -> `aBC` -> `aBc`, so a cursor
+   * column ended up named differently from the same column in a plain query),
+   * and a second serializer pass hands a strategy a value it already produced,
+   * which the native-value assertion rejects outright for anything but a
+   * string or a Date.
+   *
+   * What is left is what the driver does not do: LOB handles are drained into
+   * values, and two columns arriving under one name are rejected instead of
+   * overwriting each other.
+   * @param row - the row as the driver produced it, keyed or positional.
+   * @param metadata - the result set columns, in fetch order.
+   * @returns the row keyed by output column name.
+   * @throws ServerError - when two columns share one output name.
+   */
   private async transformCursorRow<T>(
     row: T,
     metadata: Array<oracledb.Metadata<T>>
@@ -241,64 +319,33 @@ export class OracleProcedureResultMaterializer {
           row.map((value) => this.materializeLobValue(value))
         )) as T;
       }
-      const transformed: Record<string, unknown> = {};
+      const passthrough: Record<string, unknown> = {};
       for (const [name, value] of Object.entries(
         row as Record<string, unknown>
       )) {
-        transformed[name] = await this.materializeLobValue(value);
+        passthrough[name] = await this.materializeLobValue(value);
       }
-      return transformed as T;
+      return passthrough as T;
     }
 
     const transformed: Record<string, unknown> = {};
-    const outputNames = new Map<string, string>();
+    const outputNames = new Set<string>();
     const rowArray = Array.isArray(row) ? (row as Array<unknown>) : undefined;
     const rowRecord = rowArray ? undefined : (row as Record<string, unknown>);
     for (const [index, column] of metadata.entries()) {
-      const rawName = column.name;
-      if (rowRecord && !(rawName in rowRecord)) continue;
-      const outputName = this.options.caseStrategy.transformColumnName(rawName);
-      const originalName = outputNames.get(outputName);
-      if (originalName !== undefined) {
+      const outputName = column.name;
+      if (rowRecord && !(outputName in rowRecord)) continue;
+      if (outputNames.has(outputName)) {
         throw new ServerError(
-          `Oracle result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`
+          `Oracle result set returned two columns named "${outputName}"`
         );
       }
-      outputNames.set(outputName, rawName);
-      const value = await this.materializeLobValue(
-        rowRecord ? rowRecord[rawName] : rowArray?.[index]
+      outputNames.add(outputName);
+      transformed[outputName] = await this.materializeLobValue(
+        rowRecord ? rowRecord[outputName] : rowArray?.[index]
       );
-      const serializerType = this.getTemporalSerializerType(
-        column as oracledb.Metadata<unknown>
-      );
-      transformed[outputName] = serializerType
-        ? this.serializer.serializeValue(serializerType, value, {
-            source: 'fetch',
-            database: 'oracle',
-            name: outputName,
-            databaseType:
-              column.dbType?.columnTypeName ?? column.dbTypeName ?? 'UNKNOWN',
-          })
-        : value;
     }
     return transformed as T;
-  }
-
-  private getTemporalSerializerType(
-    metadata: oracledb.Metadata<unknown>
-  ): TTemporalSerializerType | undefined {
-    switch (metadata.dbType?.columnTypeName ?? metadata.dbTypeName) {
-      case 'DATE':
-        return 'DATE';
-      case 'TIMESTAMP':
-        return 'TIMESTAMP';
-      case 'TIMESTAMP WITH TIME ZONE':
-        return 'TIMESTAMP_TZ';
-      case 'TIMESTAMP WITH LOCAL TIME ZONE':
-        return 'TIMESTAMP_LTZ';
-      default:
-        return undefined;
-    }
   }
 
   private isLob(value: unknown): value is oracledb.Lob {
@@ -354,9 +401,7 @@ export class OracleProcedureResultMaterializer {
     value: unknown,
     outputName: string
   ): unknown {
-    const serializerType = this.getScalarTemporalSerializerType(
-      outBinding.databaseType
-    );
+    const serializerType = this.getSerializerType(outBinding.databaseType);
     if (!serializerType) return value;
     return this.serializer.serializeValue(serializerType, value, {
       source: 'scalar-out',
@@ -411,7 +456,7 @@ export class OracleProcedureResultMaterializer {
         );
       }
       const fieldValue = await this.materializeLobValue(rawFieldValue);
-      const serializerType = this.getRecordSerializerType(field.argumentType);
+      const serializerType = this.getSerializerType(field.argumentType);
       materialized[fieldOutputName] = serializerType
         ? this.serializer.serializeValue(serializerType, fieldValue, {
             source: 'scalar-out',
@@ -469,10 +514,27 @@ export class OracleProcedureResultMaterializer {
     return Object.keys(record);
   }
 
-  private getRecordSerializerType(
-    databaseType: string
+  /**
+   * Picks the serializer for an Oracle OUT bind, by its dictionary type name.
+   *
+   * One mapping serves every OUT bind the materializer touches — a scalar OUT
+   * and a field of a PL/SQL RECORD alike — because the value a procedure hands
+   * back through `p_flag OUT BOOLEAN` and the value it hands back through
+   * `p_row.flag` are the same value, and a consumer that registered a BOOLEAN
+   * serializer expects both to go through it. Keeping two lists is what let a
+   * scalar `JSON`, `BOOLEAN`, `CHAR`, `RAW` or `XMLTYPE` OUT come back raw
+   * while the identical RECORD field was serialized.
+   *
+   * Cursor columns are deliberately absent: those are fetch-path values, and
+   * node-oracledb has already run the registered serializer on them through
+   * the fetch type handler by the time a row reaches this class.
+   * @param databaseType - dictionary type name, in any case.
+   * @returns the serializer to apply, or undefined when none covers the type.
+   */
+  private getSerializerType(
+    databaseType: string | undefined
   ): TSerializerType | undefined {
-    switch (databaseType.toUpperCase()) {
+    switch (databaseType?.toUpperCase()) {
       case 'DATE':
         return 'DATE';
       case 'TIMESTAMP':
@@ -496,23 +558,6 @@ export class OracleProcedureResultMaterializer {
         return 'BINARY';
       case 'XMLTYPE':
         return 'XML';
-      default:
-        return undefined;
-    }
-  }
-
-  private getScalarTemporalSerializerType(
-    databaseType: string | undefined
-  ): TTemporalSerializerType | undefined {
-    switch (databaseType) {
-      case 'DATE':
-        return 'DATE';
-      case 'TIMESTAMP':
-        return 'TIMESTAMP';
-      case 'TIMESTAMP WITH TIME ZONE':
-        return 'TIMESTAMP_TZ';
-      case 'TIMESTAMP WITH LOCAL TIME ZONE':
-        return 'TIMESTAMP_LTZ';
       default:
         return undefined;
     }
