@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DatabaseInitializerBase } from '../../src/core/database-initializer-base.js';
 import { NotifyBase } from '../../src/core/notify-base.js';
 import { ProcedureKitLogger } from '../../src/typeorm/logger/ProcedureKitLogger.js';
+import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
 import type {
@@ -436,5 +437,65 @@ describe('DatabaseInitializerBase rollback reset', (): void => {
     expect(initializer.appDataSource).not.toBe(firstDataSource);
     expect(initializer.databaseAdapter).not.toBe(firstAdapter);
     await initializer.databaseAdapter.destroyNotifications();
+  });
+});
+
+describe('DatabaseInitializerBase unsupported database type', (): void => {
+  function createInitializerWithUnsupportedType(): DatabaseInitializerBase {
+    const config = {
+      type: 'postgress',
+      master: {
+        host: 'localhost',
+        port: 5432,
+        database: 'db',
+        username: 'user',
+        password: 'pass',
+      },
+      poolSize: 1,
+      parseInt8AsNumber: false,
+    } as unknown as TPostgresDbConfig;
+
+    return new DatabaseInitializerBase(config, { module: createLogger() });
+  }
+
+  async function catchFactoryError(
+    factoryName: 'configFactory' | 'databaseAdapterFactory'
+  ): Promise<unknown> {
+    const initializer = createInitializerWithUnsupportedType();
+    const factories = initializer as unknown as Record<
+      'configFactory' | 'databaseAdapterFactory',
+      () => Promise<unknown>
+    >;
+
+    try {
+      const result = await factories[factoryName].call(initializer);
+      throw new Error(
+        `${factoryName} resolved with ${String(result)} instead of throwing`
+      );
+    } catch (error) {
+      return error;
+    }
+  }
+
+  it.each(['configFactory', 'databaseAdapterFactory'] as const)(
+    '%s rejects an unsupported database type with a ServerError naming it',
+    async (factoryName): Promise<void> => {
+      const error = await catchFactoryError(factoryName);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect((error as ServerError).message).toContain('postgress');
+      expect((error as ServerError).message).toContain('postgres');
+      expect((error as ServerError).message).toContain('oracle');
+    }
+  );
+
+  it('reports the same failure from both factories', async (): Promise<void> => {
+    const configError = await catchFactoryError('configFactory');
+    const adapterError = await catchFactoryError('databaseAdapterFactory');
+
+    expect(adapterError).toBeInstanceOf(ServerError);
+    expect((adapterError as ServerError).message).toBe(
+      (configError as ServerError).message
+    );
   });
 });
