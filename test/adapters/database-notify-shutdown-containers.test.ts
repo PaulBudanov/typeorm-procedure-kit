@@ -104,6 +104,34 @@ describe('DatabaseNotify shutdown bookkeeping', (): void => {
     }
   });
 
+  it('logs a pending registration that fails while shutdown waits for it', async (): Promise<void> => {
+    const logger = createLogger();
+    const notify = new ShutdownContainerNotify(logger);
+    let rejectRegistration: (error: Error) => void = (): void => undefined;
+    const registration = notify.trackRegistration(
+      () =>
+        new Promise<string>((_resolve, reject): void => {
+          rejectRegistration = reject;
+        })
+    );
+    void registration.catch((): void => undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notify.containers.pendingNotificationRegistrations.size).toBe(1);
+
+    const destroyPromise = notify.destroy();
+    rejectRegistration(new Error('registration failed'));
+    await expect(destroyPromise).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'notification registration 1 failed during shutdown: registration failed'
+      ),
+      expect.any(String)
+    );
+  });
+
   it('still removes a settled channel close without waiting for destroy', async (): Promise<void> => {
     const notify = new ShutdownContainerNotify(createLogger());
 

@@ -24,6 +24,14 @@ export abstract class DatabaseNotify<
     1000 * 60 * 30;
   protected static readonly RESTORE_MAX_RETRIES: number = 5;
   protected static readonly RESTORE_CURRENT_RETRY: number = 1;
+  /**
+   * Lower bound for both restore delays. The attempt counter restarts after
+   * maxRetries is exhausted, so a loop configured with a shorter delay would
+   * reconnect to an already failing database with no pause worth the name.
+   */
+  protected static readonly RESTORE_MIN_DELAY_MS: number = 100;
+  /** Upper bound for both restore delays: the largest setTimeout delay. */
+  protected static readonly RESTORE_MAX_DELAY_MS: number = 2_147_483_647;
   protected static readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
   protected static readonly CLOSE_HEALTH_CHECK_TIMEOUT_MS: number = 500;
 
@@ -85,6 +93,9 @@ export abstract class DatabaseNotify<
       this.cancelNotificationRestore(channel);
     });
 
+    // waitForShutdownTask resolves on every path - success, failure and
+    // timeout alike - so allSettled here is only a guard against a future
+    // caller passing in a promise that was not wrapped by it.
     await Promise.allSettled([
       ...this.unsubscribeChannels(this.notificationPool.keys()),
       ...activeRestores.map(([channel, restore]) =>
@@ -426,7 +437,11 @@ export abstract class DatabaseNotify<
     return restorePromise;
   }
 
-  /** Rejects retry values that would make restore loops skip work or spin. */
+  /**
+   * Rejects retry values that would make restore loops skip work or spin.
+   * Out-of-range values are refused where they are configured rather than
+   * clamped, so a typo cannot silently run with a delay nobody asked for.
+   */
   protected assertNotificationRetryOptions(
     options: Readonly<INotifyRetryOptions>
   ): void {
@@ -449,10 +464,12 @@ export abstract class DatabaseNotify<
   ): void {
     if (
       delayMs !== undefined &&
-      (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > 2_147_483_647)
+      (!Number.isSafeInteger(delayMs) ||
+        delayMs < DatabaseNotify.RESTORE_MIN_DELAY_MS ||
+        delayMs > DatabaseNotify.RESTORE_MAX_DELAY_MS)
     ) {
       throw new RangeError(
-        `${optionName} must be an integer between 0 and 2147483647`
+        `${optionName} must be an integer between ${DatabaseNotify.RESTORE_MIN_DELAY_MS} and ${DatabaseNotify.RESTORE_MAX_DELAY_MS}`
       );
     }
   }
@@ -597,6 +614,12 @@ export abstract class DatabaseNotify<
     );
   }
 
+  /**
+   * Waits for one shutdown task without ever rejecting or hanging: a failure is
+   * reported through the logger and a task that never settles is abandoned
+   * after DESTROY_RESTORE_WAIT_TIMEOUT_MS. Shutdown must continue either way,
+   * but a failed task has to stay visible instead of looking like a clean one.
+   */
   private waitForShutdownTask(
     task: Promise<unknown>,
     description: string
@@ -615,8 +638,15 @@ export abstract class DatabaseNotify<
         clearTimeout(timer);
         resolve();
       };
+      const completeWithFailure = (error: unknown): void => {
+        this.logger.error(
+          `${description} failed during shutdown: ${(error as Error).message}`,
+          (error as Error).stack
+        );
+        complete();
+      };
       timer.unref();
-      void task.then(complete, complete);
+      void task.then(complete, completeWithFailure);
     });
   }
 
