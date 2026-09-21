@@ -8,8 +8,8 @@
 
 **Tech Stack:** TypeScript 5 (strict), vitest, ESLint flat config, vendored TypeORM fork (вне периметра).
 
-**Spec:** отчёт ревизии от 2026-09-14, опубликованный как артефакт
-https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий не коммитился.
+**Spec:** `docs/reviews/2026-09-14-code-review.md` — отчёт ревизии от 2026-09-14. Опубликован также как артефакт
+<https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym>.
 Нумерация находок (`P1 · 01`, `P2 · 18`, …) в задачах ниже ссылается на него.
 
 ---
@@ -31,15 +31,15 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 
 ## Волны и параллелизм
 
-| Волна | Задачи | Параллельно | Пересечение файлов |
-| --- | --- | --- | --- |
-| 1 | T1, T2, T3 | да, 3 агента | нет |
-| 2 | T4, T5 | да, 2 агента | нет |
-| 3 | T6, T7, T8, T9, T10 | да, 5 агентов | нет |
-| 4 | T11, T12 | нет, строго по очереди | да (крупные извлечения) |
-| 5 | T13–T21 | частично | проверяется перед запуском |
-| 6 | Ревью изменений | — | — |
-| 7 | Ломающие изменения | **только после подтверждения владельца** | — |
+| Волна | Задачи              | Параллельно                              | Пересечение файлов         |
+| ----- | ------------------- | ---------------------------------------- | -------------------------- |
+| 1     | T1, T2, T3          | да, 3 агента                             | нет                        |
+| 2     | T4, T5              | да, 2 агента                             | нет                        |
+| 3     | T6, T7, T8, T9, T10 | да, 5 агентов                            | нет                        |
+| 4     | T11, T12            | нет, строго по очереди                   | да (крупные извлечения)    |
+| 5     | T13–T21             | частично                                 | проверяется перед запуском |
+| 6     | Ревью изменений     | —                                        | —                          |
+| 7     | Ломающие изменения  | **только после подтверждения владельца** | —                          |
 
 ---
 
@@ -52,17 +52,20 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 **Отчёт:** P1 · 01
 
 **Files:**
+
 - Modify: `src/adapters/oracle/oracle-adapter.ts:192-211` (`makeSqlBindings`)
 - Test: `test/adapters/oracle-raw-sql-bindings.test.ts` (создать)
 
 **Проблема.** `replaceNamedParameters` вызывает колбэк на каждое вхождение плейсхолдера. Oracle-адаптер оставляет SQL как есть и отдаёт драйверу массив — то есть позиционное связывание. Но в Oracle повторяющийся `:NAME` это **одна** bind-переменная. Итог: `SELECT * FROM T WHERE (:FROM_DATE IS NULL OR D >= :FROM_DATE)` даёт 2 значения на 1 позицию → `NJS-098` (thin) или `ORA-01036`/`ORA-01008` (thick).
 
 **Interfaces:**
+
 - Produces: `makeSqlBindings(sqlQuery, params)` сохраняет сигнатуру `ISqlBindingsObjectReturn`. Поле `bindings` может стать объектом `Record<string, unknown>` — тогда тип `ISqlBindingsObjectReturn['bindings']` расширяется, и это надо согласовать с `ExecuteBase.execute` и `IBindingsObjectReturn`.
 
 **Решение.** Предпочтительный вариант — отдавать драйверу **именованный объект** биндингов: Oracle тогда сам сопоставляет `:NAME` с ключом, и повтор перестаёт быть проблемой by construction. Запасной вариант, если именованные биндинги ломают типы слишком широко: дедуплицировать по имени и переписывать повторные вхождения в уникальные `:tpk_n`.
 
 **Acceptance:**
+
 - `{ FROM_DATE: 'x' }` + SQL с двумя вхождениями `:FROM_DATE` → ровно одно связанное значение на имя.
 - Уникальные плейсхолдеры продолжают работать как раньше (не сломать `test/adapters/oracle-adapter.test.ts:1316`).
 - Литералы и комментарии, содержащие `:`, по-прежнему не трогаются.
@@ -75,6 +78,7 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 **Отчёт:** P1 · 02
 
 **Files:**
+
 - Modify: `src/adapters/oracle/oracle-result-materializer.ts:252-275` (`transformCursorRow`)
 - Test: `test/adapters/oracle-cursor-column-collision.test.ts` (создать)
 
@@ -83,6 +87,7 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 **Образец для подражания — в том же файле.** `oracle-result-materializer.ts:385-395` уже делает ровно такую проверку для полей RECORD. Повторить её стиль и формат сообщения.
 
 **Acceptance:**
+
 - Две колонки, дающие одно имя после `transformColumnName`, → `ServerError` с обоими исходными именами и конфликтующим результатом в сообщении.
 - Сообщение по форме согласовано с PG-версией и с существующей RECORD-версией.
 - Отсутствие коллизии → поведение не меняется (regression по существующим тестам курсоров).
@@ -95,12 +100,14 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 **Отчёт:** P1 · 03
 
 **Files:**
+
 - Modify: `src/adapters/oracle/oracle-bindings.ts:40-53` (`typeMapping`), `:325-331` (`isValidDataType`)
 - Test: `test/adapters/oracle-scalar-argument-types.test.ts` (создать)
 
 **Проблема.** `typeMapping` (для скалярных аргументов) содержит 12 типов. `recordFieldTypeMapping` (для полей RECORD) — те же 12 плюс 18: `CHAR`, `NCHAR`, `VARCHAR`, `NVARCHAR2`, `BOOLEAN`, `PL/SQL BOOLEAN`, `PLS_INTEGER`, `BINARY_FLOAT`, `DOUBLE PRECISION` и др. Второй буквально начинается со спреда первого. Процедура с `p_flag IN CHAR` падает на `Invalid data type: CHAR` ещё в `makeBindings`, до обращения к БД. В PostgreSQL белого списка нет вообще.
 
 **Внимание — это не механическое слияние двух Map.** Значения `typeMapping` идут в `BindParameter.type` для скалярных биндов, и часть типов требует согласования с:
+
 - `VARIABLE_SIZE_OUT_TYPES` (`:60-64`) — какие OUT-типы требуют `maxSize`;
 - `VARIABLE_SIZE_RECORD_TYPES` (`:66-74`) — уже перечисляет `DB_TYPE_CHAR`, `DB_TYPE_NCHAR`, `DB_TYPE_VARCHAR`, `DB_TYPE_NVARCHAR`, `DB_TYPE_RAW`;
 - `getVariableOutMaxSize` (`:461`) — размер по умолчанию для OUT переменной длины.
@@ -108,6 +115,7 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 Расширяя скалярный список, разберись, какие из добавленных типов в режиме `OUT`/`IN/OUT` требуют `maxSize`, и покрой это тестом. Если для какого-то типа корректная поддержка неочевидна — **не добавляй его молча**: оставь вне списка и зафиксируй причину в JSDoc над `typeMapping`.
 
 **Acceptance:**
+
 - `IN`-аргументы типов `CHAR`, `NCHAR`, `NVARCHAR2`, `BOOLEAN`, `PLS_INTEGER`, `BINARY_FLOAT` больше не падают на `Invalid data type`.
 - Для добавленных типов в режиме `OUT` проставляется корректный `maxSize` там, где он нужен.
 - Действительно неподдерживаемый тип по-прежнему даёт внятную ошибку `Invalid data type: <TYPE>`.
@@ -122,6 +130,7 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 **Отчёт:** P1 · 11
 
 **Files:**
+
 - Modify: `src/adapters/abstract/database-serializer.ts` (354 строки)
 - Test: `test/adapters/database-serializer-exhaustiveness.test.ts` (создать)
 
@@ -131,8 +140,16 @@ https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym — в репозиторий 
 
 ```ts
 export const SERIALIZER_TYPES = [
-  'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ', 'TIMESTAMP_LTZ',
-  'BOOLEAN', 'CHAR', 'VARCHAR', 'JSON', 'BINARY', 'XML',
+  'DATE',
+  'TIMESTAMP',
+  'TIMESTAMP_TZ',
+  'TIMESTAMP_LTZ',
+  'BOOLEAN',
+  'CHAR',
+  'VARCHAR',
+  'JSON',
+  'BINARY',
+  'XML',
 ] as const satisfies ReadonlyArray<TSerializerType>;
 ```
 
@@ -141,6 +158,7 @@ export const SERIALIZER_TYPES = [
 Прототип, проверенный при ревизии, типизируется чисто и даёт 354 → ~228 строк. Один локальный каст неизбежен — присваивание в mapped type внутри `registerSerializer`; изолируй его в одну строку с поясняющим комментарием.
 
 **Acceptance:**
+
 - `serializeValue`, `serializerMapping`, `hasSerializer`, `registerSerializer`, `unregisterSerializer`, `deleteAllSerializers`, `registeredSerializerTypes` больше не перечисляют типы вручную.
 - Добавление 11-го значения в `TSerializerType` ломает сборку или тест.
 - Поведение всех семи членов идентично прежнему (существующие тесты сериализаторов зелёные).
@@ -152,6 +170,7 @@ export const SERIALIZER_TYPES = [
 **Отчёт:** P1 · 13, P1 · 14 (частично)
 
 **Files:**
+
 - Delete: `src/utils/async-utils.ts`, `src/utils/type-guards.ts`, `src/utils/queue-manager.ts`, `src/utils/event-bus.ts`
 - Delete: соответствующие тест-файлы в `test/utils/`
 - Modify: `src/utils/index.ts`, `src/interfaces/index.ts`, `src/types/index.ts`, `src/types/utility.types.ts`, `src/interfaces/utility.interfaces.ts` (убрать `IEventBusService`, `TEventBusListener` и прочие осиротевшие типы)
@@ -161,6 +180,7 @@ export const SERIALIZER_TYPES = [
 **Важно.** `TypeGuards.isPlainObject` удаляется вместе с модулем. Его роль «канонической реализации» в волне 3 берёт новый узкий хелпер (Task 7) — с семантикой прототипа, а не чёрного списка. Не пытайся сохранить `TypeGuards` ради этого.
 
 **Acceptance:**
+
 - Четыре модуля и их тесты удалены.
 - `npx tsc --noEmit -p tsconfig.json` чистый (нет осиротевших импортов/типов).
 - `src/utils/index.ts` не экспортирует удалённое.
@@ -175,11 +195,13 @@ export const SERIALIZER_TYPES = [
 **Отчёт:** P2 · 20
 
 **Files:**
+
 - Modify: `src/adapters/abstract/database-adapter.ts`, `src/adapters/oracle/oracle-adapter.ts`, `src/adapters/postgres/postgre-adapter.ts`
 - Create: `src/consts/procedure.consts.ts` (для сентинела)
 - Test: `test/adapters/adapter-shared-skeleton.test.ts` (создать)
 
 **Что дублируется:**
+
 - `replacePackageNamePlaceholder` — **побайтово идентичен** в обоих адаптерах (`oracle-adapter.ts:342`, `postgre-adapter.ts:143`).
 - `NO_ARGUMENT_SENTINEL = '__tpk_no_argument__'` — одинаковая приватная статика в обоих.
 - `generatePackageInfoSql` — один скелет: валидация идентификатора → подстановка → пять строк расчёта `detectionLimit` → дописать лимит. Различия: регистр (`toUpperCase` vs `toLowerCase`) и синтаксис лимита (`FETCH FIRST n ROWS ONLY` / обёртка `ROWNUM` для legacy vs `LIMIT n`).
@@ -197,18 +219,19 @@ export const SERIALIZER_TYPES = [
 **Отчёт:** P2 · 18
 
 **Files:**
+
 - Create: `src/utils/plain-object.ts`
 - Modify: `src/adapters/abstract/database-serializer.ts` (`isPlainRecord`, :339), `src/adapters/oracle/oracle-bindings.ts` (`isPlainObject`, :453), `src/adapters/postgres/postgre-bindings.ts` (`isPlainObject`, :267)
 - Test: `test/utils/plain-object.test.ts` (создать)
 
 **Проблема.** Четыре реализации с тремя разными семантиками решают, трактовать ли payload процедуры как объект полей или как скаляр. Oracle и PostgreSQL отвечают по-разному — это того же рода расхождение, что и подтверждённые P1 · 01–03.
 
-| Где | Семантика |
-| --- | --- |
+| Где                                          | Семантика                                     |
+| -------------------------------------------- | --------------------------------------------- |
 | `TypeGuards.isPlainObject` (удалён в Task 5) | чёрный список — **экземпляр класса проходит** |
-| `DatabaseSerializer.isPlainRecord` | прототип, без явного отсева массивов |
-| `OracleProcedureBindings.isPlainObject` | прототип + явный `Array.isArray` |
-| `PostgreProcedureBindings.isPlainObject` | только прототип, без защиты от `null` |
+| `DatabaseSerializer.isPlainRecord`           | прототип, без явного отсева массивов          |
+| `OracleProcedureBindings.isPlainObject`      | прототип + явный `Array.isArray`              |
+| `PostgreProcedureBindings.isPlainObject`     | только прототип, без защиты от `null`         |
 
 **Канонический контракт** — прототипный: `true` только для объектов с прототипом `Object.prototype` или `null`. `false` для `null`, массивов, `Date`, `Buffer`, экземпляров классов, `Map`/`Set`. Это самая строгая из трёх и единственная, при которой Oracle и PG совпадают.
 
@@ -221,12 +244,14 @@ export const SERIALIZER_TYPES = [
 **Отчёт:** P2 · 21
 
 **Files:**
+
 - Modify: `src/adapters/abstract/database-notify.ts`, `src/adapters/oracle/oracle-notify.ts` (`closeSubscription`/`performCloseSubscription`), `src/adapters/postgres/postgre-notify.ts` (`closeListenerConnection`/`performCloseListenerConnection`)
 - Test: `test/adapters/notify-close-lifecycle.test.ts` (создать)
 
 **Один алгоритм, две разошедшиеся реализации:** достать соединение из пула → удалить → health-check с таймаутом `500` → вендорная отписка → лог → `catch` с логом → `finally` с закрытием.
 
 **Расхождения, которые надо устранить:**
+
 - Oracle вызывает `stopConnectionHealthCheck` **до** дренажа коллбэков, Postgres — **после**.
 - Oracle обрабатывает `shouldCancelRestore` и вызывает `clearNotificationRestoreState`; в Postgres такого параметра нет вообще.
 - Литерал `500` вписан в оба файла — единственный таймаут подсистемы без имени, тогда как остальные вынесены в статические поля `DatabaseNotify`.
@@ -242,6 +267,7 @@ export const SERIALIZER_TYPES = [
 **Отчёт:** P2 · 25
 
 **Files:**
+
 - Modify: `src/core/execute-base.ts`
 - Test: существующие `test/core/` (новый файл не нужен, изменение чисто внутреннее)
 
@@ -260,6 +286,7 @@ export const SERIALIZER_TYPES = [
 **Отчёт:** P2 · 19
 
 **Files:**
+
 - Modify: `src/adapters/abstract/procedure-resource-tracker.ts`
 - Test: `test/adapters/procedure-resource-tracker.test.ts` (существует — дополнить, файл ничей больше)
 
@@ -287,21 +314,84 @@ export const SERIALIZER_TYPES = [
 
 ---
 
-## Волна 5 — оставшиеся P2 и P3
+## Волна 5 — оставшиеся P2/P3 (пересобрана 2026-09-21)
 
-Задачи определены, файлы известны; детализация — перед запуском волны.
+Исходная волна 5 строилась из одного источника — отчёта ревизии. За четыре раунда ревью
+накопились находки, которых план не знал, а часть его пунктов успели закрыться в волнах 1–4.
+Аудит плана (агент-ревьюер, 2026-09-21) восстановил полный список; все загруженные ниже
+утверждения перепроверены оркестратором независимо.
 
-| Task | Отчёт | Суть | Файлы |
-| --- | --- | --- | --- |
-| T13 | P2 · 04 | Скалярные OUT на Oracle пропускают все сериализаторы, не только temporal | `oracle-result-materializer.ts:344-359, 496-511` |
-| T14 | P2 · 05 | Отсутствующий/опечатанный параметр raw SQL → ошибка вместо тихого NULL; плейсхолдер не в верхнем регистре → внятная ошибка | оба адаптера + README |
-| T15 | P2 · 06 | Конверт ошибки при ≥2 строках; набор из 8 захардкоженных ключей — в конфиг | `database-error-handler.ts` |
-| T16 | P2 · 08 | Нижняя граница для `retryDelayMs`/`retryAfterMaxDelayMs` (сейчас `0` даёт self-DoS вопреки JSDoc) | `database-notify.ts:309-338` + README |
-| T17 | P2 · 09 | Паритет отказа при конфликте алиасов ключей payload'а | `oracle-bindings.ts:161-165, 348` |
-| T18 | P2 · 22 | Вендорную нормализацию уведомления — из `NotifyBase` в адаптеры | `notify-base.ts:110-133` + оба notify |
-| T19 | P2 · 23 | `SerializerBase`: убрать посредника либо дать ему валидацию | `serializer-base.ts` |
-| T20 | P2 · 24 | Nest: общая сборка модуля + фабрика провайдеров | `src/nest/**` |
-| T21 | P3 · 27–31 | Опечатки, недостижимые ветки, `luxon`→`Date`, глобальный `outFormat`, `Proxy` на каждый вызов, пять `requireXxxBase`, грамматика логов, `CLAUDE.md` | разное |
+**Правило владения:** у каждой задачи эксклюзивный набор файлов `src/` и тестов.
+`README.md` и три перевода не принадлежат **никому, кроме T26**: задача, которой нужна правка
+документации, возвращает текст оркестратору, а не пишет в файл. Это главный источник коллизий.
+
+| ID       | Закрывает                                                                                                                                                                                                                                         | Файлы `src/` (эксклюзивно)                                                                                                                                                                                         | Тесты                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **T13**  | P2 · 04 + R2 (скалярные OUT только temporal), R4 (`getResultSetMetadata` молча отдаёт `[]` и обходит guard), R5 (LOB внутри строк курсора не регистрируются), R7 (двойное преобразование регистра), двойная сериализация temporal-колонок курсора | `adapters/oracle/oracle-result-materializer.ts`                                                                                                                                                                    | `oracle-cursor-column-collision.test.ts`, новый `oracle-scalar-out-serializers.test.ts`                                                   |
+| **T14**  | P2 · 05, опечатка/нижний регистр плейсхолдера (`cdc450d`), остаток P2 · 20, инвариант `:PACKAGE_NAME` в `generatePackageInfoSql`                                                                                                                  | `adapters/abstract/database-adapter.ts`, `adapters/oracle/oracle-adapter.ts`, `adapters/postgres/postgre-adapter.ts`                                                                                               | `oracle-raw-sql-bindings.test.ts`, `adapter-shared-skeleton.test.ts`, новый `postgre-raw-sql-bindings.test.ts`                            |
+| **T15**  | P2 · 06, P3 · 10h (`QueryTimer` пишет «started» до получения соединения), `key in` → `Object.hasOwn`                                                                                                                                              | `utils/database-error-handler.ts`, `utils/query-timer.ts`, `core/execute-base.ts`, `types/config.types.ts`, `interfaces/config.interfaces.ts`                                                                      | `database-error-handler.test.ts`, `query-timer.test.ts`, `execute-base.test.ts`                                                           |
+| **T16**  | P2 · 08, R6 (`waitForShutdownTask` не отличает отказ от успеха)                                                                                                                                                                                   | `adapters/abstract/database-notify.ts`                                                                                                                                                                             | `database-notify.test.ts`, `database-notify-shutdown-containers.test.ts`                                                                  |
+| **T17a** | P2 · 09, P3 · 10f (`??` съедает явный `null`), P3 · 10a (сдвиг индекса связываний в логе — обход редактирования по имени), R3 (потеря точности на алиасах NUMBER), `readPayloadValue` по цепочке прототипов                                       | `adapters/oracle/oracle-bindings.ts`, `adapters/postgres/postgre-bindings.ts`, `utils/query-log-context-builder.ts`                                                                                                | `oracle-record-bindings.test.ts`, `postgre-adapter.test.ts`, новый `query-log-context-builder.test.ts`                                    |
+| **T17b** | **P2 · 17** — `build()` на 229 строк с девятью аккумуляторами (в плане не было)                                                                                                                                                                   | `adapters/oracle/oracle-bindings.ts`, новый `adapters/oracle/oracle-anonymous-block-builder.ts`                                                                                                                    | `oracle-record-bindings.test.ts`                                                                                                          |
+| **T18**  | P2 · 22, **P2 · 07** (контракт payload'а PG; асимметрия `ACTION='REPLACE'`; PG молча глотает битый payload), P3 · 10b (осиротевшая подписка при восстановлении), P3 · 10i (утечка соединения в `subscribe`)                                       | `core/notify-base.ts`, `adapters/oracle/oracle-notify.ts`, `adapters/postgres/postgre-notify.ts`, `types/notification.types.ts`, `interfaces/notification.interfaces.ts`, `interfaces/oracle-notify.interfaces.ts` | `notify-base.test.ts`, `oracle-notify.test.ts`, `postgre-notify.test.ts`                                                                  |
+| **T19**  | P2 · 23, P3 · 30, R8 (`setSerializer` пропускает `toString`/`constructor` через прототип), **R1** (PG молча схлопывает одноимённые колонки — зеркало `63dd6dd`)                                                                                   | `core/serializer-base.ts`, `adapters/abstract/database-serializer.ts`, `adapters/oracle/oracle-serializer.ts`, `adapters/postgres/postgre-serializer.ts`                                                           | `serializer-base.test.ts`, `serializers.test.ts`, `database-serializer-exhaustiveness.test.ts`, новый `postgre-duplicate-columns.test.ts` |
+| **T20**  | P2 · 24, опечатка `settingsLoger`                                                                                                                                                                                                                 | `src/nest/**`                                                                                                                                                                                                      | `test/nest/*`                                                                                                                             |
+| **T21**  | P3 · 27 (`serialzierBase`, `generaion`, `shuwtdown.consts.ts`), P3 · 31 (пять `requireXxxBase`, `ENSURE_SERVER_ERROR`, `unsafeGetContextAs`, luxon→`Date` в `server-error.ts`, закомментированный код), P3 · 10c                                  | `core/index.ts`, `utils/typeorm-helpers.ts`, `utils/server-error.ts`, `consts/shuwtdown.consts.ts`→`shutdown.consts.ts`, `consts/index.ts`                                                                         | `typeorm-procedure-kit.test.ts`, `server-error.test.ts`                                                                                   |
+| **T22**  | **P1 · 12** — `databaseAdapterFactory` без ветки `default:` (в плане не было)                                                                                                                                                                     | `core/database-initializer-base.ts`                                                                                                                                                                                | `database-initializer-base.test.ts`                                                                                                       |
+| **T23**  | P3 · 10g — `resolveResourceLimits` падает на явном `undefined`; у модуля вообще нет тестов                                                                                                                                                        | `utils/resource-limits.ts`                                                                                                                                                                                         | новый `resource-limits.test.ts`                                                                                                           |
+| **T24**  | Хвост `50aecbd`: литерал sentinel захардкожен в SQL-шаблонах в другом регистре, чем константа                                                                                                                                                     | `adapters/oracle/oracle-sql.ts`, `adapters/postgres/postgre-sql.ts`, `consts/procedure.consts.ts`                                                                                                                  | `adapter-shared-skeleton.test.ts` (после T14)                                                                                             |
+| **T25**  | P3 · 28, грамматика логов, два побайтно одинаковых текста ошибки на разных guard'ах                                                                                                                                                               | `core/procedure-list-base.ts`                                                                                                                                                                                      | `procedure-list-base.test.ts`                                                                                                             |
+| **T26**  | Все обязательства по документации из T13–T19, пропущенная нота в `98b38ed`, порядок `CHANGELOG.md`, `CLAUDE.md`                                                                                                                                   | —                                                                                                                                                                                                                  | —                                                                                                                                         |
+| **T27**  | P3 · 31 (`isMapRecord` пропускает `null`, `getPropertyPathsMap`/`getPropertyMap`)                                                                                                                                                                 | `typeorm-extend/repository/abstract-typeorm-repository.ts`                                                                                                                                                         | `abstract-typeorm-repository.test.ts`                                                                                                     |
+| **T28**  | Гейт версии Oracle RECORD: анонимный thunk → именованный интерфейс; мемоизация (сейчас читает `driver.version` на каждую строку RECORD)                                                                                                           | `adapters/oracle/oracle-record-metadata-parser.ts`                                                                                                                                                                 | `oracle-record-metadata.test.ts`                                                                                                          |
+
+### Конфликты и порядок запуска
+
+Жёсткие, никогда не в одной партии:
+
+1. **T17a → T17b** — один файл `oracle-bindings.ts`. Сначала поведение, потом извлечение,
+   иначе паритет придётся выводить заново после каждой правки поведения.
+2. **T14 → T24** — общий `adapter-shared-skeleton.test.ts` с шестью побайтными отпечатками SQL.
+   T24 меняет шаблоны, то есть меняет отпечатки; обновление отпечатков принадлежит T24.
+3. **T20 ⊥ T21** — опечатка `settingsLoger` отдана T20; T21 не открывает ни одного файла в `src/nest/`.
+4. **T15 ⊥ T21** — `query-timer.ts` целиком у T15, включая снятие luxon. У T21 luxon только в `server-error.ts`.
+
+Мягкий: **T13 ⊥ T19** — R7 чинится либо в материализаторе, либо в `oracle-serializer.ts`.
+Второй файл принадлежит T19, поэтому T13 берёт правку на своей стороне; если сочтёт верной
+правку в сериализаторе — возвращает решение оркестратору, а не правит.
+
+| Партия | Агенты                       | Почему так                                                                                                                                                                                                                                                       |
+| ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | T13 · T15 · T16 · T20 · T22  | Поведенческие правки без переименований. T15 фиксирует, чем является конверт ошибки, до того как T14 меняет поведение при отсутствующем параметре; T16 фиксирует семантику выключения notify до того, как T18 двигает вендорную логику внутри той же подсистемы. |
+| 2      | T14 · T17a · T18 · T19       | Четыре задачи про паритет вендоров, разрезанные по слоям: адаптеры / связывания / notify / сериализаторы.                                                                                                                                                        |
+| 3      | T17b · T21 · T23 · T25 · T28 | Структура и косметика поверх устоявшегося поведения. T17b проверяется дифференциально — по методу T11/T12.                                                                                                                                                       |
+| 4      | T27 · T24                    | T24 только после T14 из-за отпечатков.                                                                                                                                                                                                                           |
+| 5      | T26                          | Одна задача, вся документация.                                                                                                                                                                                                                                   |
+| 6      | Волна 6                      | Ревью + полный `npm run check` **и** `check:dist`/`check:runtime`: T22 и T24 меняют поведение на этапе загрузки, а межволновой прогон этого не покрывает.                                                                                                        |
+
+R1 и R2 намеренно разведены по разным задачам: они в разных файлах и тянут в противоположные
+стороны — R1 делает PostgreSQL строже по образцу Oracle, R2 делает Oracle богаче по образцу
+PostgreSQL. Объединять их в один коммит нельзя, общая история у них появляется только в
+описании волны 6.
+
+### Закрыто в волнах 1–4 — не переделывать
+
+- `src/consts/procedure.consts.ts` (Task 6, `50aecbd`) — файл создан, константа экспортирована;
+- rider P3 · 10 про `.length` (`744b89c`);
+- P3 · 10e — комментарий про backoff уехал вместе с удалённым `async-utils` (`4d8c3f7`);
+- пробелы в тестах 1–3 из десяти — закрыты; остальные семь разнесены по T13–T18.
+
+### Отклонено
+
+- Проверка rowset-guard на oracledb 6.x: цена — постоянное измерение в матрице CI,
+  выигрыш — уточнение в docstring. `63dd6dd` уже сделал деградацию безопасной.
+- `afterEach` в тесте кэша ключей: `beforeEach` там уже есть, пул `forks` с `isolate: true`
+  даёт файлу отдельный процесс, промах кэша возвращает то же число. Нечего чинить.
+- Снятие `dotenv`/`app-root-path` из зависимостей: требует правки вендорного форка
+  (по CLAUDE.md — обслуживание форка с обновлением `docs/TYPEORM_FORK.md`) либо оставляет
+  потребителю голый `MODULE_NOT_FOUND`. Две зависимости этого не стоят.
+- P2 · 26 (тройная косвенность `interfaces/` → `types/`): правка ~20 файлов, конфликтующая
+  с импортами типов во всех остальных задачах, при нулевом наблюдаемом эффекте.
 
 ---
 
@@ -313,15 +403,22 @@ export const SERIALIZER_TYPES = [
 - `pr-review-toolkit:silent-failure-hunter` — проглоченные ошибки и неверные fallback'и (особенно актуально: T14/T15 меняют поведение при ошибках);
 - `pr-review-toolkit:pr-test-analyzer` — достаточность тестов, прицельно по десяти пробелам из отчёта.
 
-Финальная проверка оркестратора: `npm run check` целиком.
+Финальная проверка оркестратора: `npm run check` целиком плюс `check:dist` и `check:runtime`.
 
 ---
 
-## Волна 7 — ломающие изменения (НЕ запускать без подтверждения владельца)
+## Волна 7 — переименования по всему дереву (НЕ запускать без подтверждения владельца)
 
-Требуют мажорной версии. Вынесены отдельно намеренно: пакет опубликован как v2.3.1.
+Исходное основание волны — «требуют мажорной версии, пакет опубликован как v2.3.1» — больше
+не работает: v3.0.0 протегирован, `package.json` уже `3.0.0`, а шесть коммитов ветки помечены
+как ломающие. Ветка в любом случае становится v4, и по признаку «ломает ли» волна 7 больше
+ничего не отделяет: ломающими являются и T13, и T14, и T15, и T16, и T17a, и T19, и T21.
 
-- **P1 · 14 полностью** — заменить `export * from './utils/index.js'` в `src/index.ts` явным списком. Сейчас наружу уезжают `DatabaseNamingCache`, `QueryTimer`, `TypeOrmHelpers`, `DatabaseOptionsExecutor`, `QueryLogContextStorage`, `StringUtilities` — 12 из 15 утилит не упомянуты в README.
-- **P3 · 27** — переименование `TOracleNormilizeOptionsNotify` → `TOracleNormalizeOptionsNotify` (экспортируемый тип).
-- **P2 · 26** — схлопнуть тройную косвенность `interfaces/` → `types/` → `types/index` → `index`.
+Новое основание — механическое: **переименование символа по всему дереву обесценивает файлы
+всех агентов, которые в этот момент в работе.** Поэтому — в одиночку и последними.
+
+- **P1 · 14 полностью** — заменить `export * from './utils/index.js'` в `src/index.ts` явным
+  списком. Сейчас наружу уезжают `DatabaseNamingCache`, `QueryTimer`, `TypeOrmHelpers`,
+  `DatabaseOptionsExecutor`, `QueryLogContextStorage`, `StringUtilities`.
+- **P3 · 27** — `TOracleNormilizeOptionsNotify` → `TOracleNormalizeOptionsNotify`.
 - Переименование классов `Postgre*` → `Postgres*` для согласия с форком и значением конфига.
