@@ -69,23 +69,27 @@ export class NotifyBase {
   }
 
   /**
-   * Handle notification data from database
-   * @param notifyData - notification data from database
+   * Refreshes the metadata of every configured package a package-change
+   * notification names.
+   *
+   * Both vendors follow one rule: every notification that names a configured
+   * package refreshes it, and which DDL produces a notification is decided in
+   * the database - by the CQN query on Oracle, by the trigger on PostgreSQL.
+   * An event name in the payload is not interpreted. A notification that names
+   * no package is logged and skipped; one that names a package outside
+   * `packagesSettings.packages` is skipped silently. Field names are matched
+   * case-insensitively.
+   *
+   * What differs is only the payload each database can deliver: Oracle CQN
+   * hands over the changed rows of the watched query, PostgreSQL NOTIFY hands
+   * over one text payload.
+   * @param notifyData - rows refetched by the Oracle CQN query, or the parsed
+   * PostgreSQL NOTIFY payload.
    * @example
-   * [
-   *   {
-   *     event: 'CREATE',
-   *     object: 'PACKAGE_NAME',
-   *     owner: 'SCHEMA_NAME',
-   *   },
-   * ]
-   * OR
-   * {
-   *   event: 'DROP',
-   *   object: 'PACKAGE_NAME',
-   *   owner: 'SCHEMA_NAME',
-   * }
-   * @returns void
+   * // Oracle: rows of the CQN query, each naming a package in NAME
+   * [{ NAME: 'BILLING' }, { NAME: 'REPORTING' }]
+   * // PostgreSQL: one JSON object naming the package (schema) in "object"
+   * { event: 'CREATE', object: 'billing' }
    */
   public async packageNotifyCallback(
     notifyData: TNotifyPackageCallback
@@ -107,6 +111,10 @@ export class NotifyBase {
       }
     };
 
+    // This shape test is the one vendor branch left in this class, and it
+    // cannot tell a PostgreSQL JSON array from Oracle rows. Each vendor
+    // notifier should turn its own payload into package names instead, which
+    // needs a package-notification member on the adapter contract.
     if (Array.isArray(notifyData)) {
       await Promise.all(
         notifyData.map(async (item) => {
@@ -120,18 +128,16 @@ export class NotifyBase {
           await processPackage(packageName);
         })
       );
-    } else {
-      const event = this.readStringField(notifyData, 'event');
-      const packageName = this.readStringField(notifyData, 'object');
-      if (
-        packageName &&
-        event &&
-        (event.toUpperCase() === 'DROP' || event.toUpperCase() === 'CREATE')
-      ) {
-        await processPackage(packageName);
-      }
+      return;
     }
-    return;
+    const packageName = this.readStringField(notifyData, 'object');
+    if (!packageName) {
+      this.logger.warn(
+        'Ignoring PostgreSQL package notification without a string "object" field'
+      );
+      return;
+    }
+    await processPackage(packageName);
   }
 
   /**

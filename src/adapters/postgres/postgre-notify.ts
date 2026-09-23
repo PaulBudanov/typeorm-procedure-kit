@@ -1,4 +1,3 @@
-import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
@@ -230,8 +229,9 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       payload = rawPayload as TNotifyCallbackGeneric<T>;
     }
 
+    // A NOTIFY payload is application data, not a procedure result, so it is
+    // never read as an error envelope: the callback decides what it means.
     try {
-      DatabaseErrorHandler.checkForDatabaseError<T>(payload);
       await notifyCallback(payload);
     } catch (error) {
       this.logger.error(

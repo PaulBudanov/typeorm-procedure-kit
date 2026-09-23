@@ -262,6 +262,46 @@ describe('PostgreNotify', (): void => {
     await notify.unlistenNotify('secure_channel');
   });
 
+  it.each([
+    {
+      shape: 'a multi-row payload',
+      payload:
+        '[{"error_code":1,"error_text":"job failed","job_id":1},{"job_id":2}]',
+      expected: [
+        { error_code: 1, error_text: 'job failed', job_id: 1 },
+        { job_id: 2 },
+      ],
+    },
+    {
+      shape: 'a single-object payload',
+      payload: '{"errorCode":7,"errorText":"quota exceeded"}',
+      expected: { errorCode: 7, errorText: 'quota exceeded' },
+    },
+  ])(
+    'passes $shape shaped like an error envelope to the callback',
+    async ({ payload, expected }): Promise<void> => {
+      const client = new FakePgClient();
+      client.query.mockResolvedValue(undefined);
+      const connection = {
+        createSingleConnection: vi.fn().mockResolvedValue(client),
+        closeSingleConnection: vi.fn().mockResolvedValue(undefined),
+        registerConnectionErrorHandler: vi.fn(),
+        isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      };
+      const logger = createLogger();
+      const callback = vi.fn();
+      const notify = new PostgreNotify(connection as never, logger);
+      await notify.listenNotify('LISTEN job_events', callback);
+
+      client.emit('notification', { channel: 'job_events', payload });
+      await vi.waitFor(() => expect(callback).toHaveBeenCalledOnce());
+
+      expect(callback).toHaveBeenCalledWith(expected);
+      expect(logger.error).not.toHaveBeenCalled();
+      await notify.unlistenNotify('job_events');
+    }
+  );
+
   it.each(['LISTEN "broken', 'LISTEN broken"'])(
     'rejects unpaired identifier quotes in %s',
     async (sql): Promise<void> => {

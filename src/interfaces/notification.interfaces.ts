@@ -67,6 +67,13 @@ export interface IOracleNotifyMsg extends SubscriptionMessage {
   tables?: Array<SubscriptionTable>;
 }
 
+/**
+ * One row refetched by the Oracle package-change CQN query. Only the package
+ * name is read, from the NAME column matched case-insensitively; the default
+ * query selects nothing else, so its rows carry just the upper-case `NAME` key.
+ * The other members describe further `SOLUTION_ROOT.DB_OBJECT_LOG` columns and
+ * are present only when a custom `metadataNotificationSql` selects them.
+ */
 export interface INotifyPackageCallbackOracle {
   keyid: number;
   owner: string;
@@ -82,7 +89,17 @@ export interface INotifyPackageCallbackOracle {
   obj_info: string | null;
 }
 
+/**
+ * PostgreSQL package-change payload: one JSON object sent with NOTIFY on the
+ * package channel. Field names are matched case-insensitively and fields other
+ * than `object` are ignored.
+ */
 export interface INotifyPackageCallbackPostgre {
+  /**
+   * Informational only. Every payload that names a configured package
+   * refreshes it; which DDL sends a payload is the trigger's decision.
+   */
   event?: string;
+  /** Package (schema) whose procedure metadata changed. */
   object: string;
 }

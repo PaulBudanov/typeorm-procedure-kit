@@ -91,6 +91,88 @@ describe('NotifyBase', (): void => {
     );
   });
 
+  it.each([
+    { event: 'REPLACE', object: 'PKG' },
+    { event: 'ALTER', object: 'pkg' },
+    { event: 'CREATE PROCEDURE', object: 'Pkg' },
+    { event: 'drop', object: 'pkg' },
+    { object: 'pkg' },
+  ])(
+    'refreshes the PostgreSQL package named by %j whatever the event says',
+    async (payload): Promise<void> => {
+      const fetchProcedureListWithArguments = vi
+        .fn<(_packageName: Lowercase<string>) => Promise<void>>()
+        .mockResolvedValue(undefined);
+      const logger = createLogger();
+      const notifyBase = new NotifyBase(
+        createAdapterMock(),
+        { fetchProcedureListWithArguments } as never,
+        logger,
+        { packages: ['pkg'], procedureObjectList: {} }
+      );
+
+      await notifyBase.packageNotifyCallback(payload);
+
+      expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
+      expect(fetchProcedureListWithArguments).toHaveBeenCalledWith('pkg');
+      expect(logger.warn).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    { shape: 'an object without "object"', payload: { event: 'CREATE' } },
+    {
+      shape: 'a non-string "object"',
+      payload: { event: 'CREATE', object: 42 },
+    },
+    { shape: 'an empty NOTIFY payload', payload: {} },
+    { shape: 'a JSON null', payload: null },
+    { shape: 'a JSON number', payload: 5 },
+    {
+      shape: 'a payload that is not JSON',
+      payload: 'billing\nforged log line',
+    },
+  ])(
+    'warns about and skips a PostgreSQL package notification with $shape',
+    async ({ payload }): Promise<void> => {
+      const fetchProcedureListWithArguments = vi.fn();
+      const logger = createLogger();
+      const notifyBase = new NotifyBase(
+        createAdapterMock(),
+        { fetchProcedureListWithArguments } as never,
+        logger,
+        { packages: ['billing'], procedureObjectList: {} }
+      );
+
+      await notifyBase.packageNotifyCallback(payload as never);
+
+      expect(fetchProcedureListWithArguments).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Ignoring PostgreSQL package notification without a string "object" field'
+      );
+    }
+  );
+
+  it('ignores a PostgreSQL package that is not configured without a warning', async (): Promise<void> => {
+    const fetchProcedureListWithArguments = vi.fn();
+    const logger = createLogger();
+    const notifyBase = new NotifyBase(
+      createAdapterMock(),
+      { fetchProcedureListWithArguments } as never,
+      logger,
+      { packages: ['billing'], procedureObjectList: {} }
+    );
+
+    await notifyBase.packageNotifyCallback({
+      event: 'CREATE',
+      object: 'reporting',
+    });
+
+    expect(fetchProcedureListWithArguments).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it('schedules notification refreshes without awaiting database metadata work', async (): Promise<void> => {
     let resolveRefresh!: () => void;
     const refresh = new Promise<void>((resolve) => {
