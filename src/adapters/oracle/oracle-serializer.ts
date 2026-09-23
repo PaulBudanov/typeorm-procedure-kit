@@ -11,7 +11,12 @@ import type {
 import type { DbType, FetchTypeResponse } from 'oracledb';
 
 export class OracleSerializer extends DatabaseSerializer {
-  private static readonly OBJECT_TYPE_CAST: Partial<
+  /**
+   * Driver type for every serializer type. Complete by construction, so a new member of
+   * `TSerializerType` does not compile until it is mapped here. It is only ever indexed with a
+   * member already validated by `DatabaseSerializer`, never with a caller's raw value.
+   */
+  private static readonly OBJECT_TYPE_CAST: Readonly<
     Record<TSerializerType, DbType>
   > = {
     BINARY: oracledb.DB_TYPE_BLOB,
@@ -183,14 +188,11 @@ export class OracleSerializer extends DatabaseSerializer {
   }
 
   /**
-   * Registers a custom serializer for the given type.
+   * Records the strategy and maps its Oracle driver type onto it for the fetch type handler.
    * If a serializer with the same type already exists, it will be overridden.
-   * @param options - An object with the following properties:
-   *   serializerType - The type of the data to be serialized (e.g. 'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ').
-   *   strategy - A function that takes a value of the given type and returns a serialized string.
-   * @throws Error - If the serializer type is unknown.
+   * @param options - a serializer already validated by `DatabaseSerializer.setSerializer`.
    */
-  public override setSerializer(options: TSetSerializer): void {
+  protected override installSerializer(options: TSetSerializer): void {
     if (this.hasSerializer(options.serializerType)) {
       this.logger.warn(
         `Serializer with type ${options.serializerType} already exists, overriding...`
@@ -199,10 +201,6 @@ export class OracleSerializer extends DatabaseSerializer {
     }
     const dbTypeClass =
       OracleSerializer.OBJECT_TYPE_CAST[options.serializerType];
-    if (!dbTypeClass)
-      throw new ServerError(
-        `Unknown serializer type: ${options.serializerType}`
-      );
     if (this.objectDbTypeHandlerCast.has(dbTypeClass)) {
       this.logger.warn(
         `Serializer with dbType ${dbTypeClass.columnTypeName} already exists, overriding...`
@@ -218,17 +216,15 @@ export class OracleSerializer extends DatabaseSerializer {
   }
 
   /**
-   * Deletes a serializer with the given type.
-   * @param serializerType - The type of the serializer to delete.
+   * Forgets the strategy and its driver type mapping, so the fetch handler stops converting it.
+   * @param serializerType - a type already validated by `DatabaseSerializer.deleteSerializer`.
    */
-  public override deleteSerializer(
-    serializerType: Pick<TSetSerializer, 'serializerType'>
+  protected override uninstallSerializer(
+    serializerType: TSerializerType
   ): void {
-    if (this.hasSerializer(serializerType.serializerType))
-      this.unregisterSerializer(serializerType.serializerType);
-    const dbTypeClass =
-      OracleSerializer.OBJECT_TYPE_CAST[serializerType.serializerType];
-    if (dbTypeClass === undefined) return;
+    if (this.hasSerializer(serializerType))
+      this.unregisterSerializer(serializerType);
+    const dbTypeClass = OracleSerializer.OBJECT_TYPE_CAST[serializerType];
     if (this.objectDbTypeHandlerCast.has(dbTypeClass))
       this.objectDbTypeHandlerCast.delete(dbTypeClass);
     return;

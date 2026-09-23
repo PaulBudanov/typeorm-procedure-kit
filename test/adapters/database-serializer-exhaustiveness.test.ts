@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { SERIALIZER_TYPES } from '../../src/adapters/abstract/database-serializer.js';
+import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js';
 import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serializer.js';
+import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
 import type { TSerializerType } from '../../src/types/serializer.types.js';
@@ -45,6 +47,66 @@ function createProbeSerializer(): ProbeSerializer {
     isNeedRegisterDefaultSerializers: false,
     caseStrategy,
   });
+}
+
+/** The Oracle counterpart of `ProbeSerializer`: same registry view, other vendor. */
+class OracleProbeSerializer extends OracleSerializer {
+  public exposedHasSerializer(serializerType: TSerializerType): boolean {
+    return this.hasSerializer(serializerType);
+  }
+}
+
+const VENDOR_PROBES = [
+  ['PostgreSQL', createProbeSerializer],
+  [
+    'Oracle',
+    (): OracleProbeSerializer =>
+      new OracleProbeSerializer(createLogger(), {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy,
+      }),
+  ],
+] as const;
+
+/**
+ * Every own property name of `Object.prototype`, read from the running engine rather than written
+ * out. Looking any of these up in an object literal, as in `TABLE[serializerType]`, returns an
+ * inherited value instead of `undefined`, so a guard that only asks whether the lookup found
+ * something accepts all of them.
+ */
+const PROTOTYPE_KEYS = Object.getOwnPropertyNames(Object.prototype);
+
+/** Strings that look like serializer types but are not members of the union. */
+const NEAR_MISSES = ['date', 'Date', 'DATE ', '', 'TIMESTAMPTZ'];
+
+/**
+ * Non-string values a caller outside the type system could pass, each with the text the error
+ * message must show for it. Some cannot even be turned into a string or a property key without
+ * throwing, which must still surface as the same ServerError.
+ */
+const NON_STRING_TYPES: ReadonlyArray<readonly [unknown, string]> = [
+  [42, '42'],
+  [null, 'null'],
+  [undefined, 'undefined'],
+  [Symbol('DATE'), 'Symbol(DATE)'],
+  [['DATE'], '[object Array]'],
+  [{ toString: (): string => 'DATE' }, '[object Object]'],
+  [Object.create(null), '[object Object]'],
+];
+
+/**
+ * Runs an action once and returns what it threw, so a single call can be checked for both the
+ * error class and the exact message.
+ * @param action - the call under test.
+ * @returns the thrown value, or undefined when the call returned normally.
+ */
+function captureThrown(action: () => void): unknown {
+  try {
+    action();
+  } catch (error: unknown) {
+    return error;
+  }
+  return undefined;
 }
 
 describe('serializer type exhaustiveness', (): void => {
@@ -145,4 +207,98 @@ describe('serializer type exhaustiveness', (): void => {
       expect(serializer.serializeValue(serializerType, undefined)).toBeNull();
     }
   });
+});
+
+describe('serializer type membership at the registration boundary', (): void => {
+  it.each(VENDOR_PROBES)(
+    '%s accepts every member of TSerializerType',
+    (_vendor, createSerializer): void => {
+      // The accepted set is the compile-time witness, not SERIALIZER_TYPES: the membership check
+      // itself reads SERIALIZER_TYPES, so deriving the expectation from it too would pass even
+      // if an entry went missing from the list.
+      const serializer = createSerializer();
+      for (const serializerType of Object.keys(
+        NATIVE_VALUE_SAMPLES
+      ) as Array<TSerializerType>) {
+        serializer.setSerializer({ serializerType, strategy: () => 'value' });
+        expect(serializer.exposedHasSerializer(serializerType)).toBe(true);
+      }
+    }
+  );
+
+  it.each(VENDOR_PROBES)(
+    '%s rejects Object.prototype keys and near misses without registering them',
+    (_vendor, createSerializer): void => {
+      for (const serializerType of [...PROTOTYPE_KEYS, ...NEAR_MISSES]) {
+        const serializer = createSerializer();
+        const thrown = captureThrown((): void => {
+          serializer.setSerializer({
+            serializerType: serializerType as never,
+            strategy: () => 'leaked',
+          });
+        });
+
+        expect(thrown, serializerType).toBeInstanceOf(ServerError);
+        expect((thrown as Error).message).toBe(
+          `Unknown serializer type: ${serializerType}`
+        );
+        expect(
+          serializer.exposedHasSerializer(serializerType as never),
+          serializerType
+        ).toBe(false);
+        expect(serializer.serializerMapping.size).toBe(0);
+      }
+    }
+  );
+
+  it.each(VENDOR_PROBES)(
+    '%s rejects deleting a type outside the union instead of ignoring it',
+    (_vendor, createSerializer): void => {
+      const serializer = createSerializer();
+      serializer.setSerializer({ serializerType: 'DATE', strategy: () => 'd' });
+
+      for (const serializerType of [...PROTOTYPE_KEYS, ...NEAR_MISSES]) {
+        const thrown = captureThrown((): void => {
+          serializer.deleteSerializer({
+            serializerType: serializerType as never,
+          });
+        });
+
+        expect(thrown, serializerType).toBeInstanceOf(ServerError);
+        expect((thrown as Error).message).toBe(
+          `Unknown serializer type: ${serializerType}`
+        );
+      }
+      expect(serializer.exposedHasSerializer('DATE')).toBe(true);
+    }
+  );
+
+  it.each(VENDOR_PROBES)(
+    '%s reports a non-string type as a ServerError on registration and deletion',
+    (_vendor, createSerializer): void => {
+      for (const [serializerType, printed] of NON_STRING_TYPES) {
+        const serializer = createSerializer();
+        for (const action of [
+          (): void => {
+            serializer.setSerializer({
+              serializerType: serializerType as never,
+              strategy: () => 'leaked',
+            });
+          },
+          (): void => {
+            serializer.deleteSerializer({
+              serializerType: serializerType as never,
+            });
+          },
+        ]) {
+          const thrown = captureThrown(action);
+          expect(thrown, printed).toBeInstanceOf(ServerError);
+          expect((thrown as Error).message).toBe(
+            `Unknown serializer type: ${printed}`
+          );
+        }
+        expect(serializer.serializerMapping.size).toBe(0);
+      }
+    }
+  );
 });

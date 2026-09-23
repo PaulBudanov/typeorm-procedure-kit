@@ -46,11 +46,51 @@ export const SERIALIZER_TYPES = listAllSerializerTypes([
   'XML',
 ]);
 
+const READ_ONLY_MAPPING_MESSAGE = 'Read-only map: cannot modify';
+
+/**
+ * An immutable copy of the serializer registry, in canonical order.
+ *
+ * It is a real `Map`, so `instanceof Map`, iteration and `new Map(snapshot)` keep working. Its
+ * three mutators throw instead of changing the copy: a caller who reaches past the `ReadonlyMap`
+ * type and calls `set` expecting to register a serializer learns that it did not, instead of being
+ * left with an altered copy and an unaltered registry. The instance is frozen, so the mutators
+ * cannot be shadowed by own properties either. Merely reading one (`typeof snapshot.set`) is fine.
+ */
+class SerializerRegistrySnapshot extends Map<TSerializerType, TSetSerializer> {
+  public constructor(
+    entries: ReadonlyArray<readonly [TSerializerType, TSetSerializer]>
+  ) {
+    // No iterable goes to `super`: the Map constructor would feed it through the overridden `set`.
+    super();
+    for (const [serializerType, serializer] of entries)
+      super.set(serializerType, serializer);
+    Object.freeze(this);
+  }
+
+  public override set(): never {
+    throw new ServerError(READ_ONLY_MAPPING_MESSAGE);
+  }
+
+  public override delete(): never {
+    throw new ServerError(READ_ONLY_MAPPING_MESSAGE);
+  }
+
+  public override clear(): never {
+    throw new ServerError(READ_ONLY_MAPPING_MESSAGE);
+  }
+}
+
 export abstract class DatabaseSerializer {
   private readonly serializerRegistry = new Map<
     TSerializerType,
     TSetSerializer
   >();
+  /**
+   * The snapshot `serializerMapping` hands out, built on first read and dropped by every registry
+   * change. Sharing it between reads is safe only because it cannot be mutated.
+   */
+  private registrySnapshot: SerializerRegistrySnapshot | undefined;
 
   public constructor(
     protected readonly logger: ILoggerModule,
@@ -118,19 +158,67 @@ export abstract class DatabaseSerializer {
     options?: IRegisteredFetchHandlerOptions
   ): void;
 
-  public abstract setSerializer(options: TSetSerializer): void;
-  public abstract deleteSerializer(
+  /**
+   * Registers a strategy for one serializer type, replacing any previous one.
+   *
+   * This is the single registration entry point for every vendor, so it is also where the
+   * argument is checked at runtime. The signature already confines it to `TSetSerializer`, but a
+   * JavaScript caller, or one that builds the type name from configuration, is not bound by that;
+   * the vendor hook below only ever receives a member of the union with a callable strategy.
+   * @param options - the serializer type and the strategy to apply to its values.
+   * @throws ServerError - when `options` is not an object, its type is not a member of
+   * `TSerializerType`, or its strategy is not a function. Nothing is registered in that case.
+   */
+  public setSerializer(options: TSetSerializer): void {
+    DatabaseSerializer.assertSerializerOptions(options);
+    this.installSerializer(options);
+  }
+
+  /**
+   * Removes the strategy for one serializer type and restores the vendor's native handling.
+   * Removing a type that is valid but not registered does nothing.
+   * @param serializerType - an object naming the serializer type to remove.
+   * @throws ServerError - when the argument is not an object or its type is not a member of
+   * `TSerializerType`, so a misspelt type is reported rather than silently kept registered.
+   */
+  public deleteSerializer(
     serializerType: Pick<TSetSerializer, 'serializerType'>
-  ): void;
+  ): void {
+    DatabaseSerializer.assertSerializerSelector(serializerType);
+    this.uninstallSerializer(serializerType.serializerType);
+  }
+
   public abstract deleteAllSerializers(): void;
 
+  /**
+   * Vendor half of `setSerializer`: records the strategy and wires it into the driver.
+   * @param options - already validated by `setSerializer`.
+   */
+  protected abstract installSerializer(options: TSetSerializer): void;
+
+  /**
+   * Vendor half of `deleteSerializer`: forgets the strategy and unwires it from the driver.
+   * @param serializerType - already validated by `deleteSerializer`.
+   */
+  protected abstract uninstallSerializer(serializerType: TSerializerType): void;
+
+  /**
+   * The registered serializers, in the canonical `SERIALIZER_TYPES` order.
+   *
+   * The result is detached and immutable: a later registration never shows up in it, and its
+   * `set`, `delete` and `clear` throw. Consecutive reads return the same object for as long as
+   * the registry is unchanged, and a new one after any change.
+   */
   public get serializerMapping(): TSerializerTypeCastWithoutFormat {
-    const snapshot = new Map<TSerializerType, TSetSerializer>();
-    for (const serializerType of SERIALIZER_TYPES) {
-      const serializer = this.serializerRegistry.get(serializerType);
-      if (serializer) snapshot.set(serializerType, serializer);
+    if (this.registrySnapshot === undefined) {
+      const entries: Array<readonly [TSerializerType, TSetSerializer]> = [];
+      for (const serializerType of SERIALIZER_TYPES) {
+        const serializer = this.serializerRegistry.get(serializerType);
+        if (serializer) entries.push([serializerType, serializer]);
+      }
+      this.registrySnapshot = new SerializerRegistrySnapshot(entries);
     }
-    return snapshot;
+    return this.registrySnapshot;
   }
 
   protected hasSerializer(serializerType: TSerializerType): boolean {
@@ -139,10 +227,12 @@ export abstract class DatabaseSerializer {
 
   protected registerSerializer(options: TSetSerializer): void {
     this.serializerRegistry.set(options.serializerType, options);
+    this.registrySnapshot = undefined;
   }
 
   protected unregisterSerializer(serializerType: TSerializerType): void {
     this.serializerRegistry.delete(serializerType);
+    this.registrySnapshot = undefined;
   }
 
   protected clearSerializerRegistry(): void {
@@ -154,6 +244,62 @@ export abstract class DatabaseSerializer {
     return SERIALIZER_TYPES.filter((serializerType) =>
       this.hasSerializer(serializerType)
     );
+  }
+
+  /**
+   * Checks the argument of `deleteSerializer`, and the type half of `setSerializer`'s.
+   *
+   * Membership is decided against `SERIALIZER_TYPES`, which is an array. It is never decided by
+   * looking the value up in an object literal: `toString`, `constructor` and every other
+   * `Object.prototype` key resolve there to an inherited value, which a truthiness guard accepts.
+   * @param selector - the argument exactly as the caller passed it.
+   * @throws ServerError - when it is not an object, or its type is outside `TSerializerType`.
+   */
+  private static assertSerializerSelector(
+    selector: unknown
+  ): asserts selector is Pick<TSetSerializer, 'serializerType'> {
+    if (typeof selector !== 'object' || selector === null)
+      throw new ServerError('Serializer options must be an object');
+    const serializerType: unknown =
+      'serializerType' in selector ? selector.serializerType : undefined;
+    if (!SERIALIZER_TYPES.some((member) => member === serializerType))
+      throw new ServerError(
+        `Unknown serializer type: ${DatabaseSerializer.printSerializerType(serializerType)}`
+      );
+  }
+
+  /**
+   * Renders a rejected serializer type for the error message without running any of its code.
+   * Objects and functions print as their tag: `String()` would call their own `toString`, which
+   * can throw, or make `['DATE']` read as the valid type `DATE`.
+   * @param serializerType - the value that failed the membership check.
+   * @returns a printable form of it.
+   */
+  private static printSerializerType(serializerType: unknown): string {
+    if (typeof serializerType === 'string') return serializerType;
+    if (typeof serializerType === 'object' && serializerType !== null)
+      return Object.prototype.toString.call(serializerType);
+    if (typeof serializerType === 'function') return '[object Function]';
+    return String(serializerType);
+  }
+
+  /**
+   * Checks the argument of `setSerializer`: a valid type, and a strategy that can be called.
+   * A strategy that is not a function would otherwise be stored and only fail later, once per
+   * value, inside a driver type parser or fetch converter.
+   * @param options - the argument exactly as the caller passed it.
+   * @throws ServerError - on the first check that fails.
+   */
+  private static assertSerializerOptions(
+    options: unknown
+  ): asserts options is TSetSerializer {
+    DatabaseSerializer.assertSerializerSelector(options);
+    const strategy: unknown =
+      'strategy' in options ? options.strategy : undefined;
+    if (typeof strategy !== 'function')
+      throw new ServerError(
+        `Serializer strategy for ${options.serializerType} must be a function`
+      );
   }
 
   private assertNativeValue<T extends TSerializerType>(

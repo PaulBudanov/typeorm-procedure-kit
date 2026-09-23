@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { PostgreAdapter } from '../../src/adapters/postgres/postgre-adapter.js';
 import { SerializerBase } from '../../src/core/serializer-base.js';
 import { ServerError } from '../../src/utils/server-error.js';
-import { createAdapterMock } from '../support/helpers.js';
+import { createAdapterMock, createLogger } from '../support/helpers.js';
 
 import type {
   TSerializerInput,
@@ -31,19 +32,33 @@ describe('SerializerBase', (): void => {
     expect(adapter.deleteAllSerializers).toHaveBeenCalledOnce();
   });
 
-  it('exposes read-only serializer mapping', (): void => {
-    const mapping = new Map();
-    mapping.set('DATE', { serializerType: 'DATE', strategy: vi.fn() });
-    const serializerBase = new SerializerBase(
-      createAdapterMock({ serializerMapping: mapping })
+  it('serves one read-only registry snapshot from the real adapter chain', (): void => {
+    // A real adapter rather than a mock: the read-only guarantee lives in DatabaseSerializer, so a
+    // mock handing over an arbitrary Map would only test the mock.
+    const adapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      createLogger(),
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: {
+          transformColumnName: (value: string): string => value.toLowerCase(),
+        },
+      }
     );
+    const serializerBase = new SerializerBase(adapter);
+    const strategy = vi.fn((): string => 'date');
+    serializerBase.setSerializer({ serializerType: 'DATE', strategy });
+
     const readOnly = serializerBase.serializerReadOnlyMapping;
     const mutationAttempt = readOnly as unknown as Map<
       TSerializerType,
       TSetSerializer
     >;
 
-    expect(readOnly.get('DATE')).toBe(mapping.get('DATE'));
+    expect(serializerBase.serializerReadOnlyMapping).toBe(readOnly);
+    expect(readOnly).toBe(adapter.serializerMapping);
+    expect(readOnly.get('DATE')?.strategy).toBe(strategy);
+    expect(typeof mutationAttempt.set).toBe('function');
     expect((): void => {
       mutationAttempt.set('TIMESTAMP', {
         serializerType: 'TIMESTAMP',
@@ -53,5 +68,6 @@ describe('SerializerBase', (): void => {
     expect((): void => {
       mutationAttempt.delete('DATE');
     }).toThrow(ServerError);
+    expect(serializerBase.serializerReadOnlyMapping.has('DATE')).toBe(true);
   });
 });

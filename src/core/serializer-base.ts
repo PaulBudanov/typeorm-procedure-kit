@@ -1,41 +1,30 @@
-import { ServerError } from '../utils/server-error.js';
-
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
 import type {
   TSerializerTypeCastWithoutFormat,
   TSetSerializer,
 } from '../types/serializer.types.js';
 
+/**
+ * Pass-through from `TypeOrmProcedureKit` to the adapter's serializer registry.
+ *
+ * It owns no behaviour: registration is validated by `DatabaseSerializer`, which every vendor
+ * shares and which also sits behind the public `TypeOrmProcedureKit.databaseAdapter`, and the
+ * read-only snapshot is produced there too, where registry changes are known exactly. The class
+ * is kept only because removing it means editing `src/core/index.ts`.
+ */
 export class SerializerBase {
   public constructor(
     protected readonly databaseAdapter: TAdapterUtilsClassTypes
   ) {}
   /**
-   * A read-only map of serializers, where the key is the name of the serializer
-   * and the value is the serializer itself.
+   * The adapter's registry snapshot, unchanged: already read-only, in canonical order, and the
+   * same object across reads until the registry changes.
    *
    * @readonly
    * @throws {Error} If you try to modify the map.
    */
   public get serializerReadOnlyMapping(): Readonly<TSerializerTypeCastWithoutFormat> {
-    return new Proxy(this.databaseAdapter.serializerMapping, {
-      get(target, prop): unknown {
-        if (prop === 'set' || prop === 'clear' || prop === 'delete') {
-          throw new ServerError('Read-only map: cannot modify');
-        }
-        const value = Reflect.get(target, prop) as unknown;
-        return typeof value === 'function'
-          ? (value.bind(target) as Pick<TSetSerializer, 'strategy'>)
-          : value;
-      },
-
-      set(): never {
-        throw new ServerError('Read-only map: cannot modify');
-      },
-      deleteProperty(): never {
-        throw new ServerError('Read-only map: cannot modify');
-      },
-    });
+    return this.databaseAdapter.serializerMapping;
   }
   /**
    * Registers a custom serializer for the given type.
@@ -43,7 +32,8 @@ export class SerializerBase {
    * @param options - An object with the following properties:
    *   serializerType - The type of the data to be serialized (e.g. 'DATE', 'TIMESTAMP', 'TIMESTAMP_TZ').
    *   strategy - A function that takes a value of the given type and returns a serialized string.
-   * @throws Error - If the serializer type is unknown.
+   * @throws Error - If the options are not an object, the serializer type is unknown, or the
+   * strategy is not a function.
    */
   public setSerializer(options: TSetSerializer): void {
     this.databaseAdapter.setSerializer(options);
@@ -61,6 +51,7 @@ export class SerializerBase {
   /**
    * Deletes a serializer with the given type.
    * @param serializerType - The type of the serializer to delete.
+   * @throws Error - If the serializer type is unknown.
    */
   public deleteSerializer(
     serializerType: Pick<TSetSerializer, 'serializerType'>
