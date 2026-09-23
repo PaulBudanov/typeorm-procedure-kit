@@ -433,7 +433,8 @@ PostgreSQL. Объединять их в один коммит нельзя, о�
 | T15    | `c1d4a33`            | готово; агент погиб до отчёта, текста для README нет — T26 формулирует по коммиту |
 | T20    | `ac29534`, `c925e02` | готово                                                                            |
 | T13    | `1de2c2c`            | готово                                                                            |
-| T17a   | `710390e`            | готово; решение владельца по унаследованным ключам — отдельная задача T17c        |
+| T17a   | `710390e`            | готово                                                                            |
+| T17c   | `ceb82af`            | готово: ключ с прототипа класса — `ServerError` (решение B.1)                     |
 | T18    | `80b665d`            | пункты 2–4 и конверт готовы; пункт 1 (P2 · 22) заблокирован → T18b                |
 | T19    | `67f641d`            | готово; удаление `SerializerBase` передано в T21                                  |
 
@@ -508,10 +509,9 @@ PostgreSQL. Объединять их в один коммит нельзя, о�
 3. When Oracle returns a cursor without a usable column description, its rows are passed through as the driver produced them and a warning naming the cursor is logged, instead of degrading in silence.
 4. LOB handles that arrive inside REF CURSOR rows are released with the rest of the call's resources, so a row that fails part-way through no longer leaves undrained handles open until the connection returns to the pool.
 
-**T17a** — после «Scalar strings and numbers are rejected at runtime.». Предложение про прототип
-заменить по итогам T17c (решение B.1: ключ с прототипа класса — ошибка, а не `NULL`):
+**T17a + T17c** — после «Scalar strings and numbers are rejected at runtime.»:
 
-> An object payload is matched to procedure arguments by name: each argument reads the key equal to its lowercase argument name (`p_amount`) or the same name without a leading `p_` (`amount`). Supplying both keys for one argument is rejected on both databases, for scalar, cursor, and structured arguments alike. A key set to `null` counts as supplied and binds SQL `NULL`; a key set to `undefined` counts as absent, so spreading an object with unset optional properties does not cause a conflict. Only the payload's own properties are read: values inherited from a prototype, including class getters, are ignored and the argument binds `NULL`. An array payload binds its elements by argument position; a missing, `null`, or `undefined` element binds `NULL`.
+> An object payload is matched to procedure arguments by name: each argument reads the key equal to its lowercase argument name (`p_amount`) or the same name without a leading `p_` (`amount`). Supplying both keys for one argument is rejected on both databases, for scalar, cursor, and structured arguments alike. A key set to `null` counts as supplied and binds SQL `NULL`; a key set to `undefined` counts as absent, so spreading an object with unset optional properties does not cause a conflict. Only the payload's own properties are read. A key that the payload inherits from a prototype other than `Object.prototype`, such as a getter, method, or prototype property of a class DTO, is rejected with a `ServerError` naming the key and the argument instead of binding `NULL`; `Object.prototype` members such as `toString`, and the implicit `constructor` of a class, are ignored. Spreading a class instance does not copy its getters, so copy such values explicitly, for example `{ ...dto, amount: dto.amount }`. An array payload binds its elements by argument position; a missing, `null`, or `undefined` element binds `NULL`.
 
 **T17a, решение B.2** — в раздел Oracle:
 
