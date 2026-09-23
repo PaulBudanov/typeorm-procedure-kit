@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { OracleAdapter } from '../../src/adapters/oracle/oracle-adapter.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../src/utils/resource-limits.js';
+import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
 /**
@@ -15,13 +16,17 @@ import { createLogger } from '../support/helpers.js';
  * - `lib/thin/statement.js` `_addBind` pushes one `bindInfoList` entry per
  *   placeholder OCCURRENCE for plain SQL, but only per DISTINCT name for
  *   PL/SQL (`if (!this.isPlSql || !this.bindInfoDict.has(name))`).
+ * - `lib/thin/statement.js:122` `_parseBindName` uppercases every unquoted
+ *   bind name it finds in the SQL text, so `:userId`, `:UserId` and `:USERID`
+ *   all declare the one bind `USERID`.
  * - `lib/thin/connection.js` `_getExecuteMessage` requires
  *   `binds.length === bindInfoList.length`, falling back to
  *   `bindInfoDict.size` (the distinct-name count) only when the first bind
  *   carries a `name`, i.e. only for named binds.
- * - `lib/thin/connection.js` `_bind` rejects a named bind whose name is absent
- *   from `bindInfoDict` (`ERR_INVALID_BIND_NAME`) and otherwise fans the one
- *   value out to EVERY occurrence of that name.
+ * - `lib/thin/connection.js:1334-1345` `_bind` uppercases the caller's bind
+ *   name unless it is double-quoted, rejects a name absent from
+ *   `bindInfoDict` (`ERR_INVALID_BIND_NAME`) and otherwise fans the one value
+ *   out to EVERY occurrence of that name.
  * - `lib/connection.js:459` turns a bind object into one `{name, values}` entry
  *   per own property, so `binds.length` is the object's key count.
  */
@@ -81,15 +86,21 @@ function applyDriverBindRules(
   )
     return { accepted: false, reason: 'wrong-number-of-binds' };
 
+  const valuesByDeclaredName = new Map<string, unknown>();
   for (const bindName of bindNames) {
-    if (!statement.bindInfoDict.has(bindName.toUpperCase()))
+    const declaredName =
+      bindName.startsWith('"') && bindName.endsWith('"')
+        ? bindName.slice(1, -1)
+        : bindName.toUpperCase();
+    if (!statement.bindInfoDict.has(declaredName))
       return { accepted: false, reason: 'invalid-bind-name' };
+    valuesByDeclaredName.set(declaredName, bindings[bindName]);
   }
 
   return {
     accepted: true,
-    occurrenceValues: statement.bindInfoList.map(
-      ({ bindName }) => bindings[bindName]
+    occurrenceValues: statement.bindInfoList.map(({ bindName }) =>
+      valuesByDeclaredName.get(bindName)
     ),
   };
 }
@@ -166,12 +177,20 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedOccurrenceValues: [1, 2, 1, 3],
   },
   {
-    name: 'repeated placeholder with no supplied value binds one null',
-    sql: 'SELECT :MISSING, :MISSING FROM DUAL',
-    params: {},
-    expectedBindings: { MISSING: null },
+    name: 'repeated placeholder supplied as null binds one null',
+    sql: 'SELECT :NOTHING, :NOTHING FROM DUAL',
+    params: { NOTHING: null },
+    expectedBindings: { NOTHING: null },
     expectedVerdict: 'accepted',
     expectedOccurrenceValues: [null, null],
+  },
+  {
+    name: 'keys that match no placeholder are ignored',
+    sql: 'SELECT * FROM T WHERE A = :FIRST',
+    params: { first: 1, unused: 2, alsoUnused: undefined },
+    expectedBindings: { FIRST: 1 },
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: [1],
   },
   {
     name: 'placeholders inside string literals and comments are not bound',
@@ -205,11 +224,44 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedVerdict: 'invalid-bind-name',
   },
   {
-    name: 'lowercase :userId is not recognised, so the driver refuses the call',
+    name: 'mixed-case :userId binds case-insensitively, like the driver',
     sql: 'select * from users where id = :userId and code = :CODE',
     params: { userId: 1, code: 'a' },
+    expectedBindings: { USERID: 1, CODE: 'a' },
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: [1, 'a'],
+  },
+  {
+    name: 'lowercase placeholder binds an uppercase key',
+    sql: 'select * from users where code = :code',
+    params: { CODE: 'a' },
     expectedBindings: { CODE: 'a' },
-    expectedVerdict: 'wrong-number-of-binds',
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: ['a'],
+  },
+  {
+    name: 'plain SQL, one name spelled in different cases fans out to every occurrence',
+    sql: 'SELECT * FROM T WHERE A = :userId OR B = :USERID OR C = :UserId',
+    params: { UserId: 7 },
+    expectedBindings: { USERID: 7 },
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: [7, 7, 7],
+  },
+  {
+    name: 'keys differing only in letter case: the later supplied one wins',
+    sql: 'SELECT * FROM T WHERE A = :ID',
+    params: { id: 1, ID: 2, Id: undefined },
+    expectedBindings: { ID: 2 },
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: [2],
+  },
+  {
+    name: 'PL/SQL block, one name spelled in different cases is one slot',
+    sql: 'BEGIN pkg.run(:userId, :USERID); END;',
+    params: { userid: 7 },
+    expectedBindings: { USERID: 7 },
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: [7],
   },
 ];
 
@@ -308,5 +360,135 @@ describe('OracleAdapter raw SQL bindings', (): void => {
     ]);
     expect(Object.getOwnPropertyNames(bindings)).toContain('IDS');
     expect(statement.bindInfoDict.has('IDS')).toBe(false);
+  });
+});
+
+function captureError(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
+describe('OracleAdapter raw SQL placeholders without a value', (): void => {
+  it('throws for a mistyped key instead of binding NULL', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM USERS WHERE ID = :USER_ID', {
+        USERID: 42,
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :USER_ID has no value in params; supplied keys: "USERID"'
+    );
+  });
+
+  it('is the only guard: the driver itself runs a mistyped key with NULL', (): void => {
+    // The shape the kit used to hand the driver for `{ USERID: 42 }`: the
+    // statement declares USER_ID, receives USER_ID, and runs with NULL.
+    expect(
+      applyDriverBindRules('SELECT * FROM USERS WHERE ID = :USER_ID', {
+        USER_ID: null,
+      })
+    ).toEqual({ accepted: true, occurrenceValues: [null] });
+  });
+
+  it('names the placeholder as written in the SQL', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select :userId from dual', { user_id: 1 })
+    );
+
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :userId has no value in params; supplied keys: "user_id"'
+    );
+  });
+
+  it('throws when params are omitted altogether', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT :ID FROM DUAL')
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has no value in params; supplied keys: none'
+    );
+  });
+
+  it('treats a key set to undefined as absent and says how to bind NULL', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings(
+        'SELECT * FROM ORDERS WHERE (:fromDate IS NULL OR ORDER_DATE >= :fromDate)',
+        { fromDate: undefined }
+      )
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :fromDate has no value in params: key "fromDate" is undefined, which counts as absent; pass null to bind SQL NULL'
+    );
+  });
+
+  it('does not read a value inherited from the prototype', (): void => {
+    const adapter = createOracleAdapter();
+    const params = Object.create({ ID: 1 }) as Record<string, unknown>;
+
+    expect((): void => {
+      adapter.makeSqlBindings('SELECT :ID FROM DUAL', params);
+    }).toThrow('Raw SQL placeholder :ID has no value in params');
+  });
+
+  it('checks every placeholder, not only the first one', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect((): void => {
+      adapter.makeSqlBindings('SELECT :A, :B FROM DUAL', { A: 1 });
+    }).toThrow('Raw SQL placeholder :B has no value in params');
+  });
+
+  it('names the TypeORM array form as written', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect((): void => {
+      adapter.makeSqlBindings('SELECT * FROM T WHERE ID IN (:...IDS)', {});
+    }).toThrow('Raw SQL placeholder :...IDS has no value in params');
+  });
+
+  it('needs no value for placeholders inside literals and comments', (): void => {
+    const adapter = createOracleAdapter();
+    const sql = "select ':ID', q'[:ID]' from dual /* :ID */ -- :ID\n";
+
+    expect(adapter.makeSqlBindings(sql)).toEqual({
+      bindings: {},
+      sqlString: sql,
+    });
+  });
+
+  it('lists at most twenty supplied keys', (): void => {
+    const adapter = createOracleAdapter();
+    const params = Object.fromEntries(
+      Array.from({ length: 25 }, (_unused, index) => [`K${index}`, index])
+    );
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT :MISSING FROM DUAL', params)
+    );
+
+    expect((error as ServerError).message).toBe(
+      `Raw SQL placeholder :MISSING has no value in params; supplied keys: ${Array.from(
+        { length: 20 },
+        (_unused, index) => `"K${index}"`
+      ).join(', ')} and 5 more`
+    );
   });
 });

@@ -1,5 +1,4 @@
 import { NO_ARGUMENT_SENTINEL } from '../../consts/procedure.consts.js';
-import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
@@ -12,6 +11,7 @@ import { PostgreProcedureResultMaterializer } from './postgre-result-materialize
 import { PostgreSerializer } from './postgre-serializer.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
 
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { PostgresDriver } from '../../typeorm/driver/postgres/PostgresDriver.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
@@ -19,7 +19,6 @@ import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.j
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { INotifyRetryOptions } from '../../types/notification.types.js';
 import type {
-  IProcedureArgumentBase,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
@@ -28,7 +27,6 @@ import type {
   IBindingsObjectReturn,
   IProcedureOutBinding,
   IProcedureResult,
-  ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 import type { Client } from 'pg';
 
@@ -38,27 +36,14 @@ export class PostgreAdapter extends DatabaseAdapter<
   INotifyRetryOptions,
   Client
 > {
+  protected override readonly procedureMetadataOptions: IProcedureMetadataOptions =
+    {
+      vendor: 'PostgreSQL',
+      noArgumentSentinel: NO_ARGUMENT_SENTINEL,
+      getOverloadIdentity: ({ specificName }) => specificName,
+    };
   private readonly procedureBindings: PostgreProcedureBindings;
   private readonly resultMaterializer: PostgreProcedureResultMaterializer;
-
-  public override sortArgumentsAlgorithm(
-    rawArguments: Array<IProcedureArgumentBase>,
-    procedureListBase: Array<Lowercase<string>>,
-    packageName: Lowercase<string>,
-    packagesLength: number
-  ): TProcedureArgumentList {
-    return this.normalizeProcedureMetadata(
-      rawArguments,
-      procedureListBase,
-      packageName,
-      packagesLength,
-      {
-        vendor: 'PostgreSQL',
-        noArgumentSentinel: NO_ARGUMENT_SENTINEL,
-        getOverloadIdentity: ({ specificName }) => specificName,
-      }
-    );
-  }
 
   public override registerFetchHandlerHook(): void {
     super.registerFetchHandlerHook();
@@ -214,32 +199,30 @@ export class PostgreAdapter extends DatabaseAdapter<
       payload
     );
   }
+
   /**
-   * Rewrites uppercase named placeholders to PostgreSQL positional bindings.
-   * Example: `:ID` becomes `$1`.
-   * @param sqlQuery - SQL query with uppercase named placeholders.
-   * @param params - values keyed by placeholder name, case-insensitive.
-   * @returns rewritten SQL and ordered binding values.
+   * Rewrites a named placeholder to a PostgreSQL positional parameter, which
+   * has no named form: `:ID` becomes `$1`. A repeated name takes one
+   * positional slot per occurrence.
+   * @param _placeholder - the placeholder exactly as written.
+   * @param position - 1-based position of this occurrence.
+   * @returns the positional parameter for this occurrence.
    */
-  public override makeSqlBindings(
-    sqlQuery: string,
-    params?: Record<string, unknown>
-  ): ISqlBindingsObjectReturn {
-    const bindings: Array<unknown> = [];
-    const paramsInUpperCase = Object.fromEntries(
-      params
-        ? Object.entries(params).map(([key, value]) => {
-            return [key.toUpperCase(), value];
-          })
-        : []
-    );
-    let parameterIndex = 0;
-    const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase[key.toUpperCase()] ?? null);
-      parameterIndex += 1;
-      return `$${parameterIndex}`;
-    });
-    return { bindings, sqlString: sqlString };
+  protected override renderRawSqlPlaceholder(
+    _placeholder: string,
+    position: number
+  ): string {
+    return `$${position}`;
+  }
+
+  /**
+   * Orders the values by positional parameter, one per occurrence.
+   * @param placeholders - bound occurrences in SQL order.
+   * @returns the value for `$1`, `$2`, and so on.
+   */
+  protected override collectRawSqlBindings(
+    placeholders: Array<[bindName: string, value: unknown]>
+  ): Array<unknown> {
+    return placeholders.map(([, value]) => value);
   }
 }

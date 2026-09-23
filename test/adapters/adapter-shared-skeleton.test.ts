@@ -81,6 +81,32 @@ function createVersionCountingOracleAdapter(databaseVersion: string): {
   return { adapter, countVersionReads: (): number => versionReads };
 }
 
+/** Vendor hooks that break the base invariant: no `:PACKAGE_NAME` in the default SQL. */
+class PlaceholderlessOracleAdapter extends OracleAdapter {
+  protected override buildDefaultPackageInfoSql(
+    detectionLimit: number
+  ): string {
+    return `SELECT * FROM ALL_ARGUMENTS\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
+  }
+}
+
+class PlaceholderlessPostgreAdapter extends PostgreAdapter {
+  protected override buildDefaultPackageInfoSql(
+    detectionLimit: number
+  ): string {
+    return `select * from information_schema.parameters\nLIMIT ${detectionLimit}`;
+  }
+}
+
+function captureError(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
 function inlinePackageName(template: string, literal: string): string {
   return template.split(':PACKAGE_NAME').join(literal);
 }
@@ -237,6 +263,65 @@ describe('adapter shared package-info skeleton', (): void => {
       createPostgreAdapter().generatePackageInfoSql('public', 'select 1');
     }).toThrow(ServerError);
   });
+
+  it('keeps blaming the caller template when procedureMetadataSql lacks the placeholder', (): void => {
+    const error = captureError(() =>
+      createPostgreAdapter().generatePackageInfoSql('public', 'select 1')
+    );
+
+    expect((error as ServerError).message).toBe(
+      'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
+    );
+  });
+
+  it.each([
+    [
+      'Oracle',
+      (): { generatePackageInfoSql(packageName: string): string } =>
+        new PlaceholderlessOracleAdapter(
+          {
+            options: { replication: { master: {} } },
+            driver: {
+              version: MODERN_ORACLE_VERSION,
+              setFetchTypeHandler: vi.fn(),
+            },
+          } as never,
+          createLogger(),
+          {
+            isNeedRegisterDefaultSerializers: false,
+            caseStrategy: {
+              transformColumnName: (value: string): string => value,
+            },
+          }
+        ),
+    ],
+    [
+      'PostgreSQL',
+      (): { generatePackageInfoSql(packageName: string): string } =>
+        new PlaceholderlessPostgreAdapter(
+          { options: { replication: { master: {} } } } as never,
+          createLogger(),
+          {
+            isNeedRegisterDefaultSerializers: false,
+            caseStrategy: {
+              transformColumnName: (value: string): string => value,
+            },
+          }
+        ),
+    ],
+  ] as const)(
+    'rejects a %s default metadata SQL without the placeholder as an adapter defect',
+    (_vendor, createAdapter): void => {
+      const error = captureError(() =>
+        createAdapter().generatePackageInfoSql('pkg')
+      );
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect((error as ServerError).message).toBe(
+        'Default procedure metadata SQL built by the database adapter has no :PACKAGE_NAME placeholder; this is an adapter defect, not a procedureMetadataSql configuration error'
+      );
+    }
+  );
 
   it.each([
     ['modern', MODERN_ORACLE_VERSION],

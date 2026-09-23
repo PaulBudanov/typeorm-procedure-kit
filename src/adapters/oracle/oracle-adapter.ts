@@ -1,7 +1,6 @@
 import oracledb from 'oracledb';
 
 import { NO_ARGUMENT_SENTINEL } from '../../consts/procedure.consts.js';
-import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
@@ -14,6 +13,7 @@ import { OracleProcedureResultMaterializer } from './oracle-result-materializer.
 import { OracleSerializer } from './oracle-serializer.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { OracleDriver } from '../../typeorm/driver/oracle/OracleDriver.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
@@ -21,7 +21,6 @@ import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.j
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IOracleOptionsNotify } from '../../types/notification.types.js';
 import type {
-  IProcedureArgumentBase,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
@@ -30,7 +29,6 @@ import type {
   IBindingsObjectReturn,
   IProcedureOutBinding,
   IProcedureResult,
-  ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 
 /** Thin Oracle facade that wires vendor-specific adapter capabilities. */
@@ -41,6 +39,13 @@ export class OracleAdapter extends DatabaseAdapter<
   oracledb.Connection
 > {
   private static readonly MINIMUM_RECORD_VERSION = [12, 1] as const;
+  protected override readonly procedureMetadataOptions: IProcedureMetadataOptions =
+    {
+      vendor: 'Oracle',
+      noArgumentSentinel: NO_ARGUMENT_SENTINEL,
+      getOverloadIdentity: ({ overload, subprogramId }) =>
+        overload ?? subprogramId,
+    };
   private readonly procedureBindings: OracleProcedureBindings;
   private readonly recordMetadataParser: OracleRecordMetadataParser;
   private readonly resultMaterializer: OracleProcedureResultMaterializer;
@@ -69,26 +74,6 @@ export class OracleAdapter extends DatabaseAdapter<
       serializer
     );
     oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
-  }
-
-  public override sortArgumentsAlgorithm(
-    rawArguments: Array<IProcedureArgumentBase>,
-    procedureListBase: Array<Lowercase<string>>,
-    packageName: Lowercase<string>,
-    packagesLength: number
-  ): TProcedureArgumentList {
-    return this.normalizeProcedureMetadata(
-      rawArguments,
-      procedureListBase,
-      packageName,
-      packagesLength,
-      {
-        vendor: 'Oracle',
-        noArgumentSentinel: NO_ARGUMENT_SENTINEL,
-        getOverloadIdentity: ({ overload, subprogramId }) =>
-          overload ?? subprogramId,
-      }
-    );
   }
 
   public override async execute<T>(
@@ -176,8 +161,18 @@ export class OracleAdapter extends DatabaseAdapter<
   }
 
   /**
-   * Collects named bindings for uppercase placeholders, leaving the SQL text
-   * untouched so Oracle keeps resolving `:NAME` itself.
+   * Leaves the placeholder in the SQL text so Oracle keeps resolving `:NAME`
+   * itself.
+   * @param placeholder - the placeholder exactly as written.
+   * @returns the placeholder unchanged.
+   */
+  protected override renderRawSqlPlaceholder(placeholder: string): string {
+    return placeholder;
+  }
+
+  /**
+   * Collects one named binding per distinct placeholder, keyed by its
+   * uppercase bind name.
    *
    * The bindings are returned as an object keyed by placeholder name rather
    * than as a positional array, because Oracle's bind slots are not positional
@@ -187,32 +182,16 @@ export class OracleAdapter extends DatabaseAdapter<
    * each value by name, fans it out to every occurrence of that name, and
    * rejects any name the statement does not declare -- so one entry per
    * distinct placeholder is correct for both statement kinds and no value can
-   * ever land on a placeholder other than its own.
-   * @param sqlQuery - SQL query with uppercase named placeholders.
-   * @param params - values keyed by placeholder name, case-insensitive.
-   * @returns the unchanged SQL and one binding value per distinct placeholder.
+   * ever land on a placeholder other than its own. The driver uppercases an
+   * unquoted bind name both in the SQL text and in the bind object, so the
+   * uppercase key serves `:userId` exactly as it serves `:USERID`.
+   * @param placeholders - bound occurrences with their uppercase bind names.
+   * @returns one binding value per distinct placeholder name.
    */
-  public override makeSqlBindings(
-    sqlQuery: string,
-    params?: Record<string, unknown>
-  ): ISqlBindingsObjectReturn {
-    const bindings: Record<string, unknown> = {};
-    const paramsInUpperCase = Object.fromEntries(
-      params
-        ? Object.entries(params).map(([key, value]) => [
-            key.toUpperCase(),
-            value,
-          ])
-        : []
-    );
-    replaceNamedParameters(sqlQuery, ({ full, key }) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      const bindName = key.toUpperCase();
-      if (Object.hasOwn(bindings, bindName)) return full;
-      bindings[bindName] = paramsInUpperCase[bindName] ?? null;
-      return full;
-    });
-    return { bindings, sqlString: sqlQuery };
+  protected override collectRawSqlBindings(
+    placeholders: Array<[bindName: string, value: unknown]>
+  ): Record<string, unknown> {
+    return Object.fromEntries(placeholders);
   }
 
   /** Delegates the Oracle dictionary row folding to the record parser. */

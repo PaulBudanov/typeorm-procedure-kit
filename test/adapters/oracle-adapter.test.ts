@@ -1319,6 +1319,8 @@ describe('OracleAdapter', (): void => {
     expect(
       adapter.makeSqlBindings('select * from users where id = :ID and x = :X', {
         id: 1,
+        // :X is declared by the statement, so it needs a value; null binds SQL NULL.
+        x: null,
       })
     ).toEqual({
       sqlString: 'select * from users where id = :ID and x = :X',

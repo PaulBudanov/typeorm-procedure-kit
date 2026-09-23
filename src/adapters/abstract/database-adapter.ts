@@ -1,3 +1,4 @@
+import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
@@ -47,10 +48,25 @@ export abstract class DatabaseAdapter<
 > implements IDatabaseAdapterContract<TNotifyOptions> {
   /** Placeholder every procedure-metadata SQL template must expose. */
   private static readonly PACKAGE_NAME_PLACEHOLDER = ':PACKAGE_NAME';
+  /**
+   * Shape of a raw SQL placeholder name that is bound: an unquoted identifier,
+   * in any letter case. Other names `replaceNamedParameters` reports, such as
+   * the digit-first `:2` of a PostgreSQL array slice `tags[1:2]` or a dotted
+   * `:new.id`, stay in the SQL text untouched.
+   */
+  private static readonly RAW_SQL_PLACEHOLDER_PATTERN =
+    /^[A-Za-z_][A-Za-z0-9_]*$/;
+  /** Most supplied keys a missing-placeholder error lists by name. */
+  private static readonly MAX_LISTED_RAW_SQL_KEYS = 20;
   private readonly procedureMetadataNormalizer =
     new ProcedureMetadataNormalizer();
   /** Adapter options supplied by the concrete vendor adapter. */
   protected abstract readonly handlerOptions: IRegisteredFetchHandlerOptions;
+  /**
+   * Vendor name, no-argument sentinel, and overload identity the shared
+   * metadata normalizer applies to this vendor's dictionary rows.
+   */
+  protected abstract readonly procedureMetadataOptions: IProcedureMetadataOptions;
   /**
    * Creates a database adapter facade around serializer, notification, and
    * single-connection helpers for one database vendor.
@@ -82,28 +98,12 @@ export abstract class DatabaseAdapter<
     packageName: Lowercase<string>,
     packagesLength: number
   ): TProcedureArgumentList {
-    return this.normalizeProcedureMetadata(
-      rawArguments,
-      procedureListBase,
-      packageName,
-      packagesLength,
-      { vendor: 'Database' }
-    );
-  }
-
-  protected normalizeProcedureMetadata(
-    rawArguments: Array<IProcedureArgumentBase>,
-    procedureListBase: Array<Lowercase<string>>,
-    packageName: Lowercase<string>,
-    packagesLength: number,
-    options: IProcedureMetadataOptions
-  ): TProcedureArgumentList {
     return this.procedureMetadataNormalizer.normalize(
       rawArguments,
       procedureListBase,
       packageName,
       packagesLength,
-      options
+      this.procedureMetadataOptions
     );
   }
 
@@ -185,6 +185,8 @@ export abstract class DatabaseAdapter<
    * @param packageName - package or schema name to inspect.
    * @param procedureMetadataSql - optional SQL template with `:PACKAGE_NAME`.
    * @returns SQL query string for procedure metadata loading.
+   * @throws ServerError - when the template, supplied or default, has no
+   * `:PACKAGE_NAME` placeholder.
    */
   public generatePackageInfoSql(
     packageName: string,
@@ -192,9 +194,27 @@ export abstract class DatabaseAdapter<
   ): string {
     const safePackageName = this.normalizePackageIdentifier(packageName);
     const sql =
-      procedureMetadataSql ??
-      this.buildDefaultPackageInfoSql(this.resolveMetadataDetectionLimit());
+      procedureMetadataSql ?? this.buildCheckedDefaultPackageInfoSql();
     return this.replacePackageNamePlaceholder(sql, `'${safePackageName}'`);
+  }
+
+  /**
+   * Asks the vendor for its default metadata query and holds it to the
+   * contract of `buildDefaultPackageInfoSql`, so a hook that drops the
+   * placeholder fails here as an adapter defect rather than as the caller's
+   * template error, or as a database error about a literal `:PACKAGE_NAME`.
+   * @returns the vendor default SQL template.
+   */
+  private buildCheckedDefaultPackageInfoSql(): string {
+    const sql = this.buildDefaultPackageInfoSql(
+      this.resolveMetadataDetectionLimit()
+    );
+    if (!sql.includes(DatabaseAdapter.PACKAGE_NAME_PLACEHOLDER)) {
+      throw new ServerError(
+        'Default procedure metadata SQL built by the database adapter has no :PACKAGE_NAME placeholder; this is an adapter defect, not a procedureMetadataSql configuration error'
+      );
+    }
+    return sql;
   }
 
   /**
@@ -257,14 +277,122 @@ export abstract class DatabaseAdapter<
   /**
    * Converts named `:PARAM` placeholders and parameter values to the binding
    * format expected by the current database driver.
-   * @param sqlQuery - SQL query containing uppercase named placeholders.
-   * @param params - object with values for placeholders.
-   * @returns rewritten SQL and ordered binding values.
+   *
+   * Template method: the base finds every placeholder outside string
+   * literals, quoted identifiers and comments, reads its name in uppercase,
+   * and resolves its value from `params` case-insensitively, the way Oracle
+   * resolves unquoted bind names; the concrete adapter decides what each
+   * occurrence becomes in the SQL text and how the values reach the driver.
+   *
+   * A key counts as supplied when `params` carries it as an own enumerable
+   * property whose value is not `undefined`: `null` binds SQL `NULL`, while
+   * `undefined` and inherited properties count as absent. Keys that match no
+   * placeholder are ignored. When two keys differ only in letter case, the
+   * later one wins.
+   * @param sqlQuery - SQL query containing named placeholders.
+   * @param params - values keyed by placeholder name, case-insensitive.
+   * @returns SQL for the driver and the binding values.
+   * @throws ServerError - when a placeholder has no supplied value.
    */
-  public abstract makeSqlBindings(
+  public makeSqlBindings(
     sqlQuery: string,
     params?: Record<string, unknown>
-  ): ISqlBindingsObjectReturn;
+  ): ISqlBindingsObjectReturn {
+    const suppliedValues = this.indexRawSqlParams(params);
+    const placeholders: Array<[bindName: string, value: unknown]> = [];
+    const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
+      if (!DatabaseAdapter.RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
+      const bindName = key.toUpperCase();
+      if (!suppliedValues.has(bindName)) {
+        throw this.createMissingRawSqlParamError(full, bindName, params);
+      }
+      placeholders.push([bindName, suppliedValues.get(bindName)]);
+      return this.renderRawSqlPlaceholder(full, placeholders.length);
+    });
+    return { bindings: this.collectRawSqlBindings(placeholders), sqlString };
+  }
+
+  /**
+   * Writes one bound placeholder occurrence back into the SQL text.
+   * @param placeholder - the placeholder exactly as written, such as `:userId`.
+   * @param position - 1-based position of this occurrence among the bound ones.
+   * @returns the text that replaces the placeholder in the SQL for the driver.
+   */
+  protected abstract renderRawSqlPlaceholder(
+    placeholder: string,
+    position: number
+  ): string;
+
+  /**
+   * Shapes the resolved values for the driver.
+   * @param placeholders - one entry per bound occurrence, in SQL order, with
+   * its uppercase bind name and resolved value.
+   * @returns driver bindings.
+   */
+  protected abstract collectRawSqlBindings(
+    placeholders: Array<[bindName: string, value: unknown]>
+  ): ISqlBindingsObjectReturn['bindings'];
+
+  /**
+   * Indexes the supplied raw SQL values by uppercase key.
+   * @param params - caller values keyed by placeholder name.
+   * @returns supplied values keyed by uppercase bind name.
+   */
+  private indexRawSqlParams(
+    params: Record<string, unknown> | undefined
+  ): Map<string, unknown> {
+    const suppliedValues = new Map<string, unknown>();
+    if (!params) return suppliedValues;
+    for (const key of Object.keys(params)) {
+      const value = params[key];
+      if (value !== undefined) suppliedValues.set(key.toUpperCase(), value);
+    }
+    return suppliedValues;
+  }
+
+  /**
+   * Builds the error for a placeholder without a supplied value, naming the
+   * placeholder as written and the keys that were supplied, never values.
+   * @param placeholder - the placeholder exactly as written.
+   * @param bindName - uppercase bind name of the placeholder.
+   * @param params - caller values keyed by placeholder name.
+   * @returns the error to throw.
+   */
+  private createMissingRawSqlParamError(
+    placeholder: string,
+    bindName: string,
+    params: Record<string, unknown> | undefined
+  ): ServerError {
+    const suppliedParams = params ?? {};
+    const ownKeys = Object.keys(suppliedParams);
+    // The placeholder has no supplied value, so a key that folds to its name
+    // can only be one set to undefined.
+    const undefinedKey = ownKeys.find((key) => key.toUpperCase() === bindName);
+    if (undefinedKey !== undefined) {
+      return new ServerError(
+        `Raw SQL placeholder ${placeholder} has no value in params: key ${JSON.stringify(undefinedKey)} is undefined, which counts as absent; pass null to bind SQL NULL`
+      );
+    }
+    const suppliedKeys = ownKeys.filter(
+      (key) => suppliedParams[key] !== undefined
+    );
+    if (suppliedKeys.length === 0) {
+      return new ServerError(
+        `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: none`
+      );
+    }
+    const listedKeys = suppliedKeys
+      .slice(0, DatabaseAdapter.MAX_LISTED_RAW_SQL_KEYS)
+      .map((key) => JSON.stringify(key))
+      .join(', ');
+    const unlistedCount =
+      suppliedKeys.length - DatabaseAdapter.MAX_LISTED_RAW_SQL_KEYS;
+    const unlistedSuffix =
+      unlistedCount > 0 ? ` and ${unlistedCount} more` : '';
+    return new ServerError(
+      `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: ${listedKeys}${unlistedSuffix}`
+    );
+  }
 
   /**
    * Builds a vendor-specific procedure call and bindings from loaded procedure
@@ -327,7 +455,8 @@ export abstract class DatabaseAdapter<
   }
 
   /**
-   * Current mutable serializer registry.
+   * Immutable snapshot of the serializer registry in canonical order; the same
+   * object until the registry changes.
    */
   public get serializerMapping(): TSerializerTypeCastWithoutFormat {
     return this.serializer.serializerMapping;
