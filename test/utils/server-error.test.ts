@@ -1,8 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ServerError } from '../../src/utils/server-error.js';
 
 describe('ServerError', (): void => {
+  afterEach((): void => {
+    vi.useRealTimers();
+  });
+
+  it('stamps each error with the instant it was constructed', (): void => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-02T03:04:05.678Z'));
+    const first = new ServerError('first');
+    vi.setSystemTime(new Date('2026-01-02T03:04:06.000Z'));
+    const second = new ServerError('second');
+
+    expect(first.timestamp).toBeInstanceOf(Date);
+    expect(first.timestamp.toISOString()).toBe('2026-01-02T03:04:05.678Z');
+    expect(second.timestamp.toISOString()).toBe('2026-01-02T03:04:06.000Z');
+    expect(first.toJSON().timestamp).toBe('2026-01-02T03:04:05.678Z');
+  });
+
   it('creates errors with ids and context', (): void => {
     const error = new ServerError(
       'broken',
@@ -14,7 +31,7 @@ describe('ServerError', (): void => {
 
     expect(error.name).toBe('ServerError');
     expect(error.errorId).toBe('err-1');
-    expect(error.unsafeGetContextAs()).toEqual({
+    expect(error.errorContext).toEqual({
       payload: true,
     });
     expect(error.timestamp).toBeInstanceOf(Date);
@@ -45,7 +62,7 @@ describe('ServerError', (): void => {
 
     expect(wrapped.message).toBe('node');
     expect(wrapped.errorId).toBe('node-id');
-    expect(wrapped.unsafeGetContextAs()).toBe(nodeError);
+    expect(wrapped.errorContext).toBe(nodeError);
 
     expect(
       ServerError.ENSURE_SERVER_ERROR({ error: { code: 1 } }).message
@@ -61,7 +78,7 @@ describe('ServerError', (): void => {
     expect(wrapped.stack).toBe(original.stack);
     expect(wrapped.cause).toBe(original);
     expect(original.cause).toBe(rootCause);
-    expect(wrapped.unsafeGetContextAs()).toBe(original);
+    expect(wrapped.errorContext).toBe(original);
     expect(Object.keys(wrapped.toJSON())).toEqual([
       'name',
       'message',

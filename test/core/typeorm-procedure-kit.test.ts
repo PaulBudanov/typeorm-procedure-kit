@@ -1,15 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHUTDOWN_SIGNALS } from '../../src/consts/shuwtdown.consts.js';
+import { PostgreAdapter } from '../../src/adapters/postgres/postgre-adapter.js';
+import { SHUTDOWN_SIGNALS } from '../../src/consts/shutdown.consts.js';
 import { TypeOrmProcedureKit } from '../../src/core/index.js';
 import { NotifyBase } from '../../src/core/notify-base.js';
 import { QueryLogContextStorage } from '../../src/utils/query-log-context.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createAdapterMock, createLogger } from '../support/helpers.js';
 
-const SHUTDOWN_ERROR = 'TypeOrmProcedureKit is shutting down or destroyed';
+import type {
+  TSerializerInput,
+  TSerializerType,
+  TSetSerializer,
+} from '../../src/types/serializer.types.js';
+import type { ITestLogger } from '../support/helpers.js';
 
-function createKit(): TypeOrmProcedureKit {
+const SHUTDOWN_ERROR = 'TypeOrmProcedureKit is shutting down or destroyed';
+const NOT_INITIALIZED_ERROR = /^TypeOrmProcedureKit is not initialized$/;
+
+function createKit(logger: ITestLogger = createLogger()): TypeOrmProcedureKit {
   return new TypeOrmProcedureKit({
     config: {
       type: 'postgres',
@@ -23,7 +32,7 @@ function createKit(): TypeOrmProcedureKit {
       poolSize: 1,
       parseInt8AsNumber: false,
     },
-    logger: { module: createLogger() },
+    logger: { module: logger },
   });
 }
 
@@ -102,6 +111,98 @@ describe('TypeOrmProcedureKit', (): void => {
     expect((): void => {
       void kit.serializerReadOnlyMapping;
     }).toThrow(ServerError);
+  });
+
+  it('reports the kit, not the initializer, as uninitialized from every serializer method', (): void => {
+    // Before initDatabase() the initializer has no adapter, and its own getter would answer
+    // `Database adapter is not initialized`. The serializer methods answer like the rest of the
+    // runtime API instead.
+    const kit = createKit();
+    const strategy = ({ value }: TSerializerInput<'DATE'>): string =>
+      value.toString();
+
+    expect((): void => {
+      kit.setSerializer({ serializerType: 'DATE', strategy });
+    }).toThrow(NOT_INITIALIZED_ERROR);
+    expect((): void => {
+      kit.deleteSerializer({ serializerType: 'DATE' });
+    }).toThrow(NOT_INITIALIZED_ERROR);
+    expect((): void => {
+      kit.deleteAllSerializers();
+    }).toThrow(NOT_INITIALIZED_ERROR);
+    expect((): void => {
+      void kit.serializerReadOnlyMapping;
+    }).toThrow(NOT_INITIALIZED_ERROR);
+  });
+
+  it('serves one read-only registry snapshot from the real adapter chain', async (): Promise<void> => {
+    // A real adapter rather than a mock: the read-only guarantee and the argument checks live in
+    // DatabaseSerializer, so a mock handing over an arbitrary Map would only test the mock. The kit
+    // goes through its own initDatabase() and initMainClasses(); only the connection is stubbed.
+    const adapter = new PostgreAdapter(
+      { options: { replication: { master: {} } } } as never,
+      createLogger(),
+      {
+        isNeedRegisterDefaultSerializers: false,
+        caseStrategy: {
+          transformColumnName: (value: string): string => value.toLowerCase(),
+        },
+      }
+    );
+    const kit = createKit();
+    Reflect.set(kit, 'databaseInitializerBase', {
+      initDatabaseModule: vi.fn().mockResolvedValue(undefined),
+      appDataSource: {},
+      databaseAdapter: adapter,
+      resolvedResourceLimits: { maxMetadataRows: 1 },
+    });
+    await kit.initDatabase();
+
+    const strategy = vi.fn((): string => 'date');
+    kit.setSerializer({ serializerType: 'DATE', strategy });
+
+    const readOnly = kit.serializerReadOnlyMapping;
+    const mutationAttempt = readOnly as unknown as Map<
+      TSerializerType,
+      TSetSerializer
+    >;
+
+    expect(kit.serializerReadOnlyMapping).toBe(readOnly);
+    expect(readOnly).toBe(adapter.serializerMapping);
+    expect(readOnly.get('DATE')?.strategy).toBe(strategy);
+    expect(typeof mutationAttempt.set).toBe('function');
+    expect((): void => {
+      mutationAttempt.set('TIMESTAMP', {
+        serializerType: 'TIMESTAMP',
+        strategy: vi.fn(),
+      });
+    }).toThrow(ServerError);
+    expect((): void => {
+      mutationAttempt.delete('DATE');
+    }).toThrow(ServerError);
+    expect(kit.serializerReadOnlyMapping.has('DATE')).toBe(true);
+
+    expect((): void => {
+      kit.setSerializer({
+        serializerType: 'TIMESTAMP',
+        strategy: 'not a function',
+      } as unknown as TSetSerializer);
+    }).toThrow('Serializer strategy for TIMESTAMP must be a function');
+    expect((): void => {
+      kit.deleteSerializer({
+        serializerType: 'NOT_A_TYPE',
+      } as unknown as Pick<TSetSerializer, 'serializerType'>);
+    }).toThrow('Unknown serializer type: NOT_A_TYPE');
+    expect(kit.serializerReadOnlyMapping).toBe(readOnly);
+
+    kit.deleteSerializer({ serializerType: 'DATE' });
+    expect(kit.serializerReadOnlyMapping.has('DATE')).toBe(false);
+    expect(readOnly.has('DATE')).toBe(true);
+
+    kit.setSerializer({ serializerType: 'DATE', strategy });
+    kit.setSerializer({ serializerType: 'JSON', strategy });
+    kit.deleteAllSerializers();
+    expect(kit.serializerReadOnlyMapping.size).toBe(0);
   });
 
   it('registers shutdown handlers idempotently and removes them on destroy', async (): Promise<void> => {
@@ -664,6 +765,76 @@ describe('TypeOrmProcedureKit', (): void => {
     expect(notifyDestroy).toHaveBeenCalledOnce();
     expect(dataSourceDestroy).toHaveBeenCalledOnce();
     expect(strategyDestroy).toHaveBeenCalledOnce();
+  });
+
+  it('hands every later destroy() the promise of the first call and logs no warning', async (): Promise<void> => {
+    const logger = createLogger();
+    const kit = createKit(logger);
+    let resolveNotifyDestroy!: () => void;
+    const notifyDestroy = vi.fn(
+      (): Promise<void> =>
+        new Promise<void>((resolve) => {
+          resolveNotifyDestroy = resolve;
+        })
+    );
+    Object.assign(kit as unknown as Record<string, unknown>, {
+      notifyBase: { destroy: notifyDestroy },
+    });
+
+    const firstDestroy = kit.destroy();
+    const concurrentDestroy = kit.destroy();
+    resolveNotifyDestroy();
+    await firstDestroy;
+    const laterDestroy = kit.destroy();
+
+    expect(concurrentDestroy).toBe(firstDestroy);
+    expect(laterDestroy).toBe(firstDestroy);
+    await expect(laterDestroy).resolves.toBeUndefined();
+    expect(notifyDestroy).toHaveBeenCalledOnce();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns and resolves when a failed initialization that could not roll back already ended the kit', async (): Promise<void> => {
+    // The one state in which destroy() finds the kit destroyed without a shutdown of its own:
+    // initDatabase() rejected with the rollback errors and made the kit terminal itself.
+    const logger = createLogger();
+    const kit = createKit(logger);
+    const dataSourceDestroy = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValue(new Error('pool close failed'));
+    const kitInternals = kit as unknown as Record<string, unknown>;
+    Object.assign(kitInternals, {
+      databaseInitializerBase: {
+        initDatabaseModule: vi.fn().mockResolvedValue(undefined),
+        isDataSourceInitialized: true,
+        appDataSource: { destroy: dataSourceDestroy },
+        resetAfterFailedInitialization: vi.fn(),
+      },
+      initMainClasses(): void {
+        Object.assign(kitInternals, {
+          procedureListBase: {
+            initPackagesMap: vi
+              .fn<() => Promise<void>>()
+              .mockRejectedValue(new Error('metadata failed')),
+            destroy: vi.fn(),
+          },
+        });
+      },
+    });
+
+    await expect(kit.initDatabase()).rejects.toThrow(
+      'Database initialization failed and rollback was incomplete'
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+
+    await expect(kit.destroy()).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+      'TypeOrmProcedureKit already destroyed'
+    );
+    expect(dataSourceDestroy).toHaveBeenCalledOnce();
+    expect((): void => {
+      void kit.callSqlTransaction('SELECT 1');
+    }).toThrow(SHUTDOWN_ERROR);
   });
 
   it('trims custom metadata notification SQL during initialization', async (): Promise<void> => {
