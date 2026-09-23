@@ -149,6 +149,24 @@ function expectConflict(
   );
 }
 
+function expectInherited(
+  processName: keyof typeof procedures,
+  payload: TProcedurePayload,
+  key: string,
+  argumentName: string
+): void {
+  let thrown: unknown;
+  try {
+    bind(processName, payload);
+  } catch (error: unknown) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(ServerError);
+  expect((thrown as Error).message).toBe(
+    `Inherited Oracle procedure payload key "${key}" for argument "${argumentName}": only own properties are read, so pass it as an own property, for example by copying it into a plain object`
+  );
+}
+
 function nullPrototypePayload(values: Record<string, unknown>): object {
   return Object.assign(Object.create(null) as object, values);
 }
@@ -238,33 +256,164 @@ describe('Oracle procedure payload reader', (): void => {
     });
   });
 
-  describe('own properties only', (): void => {
-    it('does not read a scalar argument from the payload prototype', (): void => {
-      const payload = Object.create({ flag: 1 }) as object;
-      expect(boundValue('scalar', payload, 'p_flag')).toBeNull();
+  describe('keys inherited from a prototype other than Object.prototype', (): void => {
+    it('rejects a scalar argument alias inherited from a prototype object', (): void => {
+      expectInherited(
+        'scalar',
+        Object.create({ flag: 1 }) as object,
+        'flag',
+        'p_flag'
+      );
     });
 
-    it('does not read a structured argument from the payload prototype', (): void => {
-      const payload = Object.create({ ship: OTHER_SHIP }) as object;
-      expect(boundValue('structured', payload, 'p_ship')).toBeNull();
+    it('rejects a structured argument alias inherited from a prototype object', (): void => {
+      expectInherited(
+        'structured',
+        Object.create({ ship: OTHER_SHIP }) as object,
+        'ship',
+        'p_ship'
+      );
     });
 
-    it('binds an own argument name rather than an alias inherited from the prototype', (): void => {
+    it('rejects an argument name inherited from a prototype object', (): void => {
+      expectInherited(
+        'scalar',
+        Object.create({ p_flag: 1 }) as object,
+        'p_flag',
+        'p_flag'
+      );
+    });
+
+    it('rejects an alias inherited from the prototype next to an own argument name', (): void => {
       const payload = Object.assign(Object.create({ flag: 1 }) as object, {
         p_flag: 5,
       });
-      expect(boundValue('scalar', payload, 'p_flag')).toBe(5);
+      expectInherited('scalar', payload, 'flag', 'p_flag');
     });
 
-    it('does not read an argument from a prototype getter of a class instance', (): void => {
+    it('rejects an argument supplied by a prototype getter of a class instance', (): void => {
       class FlagPayload {
         public get flag(): number {
           return 1;
         }
       }
-      expect(boundValue('scalar', new FlagPayload(), 'p_flag')).toBeNull();
+      expectInherited('scalar', new FlagPayload(), 'flag', 'p_flag');
     });
 
+    it('rejects an argument supplied by a data property on a class prototype', (): void => {
+      class FlagDefaults {}
+      Object.defineProperty(FlagDefaults.prototype, 'flag', { value: 1 });
+      expectInherited('scalar', new FlagDefaults(), 'flag', 'p_flag');
+    });
+
+    it('rejects an argument named like a method of a class instance', (): void => {
+      class FlagPayload {
+        public flag(): number {
+          return 1;
+        }
+      }
+      expectInherited('scalar', new FlagPayload(), 'flag', 'p_flag');
+    });
+
+    it('rejects an argument supplied by a getter of a base class', (): void => {
+      class BasePayload {
+        public get flag(): number {
+          return 1;
+        }
+      }
+      class DerivedPayload extends BasePayload {}
+      expectInherited('scalar', new DerivedPayload(), 'flag', 'p_flag');
+    });
+
+    it('rejects an argument named constructor inherited as data from a prototype object', (): void => {
+      expectInherited(
+        'constructor_name',
+        Object.create({ constructor: 5 }) as object,
+        'constructor',
+        'constructor'
+      );
+    });
+
+    it('binds an own property that shadows the same key on the prototype', (): void => {
+      const payload = Object.assign(Object.create({ flag: 1 }) as object, {
+        flag: 5,
+      });
+      expect(boundValue('scalar', payload, 'p_flag')).toBe(5);
+    });
+
+    it('binds an own property that shadows a prototype getter of a class instance', (): void => {
+      class FlagPayload {
+        public get flag(): number {
+          return 1;
+        }
+      }
+      const payload = Object.defineProperty(new FlagPayload(), 'flag', {
+        value: 5,
+      });
+      expect(boundValue('scalar', payload, 'p_flag')).toBe(5);
+    });
+
+    it('treats an own undefined key as absent although the prototype defines it', (): void => {
+      const payload = Object.assign(Object.create({ flag: 1 }) as object, {
+        flag: undefined,
+      });
+      expect(boundValue('scalar', payload, 'p_flag')).toBeNull();
+    });
+
+    it('binds an own field of a class instance', (): void => {
+      class FlagPayload {
+        public flag = 5;
+      }
+      expect(boundValue('scalar', new FlagPayload(), 'p_flag')).toBe(5);
+    });
+
+    it('binds a class getter value copied into a plain object', (): void => {
+      class FlagPayload {
+        public get flag(): number {
+          return 5;
+        }
+      }
+      const dto = new FlagPayload();
+      expect(boundValue('scalar', { flag: dto.flag }, 'p_flag')).toBe(5);
+    });
+
+    it('still rejects a class instance that carries both keys as own properties', (): void => {
+      class FlagPayload {
+        public get note(): string {
+          return 'unused';
+        }
+      }
+      const payload = Object.assign(new FlagPayload(), { flag: 1, p_flag: 2 });
+      expectConflict('scalar', payload, 'flag', 'p_flag');
+    });
+
+    it('does not resolve an argument named constructor from the back-reference of a class prototype', (): void => {
+      class EmptyPayload {}
+      class DerivedPayload extends EmptyPayload {}
+      expect(
+        boundValue('constructor_name', new EmptyPayload(), 'constructor')
+      ).toBeNull();
+      expect(
+        boundValue('constructor_name', new DerivedPayload(), 'constructor')
+      ).toBeNull();
+    });
+
+    it('does not resolve the constructor alias of p_constructor from the back-reference of a class prototype', (): void => {
+      class EmptyPayload {}
+      expect(
+        boundValue('constructor_alias', new EmptyPayload(), 'p_constructor')
+      ).toBeNull();
+    });
+
+    it('does not resolve the __proto__ alias of p___proto__ for a class instance', (): void => {
+      class EmptyPayload {}
+      expect(
+        boundValue('proto_alias', new EmptyPayload(), 'p___proto__')
+      ).toBeNull();
+    });
+  });
+
+  describe('own properties only', (): void => {
     it('does not resolve an argument named constructor from Object.prototype', (): void => {
       expect(boundValue('constructor_name', {}, 'constructor')).toBeNull();
     });
@@ -336,6 +485,16 @@ describe('Oracle procedure payload reader', (): void => {
 
     it('ignores named properties on an array payload', (): void => {
       const payload = Object.assign([7], { flag: 1, p_flag: 2 });
+      expect(boundValue('positional', payload, 'p_flag')).toBe(7);
+    });
+
+    it('binds an array subclass by position even when its prototype defines an argument name', (): void => {
+      class FlagRow extends Array<unknown> {
+        public get flag(): number {
+          return 1;
+        }
+      }
+      const payload = FlagRow.from([7]);
       expect(boundValue('positional', payload, 'p_flag')).toBe(7);
     });
   });

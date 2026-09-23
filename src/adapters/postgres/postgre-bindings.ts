@@ -149,6 +149,10 @@ export class PostgreProcedureBindings {
    * accepted, but supplying both is a conflict rather than a silent preference
    * for one of them — the same rule Oracle applies, and the one the composite
    * fields below already applied.
+   *
+   * Only own properties are read. A key the payload inherits from a prototype
+   * of its own, such as a getter of a class DTO, is rejected instead of being
+   * bound as `NULL`; see `hasPayloadValue`.
    */
   private readPayloadValue(
     payload: TProcedurePayload | null | undefined,
@@ -160,8 +164,13 @@ export class PostgreProcedureBindings {
     const record = payload as Record<string, unknown>;
     const aliasName = argumentName.replace(/^p_/, '');
     const hasAlias =
-      aliasName !== argumentName && this.hasPayloadValue(record, aliasName);
-    const hasArgumentName = this.hasPayloadValue(record, argumentName);
+      aliasName !== argumentName &&
+      this.hasPayloadValue(record, aliasName, argumentName);
+    const hasArgumentName = this.hasPayloadValue(
+      record,
+      argumentName,
+      argumentName
+    );
     if (hasAlias && hasArgumentName) {
       throw new ServerError(
         `Conflicting PostgreSQL procedure payload keys: "${aliasName}" and "${argumentName}"`
@@ -172,12 +181,56 @@ export class PostgreProcedureBindings {
     return null;
   }
 
-  /** Own-property lookup, so a payload cannot answer with `__proto__` or `toString`. */
+  /**
+   * Whether the payload supplies `key` for `argumentName`: an own property
+   * with a value other than `undefined`. A key the payload does not own is
+   * never read, so it cannot answer with `__proto__` or `toString`.
+   *
+   * A key it inherits from a prototype other than `Object.prototype` — a
+   * getter, a method or a data property that a class or a prototype object
+   * defines — is rejected: binding `NULL` there would drop in silence a value
+   * the caller can read on the object. `Object.prototype` members and the
+   * `constructor` back-reference that every class prototype carries are not
+   * caller data and count as absent.
+   *
+   * Kept identical to `OracleProcedureBindings.hasPayloadValue`.
+   */
   private hasPayloadValue(
     record: Record<string, unknown>,
-    key: string
+    key: string,
+    argumentName: string
   ): boolean {
-    return Object.hasOwn(record, key) && record[key] !== undefined;
+    if (Object.hasOwn(record, key)) return record[key] !== undefined;
+    if (this.isDefinedOnPayloadPrototype(record, key)) {
+      throw new ServerError(
+        `Inherited PostgreSQL procedure payload key "${key}" for argument "${argumentName}": only own properties are read, so pass it as an own property, for example by copying it into a plain object`
+      );
+    }
+    return false;
+  }
+
+  /**
+   * Whether `key` resolves on a prototype of `record` that is not
+   * `Object.prototype`, as anything but the `constructor` back-reference of
+   * that prototype. The walk stops at the first prototype that owns `key`, the
+   * one a property read would answer from, and at `Object.prototype`.
+   */
+  private isDefinedOnPayloadPrototype(record: object, key: string): boolean {
+    for (
+      let prototype = Object.getPrototypeOf(record) as object | null;
+      prototype !== null && prototype !== Object.prototype;
+      prototype = Object.getPrototypeOf(prototype) as object | null
+    ) {
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
+      if (descriptor === undefined) continue;
+      const value: unknown = descriptor.value;
+      const isConstructorBackReference =
+        key === 'constructor' &&
+        typeof value === 'function' &&
+        value.prototype === prototype;
+      return !isConstructorBackReference;
+    }
+    return false;
   }
 
   private createCompositeExpression(
