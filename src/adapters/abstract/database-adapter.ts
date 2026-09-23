@@ -287,26 +287,37 @@ export abstract class DatabaseAdapter<
    * A key counts as supplied when `params` carries it as an own enumerable
    * property whose value is not `undefined`: `null` binds SQL `NULL`, while
    * `undefined` and inherited properties count as absent. Keys that match no
-   * placeholder are ignored. When two keys differ only in letter case, the
-   * later one wins.
+   * placeholder are ignored. Two or more supplied keys that differ only in
+   * letter case name one placeholder, so a placeholder that would read them
+   * is rejected rather than bound to whichever key comes last; such keys stay
+   * ignored when no placeholder reads them.
    * @param sqlQuery - SQL query containing named placeholders.
    * @param params - values keyed by placeholder name, case-insensitive.
    * @returns SQL for the driver and the binding values.
-   * @throws ServerError - when a placeholder has no supplied value.
+   * @throws ServerError - when a placeholder has no supplied value, or when
+   * two or more supplied keys that differ only in letter case would bind it.
    */
   public makeSqlBindings(
     sqlQuery: string,
     params?: Record<string, unknown>
   ): ISqlBindingsObjectReturn {
-    const suppliedValues = this.indexRawSqlParams(params);
+    const suppliedParams = this.indexRawSqlParams(params);
     const placeholders: Array<[bindName: string, value: unknown]> = [];
     const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
       if (!DatabaseAdapter.RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
       const bindName = key.toUpperCase();
-      if (!suppliedValues.has(bindName)) {
+      const sameNameParams = suppliedParams.get(bindName) ?? [];
+      const [suppliedParam] = sameNameParams;
+      if (suppliedParam === undefined) {
         throw this.createMissingRawSqlParamError(full, bindName, params);
       }
-      placeholders.push([bindName, suppliedValues.get(bindName)]);
+      if (sameNameParams.length > 1) {
+        throw this.createConflictingRawSqlParamsError(
+          full,
+          sameNameParams.map(([suppliedKey]) => suppliedKey)
+        );
+      }
+      placeholders.push([bindName, suppliedParam[1]]);
       return this.renderRawSqlPlaceholder(full, placeholders.length);
     });
     return { bindings: this.collectRawSqlBindings(placeholders), sqlString };
@@ -334,20 +345,51 @@ export abstract class DatabaseAdapter<
   ): ISqlBindingsObjectReturn['bindings'];
 
   /**
-   * Indexes the supplied raw SQL values by uppercase key.
+   * Indexes the supplied raw SQL values by uppercase key. Every supplied key
+   * is kept, so keys that differ only in letter case share one entry and the
+   * placeholder that reads them can reject the conflict; each value is read
+   * from `params` once.
    * @param params - caller values keyed by placeholder name.
-   * @returns supplied values keyed by uppercase bind name.
+   * @returns supplied keys with their values, in `params` order, grouped by
+   * uppercase bind name.
    */
   private indexRawSqlParams(
     params: Record<string, unknown> | undefined
-  ): Map<string, unknown> {
-    const suppliedValues = new Map<string, unknown>();
-    if (!params) return suppliedValues;
+  ): Map<string, Array<[key: string, value: unknown]>> {
+    const suppliedParams = new Map<
+      string,
+      Array<[key: string, value: unknown]>
+    >();
+    if (!params) return suppliedParams;
     for (const key of Object.keys(params)) {
       const value = params[key];
-      if (value !== undefined) suppliedValues.set(key.toUpperCase(), value);
+      if (value === undefined) continue;
+      const bindName = key.toUpperCase();
+      const sameNameParams = suppliedParams.get(bindName);
+      if (sameNameParams) sameNameParams.push([key, value]);
+      else suppliedParams.set(bindName, [[key, value]]);
     }
-    return suppliedValues;
+    return suppliedParams;
+  }
+
+  /**
+   * Builds the error for a placeholder that more than one supplied key would
+   * bind, naming the placeholder as written and every such key, never values.
+   * @param placeholder - the placeholder exactly as written.
+   * @param conflictingKeys - the supplied keys that differ only in letter
+   * case, in `params` order.
+   * @returns the error to throw.
+   */
+  private createConflictingRawSqlParamsError(
+    placeholder: string,
+    conflictingKeys: Array<string>
+  ): ServerError {
+    const listedKeys = conflictingKeys
+      .map((key) => JSON.stringify(key))
+      .join(', ');
+    return new ServerError(
+      `Raw SQL placeholder ${placeholder} has more than one value in params; supplied keys that differ only in letter case: ${listedKeys}`
+    );
   }
 
   /**

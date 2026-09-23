@@ -312,12 +312,20 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedOccurrenceValues: [7, 7, 7],
   },
   {
-    name: 'keys differing only in letter case: the later supplied one wins',
+    name: 'keys differing only in letter case: one set to undefined is absent, the other binds',
     sql: 'select * from t where a = :ID::int',
-    params: { id: 1, ID: 2, Id: undefined },
+    params: { id: undefined, ID: 2 },
     expectedSql: 'select * from t where a = $1::int',
     expectedBindings: [2],
     expectedOccurrenceValues: [2],
+  },
+  {
+    name: 'keys differing only in letter case that no placeholder reads are ignored',
+    sql: 'select :FIRST::int',
+    params: { first: 1, other: 2, OTHER: 3 },
+    expectedSql: 'select $1::int',
+    expectedBindings: [1],
+    expectedOccurrenceValues: [1],
   },
 ];
 
@@ -453,5 +461,70 @@ describe('PostgreAdapter raw SQL placeholders without a value', (): void => {
       bindings: [],
       sqlString: 'select tags[1: n] from t',
     });
+  });
+});
+
+describe('PostgreAdapter raw SQL keys that differ only in letter case', (): void => {
+  it('throws for a placeholder two supplied keys would bind, naming both keys and no value', (): void => {
+    const adapter = createPostgreAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select * from t where a = :ID', {
+        id: 'first-secret',
+        ID: 'second-secret',
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
+    );
+    expect((error as ServerError).message).not.toContain('secret');
+  });
+
+  it('counts a key set to null as supplied, so it conflicts too', (): void => {
+    const adapter = createPostgreAdapter();
+
+    expect((): void => {
+      adapter.makeSqlBindings('select * from t where a = :ID::int', {
+        id: null,
+        ID: 2,
+      });
+    }).toThrow(
+      'Raw SQL placeholder :ID has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
+    );
+  });
+
+  it('lists every key of a three-way collision', (): void => {
+    const adapter = createPostgreAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select * from t where a = :ID::int', {
+        id: 1,
+        ID: 2,
+        Id: 3,
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has more than one value in params; supplied keys that differ only in letter case: "id", "ID", "Id"'
+    );
+  });
+
+  it('reports a placeholder used twice once, as written at its first occurrence', (): void => {
+    const adapter = createPostgreAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings(
+        'select * from t where a = :id::int or b = :ID::int',
+        { id: 1, ID: 2 }
+      )
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :id has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
+    );
   });
 });

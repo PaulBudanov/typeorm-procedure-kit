@@ -248,12 +248,20 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedOccurrenceValues: [7, 7, 7],
   },
   {
-    name: 'keys differing only in letter case: the later supplied one wins',
+    name: 'keys differing only in letter case: one set to undefined is absent, the other binds',
     sql: 'SELECT * FROM T WHERE A = :ID',
-    params: { id: 1, ID: 2, Id: undefined },
+    params: { id: undefined, ID: 2 },
     expectedBindings: { ID: 2 },
     expectedVerdict: 'accepted',
     expectedOccurrenceValues: [2],
+  },
+  {
+    name: 'keys differing only in letter case that no placeholder reads are ignored',
+    sql: 'SELECT * FROM T WHERE A = :FIRST',
+    params: { first: 1, other: 2, OTHER: 3 },
+    expectedBindings: { FIRST: 1 },
+    expectedVerdict: 'accepted',
+    expectedOccurrenceValues: [1],
   },
   {
     name: 'PL/SQL block, one name spelled in different cases is one slot',
@@ -489,6 +497,71 @@ describe('OracleAdapter raw SQL placeholders without a value', (): void => {
         { length: 20 },
         (_unused, index) => `"K${index}"`
       ).join(', ')} and 5 more`
+    );
+  });
+});
+
+describe('OracleAdapter raw SQL keys that differ only in letter case', (): void => {
+  it('throws for a placeholder two supplied keys would bind, naming both keys and no value', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM T WHERE A = :ID', {
+        id: 'first-secret',
+        ID: 'second-secret',
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
+    );
+    expect((error as ServerError).message).not.toContain('secret');
+  });
+
+  it('counts a key set to null as supplied, so it conflicts too', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect((): void => {
+      adapter.makeSqlBindings('SELECT * FROM T WHERE A = :ID', {
+        id: null,
+        ID: 2,
+      });
+    }).toThrow(
+      'Raw SQL placeholder :ID has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
+    );
+  });
+
+  it('lists every key of a three-way collision', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM T WHERE A = :ID', {
+        id: 1,
+        ID: 2,
+        Id: 3,
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has more than one value in params; supplied keys that differ only in letter case: "id", "ID", "Id"'
+    );
+  });
+
+  it('reports a placeholder used twice once, as written at its first occurrence', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM T WHERE A = :id OR B = :ID', {
+        id: 1,
+        ID: 2,
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :id has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
     );
   });
 });
