@@ -8,8 +8,7 @@
 
 **Tech Stack:** TypeScript 5 (strict), vitest, ESLint flat config, vendored TypeORM fork (вне периметра).
 
-**Spec:** `docs/reviews/2026-09-14-code-review.md` — отчёт ревизии от 2026-09-14. Опубликован также как артефакт
-<https://claude.ai/artifact/8FPaUPnoP68C8WT6V916ym>.
+**Spec:** `docs/reviews/2026-09-14-code-review.md` — отчёт ревизии от 2026-09-14.
 Нумерация находок (`P1 · 01`, `P2 · 18`, …) в задачах ниже ссылается на него.
 
 ---
