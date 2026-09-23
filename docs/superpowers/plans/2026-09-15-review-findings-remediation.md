@@ -447,6 +447,11 @@ PostgreSQL. Объединять их в один коммит нельзя, о�
 3. **Атрибуция в git и PR** (2026-09-23): строки об авторстве инструментов не добавляются ни в коммиты, ни в описания PR. История ветки
    переписана 2026-09-24, ссылки на хэши в телах коммитов и в этом плане переназначены.
 
+4. **Ключи payload'а, не совпавшие ни с одним аргументом** (2026-09-24): не отвергать —
+   слишком жёсткие рамки ломают гибкость. Такой ключ по-прежнему игнорируется, на процедурах и
+   в параметрах сырого SQL. Ошибкой остаётся только плейсхолдер сырого SQL без значения (T14).
+   Задача документации — объяснить правило сопоставления, чтобы опечатка не была сюрпризом (T26).
+
 ## Приложение C — новые задачи и передачи
 
 | ID       | Суть                                                                                                                                                                                                                                                                                                                                                                                                           | Файлы (эксклюзивно)                                                                                                                                                                                              | Порядок    |
@@ -471,13 +476,10 @@ PostgreSQL. Объединять их в один коммит нельзя, о�
   DROP пакета на Oracle метаданные не обновляет, а на PostgreSQL обновляет. Решить: расширить до
   `ACTION IN (...)` или оставить (README-текст T18 ниже уже описывает текущее поведение).
 
-## Приложение D — открытый вопрос к владельцу
+## Приложение D — вопрос к владельцу (решён)
 
-Пример README `db.call('billing.create_invoice', { customerId: 42, … })` связывается, только если
-аргумент называется ровно `customerid` или `p_customerid`: имена аргументов приводятся к нижнему
-регистру и на входе не проходят case strategy, так что `p_customer_id` молча получит `NULL`. Ключ
-payload'а, не совпавший ни с одним аргументом, сейчас просто игнорируется. Отвергать неизвестные
-ключи верхнего уровня (как уже отвергаются неизвестные поля RECORD) — решение владельца, не агента.
+Отвергать ли ключи payload'а верхнего уровня, не совпавшие ни с одним аргументом? Решено: нет,
+см. B.4. Остаётся документационная сторона — ниже, в блоке T26.
 
 ## Приложение E — тексты для README (применяет только T26)
 
@@ -532,3 +534,12 @@ payload'а, не совпавший ни с одним аргументом, с�
 - После «…both raise an error instead of overwriting data.»: «This applies to PostgreSQL and Oracle alike, and also when the query returns no rows.»
 - После «Supported serializer keys are …»: «`setSerializer()` and `deleteSerializer()` throw for any other key (including names such as `toString` that exist only on `Object.prototype`), for a strategy that is not a function, and for an argument that is not an object. Deleting a supported key that has no registered strategy does nothing.»
 - После примера `serializerReadOnlyMapping`: «`serializerReadOnlyMapping` is an immutable snapshot: `set`, `delete` and `clear` throw, it does not change after later registrations, and repeated reads return the same object until the registry changes.»
+
+**Решение B.4** — T26 исправляет пример и добавляет правило:
+
+- Пример `db.call('billing.create_invoice', { customerId: 42, … })` связывает значение, только если
+  аргумент называется ровно `customerid` или `p_customerid`. Привести ключи примера к именам
+  аргументов, которые пример же и объявляет.
+- После абзаца о сопоставлении по имени: «Keys that match no argument are ignored, so a misspelt
+  key leaves its argument `NULL`; argument names are matched in lower case and are not passed
+  through the case strategy, so `customerId` does not match `p_customer_id`.»
