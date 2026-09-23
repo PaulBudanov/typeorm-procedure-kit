@@ -353,6 +353,17 @@ export class OracleProcedureBindings {
     return Object.hasOwn(this.typeMapping, value);
   }
 
+  /**
+   * Resolves the payload value for one argument.
+   *
+   * A key counts as supplied when the payload carries it as an own property
+   * with a value other than `undefined`: an explicit `null` is a value the
+   * caller chose, while `undefined` is the absent optional property of a spread
+   * object. Both the declared argument name and its `p_`-stripped alias are
+   * accepted, but supplying both is a conflict rather than a silent preference
+   * for one of them — the same rule PostgreSQL applies, and the one
+   * `prepareRecordInput` already applied to the fields inside a RECORD.
+   */
   private readPayloadValue(
     payload: TProcedurePayload | null | undefined,
     index: number,
@@ -361,8 +372,26 @@ export class OracleProcedureBindings {
     if (Array.isArray(payload)) return payload[index] ?? null;
     if (!payload || typeof payload !== 'object') return null;
     const record = payload as Record<string, unknown>;
-    const normalizedName = argumentName.replace(/^p_/, '');
-    return record[normalizedName] ?? record[argumentName] ?? null;
+    const aliasName = argumentName.replace(/^p_/, '');
+    const hasAlias =
+      aliasName !== argumentName && this.hasPayloadValue(record, aliasName);
+    const hasArgumentName = this.hasPayloadValue(record, argumentName);
+    if (hasAlias && hasArgumentName) {
+      throw new ServerError(
+        `Conflicting Oracle procedure payload keys: "${aliasName}" and "${argumentName}"`
+      );
+    }
+    if (hasAlias) return record[aliasName];
+    if (hasArgumentName) return record[argumentName];
+    return null;
+  }
+
+  /** Own-property lookup, so a payload cannot answer with `__proto__` or `toString`. */
+  private hasPayloadValue(
+    record: Record<string, unknown>,
+    key: string
+  ): boolean {
+    return Object.hasOwn(record, key) && record[key] !== undefined;
   }
 
   private rejectArrayValue(value: unknown, argumentName: string): unknown {

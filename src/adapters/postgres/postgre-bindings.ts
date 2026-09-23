@@ -51,12 +51,24 @@ export class PostgreProcedureBindings {
     }
 
     const bindings: Array<unknown> = [];
+    /**
+     * Logical value per argument, keyed by argument name. The positional
+     * `bindings` list cannot serve the log: a composite OUT argument is inlined
+     * as `NULL::type` and consumes no binding, so from the first one onwards the
+     * list is shorter than the argument list and a positional lookup would pair
+     * a value with a neighbouring argument's name.
+     */
+    const logBindings: Record<string, unknown> = {};
     const cursorsNames: Array<string> = [];
     const outBindings: Array<IProcedureOutBinding> = [];
     const argumentExpressions: Array<string> = [];
     for (const [index, argument] of procedureArguments.entries()) {
-      if (argument.structuredType !== undefined) {
-        const structuredType = argument.structuredType;
+      // `logValue` is recorded once, after the branches, so no binding branch
+      // can be added, reordered or made to skip a positional bind without the
+      // log keeping the value under the argument it came from.
+      let logValue: unknown;
+      const structuredType = argument.structuredType;
+      if (structuredType !== undefined) {
         assertSupportedPostgreComposite(argument.argumentType, structuredType);
         if (argument.mode !== 'IN') {
           outBindings.push({
@@ -66,58 +78,53 @@ export class PostgreProcedureBindings {
             structuredType,
           });
         }
+        logValue =
+          argument.mode === 'OUT'
+            ? undefined
+            : this.readPayloadValue(payload, index, argument.argumentName);
         argumentExpressions.push(
           this.createCompositeExpression(
             bindings,
             argument.mode,
             structuredType,
-            argument.mode === 'OUT'
-              ? null
-              : this.readPayloadValue(
-                  payload,
-                  index,
-                  argument.argumentName,
-                  true
-                ),
+            logValue ?? null,
             argument.argumentName
           )
         );
-        continue;
-      }
-
-      const isCursor =
-        argument.argumentType.toLowerCase() ===
-        PostgreProcedureBindings.REF_CURSOR_TYPE;
-      if (argument.mode !== 'IN') {
-        outBindings.push({
-          name: argument.argumentName,
-          type: isCursor ? 'cursor' : 'scalar',
-          databaseType: argument.argumentType,
-        });
-      }
-      if (isCursor) {
-        if (argument.mode !== 'IN') cursorsNames.push(argument.argumentName);
-        bindings.push(
+      } else {
+        const isCursor =
+          argument.argumentType.toLowerCase() ===
+          PostgreProcedureBindings.REF_CURSOR_TYPE;
+        if (argument.mode !== 'IN') {
+          outBindings.push({
+            name: argument.argumentName,
+            type: isCursor ? 'cursor' : 'scalar',
+            databaseType: argument.argumentType,
+          });
+        }
+        if (isCursor) {
+          if (argument.mode !== 'IN') cursorsNames.push(argument.argumentName);
           // PostgreSQL ignores/requires NULL for a pure OUT input position. The
           // procedure must assign an explicit portal name before opening it.
-          argument.mode === 'OUT'
-            ? null
-            : this.portalNames.normalizeInput(
-                this.readPayloadValue(payload, index, argument.argumentName),
-                argument.argumentName
-              )
-        );
+          logValue =
+            argument.mode === 'OUT'
+              ? undefined
+              : this.portalNames.normalizeInput(
+                  this.readPayloadValue(payload, index, argument.argumentName),
+                  argument.argumentName
+                );
+          bindings.push(logValue ?? null);
+        } else {
+          logValue = this.readPayloadValue(
+            payload,
+            index,
+            argument.argumentName
+          );
+          bindings.push(logValue);
+        }
         argumentExpressions.push(`$${bindings.length}`);
-        continue;
       }
-
-      const value = this.readPayloadValue(
-        payload,
-        index,
-        argument.argumentName
-      );
-      bindings.push(value);
-      argumentExpressions.push(`$${bindings.length}`);
+      logBindings[argument.argumentName] = logValue;
     }
 
     return {
@@ -125,39 +132,52 @@ export class PostgreProcedureBindings {
         [packageName, processName]
       )}(${argumentExpressions.join(',')})`,
       bindings,
+      logBindings,
       cursorsNames,
       outNames: outBindings.map(({ name }) => name),
       outBindings,
     };
   }
 
+  /**
+   * Resolves the payload value for one argument.
+   *
+   * A key counts as supplied when the payload carries it as an own property
+   * with a value other than `undefined`: an explicit `null` is a value the
+   * caller chose, while `undefined` is the absent optional property of a spread
+   * object. Both the declared argument name and its `p_`-stripped alias are
+   * accepted, but supplying both is a conflict rather than a silent preference
+   * for one of them — the same rule Oracle applies, and the one the composite
+   * fields below already applied.
+   */
   private readPayloadValue(
     payload: TProcedurePayload | null | undefined,
     index: number,
-    argumentName: string,
-    shouldRejectAliasConflict = false
+    argumentName: string
   ): unknown {
     if (Array.isArray(payload)) return payload[index] ?? null;
     if (!payload || typeof payload !== 'object') return null;
     const record = payload as Record<string, unknown>;
-    const normalizedName = argumentName.replace(/^p_/, '');
-    const hasNormalizedName = Object.hasOwn(record, normalizedName);
-    const hasArgumentName = Object.hasOwn(record, argumentName);
-    if (shouldRejectAliasConflict) {
-      if (
-        normalizedName !== argumentName &&
-        hasNormalizedName &&
-        hasArgumentName
-      ) {
-        throw new ServerError(
-          `Conflicting PostgreSQL procedure payload keys: "${normalizedName}" and "${argumentName}"`
-        );
-      }
-      if (hasNormalizedName) return record[normalizedName];
-      if (hasArgumentName) return record[argumentName];
-      return null;
+    const aliasName = argumentName.replace(/^p_/, '');
+    const hasAlias =
+      aliasName !== argumentName && this.hasPayloadValue(record, aliasName);
+    const hasArgumentName = this.hasPayloadValue(record, argumentName);
+    if (hasAlias && hasArgumentName) {
+      throw new ServerError(
+        `Conflicting PostgreSQL procedure payload keys: "${aliasName}" and "${argumentName}"`
+      );
     }
-    return record[normalizedName] ?? record[argumentName] ?? null;
+    if (hasAlias) return record[aliasName];
+    if (hasArgumentName) return record[argumentName];
+    return null;
+  }
+
+  /** Own-property lookup, so a payload cannot answer with `__proto__` or `toString`. */
+  private hasPayloadValue(
+    record: Record<string, unknown>,
+    key: string
+  ): boolean {
+    return Object.hasOwn(record, key) && record[key] !== undefined;
   }
 
   private createCompositeExpression(

@@ -24,10 +24,10 @@ class QueryLogContextBuilderApi {
       packageName,
       procedureName,
       bindings:
-        procedureArguments?.map((argument, index) =>
+        procedureArguments?.map((argument) =>
           this.createProcedureBindingLogItem(
             argument,
-            this.getProcedureBinding(bindings, argument.argumentName, index),
+            this.getProcedureBinding(bindings, argument.argumentName),
             cursorsNames
           )
         ) ?? [],
@@ -86,13 +86,25 @@ class QueryLogContextBuilderApi {
     return binding;
   }
 
+  /**
+   * Resolves the logged value strictly by argument name.
+   *
+   * A positional binding list is deliberately not addressed by the argument's
+   * position: an adapter may bind fewer values than the procedure declares
+   * arguments (a PostgreSQL composite OUT argument, for example, is inlined as
+   * `NULL::type` and consumes no binding), so a positional lookup shifts and
+   * prints one argument's value under another argument's name — which also
+   * defeats name-based redaction. Adapters that bind positionally publish
+   * `logBindings` keyed by argument name for this reason.
+   */
   private getProcedureBinding(
     bindings: IBindingsObjectReturn['bindings'],
-    argumentName: string,
-    index: number
+    argumentName: string
   ): unknown {
-    if (Array.isArray(bindings)) return bindings[index];
-    return bindings[argumentName];
+    if (Array.isArray(bindings)) return undefined;
+    return Object.hasOwn(bindings, argumentName)
+      ? bindings[argumentName]
+      : undefined;
   }
 }
 
