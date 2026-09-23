@@ -421,3 +421,114 @@ PostgreSQL. Объединять их в один коммит нельзя, о�
   `DatabaseOptionsExecutor`, `QueryLogContextStorage`, `StringUtilities`.
 - **P3 · 27** — `TOracleNormilizeOptionsNotify` → `TOracleNormalizeOptionsNotify`.
 - Переименование классов `Postgre*` → `Postgres*` для согласия с форком и значением конфига.
+
+---
+
+## Приложение A — ход волны 5 (на 2026-09-24)
+
+| Задача | Коммит               | Состояние                                                                         |
+| ------ | -------------------- | --------------------------------------------------------------------------------- |
+| T16    | `cacfbda`            | готово                                                                            |
+| T22    | `2c9bd21`            | готово                                                                            |
+| T15    | `c1d4a33`            | готово; агент погиб до отчёта, текста для README нет — T26 формулирует по коммиту |
+| T20    | `ac29534`, `c925e02` | готово                                                                            |
+| T13    | `1de2c2c`            | готово                                                                            |
+| T17a   | `710390e`            | готово; решение владельца по унаследованным ключам — отдельная задача T17c        |
+| T18    | `80b665d`            | пункты 2–4 и конверт готовы; пункт 1 (P2 · 22) заблокирован → T18b                |
+| T19    | `67f641d`            | готово; удаление `SerializerBase` передано в T21                                  |
+
+## Приложение B — решения владельца
+
+1. **Ключ payload'а, найденный только на прототипе** (2026-09-23): отказывать громко. Читаются
+   собственные свойства; если ключ аргумента найден на прототипе, отличном от `Object.prototype`
+   (геттер класса-DTO), — `ServerError` с именем ключа. Ключи `Object.prototype` игнорируются, как
+   сейчас. Задача T17c.
+2. **Точность Oracle `NUMBER`** (2026-09-23): поведение не менять, задокументировать (текст ниже).
+3. **Атрибуция в git и PR** (2026-09-23): строки об авторстве инструментов не добавляются ни в коммиты, ни в описания PR. История ветки
+   переписана 2026-09-24, ссылки на хэши в телах коммитов и в этом плане переназначены.
+
+## Приложение C — новые задачи и передачи
+
+| ID       | Суть                                                                                                                                                                                                                                                                                                                                                                                                           | Файлы (эксклюзивно)                                                                                                                                                                                              | Порядок    |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **T17c** | Решение B.1: громкий отказ для ключа с прототипа класса                                                                                                                                                                                                                                                                                                                                                        | `oracle-bindings.ts`, `postgre-bindings.ts`, `test/adapters/{oracle,postgre}-payload-reader.test.ts`                                                                                                             | до T17b    |
+| **T18b** | P2 · 22: `readPackageChangeNotification(payload: unknown): Array<string>` в `IAdapterNotificationCapability` и `IDatabaseAdapterContract`, делегирование в `DatabaseAdapter`, мок в `test/support/helpers.ts`; затем форма payload'а уходит из `NotifyBase` в вендорные notifier'ы. Плюс: на Oracle ошибка колбэка прерывает оставшиеся чанки события и логируется дважды, PostgreSQL изолирует каждый payload | `database-adapter.ts`, `interfaces/adapter-capabilities.interfaces.ts`, `interfaces/adapter.interfaces.ts`, `test/support/helpers.ts`, `core/notify-base.ts`, `oracle-notify.ts`, `postgre-notify.ts` + их тесты | после T14  |
+| **T29**  | Булевы параметры `closeNotificationSubscription(name, false, false)`; `(error as Error)` без проверки (семь мест в `database-notify.ts`, плюс `database-options-executor.ts`, `database-initializer-base.ts`); русская строка лога в `database-options-executor.ts:64`                                                                                                                                         | `adapters/abstract/database-notify.ts`, `utils/database-options-executor.ts`, `core/database-initializer-base.ts`                                                                                                | после T18b |
+
+Дополнения к существующим задачам:
+
+- **T21** += удалить `SerializerBase` целиком. В `core/index.ts` — импорт, поле, пункт в JSDoc,
+  создание, `requireSerializerBase()`, сброс в `cleanupResources`; четыре места вызова
+  (`setSerializer`, `deleteSerializer`, `deleteAllSerializers`, `serializerReadOnlyMapping`) — на
+  адаптер под guard, сохраняющий сообщение `TypeOrmProcedureKit is not initialized` до `init()`.
+  Удалить `src/core/serializer-base.ts` и его тест; тест снапшота реестра — на уровень фасада.
+  JSDoc `setSerializer`/`deleteSerializer` — добавить `@throws` для не-функции и неизвестного типа.
+  Опечатку `serialzierBase` не переименовывать, а удалить вместе с полем.
+- **T14** += JSDoc `database-adapter.ts` (~:330) «Current mutable serializer registry» →
+  «Immutable snapshot of the serializer registry in canonical order; the same object until the
+  registry changes».
+- **T24** += `oracle-sql.ts`: запрос CQN по умолчанию следит только за `ACTION='REPLACE'`, поэтому
+  DROP пакета на Oracle метаданные не обновляет, а на PostgreSQL обновляет. Решить: расширить до
+  `ACTION IN (...)` или оставить (README-текст T18 ниже уже описывает текущее поведение).
+
+## Приложение D — открытый вопрос к владельцу
+
+Пример README `db.call('billing.create_invoice', { customerId: 42, … })` связывается, только если
+аргумент называется ровно `customerid` или `p_customerid`: имена аргументов приводятся к нижнему
+регистру и на входе не проходят case strategy, так что `p_customer_id` молча получит `NULL`. Ключ
+payload'а, не совпавший ни с одним аргументом, сейчас просто игнорируется. Отвергать неизвестные
+ключи верхнего уровня (как уже отвергаются неизвестные поля RECORD) — решение владельца, не агента.
+
+## Приложение E — тексты для README (применяет только T26)
+
+Английский — для `README.md`; переводы в `docs/README.{ru,de,zh}.md` T26 делает сам, кроме T16,
+где агент дал все четыре.
+
+**T16** — заменить по одному предложению в каждом языке:
+
+- `README.md` (~:610) «Notification retry delays must be integers in `0..2_147_483_647` milliseconds.» →
+  «Notification retry delays (`retryDelayMs` and `retryAfterMaxDelayMs`) must be integers in `100..2_147_483_647` milliseconds; a smaller value is rejected with a `RangeError` when the subscription is registered, because the restore loop restarts its attempt counter and would otherwise reconnect to a failing database with no pause.»
+- `docs/README.ru.md` (~:605) «Retry delays уведомлений принимают целые миллисекунды `0..2_147_483_647`.» →
+  «Retry delays уведомлений (`retryDelayMs` и `retryAfterMaxDelayMs`) принимают целые миллисекунды `100..2_147_483_647`; меньшее значение отклоняется с `RangeError` при регистрации подписки, потому что цикл восстановления сбрасывает счётчик попыток и иначе переподключался бы к недоступной базе без паузы.»
+- `docs/README.de.md` (~:588) «Retry delays erlauben ganze Millisekunden in `0..2_147_483_647`.» →
+  «Retry delays (`retryDelayMs` und `retryAfterMaxDelayMs`) erlauben ganze Millisekunden in `100..2_147_483_647`; ein kleinerer Wert wird bei der Registrierung der Subscription mit einem `RangeError` abgelehnt, da die Restore-Schleife ihren Versuchszaehler zurueksetzt und sonst ohne Pause zu einer ausgefallenen Datenbank neu verbinden wuerde.»
+- `docs/README.zh.md` (~:550) «通知重试延迟仅接受 `0..2_147_483_647` 范围的整数毫秒。» →
+  «通知重试延迟（`retryDelayMs` 和 `retryAfterMaxDelayMs`）仅接受 `100..2_147_483_647` 范围的整数毫秒；更小的值会在注册订阅时抛出 `RangeError`，因为恢复循环会重置重试计数器，否则将不间断地向已故障的数据库发起重连。»
+
+**T15** — агент не вернул текст. Описать по `c1d4a33`: `executionOptions.errorEnvelopeKeys`
+(`errorCodeKeys`, `errorTextKeys`; пустой массив отключает половину проверки); конверт в первой
+строке теперь распознаётся при любом числе строк.
+
+**T13:**
+
+1. On Oracle, every registered serializer runs on scalar OUT and IN/OUT bind values, not only the temporal ones: a `BOOLEAN`, `CHAR`, `NCHAR`, `VARCHAR`, `VARCHAR2`, `NVARCHAR2`, `JSON`, `RAW` or `XMLTYPE` argument reaches the strategy under `source: 'scalar-out'`, exactly as the identically typed field of a PL/SQL RECORD already did.
+2. Oracle REF CURSOR columns are named and serialized by the fetch handler alone, so the case strategy and the registered serializer each run exactly once per column: a cursor column is named exactly as the same column of a plain query, and a strategy is never handed back a value it produced itself.
+3. When Oracle returns a cursor without a usable column description, its rows are passed through as the driver produced them and a warning naming the cursor is logged, instead of degrading in silence.
+4. LOB handles that arrive inside REF CURSOR rows are released with the rest of the call's resources, so a row that fails part-way through no longer leaves undrained handles open until the connection returns to the pool.
+
+**T17a** — после «Scalar strings and numbers are rejected at runtime.». Предложение про прототип
+заменить по итогам T17c (решение B.1: ключ с прототипа класса — ошибка, а не `NULL`):
+
+> An object payload is matched to procedure arguments by name: each argument reads the key equal to its lowercase argument name (`p_amount`) or the same name without a leading `p_` (`amount`). Supplying both keys for one argument is rejected on both databases, for scalar, cursor, and structured arguments alike. A key set to `null` counts as supplied and binds SQL `NULL`; a key set to `undefined` counts as absent, so spreading an object with unset optional properties does not cause a conflict. Only the payload's own properties are read: values inherited from a prototype, including class getters, are ignored and the argument binds `NULL`. An array payload binds its elements by argument position; a missing, `null`, or `undefined` element binds `NULL`.
+
+**T17a, решение B.2** — в раздел Oracle:
+
+> Oracle `NUMBER` values, including its `INTEGER`, `DECIMAL`, `NUMERIC`, `FLOAT`, `REAL`, and `DOUBLE PRECISION` subtypes, arrive as JavaScript numbers in scalar `OUT`/`INOUT` values, `RECORD` fields, and REF CURSOR rows; integers beyond `Number.MAX_SAFE_INTEGER` and values with more than 15 significant digits are rounded. Return such values as `VARCHAR2` (for example with `TO_CHAR`) when exact digits matter, and pass exact integer inputs as `bigint`.
+
+**T18:**
+
+- В **PostgreSQL LISTEN/NOTIFY**: «Payloads are passed to the callback as data: a payload that looks like a procedure error envelope is not turned into an error.»
+- В **Oracle Continuous Query Notification**: «Refetched rows are passed to the callback as data, even when their columns look like a procedure error envelope.»
+- В **Dynamic package metadata refresh** — заменить два предложения, начинающиеся с «PostgreSQL listens on…»:
+
+> Every notification that names a configured package refreshes that package's procedure metadata. The kit does not interpret an event name: which DDL produces a notification is decided in the database, by the CQN query on Oracle and by your trigger on PostgreSQL. A notification that names no package is logged as a warning and skipped; a package that is not in `packagesSettings.packages` is skipped silently. Field names are matched case-insensitively. The databases differ only in how the notification arrives: Oracle CQN delivers the changed rows of the watched query, PostgreSQL delivers one text payload per NOTIFY.
+>
+> PostgreSQL listens on `db_object_event` unless `listenEventName` is configured. Each NOTIFY payload must be one JSON object whose `object` field is the configured package (schema) name, for example `SELECT pg_notify('db_object_event', json_build_object('event', 'CREATE', 'object', 'billing')::text);`. Other fields, including `event`, are ignored, so `CREATE OR REPLACE`, `ALTER` and `DROP` all refresh as long as the trigger sends a notification for them. Send one for changes that can alter procedure signatures, such as creating, replacing, altering or dropping a procedure or a composite type in a configured schema. A payload that is not JSON, is not an object, or has no string `object` field is logged and skipped.
+>
+> Oracle subscribes with CQN to `SOLUTION_ROOT.DB_OBJECT_LOG` rows where `ACTION='REPLACE'` and `TYPE='PACKAGE'` for the configured packages, and reads the package name from each changed row's `NAME` column. The default query watches only `ACTION='REPLACE'`; to refresh on other actions such as a drop, set `metadataNotificationSql` to a query that selects them. A custom Oracle query must return a string `NAME` column; a row without one is logged and skipped.
+
+**T19:**
+
+- После «…both raise an error instead of overwriting data.»: «This applies to PostgreSQL and Oracle alike, and also when the query returns no rows.»
+- После «Supported serializer keys are …»: «`setSerializer()` and `deleteSerializer()` throw for any other key (including names such as `toString` that exist only on `Object.prototype`), for a strategy that is not a function, and for an argument that is not an object. Deleting a supported key that has no registered strategy does nothing.»
+- После примера `serializerReadOnlyMapping`: «`serializerReadOnlyMapping` is an immutable snapshot: `set`, `delete` and `clear` throw, it does not change after later registrations, and repeated reads return the same object until the registry changes.»
