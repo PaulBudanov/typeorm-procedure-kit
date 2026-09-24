@@ -14,10 +14,13 @@ class DatabaseErrorHandlerApi {
    * Checks if the response data has an error code and throws an error if it does.
    * Useful for catching database errors.
    * Only the top-level response envelope is inspected: for an array that is its
-   * first element, whatever the array length, and business rows behind it and
-   * nested objects are intentionally ignored even if they contain similarly
-   * named fields. Only own properties count, so an inherited member never makes
-   * a result look like an error envelope.
+   * first element, when the array has one row or when the first row's own keys
+   * differ from the second row's. Rows of one shape, such as a journal or a
+   * status batch whose rows all carry error fields, are business data and are
+   * never read as an envelope. Business rows behind an envelope and nested
+   * objects are intentionally ignored even if they contain similarly named
+   * fields. Only own properties count, so an inherited member never makes a
+   * result look like an error envelope.
    * @param {T | Buffer | string | Array<T>} responseData - response data from the database query.
    * @param {string} [queryId] - query id attached to the thrown error.
    * @param {ILoggerModule} [logger] - logger module to log the error message.
@@ -41,6 +44,12 @@ class DatabaseErrorHandlerApi {
 
     if (Array.isArray(responseData)) {
       const checkDataObject = responseData[0];
+      if (
+        responseData.length > 1 &&
+        DatabaseErrorHandlerApi.haveSameKeys(checkDataObject, responseData[1])
+      ) {
+        return;
+      }
       this.checkForDatabaseError<typeof checkDataObject>(
         checkDataObject,
         queryId,
@@ -86,6 +95,27 @@ class DatabaseErrorHandlerApi {
       errorCodeKeys: envelopeKeys?.errorCodeKeys ?? defaults.errorCodeKeys,
       errorTextKeys: envelopeKeys?.errorTextKeys ?? defaults.errorTextKeys,
     };
+  }
+
+  /**
+   * Two rows share a shape when both are objects with the same set of own
+   * keys, in any order.
+   */
+  private static haveSameKeys(firstRow: unknown, secondRow: unknown): boolean {
+    if (
+      typeof firstRow !== 'object' ||
+      firstRow === null ||
+      typeof secondRow !== 'object' ||
+      secondRow === null
+    ) {
+      return false;
+    }
+    const firstKeys = Object.keys(firstRow);
+    const secondKeys = new Set(Object.keys(secondRow));
+    return (
+      firstKeys.length === secondKeys.size &&
+      firstKeys.every((key) => secondKeys.has(key))
+    );
   }
 
   /** An envelope field carries a message only when it is not empty. */
