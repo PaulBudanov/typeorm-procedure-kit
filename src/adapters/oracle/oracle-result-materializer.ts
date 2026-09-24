@@ -522,8 +522,18 @@ export class OracleProcedureResultMaterializer {
    * back through `p_flag OUT BOOLEAN` and the value it hands back through
    * `p_row.flag` are the same value, and a consumer that registered a BOOLEAN
    * serializer expects both to go through it. Keeping two lists is what let a
-   * scalar `JSON`, `BOOLEAN`, `CHAR`, `RAW` or `XMLTYPE` OUT come back raw
-   * while the identical RECORD field was serialized.
+   * scalar `BOOLEAN`, `CHAR` or `RAW` OUT come back raw while the identical
+   * RECORD field was serialized.
+   *
+   * `PL/SQL BOOLEAN` is how the data dictionary names a BOOLEAN before Oracle
+   * Database 23ai made it a SQL type, so both names map to BOOLEAN. A `BLOB`
+   * OUT has already been drained into a Buffer when it gets here, so it goes
+   * through BINARY like `RAW`, as a fetched BLOB column does.
+   *
+   * `JSON` is reachable only as a RECORD field: the scalar argument whitelist
+   * in `OracleProcedureBindings` rejects a JSON argument, but the fields of a
+   * RECORD bound through its object type are not checked against that list.
+   * `XMLTYPE` has no entry, since the whitelist rejects it as an argument.
    *
    * Cursor columns are deliberately absent: those are fetch-path values, and
    * node-oracledb has already run the registered serializer on them through
@@ -544,6 +554,7 @@ export class OracleProcedureResultMaterializer {
       case 'TIMESTAMP WITH LOCAL TIME ZONE':
         return 'TIMESTAMP_LTZ';
       case 'BOOLEAN':
+      case 'PL/SQL BOOLEAN':
         return 'BOOLEAN';
       case 'CHAR':
       case 'NCHAR':
@@ -555,9 +566,8 @@ export class OracleProcedureResultMaterializer {
       case 'JSON':
         return 'JSON';
       case 'RAW':
+      case 'BLOB':
         return 'BINARY';
-      case 'XMLTYPE':
-        return 'XML';
       default:
         return undefined;
     }

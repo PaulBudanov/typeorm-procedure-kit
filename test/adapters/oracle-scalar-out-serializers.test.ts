@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 
 import oracledb from 'oracledb';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { OracleProcedureResultMaterializer } from '../../src/adapters/oracle/oracle-result-materializer.js';
 import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js';
@@ -9,6 +9,7 @@ import { StringUtilities } from '../../src/utils/string-utilities.js';
 import { createLogger } from '../support/helpers.js';
 
 import type { IProcedureOutBinding } from '../../src/interfaces/utility.interfaces.js';
+import type { TSerializerStrategy } from '../../src/types/serializer.types.js';
 
 const caseStrategy = {
   transformColumnName: (value: string): string =>
@@ -177,11 +178,6 @@ describe('Oracle scalar OUT serializers', (): void => {
   it('runs every registered serializer, not only the temporal ones', async (): Promise<void> => {
     const serializer = createSerializer();
     serializer.setSerializer({
-      serializerType: 'JSON',
-      strategy: ({ value }) =>
-        typeof value === 'string' ? (JSON.parse(value) as unknown) : value,
-    });
-    serializer.setSerializer({
       serializerType: 'BOOLEAN',
       strategy: ({ value }) => value === true || value === 'Y',
     });
@@ -198,38 +194,28 @@ describe('Oracle scalar OUT serializers', (): void => {
       strategy: ({ value }) =>
         Buffer.isBuffer(value) ? value.toString('hex') : value,
     });
-    serializer.setSerializer({
-      serializerType: 'XML',
-      strategy: ({ value }) => `xml:${String(value)}`,
-    });
 
     await expect(
       materializeScalarOuts(
         serializer,
         [
-          scalarOut('P_PAYLOAD', 'JSON'),
           scalarOut('P_FLAG', 'BOOLEAN'),
           scalarOut('P_CODE', 'CHAR'),
           scalarOut('P_NAME', 'VARCHAR2'),
           scalarOut('P_BLOB', 'RAW'),
-          scalarOut('P_DOC', 'XMLTYPE'),
         ],
         {
-          P_PAYLOAD: '{"total":2}',
           P_FLAG: 'Y',
           P_CODE: 'AB   ',
           P_NAME: 'order',
           P_BLOB: Buffer.from([0xde, 0xad]),
-          P_DOC: '<a/>',
         }
       )
     ).resolves.toEqual({
-      pPayload: { total: 2 },
       pFlag: true,
       pCode: 'AB',
       pName: 'v:order',
       pBlob: 'dead',
-      pDoc: 'xml:<a/>',
     });
   });
 
@@ -264,6 +250,104 @@ describe('Oracle scalar OUT serializers', (): void => {
 
     expect(asScalar).toEqual({ pFlag: true });
     expect(asRecordField).toEqual({ pRow: { flag: true } });
+  });
+
+  it('runs the BOOLEAN serializer on PL/SQL BOOLEAN, the name the dictionary reports before 23ai', async (): Promise<void> => {
+    const serializer = createSerializer();
+    const strategy = vi.fn<TSerializerStrategy<'BOOLEAN'>>(({ value }) =>
+      value === true ? 'yes' : 'no'
+    );
+    serializer.setSerializer({ serializerType: 'BOOLEAN', strategy });
+
+    const asScalar = await materializeScalarOuts(
+      serializer,
+      [scalarOut('P_FLAG', 'PL/SQL BOOLEAN')],
+      { P_FLAG: true }
+    );
+    const asRecordField = await materializeScalarOuts(
+      serializer,
+      [
+        {
+          name: 'P_ROW',
+          type: 'object',
+          databaseType: 'PKG.T_ROW',
+          structuredType: {
+            kind: 'oracle-record',
+            typeName: 'PKG.T_ROW',
+            fields: [
+              { name: 'FLAG', argumentType: 'PL/SQL BOOLEAN', order: 1 },
+            ],
+          },
+        },
+      ],
+      { P_ROW: { FLAG: false } }
+    );
+
+    expect(asScalar).toEqual({ pFlag: 'yes' });
+    expect(asRecordField).toEqual({ pRow: { flag: 'no' } });
+    expect(strategy.mock.calls).toEqual([
+      [
+        {
+          serializerType: 'BOOLEAN',
+          value: true,
+          context: {
+            source: 'scalar-out',
+            database: 'oracle',
+            name: 'pFlag',
+            databaseType: 'PL/SQL BOOLEAN',
+          },
+        },
+      ],
+      [
+        {
+          serializerType: 'BOOLEAN',
+          value: false,
+          context: {
+            source: 'scalar-out',
+            database: 'oracle',
+            name: 'pRow.flag',
+            databaseType: 'PL/SQL BOOLEAN',
+          },
+        },
+      ],
+    ]);
+  });
+
+  it('runs the JSON serializer on a RECORD field, the one place a JSON OUT can come from', async (): Promise<void> => {
+    const serializer = createSerializer();
+    const strategy = vi.fn<TSerializerStrategy<'JSON'>>(({ value }) =>
+      JSON.stringify(value)
+    );
+    serializer.setSerializer({ serializerType: 'JSON', strategy });
+
+    await expect(
+      materializeScalarOuts(
+        serializer,
+        [
+          {
+            name: 'P_ROW',
+            type: 'object',
+            databaseType: 'PKG.T_ROW',
+            structuredType: {
+              kind: 'oracle-record',
+              typeName: 'PKG.T_ROW',
+              fields: [{ name: 'PAYLOAD', argumentType: 'JSON', order: 1 }],
+            },
+          },
+        ],
+        { P_ROW: { PAYLOAD: { total: 2 } } }
+      )
+    ).resolves.toEqual({ pRow: { payload: '{"total":2}' } });
+    expect(strategy).toHaveBeenCalledExactlyOnceWith({
+      serializerType: 'JSON',
+      value: { total: 2 },
+      context: {
+        source: 'scalar-out',
+        database: 'oracle',
+        name: 'pRow.payload',
+        databaseType: 'JSON',
+      },
+    });
   });
 
   it('leaves a scalar OUT alone when no serializer is registered', async (): Promise<void> => {

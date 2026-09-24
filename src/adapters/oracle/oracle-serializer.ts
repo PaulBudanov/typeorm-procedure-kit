@@ -12,24 +12,38 @@ import type { DbType, FetchTypeResponse } from 'oracledb';
 
 export class OracleSerializer extends DatabaseSerializer {
   /**
-   * Driver type for every serializer type. Complete by construction, so a new member of
+   * Driver types for every serializer type. Complete by construction, so a new member of
    * `TSerializerType` does not compile until it is mapped here. It is only ever indexed with a
    * member already validated by `DatabaseSerializer`, never with a caller's raw value.
+   *
+   * BINARY covers both Oracle binary types, `RAW` and `BLOB`, as it covers the same types when
+   * they come back as scalar OUT values.
    */
   private static readonly OBJECT_TYPE_CAST: Readonly<
-    Record<TSerializerType, DbType>
+    Record<TSerializerType, ReadonlyArray<DbType>>
   > = {
-    BINARY: oracledb.DB_TYPE_BLOB,
-    BOOLEAN: oracledb.DB_TYPE_BOOLEAN,
-    CHAR: oracledb.DB_TYPE_CHAR,
-    DATE: oracledb.DB_TYPE_DATE,
-    VARCHAR: oracledb.DB_TYPE_VARCHAR,
-    JSON: oracledb.DB_TYPE_JSON,
-    TIMESTAMP: oracledb.DB_TYPE_TIMESTAMP,
-    TIMESTAMP_TZ: oracledb.DB_TYPE_TIMESTAMP_TZ,
-    TIMESTAMP_LTZ: oracledb.DB_TYPE_TIMESTAMP_LTZ,
-    XML: oracledb.DB_TYPE_XMLTYPE,
+    BINARY: [oracledb.DB_TYPE_RAW, oracledb.DB_TYPE_BLOB],
+    BOOLEAN: [oracledb.DB_TYPE_BOOLEAN],
+    CHAR: [oracledb.DB_TYPE_CHAR],
+    DATE: [oracledb.DB_TYPE_DATE],
+    VARCHAR: [oracledb.DB_TYPE_VARCHAR],
+    JSON: [oracledb.DB_TYPE_JSON],
+    TIMESTAMP: [oracledb.DB_TYPE_TIMESTAMP],
+    TIMESTAMP_TZ: [oracledb.DB_TYPE_TIMESTAMP_TZ],
+    TIMESTAMP_LTZ: [oracledb.DB_TYPE_TIMESTAMP_LTZ],
+    XML: [oracledb.DB_TYPE_XMLTYPE],
   };
+  /**
+   * The type a converted column is fetched as, where it is not the column's own type.
+   *
+   * node-oracledb hands the converter of a column fetched as `DB_TYPE_BLOB` a `Lob` handle, which
+   * no serializer accepts. Fetched as `DB_TYPE_RAW`, a conversion the driver supports, the same
+   * column arrives as a Buffer of its contents: the value the bundled driver's `fetchAsBuffer`
+   * setting gives the caller when no serializer is registered. A handler that answers with a
+   * `type` overrides that setting, so it has to ask for the Buffer itself.
+   */
+  private static readonly FETCH_TYPE_OVERRIDES: ReadonlyMap<DbType, DbType> =
+    new Map([[oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_RAW]]);
   /** Numeric code node-oracledb Thick mode reports for a REF CURSOR column. */
   private static readonly CURSOR_DB_TYPE_NUMBER: number =
     oracledb.DB_TYPE_CURSOR.num;
@@ -75,7 +89,10 @@ export class OracleSerializer extends DatabaseSerializer {
       ) {
         const serializeKey = this.objectDbTypeHandlerCast.get(metaData.dbType);
         if (serializeKey === undefined) return;
-        if (!this.hasSerializer(serializeKey)) return { type: metaData.dbType };
+        const fetchType =
+          OracleSerializer.FETCH_TYPE_OVERRIDES.get(metaData.dbType) ??
+          metaData.dbType;
+        if (!this.hasSerializer(serializeKey)) return { type: fetchType };
         const converter = (value: unknown): unknown =>
           this.serializeValue(serializeKey, value, {
             source: 'fetch',
@@ -84,7 +101,7 @@ export class OracleSerializer extends DatabaseSerializer {
             databaseType: metaData.dbType?.columnTypeName,
           });
         return {
-          type: metaData.dbType,
+          type: fetchType,
           converter: converter,
         };
       }
@@ -199,18 +216,22 @@ export class OracleSerializer extends DatabaseSerializer {
       );
       this.unregisterSerializer(options.serializerType);
     }
-    const dbTypeClass =
-      OracleSerializer.OBJECT_TYPE_CAST[options.serializerType];
-    if (this.objectDbTypeHandlerCast.has(dbTypeClass)) {
-      this.logger.warn(
-        `Serializer with dbType ${dbTypeClass.columnTypeName} already exists, overriding...`
-      );
-      this.objectDbTypeHandlerCast.delete(dbTypeClass);
+    const dbTypes = OracleSerializer.OBJECT_TYPE_CAST[options.serializerType];
+    for (const dbType of dbTypes) {
+      if (this.objectDbTypeHandlerCast.has(dbType)) {
+        this.logger.warn(
+          `Serializer with dbType ${dbType.columnTypeName} already exists, overriding...`
+        );
+        this.objectDbTypeHandlerCast.delete(dbType);
+      }
     }
     this.registerSerializer(options);
-    this.objectDbTypeHandlerCast.set(dbTypeClass, options.serializerType);
+    for (const dbType of dbTypes)
+      this.objectDbTypeHandlerCast.set(dbType, options.serializerType);
     this.logger.log(
-      `Serializer with type ${options.serializerType} and dbType ${dbTypeClass.columnTypeName} set successfully`
+      `Serializer with type ${options.serializerType} and dbType ${dbTypes
+        .map(({ columnTypeName }) => columnTypeName)
+        .join(', ')} set successfully`
     );
     return;
   }
@@ -224,9 +245,8 @@ export class OracleSerializer extends DatabaseSerializer {
   ): void {
     if (this.hasSerializer(serializerType))
       this.unregisterSerializer(serializerType);
-    const dbTypeClass = OracleSerializer.OBJECT_TYPE_CAST[serializerType];
-    if (this.objectDbTypeHandlerCast.has(dbTypeClass))
-      this.objectDbTypeHandlerCast.delete(dbTypeClass);
+    for (const dbType of OracleSerializer.OBJECT_TYPE_CAST[serializerType])
+      this.objectDbTypeHandlerCast.delete(dbType);
     return;
   }
 
