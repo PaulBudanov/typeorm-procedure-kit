@@ -1,4 +1,3 @@
-import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
@@ -29,7 +28,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     private readonly listenEventName?: string,
     private readonly maxNotificationQueue = DEFAULT_RESOURCE_LIMITS.maxNotificationQueue
   ) {
-    super(logger);
+    super(logger, postgreConnection);
   }
 
   /**
@@ -230,8 +229,9 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       payload = rawPayload as TNotifyCallbackGeneric<T>;
     }
 
+    // A NOTIFY payload is application data, not a procedure result, so it is
+    // never read as an error envelope: the callback decides what it means.
     try {
-      DatabaseErrorHandler.checkForDatabaseError<T>(payload);
       await notifyCallback(payload);
     } catch (error) {
       this.logger.error(
@@ -250,45 +250,21 @@ export class PostgreNotify extends DatabaseNotify<Client> {
    * @param channel - registered channel name.
    */
   public override async unlistenNotify(channel: string): Promise<void> {
-    this.cancelNotificationRestore(channel);
-    await this.closeListenerConnection(channel);
-    this.clearNotificationRestoreState(channel);
+    await this.closeNotificationSubscription(channel);
   }
 
-  private async closeListenerConnection(channel: string): Promise<void> {
-    return this.closeNotificationChannel(channel, () =>
-      this.performCloseListenerConnection(channel)
+  /**
+   * Releases one PostgreSQL LISTEN registration on a live client.
+   * @param channel - registered channel name to unlisten.
+   * @param client - live notification client.
+   */
+  protected override async unsubscribeNotificationConnection(
+    channel: string,
+    client: Client
+  ): Promise<void> {
+    await client.query(
+      `UNLISTEN ${SqlIdentifier.quotePostgresIdentifier(channel)}`
     );
-  }
-
-  private async performCloseListenerConnection(channel: string): Promise<void> {
-    const client = this.notificationPool.get(channel);
-    this.notificationPool.delete(channel);
-    this.stopConnectionHealthCheck(channel);
-    try {
-      if (!client) {
-        this.logger.warn(`No listener found for channel: ${channel}`);
-        return;
-      }
-      const isConnectionAlive =
-        await this.postgreConnection.isSingleConnectionHealthy(client, 500);
-      if (isConnectionAlive)
-        await client.query(
-          `UNLISTEN ${SqlIdentifier.quotePostgresIdentifier(channel)}`
-        );
-      this.logger.log(
-        `Successfully unregistered listener for channel: ${channel}`
-      );
-    } catch (error: unknown) {
-      this.logger.error(
-        `Error unregistering notification listener: ${
-          (error as Error).message
-        }`,
-        (error as Error).stack
-      );
-    } finally {
-      if (client) await this.postgreConnection.closeSingleConnection(client);
-    }
   }
 
   protected override beginNotificationQueueClose(
@@ -348,7 +324,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: INotifyRetryOptions
   ): Promise<void> {
-    await this.closeListenerConnection(channelName);
+    await this.closeNotificationSubscription(channelName, false);
     if (this.isNotificationRestoreCancelled(channelName)) return;
     const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
       channelName
@@ -359,7 +335,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       options
     );
     if (this.isNotificationRestoreCancelled(restoredChannelName)) {
-      await this.closeListenerConnection(restoredChannelName);
+      await this.closeNotificationSubscription(restoredChannelName, false);
       return;
     }
     this.logger.log(

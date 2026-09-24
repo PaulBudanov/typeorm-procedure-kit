@@ -12,7 +12,14 @@ import type { Client } from 'pg';
 
 class TestDatabaseNotify extends DatabaseNotify<Client> {
   public constructor(logger: ILoggerModule) {
-    super(logger);
+    super(logger, {
+      closeSingleConnection: (): Promise<void> => Promise.resolve(),
+      isSingleConnectionHealthy: (): Promise<boolean> => Promise.resolve(false),
+    });
+  }
+
+  protected override unsubscribeNotificationConnection(): Promise<void> {
+    return Promise.resolve();
   }
 
   public override async unlistenNotify(channel: string): Promise<void> {
@@ -180,11 +187,15 @@ describe('DatabaseNotify', (): void => {
     { option: 'maxRetries', value: Number.NaN },
     { option: 'maxRetries', value: Infinity },
     { option: 'retryDelayMs', value: -1 },
+    { option: 'retryDelayMs', value: 0 },
+    { option: 'retryDelayMs', value: 99 },
     { option: 'retryDelayMs', value: 1.5 },
     { option: 'retryDelayMs', value: Number.NaN },
     { option: 'retryDelayMs', value: Infinity },
     { option: 'retryDelayMs', value: 2_147_483_648 },
     { option: 'retryAfterMaxDelayMs', value: -1 },
+    { option: 'retryAfterMaxDelayMs', value: 0 },
+    { option: 'retryAfterMaxDelayMs', value: 99 },
     { option: 'retryAfterMaxDelayMs', value: 1.5 },
     { option: 'retryAfterMaxDelayMs', value: Number.NaN },
     { option: 'retryAfterMaxDelayMs', value: Infinity },
@@ -199,7 +210,15 @@ describe('DatabaseNotify', (): void => {
     ).toThrow(RangeError);
   });
 
-  it.each([0, 2_147_483_647])(
+  it('names the supported delay range when a delay is below the floor', (): void => {
+    const notify = new TestDatabaseNotify(createLogger());
+
+    expect(() =>
+      notify.restore('channel', vi.fn(), { retryDelayMs: 0 })
+    ).toThrow('retryDelayMs must be an integer between 100 and 2147483647');
+  });
+
+  it.each([100, 2_147_483_647])(
     'accepts retry delays at the supported boundary %s',
     async (delay): Promise<void> => {
       const notify = new TestDatabaseNotify(createLogger());

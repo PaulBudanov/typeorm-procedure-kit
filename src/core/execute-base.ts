@@ -7,7 +7,10 @@ import { ServerError } from '../utils/server-error.js';
 import type { ConnectionBase } from './connection-base.js';
 import type { EntityManager } from '../typeorm/entity-manager/EntityManager.js';
 import type { TAdapterUtilsClassTypes } from '../types/adapter.types.js';
-import type { IExecutionOptions } from '../types/config.types.js';
+import type {
+  IExecutionOptions,
+  TConnectionMode,
+} from '../types/config.types.js';
 import type { ILoggerModule, TBindingLogMode } from '../types/logger.types.js';
 import type {
   IBindingsObjectReturn,
@@ -45,44 +48,31 @@ export class ExecuteBase {
     cursorsNames: Array<string> = [],
     executionOptions: IExecutionOptions = {}
   ): Promise<Awaited<Array<T>>> {
-    const {
-      mode = 'master',
-      optionsCommands = [],
-      queryId = randomUUID(),
-    } = executionOptions;
-    const queryTimer = new QueryTimer(
+    return this.runWithConnection<Awaited<Array<T>>>(
       sql,
-      this.logger,
-      queryId,
       bindings,
-      this.bindingLogMode
-    );
-    const client: EntityManager =
-      await this.connectionBase.getEntityManager(mode);
-    let operationError: ServerError | undefined;
-    try {
-      const result: Awaited<Array<T> | T> =
-        await this.databaseAdapter.execute<T>(
+      executionOptions,
+      (
+        client: EntityManager,
+        optionsCommands: Array<string>
+      ): Promise<Awaited<Array<T>>> =>
+        this.databaseAdapter.execute<T>(
           sql,
           client,
           optionsCommands,
           bindings,
           cursorsNames
+        ),
+      (result: Awaited<Array<T>>, queryId: string): number | undefined => {
+        DatabaseErrorHandler.checkForDatabaseError(
+          result,
+          queryId,
+          undefined,
+          executionOptions.errorEnvelopeKeys
         );
-      DatabaseErrorHandler.checkForDatabaseError(result, queryId);
-      queryTimer.success(result.length);
-      return result;
-    } catch (error: unknown) {
-      const serverError = ServerError.ENSURE_SERVER_ERROR({
-        error,
-        errorId: queryId,
-      });
-      queryTimer.error(serverError);
-      operationError = serverError;
-      throw serverError;
-    } finally {
-      await this.releaseEntityManager(client, operationError);
-    }
+        return ExecuteBase.resolveRowCount(result);
+      }
+    );
   }
 
   /**
@@ -99,6 +89,64 @@ export class ExecuteBase {
     outBindings: Array<IProcedureOutBinding> = [],
     executionOptions: IExecutionOptions = {}
   ): Promise<IProcedureResult<TRow, TOut>> {
+    return this.runWithConnection<IProcedureResult<TRow, TOut>>(
+      sql,
+      bindings,
+      executionOptions,
+      (
+        client: EntityManager,
+        optionsCommands: Array<string>
+      ): Promise<IProcedureResult<TRow, TOut>> =>
+        this.databaseAdapter.executeProcedure<TRow, TOut>(
+          sql,
+          client,
+          optionsCommands,
+          bindings,
+          cursorsNames,
+          outBindings
+        ),
+      (
+        result: IProcedureResult<TRow, TOut>,
+        queryId: string
+      ): number | undefined => {
+        const { errorEnvelopeKeys } = executionOptions;
+        DatabaseErrorHandler.checkForDatabaseError(
+          result.rows,
+          queryId,
+          undefined,
+          errorEnvelopeKeys
+        );
+        DatabaseErrorHandler.checkForDatabaseError(
+          result.outBinds,
+          queryId,
+          undefined,
+          errorEnvelopeKeys
+        );
+        return ExecuteBase.resolveRowCount(result.rows);
+      }
+    );
+  }
+
+  /**
+   * Shared scaffold behind every adapter call: query timing, entity manager
+   * lifecycle, error wrapping and the mandatory release of the manager.
+   *
+   * @param sql - SQL query string, logged by the query timer
+   * @param bindings - bindings for the SQL query or procedure, logged by the query timer
+   * @param executionOptions - execution options such as connection mode, setup commands, and query id
+   * @param runOperation - adapter call to run against the acquired entity manager
+   * @param inspectResult - validates the adapter result and returns the row count to log
+   */
+  private async runWithConnection<TResult>(
+    sql: string,
+    bindings: IBindingsObjectReturn['bindings'],
+    executionOptions: IExecutionOptions,
+    runOperation: (
+      client: EntityManager,
+      optionsCommands: Array<string>
+    ) => Promise<TResult>,
+    inspectResult: (result: TResult, queryId: string) => number | undefined
+  ): Promise<TResult> {
     const {
       mode = 'master',
       optionsCommands = [],
@@ -111,21 +159,17 @@ export class ExecuteBase {
       bindings,
       this.bindingLogMode
     );
-    const client: EntityManager =
-      await this.connectionBase.getEntityManager(mode);
+    const client: EntityManager = await this.acquireEntityManager(
+      mode,
+      queryTimer,
+      queryId
+    );
+    queryTimer.start();
     let operationError: ServerError | undefined;
     try {
-      const result = await this.databaseAdapter.executeProcedure<TRow, TOut>(
-        sql,
-        client,
-        optionsCommands,
-        bindings,
-        cursorsNames,
-        outBindings
-      );
-      DatabaseErrorHandler.checkForDatabaseError(result.rows, queryId);
-      DatabaseErrorHandler.checkForDatabaseError(result.outBinds, queryId);
-      queryTimer.success(result.rows.length);
+      const result = await runOperation(client, optionsCommands);
+      const rowCount = inspectResult(result, queryId);
+      queryTimer.success(rowCount);
       return result;
     } catch (error: unknown) {
       const serverError = ServerError.ENSURE_SERVER_ERROR({
@@ -138,6 +182,37 @@ export class ExecuteBase {
     } finally {
       await this.releaseEntityManager(client, operationError);
     }
+  }
+
+  /**
+   * Takes a connection from the pool before the query is reported as started.
+   * A pool that never hands one over produces a failure line and nothing else,
+   * so the log never shows a query that did not run.
+   */
+  private async acquireEntityManager(
+    mode: TConnectionMode,
+    queryTimer: QueryTimer,
+    queryId: string
+  ): Promise<EntityManager> {
+    try {
+      return await this.connectionBase.getEntityManager(mode);
+    } catch (error: unknown) {
+      const serverError = ServerError.ENSURE_SERVER_ERROR({
+        error,
+        errorId: queryId,
+      });
+      queryTimer.error(serverError);
+      throw serverError;
+    }
+  }
+
+  /**
+   * Row count to log for an adapter result. Statements that do not return a
+   * rowset (a non-SELECT, for example) have no row count, so nothing is logged
+   * instead of a misleading number.
+   */
+  private static resolveRowCount(result: unknown): number | undefined {
+    return Array.isArray(result) ? result.length : undefined;
   }
 
   /** Preserves both failures when an operation and its mandatory release fail. */

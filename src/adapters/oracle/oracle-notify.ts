@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 
 import oracledb from 'oracledb';
 
-import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
@@ -42,7 +41,7 @@ export class OracleNotify extends DatabaseNotify<
     private readonly maxNotificationQueue = DEFAULT_RESOURCE_LIMITS.maxNotificationQueue,
     private readonly maxNotificationRows = DEFAULT_RESOURCE_LIMITS.maxNotificationRows
   ) {
-    super(logger);
+    super(logger, oracleConnection);
   }
   /**
    * Builds the CQN query used to watch package metadata changes.
@@ -88,52 +87,20 @@ export class OracleNotify extends DatabaseNotify<
       )
     );
     await Promise.all(
-      channelNames.map((name) => this.closeSubscription(name, true))
+      channelNames.map((name) => this.closeNotificationSubscription(name))
     );
   }
 
-  private async closeSubscription(
+  /**
+   * Releases one Oracle CQN registration on a live connection.
+   * @param channelName - subscription name to unsubscribe.
+   * @param connection - live notification connection.
+   */
+  protected override unsubscribeNotificationConnection(
     channelName: string,
-    shouldCancelRestore: boolean,
-    shouldDrainCallbacks = true
+    connection: oracledb.Connection
   ): Promise<void> {
-    if (shouldCancelRestore) this.cancelNotificationRestore(channelName);
-    this.stopConnectionHealthCheck(channelName);
-    if (!shouldDrainCallbacks) {
-      await this.performCloseSubscription(channelName, shouldCancelRestore);
-      return;
-    }
-    return this.closeNotificationChannel(channelName, () =>
-      this.performCloseSubscription(channelName, shouldCancelRestore)
-    );
-  }
-
-  private async performCloseSubscription(
-    channelName: string,
-    shouldCancelRestore: boolean
-  ): Promise<void> {
-    const connection = this.notificationPool.get(channelName);
-    this.notificationPool.delete(channelName);
-    if (shouldCancelRestore) this.clearNotificationRestoreState(channelName);
-    if (!connection) {
-      this.logger.warn(`No active subscription for channel: ${channelName}`);
-      return;
-    }
-    try {
-      const isConnectionAlive =
-        await this.oracleConnection.isSingleConnectionHealthy(connection, 500);
-      if (isConnectionAlive) await connection.unsubscribe(channelName);
-      this.logger.log(`Unsubscribed from channel: ${channelName}`);
-    } catch (error) {
-      this.logger.error(
-        `Error unsubscribing from channel ${channelName}: ${
-          (error as Error).message
-        }`,
-        (error as Error).stack
-      );
-    } finally {
-      await this.oracleConnection.closeSingleConnection(connection);
-    }
+    return connection.unsubscribe(channelName);
   }
 
   protected override beginNotificationQueueClose(
@@ -197,23 +164,12 @@ export class OracleNotify extends DatabaseNotify<
       const subscriptions: Array<string> = [];
       try {
         for (const operation of options.operations) {
-          const channelName = randomUUID();
-          const connection =
-            await this.oracleConnection.createSingleConnection();
           const modifyOptions: TOracleNormilizeOptionsNotify = {
             ...options,
             operations: operation,
           };
-          const subscription = await this.subscribe(
-            connection,
-            channelName,
-            this.generateOptions(
-              notifyCallback,
-              modifyOptions,
-              sqlCommand,
-              channelName,
-              connection
-            ),
+          const subscription = await this.subscribe<T>(
+            randomUUID(),
             sqlCommand,
             notifyCallback,
             modifyOptions
@@ -228,22 +184,11 @@ export class OracleNotify extends DatabaseNotify<
       }
       return subscriptions.join(', ');
     } else {
-      const channelName = randomUUID();
-      const connection = await this.oracleConnection.createSingleConnection();
-      const modifyOptions = options as TOracleNormilizeOptionsNotify;
-      return this.subscribe(
-        connection,
-        channelName,
-        this.generateOptions<T>(
-          notifyCallback,
-          modifyOptions,
-          sqlCommand,
-          channelName,
-          connection
-        ),
+      return this.subscribe<T>(
+        randomUUID(),
         sqlCommand,
         notifyCallback,
-        modifyOptions
+        options as TOracleNormilizeOptionsNotify
       );
     }
   }
@@ -332,12 +277,12 @@ export class OracleNotify extends DatabaseNotify<
     });
   }
   /**
-   * Registers one Oracle CQN subscription on an existing connection.
-   * The connection is stored in the notification pool only after Oracle
-   * confirms the subscription.
-   * @param connection - dedicated Oracle connection.
-   * @param channelName - generated subscription name.
-   * @param subscribeOptions - Oracle subscription options.
+   * Opens a dedicated Oracle connection and registers one CQN subscription on
+   * it. This method owns the connection from the moment it is opened: it is
+   * either published to the notification pool after Oracle confirms the
+   * subscription, or closed here exactly once, whichever step fails - option
+   * building included. Callers never hold the connection themselves.
+   * @param channelName - subscription name, kept for the subscription's lifetime.
    * @param sqlCommand - original subscription SQL used for restore.
    * @param notifyCallback - callback to reattach during restore.
    * @param options - normalized CQN and restore retry options.
@@ -345,17 +290,25 @@ export class OracleNotify extends DatabaseNotify<
    * @throws Error when Oracle subscription registration fails.
    */
   private async subscribe<T>(
-    connection: oracledb.Connection,
     channelName: string,
-    subscribeOptions: oracledb.SubscribeOptions,
     sqlCommand: string,
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: TOracleNormilizeOptionsNotify
   ): Promise<string> {
+    const connection = await this.oracleConnection.createSingleConnection();
     let isSubscribed = false;
     try {
       this.assertCanRegisterNotification();
-      await connection.subscribe(channelName, subscribeOptions);
+      await connection.subscribe(
+        channelName,
+        this.generateOptions<T>(
+          notifyCallback,
+          options,
+          sqlCommand,
+          channelName,
+          connection
+        )
+      );
       isSubscribed = true;
       this.assertCanRegisterNotification();
       this.notificationPool.set(channelName, connection);
@@ -524,8 +477,10 @@ export class OracleNotify extends DatabaseNotify<
               'Oracle CQN refetch returned more rows than the changed ROWID set'
             );
           }
+          // Refetched rows are table data, not a procedure result, so they are
+          // never read as an error envelope: a watched table may well have
+          // error_code/error_text columns.
           try {
-            DatabaseErrorHandler.checkForDatabaseError<T>(changedRows);
             await notifyCallback(changedRows);
           } catch (error) {
             this.logger.error(
@@ -720,46 +675,48 @@ export class OracleNotify extends DatabaseNotify<
     return `SELECT ${plan.projection} FROM ${fromSql} WHERE ${whereSql}`;
   }
 
+  /**
+   * Replaces a lost CQN registration with a new one under the same name.
+   *
+   * The name never changes: it is the key the caller holds for unlistenNotify,
+   * the notification pool, the health check and the restore state, so a
+   * registration under any other name could be neither found nor cancelled.
+   * Closing the lost registration is best effort - by the time it can fail,
+   * its connection has already left the pool - so a failure is logged and the
+   * restore goes on. Re-registering a name whose previous registration could
+   * not be released is what every restore after a dead connection already
+   * does, because the unsubscribe is skipped for a connection that fails the
+   * pre-close probe.
+   * @param settings - SQL, callback and options of the lost subscription.
+   * @param channelName - subscription name returned to the caller.
+   */
   private async restoreSubscription<T>(
     settings: IOracleNotifyRestoreSettings<T>,
     channelName: string
   ): Promise<void> {
-    let connection: oracledb.Connection | undefined;
     try {
       try {
-        await this.closeSubscription(channelName, false, false);
-        if (this.isNotificationRestoreCancelled(channelName)) return;
-      } catch {
-        const newChannelName = randomUUID();
+        await this.closeNotificationSubscription(channelName, false, false);
+      } catch (error: unknown) {
         this.logger.warn(
-          `Channel name for subscription ${channelName} change to ${newChannelName}`
+          `Could not close lost subscription ${channelName} before restoring it: ${
+            (error as Error).message
+          }`
         );
-        channelName = newChannelName;
       }
       if (this.isNotificationRestoreCancelled(channelName)) return;
-      connection = await this.oracleConnection.createSingleConnection();
-      await this.subscribe(
-        connection,
+      await this.subscribe<T>(
         channelName,
-        this.generateOptions<T>(
-          settings.notifyCallback,
-          settings.options,
-          settings.sqlCommand,
-          channelName,
-          connection
-        ),
         settings.sqlCommand,
         settings.notifyCallback,
         settings.options
       );
       if (this.isNotificationRestoreCancelled(channelName)) {
-        await this.closeSubscription(channelName, false, false);
+        await this.closeNotificationSubscription(channelName, false, false);
         return;
       }
     } catch (error: unknown) {
       this.stopConnectionHealthCheck(channelName);
-      if (connection)
-        await this.oracleConnection.closeSingleConnection(connection);
       this.clearNotificationRestoreState(channelName);
       throw error;
     }

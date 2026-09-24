@@ -1313,16 +1313,18 @@ describe('OracleAdapter', (): void => {
     ).rejects.toThrow('conflicting transformed field "value"');
   });
 
-  it('keeps Oracle named parameters and returns bindings in occurrence order', (): void => {
+  it('keeps Oracle named parameters and returns bindings keyed by name', (): void => {
     const adapter = createOracleAdapter();
 
     expect(
       adapter.makeSqlBindings('select * from users where id = :ID and x = :X', {
         id: 1,
+        // :X is declared by the statement, so it needs a value; null binds SQL NULL.
+        x: null,
       })
     ).toEqual({
       sqlString: 'select * from users where id = :ID and x = :X',
-      bindings: [1, null],
+      bindings: { ID: 1, X: null },
     });
   });
 
@@ -1339,7 +1341,7 @@ describe('OracleAdapter', (): void => {
       })
     ).toEqual({
       sqlString: sql,
-      bindings: [1, 2],
+      bindings: { ID: 1, X: 2 },
     });
   });
 
@@ -1445,25 +1447,29 @@ describe('OracleAdapter', (): void => {
     ]);
   });
 
-  it('applies case and temporal serializers to REF CURSOR rows using metadata', async (): Promise<void> => {
+  it('returns REF CURSOR rows exactly as the fetch handler produced them', async (): Promise<void> => {
     const adapter = createOracleAdapter(true);
     adapter.registerFetchHandlerHook();
-    const localDate = new Date(2026, 6, 16, 12, 30, 45, 123);
-    const absoluteDate = new Date('2026-07-16T09:30:45.123Z');
+    // node-oracledb calls the fetch type handler on out-bind REF CURSOR result
+    // sets as well as on plain queries, so it has already renamed each column
+    // and run the registered serializer's converter over each value before the
+    // materializer sees the row. Feeding raw names and raw Dates here would
+    // describe a result set the driver never produces, and would pass only
+    // while the materializer did the same work a second time.
     const resultSet = {
       metaData: [
-        { name: 'DATE_VALUE', dbType: oracledb.DB_TYPE_DATE },
-        { name: 'TIMESTAMP_VALUE', dbType: oracledb.DB_TYPE_TIMESTAMP },
-        { name: 'TSTZ_VALUE', dbType: oracledb.DB_TYPE_TIMESTAMP_TZ },
-        { name: 'TSLTZ_VALUE', dbType: oracledb.DB_TYPE_TIMESTAMP_LTZ },
+        { name: 'date_value', dbType: oracledb.DB_TYPE_DATE },
+        { name: 'timestamp_value', dbType: oracledb.DB_TYPE_TIMESTAMP },
+        { name: 'tstz_value', dbType: oracledb.DB_TYPE_TIMESTAMP_TZ },
+        { name: 'tsltz_value', dbType: oracledb.DB_TYPE_TIMESTAMP_LTZ },
       ],
       toQueryStream: (): Readable =>
         Readable.from([
           {
-            DATE_VALUE: localDate,
-            TIMESTAMP_VALUE: localDate,
-            TSTZ_VALUE: absoluteDate,
-            TSLTZ_VALUE: absoluteDate,
+            date_value: '2026-07-16 12:30:45',
+            timestamp_value: '2026-07-16 12:30:45.123',
+            tstz_value: '2026-07-16T09:30:45.123Z',
+            tsltz_value: '2026-07-16T09:30:45.123Z',
           },
         ]),
       close: vi.fn(),
@@ -1606,16 +1612,19 @@ describe('OracleAdapter', (): void => {
       Object.defineProperty(lob, 'type', { value: type });
       return lob;
     };
+    // Named as the fetch type handler leaves them: node-oracledb runs it on
+    // out-bind REF CURSOR result sets too, so the materializer never sees a
+    // raw dictionary name here.
     const cursorResultSet = {
       metaData: [
-        { name: 'TEXT_VALUE', dbType: oracledb.DB_TYPE_CLOB },
-        { name: 'BINARY_VALUE', dbType: oracledb.DB_TYPE_BLOB },
+        { name: 'text_value', dbType: oracledb.DB_TYPE_CLOB },
+        { name: 'binary_value', dbType: oracledb.DB_TYPE_BLOB },
       ],
       toQueryStream: (): Readable =>
         Readable.from([
           {
-            TEXT_VALUE: createLob(oracledb.DB_TYPE_CLOB, ['hello', ' world']),
-            BINARY_VALUE: createLob(oracledb.DB_TYPE_BLOB, [
+            text_value: createLob(oracledb.DB_TYPE_CLOB, ['hello', ' world']),
+            binary_value: createLob(oracledb.DB_TYPE_BLOB, [
               Buffer.from([1, 2]),
               Buffer.from([3]),
             ]),

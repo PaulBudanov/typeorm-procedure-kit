@@ -168,9 +168,9 @@ class TypeOrmHelpersApi {
         } as GeneratedMetadataArgs);
     } else {
       const existingIndex = storage.generations.findIndex(
-        (generaion) =>
-          generaion.target === targetRegister &&
-          generaion.propertyName === propertyKey
+        (generation) =>
+          generation.target === targetRegister &&
+          generation.propertyName === propertyKey
       );
       if (existingIndex !== -1) {
         storage.generations.splice(existingIndex, 1);

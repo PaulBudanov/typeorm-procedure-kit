@@ -30,13 +30,37 @@ import type {
   TProcedurePayloadInput,
 } from '../../types/procedure.types.js';
 import type { IProcedureResult } from '../../types/utility.types.js';
-import type { Provider } from '@nestjs/common';
+import type { FactoryProvider, Provider } from '@nestjs/common';
+
+/**
+ * Builds the factory provider that exposes one service method under its own
+ * injection token.
+ *
+ * `pick` receives the resolved service and returns the function published under
+ * the token. It must return a closure that calls the method at call time rather
+ * than a reference captured up front, so the published function keeps following
+ * the service instance.
+ *
+ * @param token - The injection token the method is published under.
+ * @param pick - Maps the resolved service to the published function.
+ * @returns The factory provider for the token.
+ */
+function createMethodProvider<TMethod>(
+  token: symbol,
+  pick: (service: TypeOrmProcedureKitNestService) => TMethod
+): FactoryProvider<TMethod> {
+  return {
+    provide: token,
+    useFactory: pick,
+    inject: [TypeOrmProcedureKitNestService],
+  };
+}
 
 export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
-  {
-    provide: CALL_PROCEDURE,
-    useFactory: (service: TypeOrmProcedureKitNestService): TCallProcedure => {
-      return <
+  createMethodProvider(
+    CALL_PROCEDURE,
+    (service: TypeOrmProcedureKitNestService): TCallProcedure =>
+      <
         TRow,
         TPayload extends TProcedurePayload = TProcedurePayload,
         TOut extends Record<string, unknown> = Record<string, unknown>,
@@ -49,78 +73,58 @@ export const TYPEORM_PROCEDURE_KIT_NEST_METHOD_PROVIDERS: Array<Provider> = [
           executeString,
           params,
           executionOptions
-        );
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: CALL_SQL,
-    useFactory: (service: TypeOrmProcedureKitNestService): TCallSql => {
-      return <T>(
+        )
+  ),
+  createMethodProvider(
+    CALL_SQL,
+    (service: TypeOrmProcedureKitNestService): TCallSql =>
+      <T>(
         sql: string,
         params?: Record<string, unknown>,
         executionOptions?: IExecutionOptions
       ): Promise<Array<T>> =>
-        service.callSqlTransaction<T>(sql, params, executionOptions);
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: GET_DATA_SOURCE,
-    useFactory: (service: TypeOrmProcedureKitNestService): TGetDataSource => {
-      return (): ReturnType<TGetDataSource> => service.dataSource;
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: MAKE_NOTIFY,
-    useFactory: (service: TypeOrmProcedureKitNestService): TMakeNotify => {
-      return <T>(
+        service.callSqlTransaction<T>(sql, params, executionOptions)
+  ),
+  createMethodProvider(
+    GET_DATA_SOURCE,
+    (service: TypeOrmProcedureKitNestService): TGetDataSource =>
+      (): ReturnType<TGetDataSource> =>
+        service.dataSource
+  ),
+  createMethodProvider(
+    MAKE_NOTIFY,
+    (service: TypeOrmProcedureKitNestService): TMakeNotify =>
+      <T>(
         options: ICreateNotify<T>,
         additionalOptions?: IOracleOptionsNotify
-      ): Promise<string> => service.makeNotify<T>(options, additionalOptions);
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: UNLISTEN_NOTIFY,
-    useFactory: (service: TypeOrmProcedureKitNestService): TUnlistenNotify => {
-      return (channel: string): Promise<void> =>
-        service.unlistenNotify(channel);
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: SET_SERIALIZER,
-    useFactory: (
-      service: TypeOrmProcedureKitNestService
-    ): TSetSerializerHandler => {
-      return (serializer: Parameters<TSetSerializerHandler>[0]): void => {
+      ): Promise<string> =>
+        service.makeNotify<T>(options, additionalOptions)
+  ),
+  createMethodProvider(
+    UNLISTEN_NOTIFY,
+    (service: TypeOrmProcedureKitNestService): TUnlistenNotify =>
+      (channel: string): Promise<void> =>
+        service.unlistenNotify(channel)
+  ),
+  createMethodProvider(
+    SET_SERIALIZER,
+    (service: TypeOrmProcedureKitNestService): TSetSerializerHandler =>
+      (serializer: Parameters<TSetSerializerHandler>[0]): void => {
         service.setSerializer(serializer);
-      };
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: DELETE_SERIALIZER,
-    useFactory: (
-      service: TypeOrmProcedureKitNestService
-    ): TDeleteSerializer => {
-      return (serializerType: Parameters<TDeleteSerializer>[0]): void => {
+      }
+  ),
+  createMethodProvider(
+    DELETE_SERIALIZER,
+    (service: TypeOrmProcedureKitNestService): TDeleteSerializer =>
+      (serializerType: Parameters<TDeleteSerializer>[0]): void => {
         service.deleteSerializer(serializerType);
-      };
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
-  {
-    provide: DELETE_ALL_SERIALIZERS,
-    useFactory: (
-      service: TypeOrmProcedureKitNestService
-    ): TDeleteAllSerializers => {
-      return (): void => {
+      }
+  ),
+  createMethodProvider(
+    DELETE_ALL_SERIALIZERS,
+    (service: TypeOrmProcedureKitNestService): TDeleteAllSerializers =>
+      (): void => {
         service.deleteAllSerializers();
-      };
-    },
-    inject: [TypeOrmProcedureKitNestService],
-  },
+      }
+  ),
 ];

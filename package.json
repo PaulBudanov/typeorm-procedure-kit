@@ -39,7 +39,7 @@
     "!dist/**/*tsbuildinfo*",
     "!dist/**/*.map",
     "package.json",
-    "docs",
+    "docs/*.md",
     "CHANGELOG.md",
     "LICENSE.md",
     "README.md",

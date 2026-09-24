@@ -1,6 +1,10 @@
 import { ServerError } from '../../utils/server-error.js';
 
-import type { TConnectionTypes } from '../../types/adapter.types.js';
+import type { DatabaseConnection } from './database-connection.js';
+import type {
+  TConnectionOptions,
+  TConnectionTypes,
+} from '../../types/adapter.types.js';
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type {
   INotifyHealthCheckOptions,
@@ -20,7 +24,16 @@ export abstract class DatabaseNotify<
     1000 * 60 * 30;
   protected static readonly RESTORE_MAX_RETRIES: number = 5;
   protected static readonly RESTORE_CURRENT_RETRY: number = 1;
+  /**
+   * Lower bound for both restore delays. The attempt counter restarts after
+   * maxRetries is exhausted, so a loop configured with a shorter delay would
+   * reconnect to an already failing database with no pause worth the name.
+   */
+  protected static readonly RESTORE_MIN_DELAY_MS: number = 100;
+  /** Upper bound for both restore delays: the largest setTimeout delay. */
+  protected static readonly RESTORE_MAX_DELAY_MS: number = 2_147_483_647;
   protected static readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
+  protected static readonly CLOSE_HEALTH_CHECK_TIMEOUT_MS: number = 500;
 
   private readonly restoreStates = new Map<string, IRestoreState>();
   private readonly notificationClosePromises = new Map<string, Promise<void>>();
@@ -30,7 +43,17 @@ export abstract class DatabaseNotify<
   private isDestroyed = false;
   private destroyPromise?: Promise<void>;
   protected readonly notificationPool = new Map<string, T>();
-  protected constructor(protected readonly logger: ILoggerModule) {}
+  protected constructor(
+    protected readonly logger: ILoggerModule,
+    /**
+     * Vendor helper owning the standalone notification connections. The shared
+     * close choreography probes and closes connections through it.
+     */
+    private readonly notificationConnection: Pick<
+      DatabaseConnection<TConnectionOptions, T>,
+      'closeSingleConnection' | 'isSingleConnectionHealthy'
+    >
+  ) {}
 
   /**
    * Returns the active notification pool for diagnostics and external cleanup.
@@ -70,6 +93,9 @@ export abstract class DatabaseNotify<
       this.cancelNotificationRestore(channel);
     });
 
+    // waitForShutdownTask resolves on every path - success, failure and
+    // timeout alike - so allSettled here is only a guard against a future
+    // caller passing in a promise that was not wrapped by it.
     await Promise.allSettled([
       ...this.unsubscribeChannels(this.notificationPool.keys()),
       ...activeRestores.map(([channel, restore]) =>
@@ -88,23 +114,37 @@ export abstract class DatabaseNotify<
 
     this.notificationPool.clear();
     this.restoreStates.clear();
+    // Every wait above - unsubscribe, restore and registration alike - is
+    // bounded by DESTROY_RESTORE_WAIT_TIMEOUT_MS, so a driver close or
+    // registration that never settles would otherwise keep its promise
+    // - and the connection its closure captures - reachable from this notifier
+    // for the lifetime of the destroyed adapter.
+    this.notificationClosePromises.clear();
+    this.pendingNotificationRegistrations.clear();
     this.logger.log('DatabaseNotify shutdown completed');
   }
 
   private unsubscribeChannels(
     channels: Iterable<string>
   ): Array<Promise<void>> {
-    return Array.from(channels, async (channel) => {
-      try {
-        await this.unlistenNotify(channel);
-      } catch (error) {
-        this.logger.error(
-          `Error unsubscribing from channel ${channel}: ${
-            (error as Error).message
-          }`
-        );
-      }
-    });
+    return Array.from(channels, (channel) =>
+      this.waitForShutdownTask(
+        this.unsubscribeChannel(channel),
+        `notification unsubscribe on channel ${channel}`
+      )
+    );
+  }
+
+  private async unsubscribeChannel(channel: string): Promise<void> {
+    try {
+      await this.unlistenNotify(channel);
+    } catch (error) {
+      this.logger.error(
+        `Error unsubscribing from channel ${channel}: ${
+          (error as Error).message
+        }`
+      );
+    }
   }
 
   /**
@@ -160,6 +200,97 @@ export abstract class DatabaseNotify<
     };
     void closePromise.then(clearClosePromise, clearClosePromise);
     return closePromise;
+  }
+
+  /**
+   * Closes one notification subscription with the shared close choreography.
+   * The order is owned here so every adapter shuts a channel down the same way:
+   * cancel restore -> stop the health check -> drain the callback tail -> take
+   * the connection out of the pool -> clear restore bookkeeping -> probe the
+   * connection -> vendor unsubscribe -> close the connection.
+   * @param channelName - channel or subscription name.
+   * @param shouldCancelRestore - false while restoring, so the in-flight
+   * restore keeps its state; true for manual unlisten and shutdown.
+   * @param shouldDrainCallbacks - false when the caller is already inside the
+   * callback queue of this channel and must not wait for its own tail.
+   */
+  protected closeNotificationSubscription(
+    channelName: string,
+    shouldCancelRestore = true,
+    shouldDrainCallbacks = true
+  ): Promise<void> {
+    if (shouldCancelRestore) this.cancelNotificationRestore(channelName);
+    this.stopConnectionHealthCheck(channelName);
+    if (!shouldDrainCallbacks) {
+      return this.performNotificationSubscriptionClose(
+        channelName,
+        shouldCancelRestore
+      );
+    }
+    return this.closeNotificationChannel(channelName, () =>
+      this.performNotificationSubscriptionClose(
+        channelName,
+        shouldCancelRestore
+      )
+    );
+  }
+
+  /**
+   * Releases the vendor subscription on a connection that answered the pre-close
+   * probe. This is the only step of the close choreography that differs between
+   * adapters. It is abstract on purpose: a default would let an adapter that
+   * never implements it report a successful unsubscribe without performing one.
+   * An adapter with no server-side registration to release returns a resolved
+   * promise explicitly, so that choice is visible in its own source.
+   * @param channelName - channel or subscription name being closed.
+   * @param connection - live notification connection about to be closed.
+   */
+  protected abstract unsubscribeNotificationConnection(
+    channelName: string,
+    connection: T
+  ): Promise<void>;
+
+  private async performNotificationSubscriptionClose(
+    channelName: string,
+    shouldCancelRestore: boolean
+  ): Promise<void> {
+    const connection = this.notificationPool.get(channelName);
+    this.notificationPool.delete(channelName);
+    if (shouldCancelRestore) this.clearNotificationRestoreState(channelName);
+    if (!connection) {
+      this.logger.warn(
+        `No active notification connection for channel: ${channelName}`
+      );
+      return;
+    }
+    try {
+      const isConnectionAlive =
+        await this.isNotificationConnectionAlive(connection);
+      if (isConnectionAlive) {
+        await this.unsubscribeNotificationConnection(channelName, connection);
+      }
+      this.logger.log(`Unsubscribed from channel: ${channelName}`);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Error unsubscribing from channel ${channelName}: ${
+          (error as Error).message
+        }`,
+        (error as Error).stack
+      );
+    } finally {
+      await this.notificationConnection.closeSingleConnection(connection);
+    }
+  }
+
+  /**
+   * Probes a notification connection with the bounded pre-close timeout, so a
+   * dead connection skips the vendor unsubscribe instead of hanging on it.
+   */
+  private isNotificationConnectionAlive(connection: T): Promise<boolean> {
+    return this.notificationConnection.isSingleConnectionHealthy(
+      connection,
+      DatabaseNotify.CLOSE_HEALTH_CHECK_TIMEOUT_MS
+    );
   }
 
   /**
@@ -306,7 +437,11 @@ export abstract class DatabaseNotify<
     return restorePromise;
   }
 
-  /** Rejects retry values that would make restore loops skip work or spin. */
+  /**
+   * Rejects retry values that would make restore loops skip work or spin.
+   * Out-of-range values are refused where they are configured rather than
+   * clamped, so a typo cannot silently run with a delay nobody asked for.
+   */
   protected assertNotificationRetryOptions(
     options: Readonly<INotifyRetryOptions>
   ): void {
@@ -329,10 +464,12 @@ export abstract class DatabaseNotify<
   ): void {
     if (
       delayMs !== undefined &&
-      (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > 2_147_483_647)
+      (!Number.isSafeInteger(delayMs) ||
+        delayMs < DatabaseNotify.RESTORE_MIN_DELAY_MS ||
+        delayMs > DatabaseNotify.RESTORE_MAX_DELAY_MS)
     ) {
       throw new RangeError(
-        `${optionName} must be an integer between 0 and 2147483647`
+        `${optionName} must be an integer between ${DatabaseNotify.RESTORE_MIN_DELAY_MS} and ${DatabaseNotify.RESTORE_MAX_DELAY_MS}`
       );
     }
   }
@@ -477,6 +614,12 @@ export abstract class DatabaseNotify<
     );
   }
 
+  /**
+   * Waits for one shutdown task without ever rejecting or hanging: a failure is
+   * reported through the logger and a task that never settles is abandoned
+   * after DESTROY_RESTORE_WAIT_TIMEOUT_MS. Shutdown must continue either way,
+   * but a failed task has to stay visible instead of looking like a clean one.
+   */
   private waitForShutdownTask(
     task: Promise<unknown>,
     description: string
@@ -495,8 +638,15 @@ export abstract class DatabaseNotify<
         clearTimeout(timer);
         resolve();
       };
+      const completeWithFailure = (error: unknown): void => {
+        this.logger.error(
+          `${description} failed during shutdown: ${(error as Error).message}`,
+          (error as Error).stack
+        );
+        complete();
+      };
       timer.unref();
-      void task.then(complete, complete);
+      void task.then(complete, completeWithFailure);
     });
   }
 

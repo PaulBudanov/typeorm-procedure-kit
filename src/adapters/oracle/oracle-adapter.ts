@@ -1,7 +1,6 @@
 import oracledb from 'oracledb';
 
-import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
-import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { NO_ARGUMENT_SENTINEL } from '../../consts/procedure.consts.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
@@ -9,10 +8,12 @@ import { DatabaseAdapter } from '../abstract/database-adapter.js';
 import { OracleProcedureBindings } from './oracle-bindings.js';
 import { OracleConnection } from './oracle-connection.js';
 import { OracleNotify } from './oracle-notify.js';
+import { OracleRecordMetadataParser } from './oracle-record-metadata-parser.js';
 import { OracleProcedureResultMaterializer } from './oracle-result-materializer.js';
 import { OracleSerializer } from './oracle-serializer.js';
 import { OracleSqlCommand } from './oracle-sql.js';
 
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { OracleDriver } from '../../typeorm/driver/oracle/OracleDriver.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
@@ -20,9 +21,6 @@ import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.j
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { IOracleOptionsNotify } from '../../types/notification.types.js';
 import type {
-  IProcedureArgumentBase,
-  IProcedureStructuredField,
-  IProcedureStructuredType,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
@@ -31,7 +29,6 @@ import type {
   IBindingsObjectReturn,
   IProcedureOutBinding,
   IProcedureResult,
-  ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 
 /** Thin Oracle facade that wires vendor-specific adapter capabilities. */
@@ -41,25 +38,16 @@ export class OracleAdapter extends DatabaseAdapter<
   IOracleOptionsNotify,
   oracledb.Connection
 > {
-  private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
   private static readonly MINIMUM_RECORD_VERSION = [12, 1] as const;
-  private static readonly RECORD_FIELD_TYPE_ALIASES = new Map([
-    ['TIMESTAMP WITH TZ', 'TIMESTAMP WITH TIME ZONE'],
-    ['TIMESTAMP WITH LOCAL TZ', 'TIMESTAMP WITH LOCAL TIME ZONE'],
-  ]);
-  private static readonly UNSUPPORTED_RECORD_FIELD_TYPES = new Set([
-    'BFILE',
-    'BLOB',
-    'CLOB',
-    'NCLOB',
-    'OBJECT',
-    'PL/SQL RECORD',
-    'PL/SQL TABLE',
-    'REF CURSOR',
-    'TABLE',
-    'VARRAY',
-  ]);
+  protected override readonly procedureMetadataOptions: IProcedureMetadataOptions =
+    {
+      vendor: 'Oracle',
+      noArgumentSentinel: NO_ARGUMENT_SENTINEL,
+      getOverloadIdentity: ({ overload, subprogramId }) =>
+        overload ?? subprogramId,
+    };
   private readonly procedureBindings: OracleProcedureBindings;
+  private readonly recordMetadataParser: OracleRecordMetadataParser;
   private readonly resultMaterializer: OracleProcedureResultMaterializer;
 
   public constructor(
@@ -77,32 +65,15 @@ export class OracleAdapter extends DatabaseAdapter<
     const serializer = new OracleSerializer(logger, handlerOptions);
     super(logger, serializer, notifier);
     this.procedureBindings = new OracleProcedureBindings();
+    this.recordMetadataParser = new OracleRecordMetadataParser((): void => {
+      this.assertRecordVersionSupport();
+    });
     this.resultMaterializer = new OracleProcedureResultMaterializer(
       logger,
       handlerOptions,
       serializer
     );
     oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
-  }
-
-  public override sortArgumentsAlgorithm(
-    rawArguments: Array<IProcedureArgumentBase>,
-    procedureListBase: Array<Lowercase<string>>,
-    packageName: Lowercase<string>,
-    packagesLength: number
-  ): TProcedureArgumentList {
-    return this.normalizeProcedureMetadata(
-      rawArguments,
-      procedureListBase,
-      packageName,
-      packagesLength,
-      {
-        vendor: 'Oracle',
-        noArgumentSentinel: OracleAdapter.NO_ARGUMENT_SENTINEL,
-        getOverloadIdentity: ({ overload, subprogramId }) =>
-          overload ?? subprogramId,
-      }
-    );
   }
 
   public override async execute<T>(
@@ -189,127 +160,74 @@ export class OracleAdapter extends DatabaseAdapter<
     );
   }
 
-  public override makeSqlBindings(
-    sqlQuery: string,
-    params?: Record<string, unknown>
-  ): ISqlBindingsObjectReturn {
-    const bindings: Array<unknown> = [];
-    const paramsInUpperCase = Object.fromEntries(
-      params
-        ? Object.entries(params).map(([key, value]) => [
-            key.toUpperCase(),
-            value,
-          ])
-        : []
-    );
-    replaceNamedParameters(sqlQuery, ({ full, key }) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase[key.toUpperCase()] ?? null);
-      return full;
-    });
-    return { bindings, sqlString: sqlQuery };
+  /**
+   * Leaves the placeholder in the SQL text so Oracle keeps resolving `:NAME`
+   * itself.
+   * @param placeholder - the placeholder exactly as written.
+   * @returns the placeholder unchanged.
+   */
+  protected override renderRawSqlPlaceholder(placeholder: string): string {
+    return placeholder;
   }
 
-  public override generatePackageInfoSql(
-    packageName: string,
-    procedureMetadataSql?: string
-  ): string {
-    const safePackageName = SqlIdentifier.validateIdentifier(
-      packageName,
-      'oracle package'
-    ).toUpperCase();
-    const isModernMetadataSupported = this.isSupportedRecordVersion(
-      this.appDataSource.driver.version
-    );
-    const defaultSql = isModernMetadataSupported
-      ? OracleSqlCommand.SQL_GET_PACKAGE_INFO
-      : OracleSqlCommand.SQL_GET_PACKAGE_INFO_LEGACY;
-    const query = this.replacePackageNamePlaceholder(
-      procedureMetadataSql ?? defaultSql,
-      `'${safePackageName}'`
-    );
-    if (procedureMetadataSql) return query;
-    const maxMetadataRows =
-      this.handlerOptions.resourceLimits?.maxMetadataRows ??
-      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
-    const detectionLimit = Math.min(
-      maxMetadataRows + 1,
-      Number.MAX_SAFE_INTEGER
-    );
-    if (isModernMetadataSupported)
-      return `${query.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
-    return `SELECT * FROM (\n${query.trimEnd()}\n) WHERE ROWNUM <= ${detectionLimit}`;
+  /**
+   * Collects one named binding per distinct placeholder, keyed by its
+   * uppercase bind name.
+   *
+   * The bindings are returned as an object keyed by placeholder name rather
+   * than as a positional array, because Oracle's bind slots are not positional
+   * in a way the caller can predict: node-oracledb allocates one slot per
+   * placeholder *occurrence* in plain SQL but only one per *distinct name* in
+   * PL/SQL. A named object sidesteps that split entirely -- the driver matches
+   * each value by name, fans it out to every occurrence of that name, and
+   * rejects any name the statement does not declare -- so one entry per
+   * distinct placeholder is correct for both statement kinds and no value can
+   * ever land on a placeholder other than its own. The driver uppercases an
+   * unquoted bind name both in the SQL text and in the bind object, so the
+   * uppercase key serves `:userId` exactly as it serves `:USERID`.
+   * @param placeholders - bound occurrences with their uppercase bind names.
+   * @returns one binding value per distinct placeholder name.
+   */
+  protected override collectRawSqlBindings(
+    placeholders: Array<[bindName: string, value: unknown]>
+  ): Record<string, unknown> {
+    return Object.fromEntries(placeholders);
   }
 
-  /** Combines a package RECORD argument with its dictionary field rows. */
+  /** Delegates the Oracle dictionary row folding to the record parser. */
   public override prepareProcedureMetadataRows(
     rows: Array<Record<string, unknown>>
   ): Array<Record<string, unknown>> {
-    const preparedRows: Array<Record<string, unknown>> = [];
-    let activeRecord: IProcedureStructuredType | undefined;
+    return this.recordMetadataParser.prepareRows(rows);
+  }
 
-    for (const [index, row] of rows.entries()) {
-      if (!Object.hasOwn(row, 'dataLevel')) {
-        preparedRows.push(row);
-        activeRecord = undefined;
-        continue;
-      }
+  /** Validates the package name and uppercases it for the Oracle dictionary. */
+  protected override normalizePackageIdentifier(packageName: string): string {
+    return SqlIdentifier.validateIdentifier(
+      packageName,
+      'oracle package'
+    ).toUpperCase();
+  }
 
-      const dataLevel = this.readMetadataInteger(row.dataLevel, index, {
-        name: 'dataLevel',
-        minimum: 0,
-      });
-      if (dataLevel === 0) {
-        activeRecord = undefined;
-        const argumentType = this.readMetadataString(
-          row.argumentType,
-          index,
-          'argumentType'
-        ).toUpperCase();
-        if (this.isCollectionType(argumentType, row.plsqlTypecode)) {
-          throw new ServerError(
-            `Oracle collection argument at metadata row ${index + 1} is not supported`
-          );
-        }
-        if (!this.isRecordType(row)) {
-          preparedRows.push(row);
-          continue;
-        }
+  /**
+   * Reads the server version once and picks dictionary query and row-limit
+   * form together: the package type query with `FETCH FIRST` on Oracle 12.1
+   * and newer, and the legacy `ALL_ARGUMENTS` query wrapped in a `ROWNUM`
+   * filter on older releases, which lack row-limiting clauses.
+   * @param detectionLimit - maximum number of rows the query may return.
+   * @returns metadata SQL template limited with the matching Oracle syntax.
+   */
+  protected override buildDefaultPackageInfoSql(
+    detectionLimit: number
+  ): string {
+    if (this.isModernMetadataSupported())
+      return `${OracleSqlCommand.SQL_GET_PACKAGE_INFO.trimEnd()}\nFETCH FIRST ${detectionLimit} ROWS ONLY`;
+    return `SELECT * FROM (\n${OracleSqlCommand.SQL_GET_PACKAGE_INFO_LEGACY.trimEnd()}\n) WHERE ROWNUM <= ${detectionLimit}`;
+  }
 
-        this.assertRecordVersionSupport();
-        activeRecord = this.createRecordMetadata(row, index);
-        preparedRows.push({ ...row, size: null, structuredType: activeRecord });
-        continue;
-      }
-
-      if (!activeRecord) {
-        throw new ServerError(
-          `Oracle nested argument metadata row ${index + 1} has no package RECORD parent`
-        );
-      }
-      if (dataLevel !== 1) {
-        throw new ServerError(
-          `Oracle nested RECORD fields are not supported (metadata row ${index + 1})`
-        );
-      }
-      activeRecord.fields.push(this.createRecordFieldMetadata(row, index));
-    }
-
-    for (const [index, row] of preparedRows.entries()) {
-      const structuredType = row.structuredType;
-      if (
-        structuredType !== null &&
-        typeof structuredType === 'object' &&
-        !Array.isArray(structuredType) &&
-        (structuredType as { kind?: unknown }).kind === 'oracle-record' &&
-        (structuredType as IProcedureStructuredType).fields.length === 0
-      ) {
-        throw new ServerError(
-          `Oracle package RECORD at prepared metadata row ${index + 1} has no fields`
-        );
-      }
-    }
-    return preparedRows;
+  /** True when the connected Oracle release supports the modern metadata SQL. */
+  private isModernMetadataSupported(): boolean {
+    return this.isSupportedRecordVersion(this.appDataSource.driver.version);
   }
 
   protected override createProcedureResult<
@@ -337,146 +255,6 @@ export class OracleAdapter extends DatabaseAdapter<
         'Oracle optionsCommands cannot override TIME_ZONE because ALTER SESSION state persists after the connection returns to the pool. Configure sessionTimeZone instead.'
       );
     }
-  }
-
-  private replacePackageNamePlaceholder(
-    sql: string,
-    packageNameLiteral: string
-  ): string {
-    if (!sql.includes(':PACKAGE_NAME')) {
-      throw new ServerError(
-        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
-      );
-    }
-    return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
-  }
-
-  private createRecordMetadata(
-    row: Record<string, unknown>,
-    index: number
-  ): IProcedureStructuredType {
-    const owner = this.readMetadataString(row.typeOwner, index, 'typeOwner');
-    const packageName = this.readMetadataString(
-      row.typeName,
-      index,
-      'typeName'
-    );
-    const typeName = this.readMetadataString(
-      row.typeSubname,
-      index,
-      'typeSubname'
-    );
-    if (
-      owner.includes('%ROWTYPE') ||
-      packageName.includes('%ROWTYPE') ||
-      typeName.includes('%ROWTYPE')
-    ) {
-      throw new ServerError(
-        'Oracle PL/SQL %ROWTYPE arguments are not supported'
-      );
-    }
-    SqlIdentifier.validateIdentifier(owner, 'oracle record owner');
-    SqlIdentifier.validateIdentifier(packageName, 'oracle record package');
-    SqlIdentifier.validateIdentifier(typeName, 'oracle record type');
-    return {
-      kind: 'oracle-record',
-      owner,
-      packageName,
-      typeName,
-      fields: [],
-    };
-  }
-
-  private createRecordFieldMetadata(
-    row: Record<string, unknown>,
-    index: number
-  ): IProcedureStructuredField {
-    const name = this.readMetadataString(
-      row.argumentName,
-      index,
-      'argumentName'
-    );
-    const dictionaryType = this.readMetadataString(
-      row.argumentType,
-      index,
-      'argumentType'
-    ).toUpperCase();
-    // Object attribute metadata abbreviates time zones, unlike ALL_ARGUMENTS.
-    const argumentType =
-      OracleAdapter.RECORD_FIELD_TYPE_ALIASES.get(dictionaryType) ??
-      dictionaryType;
-    const order = this.readMetadataInteger(row.sequence, index, {
-      name: 'sequence',
-      minimum: 0,
-    });
-    SqlIdentifier.validateIdentifier(name, 'oracle record field');
-    if (
-      OracleAdapter.UNSUPPORTED_RECORD_FIELD_TYPES.has(argumentType) ||
-      argumentType.includes('%ROWTYPE') ||
-      row.typeOwner != null ||
-      row.typeName != null ||
-      row.typeSubname != null
-    ) {
-      throw new ServerError(
-        `Oracle RECORD field "${name}" uses unsupported type ${argumentType}`
-      );
-    }
-    return { name, argumentType, order };
-  }
-
-  private isRecordType(row: Record<string, unknown>): boolean {
-    const typeCode =
-      typeof row.plsqlTypecode === 'string'
-        ? row.plsqlTypecode.trim().toUpperCase()
-        : undefined;
-    return typeCode === 'PL/SQL RECORD' || typeCode === 'RECORD';
-  }
-
-  private isCollectionType(
-    argumentType: string,
-    rawTypeCode: unknown
-  ): boolean {
-    const typeCode =
-      typeof rawTypeCode === 'string'
-        ? rawTypeCode.trim().toUpperCase()
-        : undefined;
-    return (
-      typeCode === 'COLLECTION' ||
-      argumentType === 'PL/SQL TABLE' ||
-      argumentType === 'TABLE' ||
-      argumentType === 'VARRAY'
-    );
-  }
-
-  private readMetadataString(
-    value: unknown,
-    index: number,
-    name: string
-  ): string {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new ServerError(
-        `Invalid Oracle metadata row ${index + 1}: ${name} must be a non-empty string`
-      );
-    }
-    return value.trim();
-  }
-
-  private readMetadataInteger(
-    value: unknown,
-    index: number,
-    options: { name: string; minimum: number }
-  ): number {
-    const parsed =
-      typeof value === 'number' ||
-      (typeof value === 'string' && value.trim().length > 0)
-        ? Number(value)
-        : Number.NaN;
-    if (!Number.isSafeInteger(parsed) || parsed < options.minimum) {
-      throw new ServerError(
-        `Invalid Oracle metadata row ${index + 1}: ${options.name} must be a safe integer greater than or equal to ${options.minimum}`
-      );
-    }
-    return parsed;
   }
 
   private assertRecordVersionSupport(): void {

@@ -220,6 +220,142 @@ describe('ExecuteBase', (): void => {
     expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
   });
 
+  it('logs the query start only after a connection is acquired', async (): Promise<void> => {
+    const poolError = new Error('pool exhausted');
+    const connectionBase = {
+      getEntityManager: vi.fn().mockRejectedValue(poolError),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const logger = createLogger();
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({ execute: vi.fn() }),
+      logger
+    );
+
+    await expect(
+      executeBase.execute('select 1', [], [], { queryId: 'pool-query' })
+    ).rejects.toThrow('pool exhausted');
+
+    expect(logger.log).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls.at(-1)?.[0]).toEqual(
+      expect.stringContaining('SQL request [pool-query] failed')
+    );
+    expect(connectionBase.releaseEntityManager).not.toHaveBeenCalled();
+  });
+
+  it('logs the query start once the connection is in hand', async (): Promise<void> => {
+    const manager = {};
+    const acquisitionOrder: Array<string> = [];
+    const logger = createLogger();
+    logger.log.mockImplementation((message: unknown): void => {
+      if (typeof message === 'string' && message.includes('started')) {
+        acquisitionOrder.push('started');
+      }
+    });
+    const connectionBase = {
+      getEntityManager: vi
+        .fn()
+        .mockImplementation(async (): Promise<object> => {
+          acquisitionOrder.push('acquired');
+          return manager;
+        }),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({ execute: vi.fn().mockResolvedValue([{ id: 1 }]) }),
+      logger
+    );
+
+    await executeBase.execute('select 1', [], [], { queryId: 'ordered-query' });
+
+    expect(acquisitionOrder).toEqual(['acquired', 'started']);
+  });
+
+  it('throws for a multi-row result whose first row is an error envelope', async (): Promise<void> => {
+    const manager = {};
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi
+          .fn()
+          .mockResolvedValue([
+            { error_code: 1, error_text: 'raw failure' },
+            { id: 2 },
+          ]),
+      }),
+      createLogger()
+    );
+
+    await expect(
+      executeBase.execute('select example', [], [], { queryId: 'multi-row' })
+    ).rejects.toMatchObject({
+      errorId: 'multi-row',
+      message: 'Database error: raw failure',
+    });
+    expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
+  });
+
+  it('returns rows untouched when execution options empty the envelope keys', async (): Promise<void> => {
+    const manager = {};
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const auditRows = [{ error_code: 500, error_text: 'audited failure' }];
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi.fn().mockResolvedValue(auditRows),
+      }),
+      createLogger()
+    );
+
+    await expect(
+      executeBase.execute('select error_code, error_text from audit', [], [], {
+        queryId: 'audit-query',
+        errorEnvelopeKeys: { errorCodeKeys: [] },
+      })
+    ).resolves.toEqual(auditRows);
+  });
+
+  it('applies execution-level envelope keys to procedure rows and out binds', async (): Promise<void> => {
+    const manager = {};
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        executeProcedure: vi.fn().mockResolvedValue({
+          rows: [],
+          outBinds: { status_code: 7, status_text: 'configured failure' },
+        }),
+      }),
+      createLogger()
+    );
+
+    await expect(
+      executeBase.executeProcedure('CALL example', [], [], [], {
+        queryId: 'configured-procedure',
+        errorEnvelopeKeys: {
+          errorCodeKeys: ['status_code'],
+          errorTextKeys: ['status_text'],
+        },
+      })
+    ).rejects.toMatchObject({
+      errorId: 'configured-procedure',
+      message: 'Database error: configured failure',
+    });
+  });
+
   it('preserves operation and release failures in an AggregateError', async (): Promise<void> => {
     const manager = {};
     const operationError = new Error('query failed');
@@ -249,4 +385,60 @@ describe('ExecuteBase', (): void => {
       cause: expect.objectContaining({ message: 'query failed' }),
     });
   });
+
+  it('logs the returned row count for a rowset result', async (): Promise<void> => {
+    const manager = {};
+    const connectionBase = {
+      getEntityManager: vi.fn().mockResolvedValue(manager),
+      releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+    };
+    const logger = createLogger();
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]),
+      }),
+      logger
+    );
+
+    await executeBase.execute('select 1', [], [], { queryId: 'rowset-query' });
+
+    expect(logger.log.mock.calls.at(-1)?.[0]).toEqual(
+      expect.stringContaining('with 2 rows')
+    );
+  });
+
+  it.each([
+    ['a string status', 'DONE'],
+    ['an empty result', null],
+  ])(
+    'omits the row count when the statement returns %s',
+    async (_label, adapterResult): Promise<void> => {
+      const manager = {};
+      const connectionBase = {
+        getEntityManager: vi.fn().mockResolvedValue(manager),
+        releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+      };
+      const logger = createLogger();
+      const executeBase = new ExecuteBase(
+        connectionBase as never,
+        createAdapterMock({
+          execute: vi.fn().mockResolvedValue(adapterResult),
+        }),
+        logger
+      );
+
+      await executeBase.execute('update example set id = 1', [], [], {
+        queryId: 'plain-statement',
+      });
+
+      const successMessage = logger.log.mock.calls.at(-1)?.[0];
+      expect(successMessage).toEqual(
+        expect.stringContaining('completed successfully')
+      );
+      expect(successMessage).not.toEqual(expect.stringContaining(' rows'));
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
+    }
+  );
 });
