@@ -137,7 +137,7 @@ interface IBindingCase {
 
 const BINDING_CASES: Array<IBindingCase> = [
   {
-    name: 'plain SQL, placeholder repeated (the abf95f2 headline query)',
+    name: 'plain SQL, placeholder repeated',
     sql: 'SELECT * FROM ORDERS WHERE (:FROM_DATE IS NULL OR ORDER_DATE >= :FROM_DATE)',
     params: { FROM_DATE: '2024-01-01' },
     expectedBindings: { FROM_DATE: '2024-01-01' },
@@ -248,14 +248,6 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedOccurrenceValues: [7, 7, 7],
   },
   {
-    name: 'keys differing only in letter case: one set to undefined is absent, the other binds',
-    sql: 'SELECT * FROM T WHERE A = :ID',
-    params: { id: undefined, ID: 2 },
-    expectedBindings: { ID: 2 },
-    expectedVerdict: 'accepted',
-    expectedOccurrenceValues: [2],
-  },
-  {
     name: 'keys differing only in letter case that no placeholder reads are ignored',
     sql: 'SELECT * FROM T WHERE A = :FIRST',
     params: { first: 1, other: 2, OTHER: 3 },
@@ -326,23 +318,23 @@ describe('OracleAdapter raw SQL bindings', (): void => {
     }
   );
 
-  it('rejects the positional shape abf95f2 produced for repeated placeholders', (): void => {
+  it('rejects the positional form for a repeated placeholder in plain SQL with one value per distinct name', (): void => {
     const sql =
       'SELECT * FROM ORDERS WHERE (:FROM_DATE IS NULL OR ORDER_DATE >= :FROM_DATE)';
 
-    // abf95f2 emitted one positional value per DISTINCT name. Plain SQL has one
-    // bind slot per OCCURRENCE, so the driver saw 2 slots and 1 value.
+    // Plain SQL has one bind slot per OCCURRENCE, so a positional list with one
+    // value per DISTINCT name gives the driver 2 slots and 1 value.
     expect(applyDriverBindRules(sql, ['2024-01-01'])).toEqual({
       accepted: false,
       reason: 'wrong-number-of-binds',
     });
   });
 
-  it('rejects the positional shape the pre-abf95f2 code produced for PL/SQL', (): void => {
+  it('rejects the positional form for a repeated placeholder in PL/SQL with one value per occurrence', (): void => {
     const sql = 'BEGIN pkg.report(:FROM_DATE, :FROM_DATE); END;';
 
-    // Before abf95f2 one value per OCCURRENCE was emitted. PL/SQL collapses
-    // repeats to a single slot, so the driver saw 1 slot and 2 values.
+    // PL/SQL collapses repeats to a single slot, so a positional list with one
+    // value per OCCURRENCE gives the driver 1 slot and 2 values.
     expect(applyDriverBindRules(sql, ['2024-01-01', '2024-01-01'])).toEqual({
       accepted: false,
       reason: 'wrong-number-of-binds',
@@ -431,19 +423,19 @@ describe('OracleAdapter raw SQL placeholders without a value', (): void => {
     );
   });
 
-  it('treats a key set to undefined as absent and says how to bind NULL', (): void => {
+  it('still throws for a placeholder no key names, listing keys set to undefined as supplied', (): void => {
     const adapter = createOracleAdapter();
 
     const error = captureError(() =>
-      adapter.makeSqlBindings(
-        'SELECT * FROM ORDERS WHERE (:fromDate IS NULL OR ORDER_DATE >= :fromDate)',
-        { fromDate: undefined }
-      )
+      adapter.makeSqlBindings('SELECT :missing FROM DUAL', {
+        id: undefined,
+        status: null,
+      })
     );
 
     expect(error).toBeInstanceOf(ServerError);
     expect((error as ServerError).message).toBe(
-      'Raw SQL placeholder :fromDate has no value in params: key "fromDate" is undefined, which counts as absent; pass null to bind SQL NULL'
+      'Raw SQL placeholder :missing has no value in params; supplied keys: "id", "status"'
     );
   });
 
@@ -564,4 +556,91 @@ describe('OracleAdapter raw SQL keys that differ only in letter case', (): void 
       'Raw SQL placeholder :id has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
     );
   });
+});
+
+interface IUndefinedBindingCase {
+  expectedBindings: Record<string, unknown>;
+  /** Per-slot values the driver would deliver, in `bindInfoList` order. */
+  expectedOccurrenceValues: Array<unknown>;
+  name: string;
+  params: Record<string, unknown>;
+  sql: string;
+}
+
+/** Filter fields every query sets; spread with an optional one left unset. */
+const REQUIRED_FILTER = { id: 1 };
+
+const UNDEFINED_BINDING_CASES: Array<IUndefinedBindingCase> = [
+  {
+    name: 'a key set to undefined binds NULL',
+    sql: 'SELECT * FROM T WHERE A = :id',
+    params: { id: undefined },
+    expectedBindings: { ID: null },
+    expectedOccurrenceValues: [null],
+  },
+  {
+    name: 'a repeated placeholder whose key is undefined binds NULL to every occurrence',
+    sql: 'SELECT * FROM ORDERS WHERE (:fromDate IS NULL OR ORDER_DATE >= :fromDate)',
+    params: { fromDate: undefined },
+    expectedBindings: { FROMDATE: null },
+    expectedOccurrenceValues: [null, null],
+  },
+  {
+    name: 'keys differing only in letter case, both undefined, bind NULL without a conflict',
+    sql: 'SELECT * FROM T WHERE A = :id',
+    params: { id: undefined, ID: undefined },
+    expectedBindings: { ID: null },
+    expectedOccurrenceValues: [null],
+  },
+  {
+    name: 'a key set to undefined takes no part in a letter-case conflict with null',
+    sql: 'SELECT * FROM T WHERE A = :id',
+    params: { id: null, ID: undefined },
+    expectedBindings: { ID: null },
+    expectedOccurrenceValues: [null],
+  },
+  {
+    name: 'a key set to undefined takes no part in a letter-case conflict with a value',
+    sql: 'SELECT * FROM T WHERE A = :ID',
+    params: { id: undefined, ID: 2 },
+    expectedBindings: { ID: 2 },
+    expectedOccurrenceValues: [2],
+  },
+  {
+    name: 'a spread object with an unset optional property binds NULL for it',
+    sql: 'SELECT * FROM T WHERE ID = :id AND STATUS = :status',
+    params: { ...REQUIRED_FILTER, status: undefined },
+    expectedBindings: { ID: 1, STATUS: null },
+    expectedOccurrenceValues: [1, null],
+  },
+];
+
+describe('OracleAdapter raw SQL keys set to undefined', (): void => {
+  describe.each(UNDEFINED_BINDING_CASES)(
+    '$name',
+    ({ expectedBindings, expectedOccurrenceValues, params, sql }): void => {
+      it('produces the expected binding values, never undefined', (): void => {
+        const adapter = createOracleAdapter();
+
+        expect(adapter.makeSqlBindings(sql, params)).toStrictEqual({
+          bindings: expectedBindings,
+          sqlString: sql,
+        });
+      });
+
+      it("satisfies node-oracledb's own bind rules with no undefined value", (): void => {
+        const adapter = createOracleAdapter();
+
+        const verdict = applyDriverBindRules(
+          sql,
+          adapter.makeSqlBindings(sql, params).bindings
+        );
+
+        expect(verdict).toStrictEqual({
+          accepted: true,
+          occurrenceValues: expectedOccurrenceValues,
+        });
+      });
+    }
+  );
 });

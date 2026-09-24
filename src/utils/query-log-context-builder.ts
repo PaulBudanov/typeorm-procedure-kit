@@ -1,5 +1,7 @@
 import { replaceNamedParameters } from '../typeorm/util/NamedParameterUtils.js';
 
+import { RAW_SQL_PLACEHOLDER_PATTERN } from './raw-sql-placeholder.js';
+
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
@@ -34,21 +36,30 @@ class QueryLogContextBuilderApi {
     };
   }
 
+  /**
+   * Lists every raw SQL placeholder the adapters bind, recognized by the same
+   * rule, with the value it reads case-insensitively from `params`. A key set
+   * to `undefined` yields to a key that differs only in letter case, and a
+   * placeholder left without a value is logged as `null`, which is what a key
+   * set to `undefined` binds.
+   * @param sql - SQL as the caller wrote it, with named placeholders.
+   * @param params - values keyed by placeholder name, case-insensitive.
+   * @returns SQL log context with one binding per placeholder occurrence.
+   */
   public createSqlContext(
     sql: string,
     params?: Record<string, unknown>
   ): TQueryLogContext {
     const paramsByUpperCaseName = Object.fromEntries(
       params
-        ? Object.entries(params).map(([key, value]) => [
-            key.toUpperCase(),
-            value,
-          ])
+        ? Object.entries(params)
+            .filter(([, value]) => value !== undefined)
+            .map(([key, value]) => [key.toUpperCase(), value])
         : []
     );
     const bindings: Array<ISqlBindingLogItem> = [];
     replaceNamedParameters(sql, ({ full, key }) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
+      if (!RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
       bindings.push({
         name: key,
         value: paramsByUpperCaseName[key.toUpperCase()] ?? null,

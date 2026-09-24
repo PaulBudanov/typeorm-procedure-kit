@@ -226,4 +226,57 @@ describe('QueryLogContextBuilder', (): void => {
       ],
     });
   });
+
+  describe('createSqlContext', (): void => {
+    it('lists a mixed-case placeholder under its name as written', (): void => {
+      expect(
+        QueryLogContextBuilder.createSqlContext('SELECT :userId', { userId: 7 })
+      ).toEqual({ kind: 'sql', bindings: [{ name: 'userId', value: 7 }] });
+    });
+
+    it('lists the placeholders the adapters bind, in any letter case, and nothing else', (): void => {
+      const context = QueryLogContextBuilder.createSqlContext(
+        "select :userId, :ID, :UserName, ':skip', tags[1:2], :new.id from t -- :skip",
+        { userId: 1, id: 2, username: 'ada' }
+      );
+
+      expect(context).toEqual({
+        kind: 'sql',
+        bindings: [
+          { name: 'userId', value: 1 },
+          { name: 'ID', value: 2 },
+          { name: 'UserName', value: 'ada' },
+        ],
+      });
+    });
+
+    it('logs a key set to undefined as null, the value it binds', (): void => {
+      const requiredFilter = { id: 1 };
+
+      const context = QueryLogContextBuilder.createSqlContext(
+        'select * from t where id = :id and status = :status',
+        { ...requiredFilter, status: undefined }
+      );
+
+      expect(context).toStrictEqual({
+        kind: 'sql',
+        bindings: [
+          { name: 'id', value: 1 },
+          { name: 'status', value: null },
+        ],
+      });
+    });
+
+    it('logs the value that binds when a key differing only in letter case is undefined', (): void => {
+      const context = QueryLogContextBuilder.createSqlContext('select :ID', {
+        ID: 2,
+        id: undefined,
+      });
+
+      expect(context).toEqual({
+        kind: 'sql',
+        bindings: [{ name: 'ID', value: 2 }],
+      });
+    });
+  });
 });

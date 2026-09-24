@@ -1,5 +1,6 @@
 import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
 import { DatabaseOptionsExecutor } from '../../utils/database-options-executor.js';
+import { RAW_SQL_PLACEHOLDER_PATTERN } from '../../utils/raw-sql-placeholder.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 
@@ -48,14 +49,6 @@ export abstract class DatabaseAdapter<
 > implements IDatabaseAdapterContract<TNotifyOptions> {
   /** Placeholder every procedure-metadata SQL template must expose. */
   private static readonly PACKAGE_NAME_PLACEHOLDER = ':PACKAGE_NAME';
-  /**
-   * Shape of a raw SQL placeholder name that is bound: an unquoted identifier,
-   * in any letter case. Other names `replaceNamedParameters` reports, such as
-   * the digit-first `:2` of a PostgreSQL array slice `tags[1:2]` or a dotted
-   * `:new.id`, stay in the SQL text untouched.
-   */
-  private static readonly RAW_SQL_PLACEHOLDER_PATTERN =
-    /^[A-Za-z_][A-Za-z0-9_]*$/;
   /** Most supplied keys a missing-placeholder error lists by name. */
   private static readonly MAX_LISTED_RAW_SQL_KEYS = 20;
   private readonly procedureMetadataNormalizer =
@@ -285,17 +278,20 @@ export abstract class DatabaseAdapter<
    * occurrence becomes in the SQL text and how the values reach the driver.
    *
    * A key counts as supplied when `params` carries it as an own enumerable
-   * property whose value is not `undefined`: `null` binds SQL `NULL`, while
-   * `undefined` and inherited properties count as absent. Keys that match no
-   * placeholder are ignored. Two or more supplied keys that differ only in
-   * letter case name one placeholder, so a placeholder that would read them
-   * is rejected rather than bound to whichever key comes last; such keys stay
-   * ignored when no placeholder reads them.
+   * property; inherited properties count as absent. `null` and `undefined`
+   * both bind SQL `NULL`, so an object spread with an unset optional
+   * property binds `NULL` for it. Keys that match no placeholder are ignored.
+   * Two or more supplied keys that differ only in letter case and hold a
+   * value other than `undefined` name one placeholder, so a placeholder that
+   * would read them is rejected rather than bound to whichever key comes
+   * last; a key set to `undefined` takes no part in that conflict, and such
+   * keys stay ignored when no placeholder reads them.
    * @param sqlQuery - SQL query containing named placeholders.
    * @param params - values keyed by placeholder name, case-insensitive.
    * @returns SQL for the driver and the binding values.
-   * @throws ServerError - when a placeholder has no supplied value, or when
-   * two or more supplied keys that differ only in letter case would bind it.
+   * @throws ServerError - when no supplied key names a placeholder, or when
+   * two or more supplied keys that differ only in letter case would bind it
+   * values other than `undefined`.
    */
   public makeSqlBindings(
     sqlQuery: string,
@@ -304,20 +300,20 @@ export abstract class DatabaseAdapter<
     const suppliedParams = this.indexRawSqlParams(params);
     const placeholders: Array<[bindName: string, value: unknown]> = [];
     const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
-      if (!DatabaseAdapter.RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
+      if (!RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
       const bindName = key.toUpperCase();
-      const sameNameParams = suppliedParams.get(bindName) ?? [];
-      const [suppliedParam] = sameNameParams;
-      if (suppliedParam === undefined) {
-        throw this.createMissingRawSqlParamError(full, bindName, params);
+      const candidates = suppliedParams.get(bindName);
+      if (candidates === undefined) {
+        throw this.createMissingRawSqlParamError(full, params);
       }
-      if (sameNameParams.length > 1) {
+      if (candidates.length > 1) {
         throw this.createConflictingRawSqlParamsError(
           full,
-          sameNameParams.map(([suppliedKey]) => suppliedKey)
+          candidates.map(([suppliedKey]) => suppliedKey)
         );
       }
-      placeholders.push([bindName, suppliedParam[1]]);
+      const [candidate] = candidates;
+      placeholders.push([bindName, candidate?.[1] ?? null]);
       return this.renderRawSqlPlaceholder(full, placeholders.length);
     });
     return { bindings: this.collectRawSqlBindings(placeholders), sqlString };
@@ -346,11 +342,14 @@ export abstract class DatabaseAdapter<
 
   /**
    * Indexes the supplied raw SQL values by uppercase key. Every supplied key
-   * is kept, so keys that differ only in letter case share one entry and the
-   * placeholder that reads them can reject the conflict; each value is read
-   * from `params` once.
+   * gives its bind name an entry, so a name whose keys are all set to
+   * `undefined` is supplied with no candidate value and binds `NULL`. Every
+   * key with a value other than `undefined` is kept as a candidate, so keys
+   * that differ only in letter case share one entry and the placeholder that
+   * reads them can reject the conflict; each value is read from `params`
+   * once.
    * @param params - caller values keyed by placeholder name.
-   * @returns supplied keys with their values, in `params` order, grouped by
+   * @returns candidate keys with their values, in `params` order, grouped by
    * uppercase bind name.
    */
   private indexRawSqlParams(
@@ -363,11 +362,10 @@ export abstract class DatabaseAdapter<
     if (!params) return suppliedParams;
     for (const key of Object.keys(params)) {
       const value = params[key];
-      if (value === undefined) continue;
       const bindName = key.toUpperCase();
-      const sameNameParams = suppliedParams.get(bindName);
-      if (sameNameParams) sameNameParams.push([key, value]);
-      else suppliedParams.set(bindName, [[key, value]]);
+      const candidates = suppliedParams.get(bindName) ?? [];
+      if (value !== undefined) candidates.push([key, value]);
+      suppliedParams.set(bindName, candidates);
     }
     return suppliedParams;
   }
@@ -393,31 +391,17 @@ export abstract class DatabaseAdapter<
   }
 
   /**
-   * Builds the error for a placeholder without a supplied value, naming the
+   * Builds the error for a placeholder that no supplied key names, naming the
    * placeholder as written and the keys that were supplied, never values.
    * @param placeholder - the placeholder exactly as written.
-   * @param bindName - uppercase bind name of the placeholder.
    * @param params - caller values keyed by placeholder name.
    * @returns the error to throw.
    */
   private createMissingRawSqlParamError(
     placeholder: string,
-    bindName: string,
     params: Record<string, unknown> | undefined
   ): ServerError {
-    const suppliedParams = params ?? {};
-    const ownKeys = Object.keys(suppliedParams);
-    // The placeholder has no supplied value, so a key that folds to its name
-    // can only be one set to undefined.
-    const undefinedKey = ownKeys.find((key) => key.toUpperCase() === bindName);
-    if (undefinedKey !== undefined) {
-      return new ServerError(
-        `Raw SQL placeholder ${placeholder} has no value in params: key ${JSON.stringify(undefinedKey)} is undefined, which counts as absent; pass null to bind SQL NULL`
-      );
-    }
-    const suppliedKeys = ownKeys.filter(
-      (key) => suppliedParams[key] !== undefined
-    );
+    const suppliedKeys = Object.keys(params ?? {});
     if (suppliedKeys.length === 0) {
       return new ServerError(
         `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: none`

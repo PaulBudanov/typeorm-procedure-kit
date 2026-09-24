@@ -312,14 +312,6 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedOccurrenceValues: [7, 7, 7],
   },
   {
-    name: 'keys differing only in letter case: one set to undefined is absent, the other binds',
-    sql: 'select * from t where a = :ID::int',
-    params: { id: undefined, ID: 2 },
-    expectedSql: 'select * from t where a = $1::int',
-    expectedBindings: [2],
-    expectedOccurrenceValues: [2],
-  },
-  {
     name: 'keys differing only in letter case that no placeholder reads are ignored',
     sql: 'select :FIRST::int',
     params: { first: 1, other: 2, OTHER: 3 },
@@ -408,19 +400,19 @@ describe('PostgreAdapter raw SQL placeholders without a value', (): void => {
     );
   });
 
-  it('treats a key set to undefined as absent and says how to bind NULL', (): void => {
+  it('still throws for a placeholder no key names, listing keys set to undefined as supplied', (): void => {
     const adapter = createPostgreAdapter();
 
     const error = captureError(() =>
-      adapter.makeSqlBindings(
-        'select * from orders where (:fromDate::date is null or order_date >= :fromDate)',
-        { fromDate: undefined }
-      )
+      adapter.makeSqlBindings('select :missing', {
+        id: undefined,
+        status: null,
+      })
     );
 
     expect(error).toBeInstanceOf(ServerError);
     expect((error as ServerError).message).toBe(
-      'Raw SQL placeholder :fromDate has no value in params: key "fromDate" is undefined, which counts as absent; pass null to bind SQL NULL'
+      'Raw SQL placeholder :missing has no value in params; supplied keys: "id", "status"'
     );
   });
 
@@ -527,4 +519,91 @@ describe('PostgreAdapter raw SQL keys that differ only in letter case', (): void
       'Raw SQL placeholder :id has more than one value in params; supplied keys that differ only in letter case: "id", "ID"'
     );
   });
+});
+
+/** Filter fields every query sets; spread with an optional one left unset. */
+const REQUIRED_FILTER = { id: 1 };
+
+const UNDEFINED_BINDING_CASES: Array<IBindingCase> = [
+  {
+    name: 'a key set to undefined binds NULL',
+    sql: 'select * from t where a = :id::int',
+    params: { id: undefined },
+    expectedSql: 'select * from t where a = $1::int',
+    expectedBindings: [null],
+    expectedOccurrenceValues: [null],
+  },
+  {
+    name: 'a repeated placeholder whose key is undefined binds NULL to every occurrence',
+    sql: 'select * from orders where (:fromDate::date is null or order_date >= :fromDate)',
+    params: { fromDate: undefined },
+    expectedSql:
+      'select * from orders where ($1::date is null or order_date >= $2)',
+    expectedBindings: [null, null],
+    expectedOccurrenceValues: [null, null],
+  },
+  {
+    name: 'keys differing only in letter case, both undefined, bind NULL without a conflict',
+    sql: 'select * from t where a = :id::int',
+    params: { id: undefined, ID: undefined },
+    expectedSql: 'select * from t where a = $1::int',
+    expectedBindings: [null],
+    expectedOccurrenceValues: [null],
+  },
+  {
+    name: 'a key set to undefined takes no part in a letter-case conflict with null',
+    sql: 'select * from t where a = :id::int',
+    params: { id: null, ID: undefined },
+    expectedSql: 'select * from t where a = $1::int',
+    expectedBindings: [null],
+    expectedOccurrenceValues: [null],
+  },
+  {
+    name: 'a key set to undefined takes no part in a letter-case conflict with a value',
+    sql: 'select * from t where a = :ID::int',
+    params: { id: undefined, ID: 2 },
+    expectedSql: 'select * from t where a = $1::int',
+    expectedBindings: [2],
+    expectedOccurrenceValues: [2],
+  },
+  {
+    name: 'a spread object with an unset optional property binds NULL for it',
+    sql: 'select * from t where id = :id::int and status = :status',
+    params: { ...REQUIRED_FILTER, status: undefined },
+    expectedSql: 'select * from t where id = $1::int and status = $2',
+    expectedBindings: [1, null],
+    expectedOccurrenceValues: [1, null],
+  },
+];
+
+describe('PostgreAdapter raw SQL keys set to undefined', (): void => {
+  describe.each(UNDEFINED_BINDING_CASES)(
+    '$name',
+    ({
+      expectedBindings,
+      expectedOccurrenceValues,
+      expectedSql,
+      params,
+      sql,
+    }): void => {
+      it('produces the expected binding values, never undefined', (): void => {
+        const adapter = createPostgreAdapter();
+
+        expect(adapter.makeSqlBindings(sql, params)).toStrictEqual({
+          bindings: expectedBindings,
+          sqlString: expectedSql,
+        });
+      });
+
+      it('is accepted by node-postgres and the PostgreSQL server rules with no undefined value', (): void => {
+        const adapter = createPostgreAdapter();
+        const { bindings, sqlString } = adapter.makeSqlBindings(sql, params);
+
+        expect(applyPostgresBindRules(sqlString, bindings)).toStrictEqual({
+          accepted: true,
+          occurrenceValues: expectedOccurrenceValues,
+        });
+      });
+    }
+  );
 });
