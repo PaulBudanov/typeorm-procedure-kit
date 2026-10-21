@@ -44,6 +44,14 @@ function inheritedMessage(
   return `Inherited ${vendorName} procedure payload key "${key}" for argument "${argumentName}": only own properties are read, so pass it as an own property, for example by copying it into a plain object`;
 }
 
+function mapPayloadMessage(vendorName: TVendorName): string {
+  return `${vendorName} procedure payload is a Map, whose entries are not read as argument keys; pass a plain object, for example \`Object.fromEntries(map)\``;
+}
+
+function setPayloadMessage(vendorName: TVendorName): string {
+  return `${vendorName} procedure payload is a Set, whose values are not read as arguments; pass a plain object, or an array to bind by position, for example \`Array.from(set)\``;
+}
+
 describe.each(VENDOR_NAMES)(
   'procedure payload reader (%s)',
   (vendorName): void => {
@@ -277,6 +285,38 @@ describe.each(VENDOR_NAMES)(
       it('ignores named properties on an array payload', (): void => {
         const payload = Object.assign([7], { flag: 1, p_flag: 2 });
         expect(read(payload, 'p_flag', 0)).toBe(7);
+      });
+    });
+
+    describe('collection payloads', (): void => {
+      it('rejects a Map payload keyed by the argument name instead of binding null', (): void => {
+        const payload = new Map([['flag', 5]]);
+        const error = thrownBy(() => read(payload, 'p_flag'));
+        expect(error).toBeInstanceOf(ServerError);
+        expect((error as Error).message).toBe(mapPayloadMessage(vendorName));
+      });
+
+      it('rejects a Map subclass payload', (): void => {
+        class PayloadMap extends Map<string, unknown> {}
+        const payload = new PayloadMap([['p_flag', 5]]);
+        const error = thrownBy(() => read(payload, 'p_flag'));
+        expect(error).toBeInstanceOf(ServerError);
+        expect((error as Error).message).toBe(mapPayloadMessage(vendorName));
+      });
+
+      it('rejects a Set payload instead of binding null', (): void => {
+        const payload = new Set([5]);
+        const error = thrownBy(() => read(payload, 'p_flag', 0));
+        expect(error).toBeInstanceOf(ServerError);
+        expect((error as Error).message).toBe(setPayloadMessage(vendorName));
+      });
+
+      it('rejects a Set subclass payload', (): void => {
+        class PayloadSet extends Set<unknown> {}
+        const payload = new PayloadSet([5]);
+        const error = thrownBy(() => read(payload, 'p_flag', 0));
+        expect(error).toBeInstanceOf(ServerError);
+        expect((error as Error).message).toBe(setPayloadMessage(vendorName));
       });
     });
   }

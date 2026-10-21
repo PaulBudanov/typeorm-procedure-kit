@@ -17,7 +17,8 @@ import type { TProcedurePayload } from '../../types/procedure.types.js';
  *
  * Only own properties are read. A key the payload inherits from a prototype
  * of its own, such as a getter of a class DTO, is rejected instead of being
- * bound as `NULL`; see `hasPayloadValue`.
+ * bound as `NULL`; see `hasPayloadValue`. A `Map` or `Set` payload is
+ * rejected as a whole; see `assertNotCollectionPayload`.
  */
 export function readPayloadValue(
   payload: TProcedurePayload | null | undefined,
@@ -25,6 +26,7 @@ export function readPayloadValue(
   argumentName: string,
   vendorName: 'Oracle' | 'PostgreSQL'
 ): unknown {
+  assertNotCollectionPayload(payload, vendorName);
   if (Array.isArray(payload)) return payload[index] ?? null;
   if (!payload || typeof payload !== 'object') return null;
   const record = payload as Record<string, unknown>;
@@ -46,6 +48,28 @@ export function readPayloadValue(
   if (hasAlias) return record[aliasName];
   if (hasArgumentName) return record[argumentName];
   return null;
+}
+
+/**
+ * Rejects a `Map` or `Set` payload, a subclass of either included. Neither
+ * carries its entries as properties, so reading it by argument name or by
+ * position would bind `NULL` to every argument in silence and drop the data
+ * the caller passed.
+ */
+function assertNotCollectionPayload(
+  payload: TProcedurePayload | null | undefined,
+  vendorName: 'Oracle' | 'PostgreSQL'
+): void {
+  if (payload instanceof Map) {
+    throw new ServerError(
+      `${vendorName} procedure payload is a Map, whose entries are not read as argument keys; pass a plain object, for example \`Object.fromEntries(map)\``
+    );
+  }
+  if (payload instanceof Set) {
+    throw new ServerError(
+      `${vendorName} procedure payload is a Set, whose values are not read as arguments; pass a plain object, or an array to bind by position, for example \`Array.from(set)\``
+    );
+  }
 }
 
 /**
