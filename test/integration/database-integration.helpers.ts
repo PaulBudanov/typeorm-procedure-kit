@@ -1,4 +1,7 @@
-import { ServerError } from '../../src/index.js';
+import oracledb from 'oracledb';
+import pg from 'pg';
+
+import { ServerError, TypeOrmProcedureKit } from '../../src/index.js';
 import { createLogger } from '../support/helpers.js';
 
 import type {
@@ -123,4 +126,101 @@ export function createOracleIntegrationSettings(): IIntegrationTestSettings<TOra
       },
     },
   };
+}
+
+/**
+ * Switches node-oracledb to Thick mode when the settings carry `libraryPath`; without it the
+ * driver stays in Thin mode. Call it before the first standalone connection of a file: Thin mode
+ * is fixed once a Thin connection exists. Repeated calls are no-ops because the driver no longer
+ * reports Thin mode after the first initialization.
+ * @param settings - Oracle integration settings.
+ */
+export function ensureOracleClientMode(
+  settings: IIntegrationTestSettings<TOracleDbConfig>
+): void {
+  const libraryPath = settings.config.libraryPath;
+  if (!libraryPath || !oracledb.thin) return;
+
+  oracledb.initOracleClient({ libDir: libraryPath });
+}
+
+/**
+ * Runs the callback on a standalone Oracle connection to the master credentials, opened after
+ * {@link ensureOracleClientMode}, and closes the connection afterwards.
+ * @param settings - Oracle integration settings.
+ * @param callback - work to run on the connection.
+ * @returns the callback result.
+ */
+export async function withOracleConnection<TResult>(
+  settings: IIntegrationTestSettings<TOracleDbConfig>,
+  callback: (connection: oracledb.Connection) => Promise<TResult>
+): Promise<TResult> {
+  ensureOracleClientMode(settings);
+  const { host, port, database, username, password } = settings.config.master;
+  const connection = await oracledb.getConnection({
+    user: username,
+    password,
+    connectString: `${host}:${port}/${database}`,
+  });
+
+  try {
+    return await callback(connection);
+  } finally {
+    await connection.close();
+  }
+}
+
+/**
+ * Runs the callback on a standalone `pg.Client` connected with the master credentials and ends
+ * the client afterwards.
+ * @param settings - PostgreSQL integration settings.
+ * @param callback - work to run on the client.
+ * @returns the callback result.
+ */
+export async function withPostgresClient<TResult>(
+  settings: IIntegrationTestSettings<TPostgresDbConfig>,
+  callback: (client: pg.Client) => Promise<TResult>
+): Promise<TResult> {
+  const { host, port, database, username, password } = settings.config.master;
+  const client = new pg.Client({
+    host,
+    port,
+    database,
+    user: username,
+    password,
+  });
+  await client.connect();
+
+  try {
+    return await callback(client);
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Runs the callback on a kit built from the settings with `configOverrides` spread over
+ * `settings.config`. The kit is initialized before the callback and destroyed afterwards, also
+ * when `initDatabase()` rejects; the settings object is not modified.
+ * @param settings - integration settings for either database.
+ * @param configOverrides - config fields that replace those in `settings.config`.
+ * @param callback - work to run on the initialized kit.
+ * @returns the callback result.
+ */
+export async function withKit<TConfig extends IModuleConfig['config'], TResult>(
+  settings: IIntegrationTestSettings<TConfig>,
+  configOverrides: Partial<TConfig>,
+  callback: (kit: TypeOrmProcedureKit) => Promise<TResult>
+): Promise<TResult> {
+  const kit = new TypeOrmProcedureKit({
+    ...settings,
+    config: { ...settings.config, ...configOverrides },
+  });
+
+  try {
+    await kit.initDatabase();
+    return await callback(kit);
+  } finally {
+    await kit.destroy();
+  }
 }
