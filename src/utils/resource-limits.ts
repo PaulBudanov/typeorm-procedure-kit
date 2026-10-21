@@ -20,37 +20,40 @@ function assertPositiveInteger(value: number, name: string): number {
   return value;
 }
 
+/**
+ * Resolves one limit: an absent or `undefined` value keeps the default, any
+ * other value must be a positive safe integer.
+ */
+function resolveLimit(
+  configured: Partial<IResourceLimits>,
+  name: keyof IResourceLimits
+): number {
+  const value = configured[name];
+  if (value === undefined) {
+    return DEFAULT_RESOURCE_LIMITS[name];
+  }
+  return assertPositiveInteger(value, `resourceLimits.${name}`);
+}
+
+/**
+ * Resolves the configured resource limits against the defaults.
+ *
+ * Only own enumerable keys of `limits` are read, and a limit set to `undefined`
+ * keeps its default. Unknown keys are ignored.
+ * @param limits - Limits from `resourceLimits` in the kit config.
+ * @returns A frozen object holding every limit.
+ * @throws ServerError when a configured limit is not a positive safe integer.
+ */
 export function resolveResourceLimits(
   limits: Partial<IResourceLimits> | undefined
 ): Readonly<IResourceLimits> {
-  const resolved: IResourceLimits = {
-    ...DEFAULT_RESOURCE_LIMITS,
-    ...limits,
-  };
+  const configured: Partial<IResourceLimits> = { ...limits };
   return Object.freeze({
-    maxProcedureRows: assertPositiveInteger(
-      resolved.maxProcedureRows,
-      'resourceLimits.maxProcedureRows'
-    ),
-    maxProcedureBytes: assertPositiveInteger(
-      resolved.maxProcedureBytes,
-      'resourceLimits.maxProcedureBytes'
-    ),
-    maxMetadataRows: assertPositiveInteger(
-      resolved.maxMetadataRows,
-      'resourceLimits.maxMetadataRows'
-    ),
-    maxLobBytes: assertPositiveInteger(
-      resolved.maxLobBytes,
-      'resourceLimits.maxLobBytes'
-    ),
-    maxNotificationQueue: assertPositiveInteger(
-      resolved.maxNotificationQueue,
-      'resourceLimits.maxNotificationQueue'
-    ),
-    maxNotificationRows: assertPositiveInteger(
-      resolved.maxNotificationRows,
-      'resourceLimits.maxNotificationRows'
-    ),
+    maxProcedureRows: resolveLimit(configured, 'maxProcedureRows'),
+    maxProcedureBytes: resolveLimit(configured, 'maxProcedureBytes'),
+    maxMetadataRows: resolveLimit(configured, 'maxMetadataRows'),
+    maxLobBytes: resolveLimit(configured, 'maxLobBytes'),
+    maxNotificationQueue: resolveLimit(configured, 'maxNotificationQueue'),
+    maxNotificationRows: resolveLimit(configured, 'maxNotificationRows'),
   });
 }
