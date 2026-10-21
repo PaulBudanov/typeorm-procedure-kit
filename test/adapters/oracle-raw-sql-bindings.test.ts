@@ -217,13 +217,6 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedOccurrenceValues: [],
   },
   {
-    name: 'TypeORM array form :...IDS is refused by the driver, never misaligned',
-    sql: 'SELECT * FROM docs WHERE tenant_id = :TENANT AND id IN (:...IDS) AND owner = :TENANT',
-    params: { tenant: 'attacker', ids: [1, 2] },
-    expectedBindings: { TENANT: 'attacker', IDS: [1, 2] },
-    expectedVerdict: 'invalid-bind-name',
-  },
-  {
     name: 'mixed-case :userId binds case-insensitively, like the driver',
     sql: 'select * from users where id = :userId and code = :CODE',
     params: { userId: 1, code: 'a' },
@@ -340,27 +333,6 @@ describe('OracleAdapter raw SQL bindings', (): void => {
       reason: 'wrong-number-of-binds',
     });
   });
-
-  it('cannot route a value onto a different placeholder than its own name', (): void => {
-    const adapter = createOracleAdapter();
-    const sql =
-      'SELECT * FROM docs WHERE tenant_id = :TENANT AND id IN (:...IDS) AND owner = :TENANT';
-    const statement = parseStatement(sql);
-
-    const { bindings } = adapter.makeSqlBindings(sql, {
-      tenant: 'attacker',
-      ids: [1, 2],
-    });
-
-    // Oracle emits no bind for the TypeORM `:...IDS` form, so both slots belong
-    // to TENANT and neither can receive the IDS value.
-    expect(statement.bindInfoList.map(({ bindName }) => bindName)).toEqual([
-      'TENANT',
-      'TENANT',
-    ]);
-    expect(Object.getOwnPropertyNames(bindings)).toContain('IDS');
-    expect(statement.bindInfoDict.has('IDS')).toBe(false);
-  });
 });
 
 function captureError(run: () => unknown): unknown {
@@ -439,13 +411,18 @@ describe('OracleAdapter raw SQL placeholders without a value', (): void => {
     );
   });
 
-  it('does not read a value inherited from the prototype', (): void => {
+  it('does not read a value inherited from the prototype, and says the key is inherited', (): void => {
     const adapter = createOracleAdapter();
     const params = Object.create({ ID: 1 }) as Record<string, unknown>;
 
-    expect((): void => {
-      adapter.makeSqlBindings('SELECT :ID FROM DUAL', params);
-    }).toThrow('Raw SQL placeholder :ID has no value in params');
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT :ID FROM DUAL', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has no value in params; supplied keys: none; key "ID" is inherited from a prototype: only own properties are read, so copy it into a plain object'
+    );
   });
 
   it('checks every placeholder, not only the first one', (): void => {
@@ -454,14 +431,6 @@ describe('OracleAdapter raw SQL placeholders without a value', (): void => {
     expect((): void => {
       adapter.makeSqlBindings('SELECT :A, :B FROM DUAL', { A: 1 });
     }).toThrow('Raw SQL placeholder :B has no value in params');
-  });
-
-  it('names the TypeORM array form as written', (): void => {
-    const adapter = createOracleAdapter();
-
-    expect((): void => {
-      adapter.makeSqlBindings('SELECT * FROM T WHERE ID IN (:...IDS)', {});
-    }).toThrow('Raw SQL placeholder :...IDS has no value in params');
   });
 
   it('needs no value for placeholders inside literals and comments', (): void => {
@@ -490,6 +459,158 @@ describe('OracleAdapter raw SQL placeholders without a value', (): void => {
         (_unused, index) => `"K${index}"`
       ).join(', ')} and 5 more`
     );
+  });
+});
+
+/**
+ * A class DTO the way an application writes one: the stored value is an own
+ * property, the name the SQL reads is a getter on the class prototype.
+ */
+class UserFilterDto {
+  public constructor(private readonly storedId: number) {}
+
+  public get id(): number {
+    return this.storedId;
+  }
+}
+
+describe('OracleAdapter raw SQL params that are class instances', (): void => {
+  it('says a placeholder key is inherited when a getter on the prototype names it', (): void => {
+    const adapter = createOracleAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM USERS WHERE ID = :id', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :id has no value in params; supplied keys: "storedId"; key "id" is inherited from a prototype: only own properties are read, so copy it into a plain object'
+    );
+  });
+
+  it('matches the inherited key case-insensitively, naming it as the prototype spells it', (): void => {
+    const adapter = createOracleAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM USERS WHERE ID = :ID', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has no value in params; supplied keys: "storedId"; key "id" is inherited from a prototype: only own properties are read, so copy it into a plain object'
+    );
+  });
+
+  it('keeps the plain text for a key the prototype does not define either', (): void => {
+    const adapter = createOracleAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM USERS WHERE NAME = :name', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :name has no value in params; supplied keys: "storedId"'
+    );
+  });
+
+  it('keeps the plain text for members every object or class inherits', (): void => {
+    const adapter = createOracleAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const errors = [':toString', ':constructor'].map((placeholder) =>
+      captureError(() =>
+        adapter.makeSqlBindings(`SELECT ${placeholder} FROM DUAL`, params)
+      )
+    );
+
+    expect(errors.map((error) => (error as ServerError).message)).toEqual([
+      'Raw SQL placeholder :toString has no value in params; supplied keys: "storedId"',
+      'Raw SQL placeholder :constructor has no value in params; supplied keys: "storedId"',
+    ]);
+  });
+});
+
+describe('OracleAdapter raw SQL spread placeholders', (): void => {
+  it('rejects :...ids instead of handing the driver a placeholder it cannot bind', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM t WHERE id IN (:...ids)', {
+        ids: [1, 2],
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :...ids expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example `= ANY(:IDS)` on PostgreSQL'
+    );
+  });
+
+  it('rejects the uppercase :...IDS, naming it as written', (): void => {
+    const adapter = createOracleAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM t WHERE id IN (:...IDS)', {
+        ids: [1, 2],
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :...IDS expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example `= ANY(:IDS)` on PostgreSQL'
+    );
+  });
+
+  it('rejects the spread before looking for a value, so a missing key gets the same error', (): void => {
+    const adapter = createOracleAdapter();
+    const sql = 'SELECT * FROM t WHERE id IN (:...ids)';
+    const expectedMessage =
+      'Raw SQL placeholder :...ids expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example `= ANY(:IDS)` on PostgreSQL';
+
+    const errors = [
+      captureError(() => adapter.makeSqlBindings(sql)),
+      captureError(() => adapter.makeSqlBindings(sql, {})),
+      captureError(() => adapter.makeSqlBindings(sql, { ids: [1], IDS: [2] })),
+    ];
+
+    expect(errors.map((error) => error instanceof ServerError)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(errors.map((error) => (error as ServerError).message)).toEqual([
+      expectedMessage,
+      expectedMessage,
+      expectedMessage,
+    ]);
+  });
+
+  it('rejects the statement that would leave the spread unbound between two binds', (): void => {
+    const adapter = createOracleAdapter();
+
+    expect((): void => {
+      adapter.makeSqlBindings(
+        'SELECT * FROM docs WHERE tenant_id = :TENANT AND id IN (:...IDS) AND owner = :TENANT',
+        { tenant: 'attacker', ids: [1, 2] }
+      );
+    }).toThrow(
+      'Raw SQL placeholder :...IDS expands an array, which raw SQL does not support'
+    );
+  });
+
+  it('leaves :...ids inside string literals and comments as SQL text', (): void => {
+    const adapter = createOracleAdapter();
+    const sql =
+      "select ':...ids', q'[:...ids]' from dual /* :...ids */ -- :...ids\nwhere id = :id";
+
+    expect(adapter.makeSqlBindings(sql, { id: 1 })).toEqual({
+      bindings: { ID: 1 },
+      sqlString: sql,
+    });
   });
 });
 

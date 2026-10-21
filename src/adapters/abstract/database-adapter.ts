@@ -286,12 +286,17 @@ export abstract class DatabaseAdapter<
    * would read them is rejected rather than bound to whichever key comes
    * last; a key set to `undefined` takes no part in that conflict, and such
    * keys stay ignored when no placeholder reads them.
+   *
+   * A spread placeholder such as `:...ids` is rejected before its value is
+   * looked up: raw SQL binds one value per placeholder and does not expand
+   * an array into one bind per element.
    * @param sqlQuery - SQL query containing named placeholders.
    * @param params - values keyed by placeholder name, case-insensitive.
    * @returns SQL for the driver and the binding values.
-   * @throws ServerError - when no supplied key names a placeholder, or when
-   * two or more supplied keys that differ only in letter case would bind it
-   * values other than `undefined`.
+   * @throws ServerError - when the SQL holds a spread placeholder such as
+   * `:...ids`, when no supplied key names a placeholder, or when two or more
+   * supplied keys that differ only in letter case would bind it values other
+   * than `undefined`.
    */
   public makeSqlBindings(
     sqlQuery: string,
@@ -299,23 +304,30 @@ export abstract class DatabaseAdapter<
   ): ISqlBindingsObjectReturn {
     const suppliedParams = this.indexRawSqlParams(params);
     const placeholders: Array<[bindName: string, value: unknown]> = [];
-    const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
-      if (!RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
-      const bindName = key.toUpperCase();
-      const candidates = suppliedParams.get(bindName);
-      if (candidates === undefined) {
-        throw this.createMissingRawSqlParamError(full, params);
+    const sqlString = replaceNamedParameters(
+      sqlQuery,
+      ({ full, isArray, key }) => {
+        if (!RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
+        if (isArray) {
+          // TODO: expand :...name into one bind per element (planned as a future, non-breaking feature)
+          throw this.createSpreadRawSqlPlaceholderError(full);
+        }
+        const bindName = key.toUpperCase();
+        const candidates = suppliedParams.get(bindName);
+        if (candidates === undefined) {
+          throw this.createMissingRawSqlParamError(full, bindName, params);
+        }
+        if (candidates.length > 1) {
+          throw this.createConflictingRawSqlParamsError(
+            full,
+            candidates.map(([suppliedKey]) => suppliedKey)
+          );
+        }
+        const [candidate] = candidates;
+        placeholders.push([bindName, candidate?.[1] ?? null]);
+        return this.renderRawSqlPlaceholder(full, placeholders.length);
       }
-      if (candidates.length > 1) {
-        throw this.createConflictingRawSqlParamsError(
-          full,
-          candidates.map(([suppliedKey]) => suppliedKey)
-        );
-      }
-      const [candidate] = candidates;
-      placeholders.push([bindName, candidate?.[1] ?? null]);
-      return this.renderRawSqlPlaceholder(full, placeholders.length);
-    });
+    );
     return { bindings: this.collectRawSqlBindings(placeholders), sqlString };
   }
 
@@ -391,20 +403,42 @@ export abstract class DatabaseAdapter<
   }
 
   /**
+   * Builds the error for a spread placeholder such as `:...ids`, naming the
+   * placeholder as written and the single-placeholder form to use instead.
+   * @param placeholder - the placeholder exactly as written.
+   * @returns the error to throw.
+   */
+  private createSpreadRawSqlPlaceholderError(placeholder: string): ServerError {
+    return new ServerError(
+      `Raw SQL placeholder ${placeholder} expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example \`= ANY(:IDS)\` on PostgreSQL`
+    );
+  }
+
+  /**
    * Builds the error for a placeholder that no supplied key names, naming the
    * placeholder as written and the keys that were supplied, never values.
+   * When a prototype of `params` defines the key, as a getter of a class DTO
+   * does, the error also says the key is inherited and only own properties
+   * are read.
    * @param placeholder - the placeholder exactly as written.
+   * @param bindName - the placeholder name in uppercase.
    * @param params - caller values keyed by placeholder name.
    * @returns the error to throw.
    */
   private createMissingRawSqlParamError(
     placeholder: string,
+    bindName: string,
     params: Record<string, unknown> | undefined
   ): ServerError {
+    const inheritedKey = this.findInheritedRawSqlParamKey(params, bindName);
+    const inheritedSuffix =
+      inheritedKey === undefined
+        ? ''
+        : `; key ${JSON.stringify(inheritedKey)} is inherited from a prototype: only own properties are read, so copy it into a plain object`;
     const suppliedKeys = Object.keys(params ?? {});
     if (suppliedKeys.length === 0) {
       return new ServerError(
-        `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: none`
+        `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: none${inheritedSuffix}`
       );
     }
     const listedKeys = suppliedKeys
@@ -416,8 +450,54 @@ export abstract class DatabaseAdapter<
     const unlistedSuffix =
       unlistedCount > 0 ? ` and ${unlistedCount} more` : '';
     return new ServerError(
-      `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: ${listedKeys}${unlistedSuffix}`
+      `Raw SQL placeholder ${placeholder} has no value in params; supplied keys: ${listedKeys}${unlistedSuffix}${inheritedSuffix}`
     );
+  }
+
+  /**
+   * Finds a key that a prototype of `params` defines for a placeholder,
+   * compared case-insensitively the way placeholders are. Prototypes are
+   * walked up to `Object.prototype`, which is not searched, and the
+   * `constructor` back-reference of a class prototype is skipped: neither is
+   * caller data.
+   * @param params - caller values keyed by placeholder name.
+   * @param bindName - the placeholder name in uppercase.
+   * @returns the inherited key as the prototype spells it, or `undefined`.
+   */
+  private findInheritedRawSqlParamKey(
+    params: Record<string, unknown> | undefined,
+    bindName: string
+  ): string | undefined {
+    if (!params) return undefined;
+    for (
+      let prototype = Object.getPrototypeOf(params) as object | null;
+      prototype !== null && prototype !== Object.prototype;
+      prototype = Object.getPrototypeOf(prototype) as object | null
+    ) {
+      const inheritedKey = Object.getOwnPropertyNames(prototype).find(
+        (key) =>
+          key.toUpperCase() === bindName &&
+          !this.isConstructorBackReference(prototype, key)
+      );
+      if (inheritedKey !== undefined) return inheritedKey;
+    }
+    return undefined;
+  }
+
+  /**
+   * Whether `key` on `prototype` is the `constructor` property that points
+   * back at the class owning that prototype.
+   * @param prototype - a prototype in the chain of the raw SQL params.
+   * @param key - an own property name of `prototype`.
+   * @returns true for the class back-reference.
+   */
+  private isConstructorBackReference(prototype: object, key: string): boolean {
+    if (key !== 'constructor') return false;
+    const value: unknown = Object.getOwnPropertyDescriptor(
+      prototype,
+      key
+    )?.value;
+    return typeof value === 'function' && value.prototype === prototype;
   }
 
   /**

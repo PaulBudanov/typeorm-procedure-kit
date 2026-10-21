@@ -319,6 +319,14 @@ const BINDING_CASES: Array<IBindingCase> = [
     expectedBindings: [1],
     expectedOccurrenceValues: [1],
   },
+  {
+    name: 'an array bound to one placeholder, as in = ANY(:IDS), is one parameter',
+    sql: 'select * from t where id = ANY(:IDS)',
+    params: { ids: [1, 2] },
+    expectedSql: 'select * from t where id = ANY($1)',
+    expectedBindings: [[1, 2]],
+    expectedOccurrenceValues: [[1, 2]],
+  },
 ];
 
 describe('PostgreAdapter raw SQL bindings', (): void => {
@@ -416,13 +424,18 @@ describe('PostgreAdapter raw SQL placeholders without a value', (): void => {
     );
   });
 
-  it('does not read a value inherited from the prototype', (): void => {
+  it('does not read a value inherited from the prototype, and says the key is inherited', (): void => {
     const adapter = createPostgreAdapter();
     const params = Object.create({ ID: 1 }) as Record<string, unknown>;
 
-    expect((): void => {
-      adapter.makeSqlBindings('select :ID', params);
-    }).toThrow('Raw SQL placeholder :ID has no value in params');
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select :ID', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has no value in params; supplied keys: none; key "ID" is inherited from a prototype: only own properties are read, so copy it into a plain object'
+    );
   });
 
   it('checks every placeholder, not only the first one', (): void => {
@@ -452,6 +465,146 @@ describe('PostgreAdapter raw SQL placeholders without a value', (): void => {
     expect(adapter.makeSqlBindings('select tags[1: n] from t', {})).toEqual({
       bindings: [],
       sqlString: 'select tags[1: n] from t',
+    });
+  });
+});
+
+/**
+ * A class DTO the way an application writes one: the stored value is an own
+ * property, the name the SQL reads is a getter on the class prototype.
+ */
+class UserFilterDto {
+  public constructor(private readonly storedId: number) {}
+
+  public get id(): number {
+    return this.storedId;
+  }
+}
+
+describe('PostgreAdapter raw SQL params that are class instances', (): void => {
+  it('says a placeholder key is inherited when a getter on the prototype names it', (): void => {
+    const adapter = createPostgreAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select * from users where id = :id', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :id has no value in params; supplied keys: "storedId"; key "id" is inherited from a prototype: only own properties are read, so copy it into a plain object'
+    );
+  });
+
+  it('matches the inherited key case-insensitively, naming it as the prototype spells it', (): void => {
+    const adapter = createPostgreAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select * from users where id = :ID', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :ID has no value in params; supplied keys: "storedId"; key "id" is inherited from a prototype: only own properties are read, so copy it into a plain object'
+    );
+  });
+
+  it('keeps the plain text for a key the prototype does not define either', (): void => {
+    const adapter = createPostgreAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('select * from users where name = :name', params)
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :name has no value in params; supplied keys: "storedId"'
+    );
+  });
+
+  it('keeps the plain text for members every object or class inherits', (): void => {
+    const adapter = createPostgreAdapter();
+    const params = new UserFilterDto(42) as unknown as Record<string, unknown>;
+
+    const errors = [':toString', ':constructor'].map((placeholder) =>
+      captureError(() =>
+        adapter.makeSqlBindings(`select ${placeholder}`, params)
+      )
+    );
+
+    expect(errors.map((error) => (error as ServerError).message)).toEqual([
+      'Raw SQL placeholder :toString has no value in params; supplied keys: "storedId"',
+      'Raw SQL placeholder :constructor has no value in params; supplied keys: "storedId"',
+    ]);
+  });
+});
+
+describe('PostgreAdapter raw SQL spread placeholders', (): void => {
+  it('rejects :...ids instead of binding the whole array to one parameter', (): void => {
+    const adapter = createPostgreAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM t WHERE id IN (:...ids)', {
+        ids: [1, 2],
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :...ids expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example `= ANY(:IDS)` on PostgreSQL'
+    );
+  });
+
+  it('rejects the uppercase :...IDS, naming it as written', (): void => {
+    const adapter = createPostgreAdapter();
+
+    const error = captureError(() =>
+      adapter.makeSqlBindings('SELECT * FROM t WHERE id IN (:...IDS)', {
+        ids: [1, 2],
+      })
+    );
+
+    expect(error).toBeInstanceOf(ServerError);
+    expect((error as ServerError).message).toBe(
+      'Raw SQL placeholder :...IDS expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example `= ANY(:IDS)` on PostgreSQL'
+    );
+  });
+
+  it('rejects the spread before looking for a value, so a missing key gets the same error', (): void => {
+    const adapter = createPostgreAdapter();
+    const sql = 'SELECT * FROM t WHERE id IN (:...ids)';
+    const expectedMessage =
+      'Raw SQL placeholder :...ids expands an array, which raw SQL does not support; bind the array to one placeholder instead, for example `= ANY(:IDS)` on PostgreSQL';
+
+    const errors = [
+      captureError(() => adapter.makeSqlBindings(sql)),
+      captureError(() => adapter.makeSqlBindings(sql, {})),
+      captureError(() => adapter.makeSqlBindings(sql, { ids: [1], IDS: [2] })),
+    ];
+
+    expect(errors.map((error) => error instanceof ServerError)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(errors.map((error) => (error as ServerError).message)).toEqual([
+      expectedMessage,
+      expectedMessage,
+      expectedMessage,
+    ]);
+  });
+
+  it('leaves :...ids inside literals, quoted identifiers, dollar quotes and comments as SQL text', (): void => {
+    const adapter = createPostgreAdapter();
+    const sql =
+      'select \':...ids\', "x:...ids", $$ :...ids $$ /* :...ids */ -- :...ids\nwhere id = :id';
+
+    expect(adapter.makeSqlBindings(sql, { id: 1 })).toEqual({
+      bindings: [1],
+      sqlString:
+        'select \':...ids\', "x:...ids", $$ :...ids $$ /* :...ids */ -- :...ids\nwhere id = $1',
     });
   });
 });
