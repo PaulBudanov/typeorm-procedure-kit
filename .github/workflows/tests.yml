@@ -148,7 +148,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Run integration tests
-        run: npm exec --offline -- vitest run test/integration --reporter=default --reporter=junit --outputFile.junit=reports/vitest/integration-junit.xml
+        run: npm exec --offline -- vitest run test/integration --reporter=default --reporter=github-actions --reporter=junit --outputFile.junit=reports/vitest/integration-junit.xml
 
       - name: Upload integration test report
         if: always()
