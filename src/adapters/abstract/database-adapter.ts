@@ -536,6 +536,26 @@ export abstract class DatabaseAdapter<
   }
 
   /**
+   * Reads the package names a package-change notification names, from the
+   * payload shape the vendor notifier delivers. What cannot be read is logged
+   * and skipped by the notifier.
+   * @param payload - notification payload handed to the package callback.
+   * @returns package names as the payload holds them.
+   */
+  public readPackageChangeNotification(payload: unknown): Array<string> {
+    return this.notifier.readPackageChangeNotification(payload);
+  }
+
+  /**
+   * Reports whether the current driver mode can register change
+   * notifications at all.
+   * @returns true when listenNotify can register a subscription.
+   */
+  public isChangeNotificationSupported(): boolean {
+    return this.notifier.isChangeNotificationSupported();
+  }
+
+  /**
    * Installs driver fetch hooks required by adapter serializers.
    */
   public registerFetchHandlerHook(): void {

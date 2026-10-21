@@ -44,6 +44,8 @@ export function createAdapterMock(
     destroyNotifications: vi.fn(),
     getNotificationPool: vi.fn((): Map<string, unknown> => new Map()),
     getPackagesNotifySql: vi.fn(),
+    readPackageChangeNotification: vi.fn((): Array<string> => []),
+    isChangeNotificationSupported: vi.fn((): boolean => true),
     registerFetchHandlerHook: vi.fn(),
     ...overrides,
   } as IDatabaseAdapterContract;

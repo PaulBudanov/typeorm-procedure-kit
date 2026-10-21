@@ -75,21 +75,15 @@ export class NotifyBase {
    * Both vendors follow one rule: every notification that names a configured
    * package refreshes it, and which DDL produces a notification is decided in
    * the database - by the CQN query on Oracle, by the trigger on PostgreSQL.
-   * An event name in the payload is not interpreted. A notification that names
-   * no package is logged and skipped; one that names a package outside
-   * `packagesSettings.packages` is skipped silently. Field names are matched
-   * case-insensitively.
+   * An event name in the payload is not interpreted.
    *
-   * What differs is only the payload each database can deliver: Oracle CQN
-   * hands over the changed rows of the watched query, PostgreSQL NOTIFY hands
-   * over one text payload.
+   * The adapter reads the package names from the payload its database
+   * delivers - the changed rows of the CQN query on Oracle, one NOTIFY payload
+   * on PostgreSQL - and logs what it cannot read. Names are compared with
+   * `packagesSettings.packages` trimmed and case-insensitively; a blank name
+   * or one outside the configured packages is skipped silently.
    * @param notifyData - rows refetched by the Oracle CQN query, or the parsed
    * PostgreSQL NOTIFY payload.
-   * @example
-   * // Oracle: rows of the CQN query, each naming a package in NAME
-   * [{ NAME: 'BILLING' }, { NAME: 'REPORTING' }]
-   * // PostgreSQL: one JSON object naming the package (schema) in "object"
-   * { event: 'CREATE', object: 'billing' }
    */
   public async packageNotifyCallback(
     notifyData: TNotifyPackageCallback
@@ -101,43 +95,19 @@ export class NotifyBase {
         packageName.toLowerCase()
       )
     );
+    const packageNames =
+      this.databaseAdapter.readPackageChangeNotification(notifyData);
 
-    const processPackage = async (packageNameRaw: string): Promise<void> => {
-      const packageName = packageNameRaw
-        .trim()
-        .toLowerCase() as Lowercase<string>;
-      if (packageName.length > 0 && configuredPackages.has(packageName)) {
-        await this.refreshPackage(packageName);
-      }
-    };
-
-    // This shape test is the one vendor branch left in this class, and it
-    // cannot tell a PostgreSQL JSON array from Oracle rows. Each vendor
-    // notifier should turn its own payload into package names instead, which
-    // needs a package-notification member on the adapter contract.
-    if (Array.isArray(notifyData)) {
-      await Promise.all(
-        notifyData.map(async (item) => {
-          const packageName = this.readStringField(item, 'name');
-          if (!packageName) {
-            this.logger.warn(
-              'Ignoring Oracle package notification without a string NAME field'
-            );
-            return;
-          }
-          await processPackage(packageName);
-        })
-      );
-      return;
-    }
-    const packageName = this.readStringField(notifyData, 'object');
-    if (!packageName) {
-      this.logger.warn(
-        'Ignoring PostgreSQL package notification without a string "object" field'
-      );
-      return;
-    }
-    await processPackage(packageName);
+    await Promise.all(
+      packageNames.map(async (packageNameRaw) => {
+        const packageName = packageNameRaw
+          .trim()
+          .toLowerCase() as Lowercase<string>;
+        if (packageName.length > 0 && configuredPackages.has(packageName)) {
+          await this.refreshPackage(packageName);
+        }
+      })
+    );
   }
 
   /**
@@ -154,14 +124,6 @@ export class NotifyBase {
         (error as Error).stack
       );
     });
-  }
-
-  private readStringField(value: unknown, fieldName: string): string | null {
-    if (value === null || typeof value !== 'object') return null;
-    const entry = Object.entries(value).find(
-      ([key]) => key.toLowerCase() === fieldName.toLowerCase()
-    );
-    return typeof entry?.[1] === 'string' ? entry[1] : null;
   }
 
   /**
@@ -182,7 +144,6 @@ export class NotifyBase {
    *   }
    * );
    */
-  //TODO: Extend to support other databases, refactor interfaces
   public createNotification<T>(
     options: ICreateNotify<T>,
     additionalOptions?: IOracleOptionsNotify

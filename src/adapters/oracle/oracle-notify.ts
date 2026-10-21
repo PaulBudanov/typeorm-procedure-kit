@@ -25,6 +25,9 @@ export class OracleNotify extends DatabaseNotify<
   IOracleOptionsNotify
 > {
   private static readonly MAX_ROWIDS_PER_QUERY = 1_000;
+  /** Error for a subscription node-oracledb cannot register in Thin mode. */
+  private static readonly THICK_MODE_REQUIRED_MESSAGE =
+    'Oracle change notifications require node-oracledb Thick mode (set libraryPath, or call oracledb.initOracleClient() before initDatabase()) and the CHANGE NOTIFICATION privilege';
   private readonly subscriptionQueues = new Map<
     string,
     { tail: Promise<void>; size: number }
@@ -69,6 +72,63 @@ export class OracleNotify extends DatabaseNotify<
       ':REPLACER_PACKAGES',
       packageConditions
     );
+  }
+
+  /**
+   * Reads the package names from the rows the package-change CQN query
+   * refetched: the NAME field of every row, matched case-insensitively. Other
+   * fields are ignored. A payload that is not an array of rows, and each row
+   * without a string NAME field, is logged and skipped.
+   * @param payload - rows refetched by the package-change CQN query.
+   * @returns package names in row order, as the rows hold them.
+   * @example
+   * notify.readPackageChangeNotification([{ NAME: 'BILLING' }, { NAME: 'REPORTING' }]);
+   * // ['BILLING', 'REPORTING']
+   */
+  public readPackageChangeNotification(payload: unknown): Array<string> {
+    if (!Array.isArray(payload)) {
+      this.logger.warn(
+        'Ignoring Oracle package notification that is not an array of rows'
+      );
+      return [];
+    }
+    const rows: ReadonlyArray<unknown> = payload;
+    const packageNames: Array<string> = [];
+    for (const row of rows) {
+      const packageName = this.readStringField(row, 'name');
+      if (!packageName) {
+        this.logger.warn(
+          'Ignoring Oracle package notification without a string NAME field'
+        );
+        continue;
+      }
+      packageNames.push(packageName);
+    }
+    return packageNames;
+  }
+
+  /**
+   * Reports whether CQN subscriptions can be registered: node-oracledb
+   * supports them only in Thick mode.
+   * @returns true in Thick mode, false in Thin mode.
+   */
+  public isChangeNotificationSupported(): boolean {
+    return !oracledb.thin;
+  }
+
+  /**
+   * Reads one string field of a notification row, matching the field name
+   * case-insensitively.
+   * @param value - notification row.
+   * @param fieldName - field name in any letter case.
+   * @returns the field value, or null when it is absent or not a string.
+   */
+  private readStringField(value: unknown, fieldName: string): string | null {
+    if (value === null || typeof value !== 'object') return null;
+    const entry = Object.entries(value).find(
+      ([key]) => key.toLowerCase() === fieldName.toLowerCase()
+    );
+    return typeof entry?.[1] === 'string' ? entry[1] : null;
   }
   /**
    * Unsubscribes one CQN subscription and closes its dedicated connection.
@@ -129,6 +189,8 @@ export class OracleNotify extends DatabaseNotify<
    * @param options - CQN and restore retry options.
    * @returns created subscription name or comma-separated subscription names.
    * @throws ServerError when too many per-operation subscriptions are requested.
+   * @throws ServerError in node-oracledb Thin mode, before a connection is
+   * opened, because CQN needs Thick mode.
    * @throws Error when Oracle subscription registration fails.
    */
   public override async listenNotify<T>(
@@ -149,6 +211,9 @@ export class OracleNotify extends DatabaseNotify<
         throw new ServerError(
           'Operations length must be less than 4, use opcode for all operations:  oracledb.CQN_OPCODE_ALL_OPS,'
         );
+    }
+    if (!this.isChangeNotificationSupported()) {
+      throw new ServerError(OracleNotify.THICK_MODE_REQUIRED_MESSAGE);
     }
     return this.trackNotificationRegistration(() =>
       this.registerSubscriptions(sqlCommand, notifyCallback, options)
@@ -364,7 +429,9 @@ export class OracleNotify extends DatabaseNotify<
    * Handles Oracle subscription message.
    * Deregistration or shutdown events trigger restore when the message belongs
    * to the current pooled connection. Change events are expanded by ROWID into
-   * SELECT queries, and fetched rows are passed to the callback.
+   * SELECT queries, and fetched rows are passed to the callback one chunk at a
+   * time. A callback error is logged and does not stop the remaining chunks;
+   * a refetch error ends the event.
    * @param notifyCallback - callback invoked for changed rows.
    * @param client - Oracle connection that received the message.
    * @param channelName - subscription name.
@@ -479,15 +546,17 @@ export class OracleNotify extends DatabaseNotify<
           }
           // Refetched rows are table data, not a procedure result, so they are
           // never read as an error envelope: a watched table may well have
-          // error_code/error_text columns.
+          // error_code/error_text columns. A callback error is logged and the
+          // remaining chunks are still delivered, as PostgreSQL does per payload.
           try {
             await notifyCallback(changedRows);
           } catch (error) {
             this.logger.error(
-              `Unhandled callback error: ${(error as Error).message}`,
+              `Unhandled notification callback error for channel "${channelName}": ${
+                (error as Error).message
+              }`,
               (error as Error).stack
             );
-            throw error;
           }
         }
       }

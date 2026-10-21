@@ -769,4 +769,61 @@ describe('PostgreNotify', (): void => {
     );
     expect(connection.createSingleConnection).toHaveBeenCalledTimes(2);
   });
+  describe('package change notifications', (): void => {
+    it.each([
+      {
+        payload: { event: 'CREATE', object: 'billing' },
+        expected: ['billing'],
+      },
+      { payload: { OBJECT: 'Billing' }, expected: ['Billing'] },
+      {
+        payload: { event: 'DROP', object: 'PKG', schema: 'app', tag: 7 },
+        expected: ['PKG'],
+      },
+    ])(
+      'reads the package name from the "object" field of $payload',
+      ({ payload, expected }): void => {
+        const logger = createLogger();
+        const notify = new PostgreNotify({} as never, logger);
+
+        expect(notify.readPackageChangeNotification(payload)).toEqual(expected);
+        expect(logger.warn).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([
+      { shape: 'an object without "object"', payload: { event: 'CREATE' } },
+      {
+        shape: 'a non-string "object"',
+        payload: { event: 'CREATE', object: 42 },
+      },
+      { shape: 'an empty NOTIFY payload', payload: {} },
+      { shape: 'a JSON null', payload: null },
+      { shape: 'a JSON number', payload: 5 },
+      {
+        shape: 'a payload that is not JSON',
+        payload: 'billing\nforged log line',
+      },
+      { shape: 'a JSON array of rows', payload: [{ NAME: 'billing' }] },
+      { shape: 'a JSON array of objects', payload: [{ object: 'billing' }] },
+    ])(
+      'warns once about and skips a PostgreSQL package notification with $shape',
+      ({ payload }): void => {
+        const logger = createLogger();
+        const notify = new PostgreNotify({} as never, logger);
+
+        expect(notify.readPackageChangeNotification(payload)).toEqual([]);
+        expect(logger.warn).toHaveBeenCalledOnce();
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Ignoring PostgreSQL package notification without a string "object" field'
+        );
+      }
+    );
+
+    it('reports change notifications as supported', (): void => {
+      const notify = new PostgreNotify({} as never, createLogger());
+
+      expect(notify.isChangeNotificationSupported()).toBe(true);
+    });
+  });
 });

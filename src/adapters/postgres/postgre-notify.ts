@@ -44,6 +44,54 @@ export class PostgreNotify extends DatabaseNotify<Client> {
   }
 
   /**
+   * Reads the package name from a package-change NOTIFY payload: the
+   * `object` field of one JSON object, matched case-insensitively. Other
+   * fields are ignored. Any other payload - an array included - is logged
+   * without its content and skipped.
+   * @param payload - parsed NOTIFY payload, or the raw text when it is not JSON.
+   * @returns the package (schema) name, or no name.
+   * @example
+   * notify.readPackageChangeNotification({ event: 'CREATE', object: 'billing' });
+   * // ['billing']
+   */
+  public readPackageChangeNotification(payload: unknown): Array<string> {
+    const packageName = Array.isArray(payload)
+      ? null
+      : this.readStringField(payload, 'object');
+    if (!packageName) {
+      this.logger.warn(
+        'Ignoring PostgreSQL package notification without a string "object" field'
+      );
+      return [];
+    }
+    return [packageName];
+  }
+
+  /**
+   * Reports whether LISTEN subscriptions can be registered; PostgreSQL
+   * supports them in every driver mode.
+   * @returns always true.
+   */
+  public isChangeNotificationSupported(): boolean {
+    return true;
+  }
+
+  /**
+   * Reads one string field of a notification object, matching the field name
+   * case-insensitively.
+   * @param value - notification object.
+   * @param fieldName - field name in any letter case.
+   * @returns the field value, or null when it is absent or not a string.
+   */
+  private readStringField(value: unknown, fieldName: string): string | null {
+    if (value === null || typeof value !== 'object') return null;
+    const entry = Object.entries(value).find(
+      ([key]) => key.toLowerCase() === fieldName.toLowerCase()
+    );
+    return typeof entry?.[1] === 'string' ? entry[1] : null;
+  }
+
+  /**
    * Registers a PostgreSQL LISTEN subscription on a dedicated client.
    * The channel is parsed from `LISTEN channel`, normalized with identifier
    * quoting, and stored under the raw channel name returned by this method.
