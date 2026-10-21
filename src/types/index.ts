@@ -11,6 +11,7 @@ export type {
   TOracleDbConfig,
   TPostgresDbConfig,
   IDatabaseCredentials,
+  IErrorEnvelopeKeys,
   IResourceLimits,
 } from './config.types.js';
 
