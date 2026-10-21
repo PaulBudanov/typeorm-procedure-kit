@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import { DatabaseErrorHandler } from '../utils/database-error-handler.js';
+import { runInKitCall } from '../utils/kit-call-context.js';
 import { QueryTimer } from '../utils/query-timer.js';
 import { ServerError } from '../utils/server-error.js';
 
@@ -131,6 +132,11 @@ export class ExecuteBase {
    * Shared scaffold behind every adapter call: query timing, entity manager
    * lifecycle, error wrapping and the mandatory release of the manager.
    *
+   * Only the adapter call and the inspection of its result run as a kit call
+   * (`runInKitCall`). The entity manager is taken and released outside it: a
+   * connection the pool opens here keeps the context it was opened in, and a
+   * marked one would make later raw queries on it strict too.
+   *
    * @param sql - SQL query string, logged by the query timer
    * @param bindings - bindings for the SQL query or procedure, logged by the query timer
    * @param executionOptions - execution options such as connection mode, setup commands, and query id
@@ -167,8 +173,12 @@ export class ExecuteBase {
     queryTimer.start();
     let operationError: ServerError | undefined;
     try {
-      const result = await runOperation(client, optionsCommands);
-      const rowCount = inspectResult(result, queryId);
+      const [result, rowCount] = await runInKitCall(
+        async (): Promise<[TResult, number | undefined]> => {
+          const operationResult = await runOperation(client, optionsCommands);
+          return [operationResult, inspectResult(operationResult, queryId)];
+        }
+      );
       queryTimer.success(rowCount);
       return result;
     } catch (error: unknown) {

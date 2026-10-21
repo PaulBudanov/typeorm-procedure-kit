@@ -1,8 +1,16 @@
+import { AsyncResource } from 'node:async_hooks';
+
+import { types as pgTypes } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serializer.js';
 import { ExecuteBase } from '../../src/core/execute-base.js';
+import { ProcedureListBase } from '../../src/core/procedure-list-base.js';
+import { isInKitCall } from '../../src/utils/kit-call-context.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createAdapterMock, createLogger } from '../support/helpers.js';
+
+import type { FieldDef } from 'pg';
 
 describe('ExecuteBase', (): void => {
   it('executes through adapter, checks errors, and releases manager', async (): Promise<void> => {
@@ -441,4 +449,132 @@ describe('ExecuteBase', (): void => {
       expect(connectionBase.releaseEntityManager).toHaveBeenCalledWith(manager);
     }
   );
+
+  it.each(['execute', 'executeProcedure'] as const)(
+    'runs the adapter %s call inside a kit call',
+    async (method): Promise<void> => {
+      const observed: Array<boolean> = [];
+      const record = async (): Promise<unknown> => {
+        observed.push(isInKitCall());
+        await Promise.resolve();
+        observed.push(isInKitCall());
+        return method === 'execute' ? [] : { rows: [], outBinds: {} };
+      };
+      const executeBase = new ExecuteBase(
+        {
+          getEntityManager: vi.fn().mockResolvedValue({}),
+          releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+        } as never,
+        createAdapterMock({
+          execute: vi.fn().mockImplementation(record),
+          executeProcedure: vi.fn().mockImplementation(record),
+        }),
+        createLogger()
+      );
+
+      await (method === 'execute'
+        ? executeBase.execute('select 1')
+        : executeBase.executeProcedure('CALL example'));
+
+      expect(observed).toEqual([true, true]);
+      expect(isInKitCall()).toBe(false);
+    }
+  );
+
+  it('takes and releases the connection outside the kit call', async (): Promise<void> => {
+    // A pooled socket keeps the asynchronous context it was opened in, and node-postgres hands
+    // streamed rows over in that context. A socket opened inside the kit call would carry the
+    // mark into every later query on the same connection, raw ones included.
+    const manager = {};
+    let pooledSocket: AsyncResource | undefined;
+    const observed: Record<string, boolean> = {};
+    const connectionBase = {
+      getEntityManager: vi.fn(async (): Promise<object> => {
+        observed.acquire = isInKitCall();
+        pooledSocket = new AsyncResource('PooledSocket');
+        return manager;
+      }),
+      releaseEntityManager: vi.fn(async (): Promise<void> => {
+        observed.release = isInKitCall();
+      }),
+    };
+    const executeBase = new ExecuteBase(
+      connectionBase as never,
+      createAdapterMock({
+        execute: vi
+          .fn()
+          .mockImplementation(async (): Promise<Array<unknown>> => {
+            observed.operation = isInKitCall();
+            observed.socketDuringCall =
+              pooledSocket?.runInAsyncScope((): boolean => isInKitCall()) ??
+              true;
+            return [];
+          }),
+      }),
+      createLogger()
+    );
+
+    await executeBase.execute('select 1');
+
+    expect(observed).toEqual({
+      acquire: false,
+      operation: true,
+      socketDuringCall: false,
+      release: false,
+    });
+    expect(pooledSocket?.runInAsyncScope((): boolean => isInKitCall())).toBe(
+      false
+    );
+  });
+
+  it('checks the kit metadata query strictly, as part of a kit call', async (): Promise<void> => {
+    // Nothing in ProcedureListBase marks the query: it is strict because it runs through
+    // ExecuteBase, as `call()` and `callSqlTransaction()` do.
+    const serializer = new PostgreSerializer(createLogger(), {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy: {
+        transformColumnName: (value: string): string => value.toLowerCase(),
+      },
+    });
+    const metadataFields = [
+      { name: 'procedure_name', dataTypeID: pgTypes.builtins.TEXT },
+      { name: 'PROCEDURE_NAME', dataTypeID: pgTypes.builtins.TEXT },
+    ] as Array<FieldDef>;
+    const adapter = createAdapterMock({
+      generatePackageInfoSql: vi.fn((): string => 'select metadata'),
+      execute: vi
+        .fn()
+        .mockImplementation(
+          async (): Promise<Array<unknown>> =>
+            serializer.transformRows(
+              [{ procedure_name: 'run', PROCEDURE_NAME: 'RUN' }],
+              metadataFields
+            )
+        ),
+    });
+    const logger = createLogger();
+    const procedureList = new ProcedureListBase(
+      logger,
+      adapter,
+      new ExecuteBase(
+        {
+          getEntityManager: vi.fn().mockResolvedValue({}),
+          releaseEntityManager: vi.fn().mockResolvedValue(undefined),
+        } as never,
+        adapter,
+        logger
+      ),
+      { packages: ['pkg'], procedureObjectList: { run: 'pkg.run' } }
+    );
+
+    try {
+      await expect(
+        procedureList.fetchProcedureListWithArguments('pkg')
+      ).rejects.toThrow(
+        'Failed to fetch procedure list with arguments for package pkg: PostgreSQL result columns "procedure_name" and "PROCEDURE_NAME" have conflicting transformed name "procedure_name"'
+      );
+    } finally {
+      await procedureList.destroy();
+    }
+  });
 });

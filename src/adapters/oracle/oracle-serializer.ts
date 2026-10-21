@@ -1,5 +1,6 @@
 import oracledb from 'oracledb';
 
+import { isInKitCall } from '../../utils/kit-call-context.js';
 import { ServerError } from '../../utils/server-error.js';
 import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
@@ -78,7 +79,7 @@ export class OracleSerializer extends DatabaseSerializer {
     rowsetMetaData?: ReadonlyArray<oracledb.Metadata<unknown>>
   ) => FetchTypeResponse | undefined {
     return (metaData, rowsetMetaData): FetchTypeResponse | undefined => {
-      this.assertNoRowsetColumnCollision(metaData, rowsetMetaData);
+      this.checkRowsetColumnCollision(metaData, rowsetMetaData);
       if (metaData.dbType !== oracledb.DB_TYPE_CURSOR)
         metaData.name = this.options.caseStrategy.transformColumnName(
           metaData.name
@@ -110,13 +111,18 @@ export class OracleSerializer extends DatabaseSerializer {
   }
 
   /**
-   * Rejects a rowset whose columns would share one output name.
+   * Rejects, inside a kit call, a rowset whose columns would share one output name, and warns
+   * about it once anywhere else.
    *
    * The check runs only on the first column of a rowset, while every name in
    * the array is still raw, and does nothing on the remaining columns or when
    * the driver supplies no rowset metadata. REF CURSOR columns keep their raw
    * name because the handler never renames them, so they take part in the
    * check under that raw name.
+   *
+   * Outside a kit call the query carries on: the handler renames every column
+   * as usual, and node-oracledb then keeps each repeated name apart with a
+   * numeric suffix (`id`, `id_1`; `lib/impl/resultset.js` `_setup`).
    *
    * The second argument is undeclared by `@types/oracledb` and was only
    * verified on node-oracledb 7.0.0, while the supported peer range is
@@ -126,9 +132,9 @@ export class OracleSerializer extends DatabaseSerializer {
    * on a query the driver would have run.
    * @param metaData - the column the driver is currently asking about.
    * @param rowsetMetaData - every column of a single Oracle statement.
-   * @throws ServerError - when two columns map onto the same output name.
+   * @throws ServerError - inside a kit call, when two columns map onto the same output name.
    */
-  private assertNoRowsetColumnCollision(
+  private checkRowsetColumnCollision(
     metaData: oracledb.Metadata<unknown>,
     rowsetMetaData?: ReadonlyArray<oracledb.Metadata<unknown>>
   ): void {
@@ -143,9 +149,10 @@ export class OracleSerializer extends DatabaseSerializer {
         : this.options.caseStrategy.transformColumnName(rawName);
       const originalName = outputNames.get(outputName);
       if (originalName !== undefined) {
-        throw new ServerError(
-          `Oracle result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`
-        );
+        const collision = `Oracle result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`;
+        if (isInKitCall()) throw new ServerError(collision);
+        this.logger.warn(collision);
+        return;
       }
       outputNames.set(outputName, rawName);
     }

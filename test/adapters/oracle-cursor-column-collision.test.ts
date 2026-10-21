@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { OracleProcedureResultMaterializer } from '../../src/adapters/oracle/oracle-result-materializer.js';
 import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js';
+import { runInKitCall } from '../../src/utils/kit-call-context.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../src/utils/resource-limits.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { StringUtilities } from '../../src/utils/string-utilities.js';
@@ -99,21 +100,54 @@ describe('Oracle cursor column names', (): void => {
     ).rejects.toThrow('Oracle result set returned two columns named "orderId"');
   });
 
-  it('refuses raw names that collide after case conversion, where the driver asks', (): void => {
-    const serializer = new OracleSerializer(createLogger(), {
+  /**
+   * Builds a fetch type handler and the rowset the driver hands it for one statement.
+   * @param logger - the serializer's logger.
+   * @returns the handler and the rowset whose raw names collide after case conversion.
+   */
+  function createCollidingRowset(logger: ITestLogger = createLogger()): {
+    handler: ReturnType<OracleSerializer['createFetchTypeHandler']>;
+    rowset: Array<{ name: string; dbType: oracledb.DbType }>;
+  } {
+    const serializer = new OracleSerializer(logger, {
       isNeedRegisterDefaultSerializers: false,
       caseStrategy: {
         transformColumnName: (value: string): string =>
           StringUtilities.toCamelCase(value),
       },
     });
-    const rowset = [
-      { name: 'ORDER_ID', dbType: oracledb.DB_TYPE_NUMBER },
-      { name: 'order id', dbType: oracledb.DB_TYPE_VARCHAR },
-    ];
-    const handler = serializer.createFetchTypeHandler();
+    return {
+      handler: serializer.createFetchTypeHandler(),
+      rowset: [
+        { name: 'ORDER_ID', dbType: oracledb.DB_TYPE_NUMBER },
+        { name: 'order id', dbType: oracledb.DB_TYPE_VARCHAR },
+      ],
+    };
+  }
 
-    expect(() => handler(rowset[0] as never, rowset as never)).toThrow(
+  it('refuses raw names that collide after case conversion inside a kit call, where the driver asks', async (): Promise<void> => {
+    const { handler, rowset } = createCollidingRowset();
+
+    await expect(
+      runInKitCall(
+        async (): Promise<unknown> =>
+          handler(rowset[0] as never, rowset as never)
+      )
+    ).rejects.toThrow(
+      'Oracle result columns "ORDER_ID" and "order id" have conflicting transformed name "orderId"'
+    );
+  });
+
+  it('warns about raw names that collide after case conversion outside a kit call', (): void => {
+    const logger = createLogger();
+    const { handler, rowset } = createCollidingRowset(logger);
+
+    expect(() => {
+      for (const column of rowset) handler(column as never, rowset as never);
+    }).not.toThrow();
+    expect(rowset.map(({ name }) => name)).toEqual(['orderId', 'orderId']);
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
       'Oracle result columns "ORDER_ID" and "order id" have conflicting transformed name "orderId"'
     );
   });

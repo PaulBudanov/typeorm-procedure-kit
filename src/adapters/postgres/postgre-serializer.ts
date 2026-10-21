@@ -1,5 +1,6 @@
 import { TypeOverrides, types } from 'pg';
 
+import { isInKitCall } from '../../utils/kit-call-context.js';
 import { ServerError } from '../../utils/server-error.js';
 import { DatabaseSerializer } from '../abstract/database-serializer.js';
 
@@ -30,6 +31,14 @@ export class PostgreSerializer extends DatabaseSerializer {
     XML: [types.builtins.XML],
   };
   private readonly typeOverrides = new TypeOverrides();
+  /** The name plan of the last described statement; see `resolveDescribedOutputNames`. */
+  private describedOutputNames:
+    | {
+        readonly fields: ReadonlyArray<FieldDef>;
+        readonly collisionHandling: 'error' | 'warn';
+        readonly outputNames: ReadonlyMap<string, string>;
+      }
+    | undefined;
   private readonly defaultTypeParsers = new Map<
     number,
     (value: string) => unknown
@@ -50,75 +59,141 @@ export class PostgreSerializer extends DatabaseSerializer {
 
   /**
    * Renames the columns of one statement's rows through the case strategy.
+   *
+   * Inside a kit call two columns that map onto one output name are an error. Any other query
+   * through the DataSource gets a warning instead, once per described statement and once per
+   * undescribed row, and each row keeps the last of the equally named values: node-postgres has
+   * already dropped the others for a repeated raw name, and a later column wins for names that
+   * only collide after case conversion.
    * @param rows - the rows node-postgres produced.
    * @param fields - that statement's row description, or `[]` when the runner has none.
    * @returns the rows with renamed keys; rows that are not plain objects are returned as they are.
-   * @throws ServerError - when two columns map onto the same output name.
+   * @throws ServerError - inside a kit call, when two columns map onto the same output name.
    */
   public transformRows(
     rows: Array<unknown>,
     fields: Array<FieldDef>
   ): Array<unknown> {
-    const describedNames = this.resolveDescribedOutputNames(fields);
-    return rows.map((row) => {
-      if (row === null || typeof row !== 'object' || Array.isArray(row))
-        return row;
-      const outputNames = new Map<string, string>();
-      return Object.fromEntries(
-        Object.entries(row as Record<string, unknown>).map(([key, value]) => {
-          const outputName =
-            describedNames.get(key) ??
-            this.options.caseStrategy.transformColumnName(key);
-          const originalName = outputNames.get(outputName);
-          if (originalName !== undefined) {
-            throw new ServerError(
-              `PostgreSQL result columns "${originalName}" and "${key}" have conflicting transformed name "${outputName}"`
-            );
-          }
-          outputNames.set(outputName, key);
-          return [outputName, value];
-        })
+    const collisionHandling = isInKitCall() ? 'error' : 'warn';
+    if (fields.length === 0) {
+      return rows.map((row) =>
+        PostgreSerializer.isRowObject(row)
+          ? this.renameRow(
+              row,
+              this.planOutputNames(Object.keys(row), collisionHandling)
+            )
+          : row
       );
-    });
+    }
+    const outputNames = this.resolveDescribedOutputNames(
+      fields,
+      collisionHandling
+    );
+    return rows.map((row) =>
+      PostgreSerializer.isRowObject(row)
+        ? this.renameRow(row, outputNames)
+        : row
+    );
   }
 
   /**
-   * Maps every column of a row description onto its output name, rejecting a description in
-   * which two columns would share one.
+   * Maps every column of a row description onto its output name, once per statement.
    *
    * The row itself cannot answer that question for a repeated name. node-postgres builds an
    * object row by assigning `row[field.name]` column by column (`pg/lib/result.js` `parseRow`),
    * so `SELECT a.id, b.id` arrives as a single `id` key holding the second value, and the first
    * column is gone before this serializer runs. The row description, which node-postgres keeps
    * beside the rows as `fields`, is the one place both columns still exist, so the check is made
-   * on it: once per statement, before any row is touched, and whether or not the statement
-   * returned rows. That mirrors `OracleSerializer.assertNoRowsetColumnCollision`, which checks
-   * the rowset metadata before the first row is fetched, and raises the same message.
+   * on it: before any row is touched, and whether or not the statement returned rows. That
+   * mirrors `OracleSerializer.checkRowsetColumnCollision`, which checks the rowset metadata before
+   * the first row is fetched, and reports the same message.
+   *
+   * A streamed statement arrives one row per call with the same `fields` array, so the plan for
+   * the last description is kept and reused while that array and the collision handling stay the
+   * same. The handling is part of the key so that a plan made, with a warning, for a query outside
+   * a kit call is never reused for a kit call.
    *
    * An empty description — what `PostgresQueryRunner` passes when a result has no `fields` —
-   * yields an empty map, and renaming falls back to the keys the row has, as the Oracle check is
-   * skipped when the driver supplies no rowset metadata.
+   * never reaches this method: renaming then falls back to the keys each row has, as the Oracle
+   * check is skipped when the driver supplies no rowset metadata.
    * @param fields - the row description of one statement.
+   * @param collisionHandling - whether a collision throws or is logged as a warning.
    * @returns raw column name to output name, for every described column.
-   * @throws ServerError - when two columns map onto the same output name.
+   * @throws ServerError - when `collisionHandling` is `'error'` and two columns map onto the same
+   * output name.
    */
   private resolveDescribedOutputNames(
-    fields: ReadonlyArray<FieldDef>
+    fields: ReadonlyArray<FieldDef>,
+    collisionHandling: 'error' | 'warn'
+  ): ReadonlyMap<string, string> {
+    const plan = this.describedOutputNames;
+    if (plan?.fields === fields && plan.collisionHandling === collisionHandling)
+      return plan.outputNames;
+    const outputNames = this.planOutputNames(
+      fields.map(({ name }) => name),
+      collisionHandling
+    );
+    this.describedOutputNames = { fields, collisionHandling, outputNames };
+    return outputNames;
+  }
+
+  /**
+   * Maps raw column names onto their output names and handles the first pair that would share
+   * one: both PostgreSQL checks, on a row description and on the keys of an undescribed row, go
+   * through it.
+   * @param rawNames - the raw column names of one statement, or of one undescribed row.
+   * @param collisionHandling - `'error'` throws, `'warn'` logs one warning and carries on.
+   * @returns raw column name to output name, for every given name.
+   * @throws ServerError - when `collisionHandling` is `'error'` and two names map onto the same
+   * output name.
+   */
+  private planOutputNames(
+    rawNames: ReadonlyArray<string>,
+    collisionHandling: 'error' | 'warn'
   ): ReadonlyMap<string, string> {
     const outputNames = new Map<string, string>();
     const sourceNames = new Map<string, string>();
-    for (const { name } of fields) {
-      const outputName = this.options.caseStrategy.transformColumnName(name);
+    let collision: string | undefined;
+    for (const rawName of rawNames) {
+      const outputName = this.options.caseStrategy.transformColumnName(rawName);
       const originalName = sourceNames.get(outputName);
       if (originalName !== undefined) {
-        throw new ServerError(
-          `PostgreSQL result columns "${originalName}" and "${name}" have conflicting transformed name "${outputName}"`
-        );
+        collision ??= `PostgreSQL result columns "${originalName}" and "${rawName}" have conflicting transformed name "${outputName}"`;
+        if (collisionHandling === 'error') throw new ServerError(collision);
       }
-      sourceNames.set(outputName, name);
-      outputNames.set(name, outputName);
+      sourceNames.set(outputName, rawName);
+      outputNames.set(rawName, outputName);
     }
+    if (collision !== undefined) this.logger.warn(collision);
     return outputNames;
+  }
+
+  /**
+   * Renames one row's keys, in the row's own key order.
+   * @param row - a plain object row.
+   * @param outputNames - the statement's name plan; a key it lacks goes through the case strategy.
+   * @returns a new row whose keys are all own properties, `__proto__` included.
+   */
+  private renameRow(
+    row: Record<string, unknown>,
+    outputNames: ReadonlyMap<string, string>
+  ): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [
+        outputNames.get(key) ??
+          this.options.caseStrategy.transformColumnName(key),
+        value,
+      ])
+    );
+  }
+
+  /**
+   * Narrows a result row to the object form whose keys are renamed.
+   * @param row - one row as node-postgres produced it.
+   * @returns true for a plain object row, false for `rowMode: 'array'` rows and other values.
+   */
+  private static isRowObject(row: unknown): row is Record<string, unknown> {
+    return row !== null && typeof row === 'object' && !Array.isArray(row);
   }
 
   /**

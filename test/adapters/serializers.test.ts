@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { OracleSerializer } from '../../src/adapters/oracle/oracle-serializer.js';
 import { PostgreSerializer } from '../../src/adapters/postgres/postgre-serializer.js';
+import { runInKitCall } from '../../src/utils/kit-call-context.js';
 import { ServerError } from '../../src/utils/server-error.js';
 import { createLogger } from '../support/helpers.js';
 
@@ -173,37 +174,67 @@ describe('database serializers', (): void => {
     }
   );
 
-  it('rejects transformed column collisions without including values', (): void => {
+  it('rejects transformed column collisions inside a kit call without including values', async (): Promise<void> => {
     const serializer = new PostgreSerializer(createLogger(), {
       isNeedRegisterDefaultSerializers: false,
       caseStrategy,
     });
-    expect(() =>
-      serializer.transformRows(
-        [{ FOO: 'private-first', foo: 'private-second' }],
-        []
+    await expect(
+      runInKitCall(
+        async (): Promise<Array<unknown>> =>
+          serializer.transformRows(
+            [{ FOO: 'private-first', foo: 'private-second' }],
+            []
+          )
       )
-    ).toThrow(
+    ).rejects.toThrow(
       /^PostgreSQL result columns "FOO" and "foo" have conflicting transformed name "foo"$/
     );
   });
 
-  it('reports both source columns for collisions from a custom strategy', (): void => {
-    const serializer = new PostgreSerializer(createLogger(), {
+  it('warns about transformed column collisions outside a kit call without including values', (): void => {
+    const logger = createLogger();
+    const serializer = new PostgreSerializer(logger, {
+      isNeedRegisterDefaultSerializers: false,
+      caseStrategy,
+    });
+
+    expect(
+      serializer.transformRows(
+        [{ FOO: 'private-first', foo: 'private-second' }],
+        []
+      )
+    ).toStrictEqual([{ foo: 'private-second' }]);
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'PostgreSQL result columns "FOO" and "foo" have conflicting transformed name "foo"'
+    );
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('private-');
+  });
+
+  it('reports both source columns for collisions from a custom strategy', async (): Promise<void> => {
+    const logger = createLogger();
+    const serializer = new PostgreSerializer(logger, {
       isNeedRegisterDefaultSerializers: false,
       caseStrategy: {
         ...caseStrategy,
         transformColumnName: () => 'merged',
       },
     });
-    expect(() =>
-      serializer.transformRows(
-        [{ left: 'private-first', right: 'private-second' }],
-        []
+    const rows = [{ left: 'private-first', right: 'private-second' }];
+    const collision =
+      'PostgreSQL result columns "left" and "right" have conflicting transformed name "merged"';
+
+    await expect(
+      runInKitCall(
+        async (): Promise<Array<unknown>> => serializer.transformRows(rows, [])
       )
-    ).toThrow(
-      /^PostgreSQL result columns "left" and "right" have conflicting transformed name "merged"$/
-    );
+    ).rejects.toThrow(collision);
+    expect(serializer.transformRows(rows, [])).toStrictEqual([
+      { merged: 'private-second' },
+    ]);
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(collision);
   });
 
   it('preserves prototype-like result columns as own properties', (): void => {
