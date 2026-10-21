@@ -38,7 +38,7 @@ describe('DatabaseOptionsExecutor', (): void => {
       )
     ).rejects.toBe(error);
     expect(logger.error).toHaveBeenCalledWith(
-      'Ошибка выполнения команд базы данных: denied',
+      'Database option commands failed: denied',
       error.stack
     );
   });

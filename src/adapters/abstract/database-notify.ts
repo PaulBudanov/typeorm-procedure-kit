@@ -25,11 +25,16 @@ export abstract class DatabaseNotify<
   protected static readonly RESTORE_MAX_RETRIES: number = 5;
   protected static readonly RESTORE_CURRENT_RETRY: number = 1;
   /**
-   * Lower bound for both restore delays. The attempt counter restarts after
+   * Lower bound for retryDelayMs. Attempts within one round may follow each
+   * other without a pause: retryAfterMaxDelayMs spaces out the rounds.
+   */
+  protected static readonly RESTORE_MIN_RETRY_DELAY_MS: number = 0;
+  /**
+   * Lower bound for retryAfterMaxDelayMs. The attempt counter restarts after
    * maxRetries is exhausted, so a loop configured with a shorter delay would
    * reconnect to an already failing database with no pause worth the name.
    */
-  protected static readonly RESTORE_MIN_DELAY_MS: number = 100;
+  protected static readonly RESTORE_MIN_RETRY_AFTER_MAX_DELAY_MS: number = 100;
   /** Upper bound for both restore delays: the largest setTimeout delay. */
   protected static readonly RESTORE_MAX_DELAY_MS: number = 2_147_483_647;
   protected static readonly DESTROY_RESTORE_WAIT_TIMEOUT_MS: number = 1000 * 5;
@@ -451,25 +456,31 @@ export abstract class DatabaseNotify<
     ) {
       throw new RangeError('maxRetries must be a positive safe integer');
     }
-    this.assertNotificationDelay(options.retryDelayMs, 'retryDelayMs');
+    this.assertNotificationDelay(
+      options.retryDelayMs,
+      'retryDelayMs',
+      DatabaseNotify.RESTORE_MIN_RETRY_DELAY_MS
+    );
     this.assertNotificationDelay(
       options.retryAfterMaxDelayMs,
-      'retryAfterMaxDelayMs'
+      'retryAfterMaxDelayMs',
+      DatabaseNotify.RESTORE_MIN_RETRY_AFTER_MAX_DELAY_MS
     );
   }
 
   private assertNotificationDelay(
     delayMs: number | undefined,
-    optionName: string
+    optionName: string,
+    minDelayMs: number
   ): void {
     if (
       delayMs !== undefined &&
       (!Number.isSafeInteger(delayMs) ||
-        delayMs < DatabaseNotify.RESTORE_MIN_DELAY_MS ||
+        delayMs < minDelayMs ||
         delayMs > DatabaseNotify.RESTORE_MAX_DELAY_MS)
     ) {
       throw new RangeError(
-        `${optionName} must be an integer between ${DatabaseNotify.RESTORE_MIN_DELAY_MS} and ${DatabaseNotify.RESTORE_MAX_DELAY_MS}`
+        `${optionName} must be an integer between ${minDelayMs} and ${DatabaseNotify.RESTORE_MAX_DELAY_MS}`
       );
     }
   }

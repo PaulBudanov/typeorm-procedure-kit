@@ -187,8 +187,6 @@ describe('DatabaseNotify', (): void => {
     { option: 'maxRetries', value: Number.NaN },
     { option: 'maxRetries', value: Infinity },
     { option: 'retryDelayMs', value: -1 },
-    { option: 'retryDelayMs', value: 0 },
-    { option: 'retryDelayMs', value: 99 },
     { option: 'retryDelayMs', value: 1.5 },
     { option: 'retryDelayMs', value: Number.NaN },
     { option: 'retryDelayMs', value: Infinity },
@@ -210,25 +208,65 @@ describe('DatabaseNotify', (): void => {
     ).toThrow(RangeError);
   });
 
-  it('names the supported delay range when a delay is below the floor', (): void => {
-    const notify = new TestDatabaseNotify(createLogger());
+  it.each([
+    {
+      option: 'retryDelayMs',
+      value: -1,
+      message: 'retryDelayMs must be an integer between 0 and 2147483647',
+    },
+    {
+      option: 'retryAfterMaxDelayMs',
+      value: 99,
+      message:
+        'retryAfterMaxDelayMs must be an integer between 100 and 2147483647',
+    },
+  ])(
+    'names the supported $option range when $value is rejected',
+    ({ option, value, message }): void => {
+      const notify = new TestDatabaseNotify(createLogger());
 
-    expect(() =>
-      notify.restore('channel', vi.fn(), { retryDelayMs: 0 })
-    ).toThrow('retryDelayMs must be an integer between 100 and 2147483647');
-  });
+      let thrown: unknown;
+      try {
+        void notify.restore('channel', vi.fn(), { [option]: value });
+      } catch (error: unknown) {
+        thrown = error;
+      }
 
-  it.each([100, 2_147_483_647])(
-    'accepts retry delays at the supported boundary %s',
-    async (delay): Promise<void> => {
+      expect(thrown).toBeInstanceOf(RangeError);
+      expect((thrown as RangeError).message).toBe(message);
+    }
+  );
+
+  it.each<INotifyRetryOptions>([
+    { retryDelayMs: 0 },
+    { retryDelayMs: 99 },
+    { retryDelayMs: 2_147_483_647 },
+    { retryAfterMaxDelayMs: 100 },
+    { retryAfterMaxDelayMs: 2_147_483_647 },
+  ])(
+    'accepts retry delays at the supported boundary %o',
+    async (options): Promise<void> => {
       const notify = new TestDatabaseNotify(createLogger());
       const restore = vi.fn().mockResolvedValue(undefined);
-      await notify.restore('channel', restore, {
-        retryDelayMs: delay,
-        retryAfterMaxDelayMs: delay,
-      });
+      await notify.restore('channel', restore, options);
       expect(restore).toHaveBeenCalledOnce();
       await notify.destroy();
     }
   );
+
+  it('retries a failed restore after a zero retryDelayMs', async (): Promise<void> => {
+    const notify = new TestDatabaseNotify(createLogger());
+    const restore = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('restore failed'))
+      .mockResolvedValue(undefined);
+
+    await notify.restore('channel', restore, {
+      maxRetries: 2,
+      retryDelayMs: 0,
+    });
+
+    expect(restore).toHaveBeenCalledTimes(2);
+    await notify.destroy();
+  });
 });
