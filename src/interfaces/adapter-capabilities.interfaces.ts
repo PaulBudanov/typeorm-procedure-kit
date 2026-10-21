@@ -30,4 +30,6 @@ export interface IAdapterNotificationCapability<
   destroy(): Promise<void>;
   getNotificationPool(): Map<string, TConnection>;
   getPackagesNotifySql(packages: Array<string>): string;
+  readPackageChangeNotification(payload: unknown): Array<string>;
+  isChangeNotificationSupported(): boolean;
 }

@@ -12,7 +12,14 @@ import type { Client } from 'pg';
 
 class TestDatabaseNotify extends DatabaseNotify<Client> {
   public constructor(logger: ILoggerModule) {
-    super(logger);
+    super(logger, {
+      closeSingleConnection: (): Promise<void> => Promise.resolve(),
+      isSingleConnectionHealthy: (): Promise<boolean> => Promise.resolve(false),
+    });
+  }
+
+  protected override unsubscribeNotificationConnection(): Promise<void> {
+    return Promise.resolve();
   }
 
   public override async unlistenNotify(channel: string): Promise<void> {
@@ -185,6 +192,8 @@ describe('DatabaseNotify', (): void => {
     { option: 'retryDelayMs', value: Infinity },
     { option: 'retryDelayMs', value: 2_147_483_648 },
     { option: 'retryAfterMaxDelayMs', value: -1 },
+    { option: 'retryAfterMaxDelayMs', value: 0 },
+    { option: 'retryAfterMaxDelayMs', value: 99 },
     { option: 'retryAfterMaxDelayMs', value: 1.5 },
     { option: 'retryAfterMaxDelayMs', value: Number.NaN },
     { option: 'retryAfterMaxDelayMs', value: Infinity },
@@ -199,17 +208,65 @@ describe('DatabaseNotify', (): void => {
     ).toThrow(RangeError);
   });
 
-  it.each([0, 2_147_483_647])(
-    'accepts retry delays at the supported boundary %s',
-    async (delay): Promise<void> => {
+  it.each([
+    {
+      option: 'retryDelayMs',
+      value: -1,
+      message: 'retryDelayMs must be an integer between 0 and 2147483647',
+    },
+    {
+      option: 'retryAfterMaxDelayMs',
+      value: 99,
+      message:
+        'retryAfterMaxDelayMs must be an integer between 100 and 2147483647',
+    },
+  ])(
+    'names the supported $option range when $value is rejected',
+    ({ option, value, message }): void => {
+      const notify = new TestDatabaseNotify(createLogger());
+
+      let thrown: unknown;
+      try {
+        void notify.restore('channel', vi.fn(), { [option]: value });
+      } catch (error: unknown) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(RangeError);
+      expect((thrown as RangeError).message).toBe(message);
+    }
+  );
+
+  it.each<INotifyRetryOptions>([
+    { retryDelayMs: 0 },
+    { retryDelayMs: 99 },
+    { retryDelayMs: 2_147_483_647 },
+    { retryAfterMaxDelayMs: 100 },
+    { retryAfterMaxDelayMs: 2_147_483_647 },
+  ])(
+    'accepts retry delays at the supported boundary %o',
+    async (options): Promise<void> => {
       const notify = new TestDatabaseNotify(createLogger());
       const restore = vi.fn().mockResolvedValue(undefined);
-      await notify.restore('channel', restore, {
-        retryDelayMs: delay,
-        retryAfterMaxDelayMs: delay,
-      });
+      await notify.restore('channel', restore, options);
       expect(restore).toHaveBeenCalledOnce();
       await notify.destroy();
     }
   );
+
+  it('retries a failed restore after a zero retryDelayMs', async (): Promise<void> => {
+    const notify = new TestDatabaseNotify(createLogger());
+    const restore = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('restore failed'))
+      .mockResolvedValue(undefined);
+
+    await notify.restore('channel', restore, {
+      maxRetries: 2,
+      retryDelayMs: 0,
+    });
+
+    expect(restore).toHaveBeenCalledTimes(2);
+    await notify.destroy();
+  });
 });

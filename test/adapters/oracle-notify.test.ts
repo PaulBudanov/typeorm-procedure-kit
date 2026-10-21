@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import oracledb from 'oracledb';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OracleNotify } from '../../src/adapters/oracle/oracle-notify.js';
 import { ServerError } from '../../src/utils/server-error.js';
@@ -13,6 +13,7 @@ import type {
   IOracleNotifyMsg,
   TOracleNormilizeOptionsNotify,
 } from '../../src/types/notification.types.js';
+import type { MockInstance } from 'vitest';
 
 interface IRestoreNotificationSchedule {
   currentRetry: number;
@@ -59,6 +60,20 @@ function invokeSubscriptionChange(
 }
 
 describe('OracleNotify', (): void => {
+  /**
+   * node-oracledb starts in Thin mode, where CQN subscriptions are rejected,
+   * so the suite runs in Thick mode unless a test switches back.
+   */
+  let thinMode: MockInstance<() => boolean>;
+
+  beforeEach((): void => {
+    thinMode = vi.spyOn(oracledb, 'thin', 'get').mockReturnValue(false);
+  });
+
+  afterEach((): void => {
+    thinMode.mockRestore();
+  });
+
   it(
     'rejects long malformed SQL without blocking the process',
     { timeout: 15_000 },
@@ -1367,5 +1382,485 @@ describe('OracleNotify', (): void => {
 
     expect(oracleConnection.createSingleConnection).toHaveBeenCalledTimes(1);
     expect(notify.getNotificationPool().has(channelName)).toBe(false);
+  });
+
+  it('closes the connection it opened when building the subscribe options throws', async (): Promise<void> => {
+    const connection = {
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const oracleConnection = {
+      createSingleConnection: vi
+        .fn<() => Promise<object>>()
+        .mockResolvedValue(connection),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      closeSingleConnection: vi
+        .fn<(_connection: object) => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    const notify = new OracleNotify(oracleConnection as never, createLogger());
+    // listenNotify never reads qos itself, so the first read of this accessor
+    // happens while the subscribe options are built - after the connection
+    // has been opened.
+    const options = {
+      get qos(): number {
+        throw new Error('qos is not configured');
+      },
+    };
+
+    await expect(
+      notify.listenNotify('SELECT ID FROM APP.TABLE_A', vi.fn(), options)
+    ).rejects.toThrow('qos is not configured');
+
+    expect(oracleConnection.createSingleConnection).toHaveBeenCalledOnce();
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledOnce();
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledWith(
+      connection
+    );
+    expect(connection.subscribe).not.toHaveBeenCalled();
+    expect(notify.getNotificationPool().size).toBe(0);
+  });
+
+  it('leaves no connection open when per-operation options cannot be built', async (): Promise<void> => {
+    const connection = {
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const oracleConnection = {
+      createSingleConnection: vi
+        .fn<() => Promise<object>>()
+        .mockResolvedValue(connection),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      closeSingleConnection: vi
+        .fn<(_connection: object) => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    const notify = new OracleNotify(oracleConnection as never, createLogger());
+    const options = {
+      operations: [oracledb.CQN_OPCODE_INSERT, oracledb.CQN_OPCODE_UPDATE],
+      get qos(): number {
+        throw new Error('qos is not configured');
+      },
+    };
+
+    await expect(
+      notify.listenNotify('SELECT ID FROM APP.TABLE_A', vi.fn(), options)
+    ).rejects.toThrow('qos is not configured');
+
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledTimes(
+      oracleConnection.createSingleConnection.mock.calls.length
+    );
+    expect(connection.subscribe).not.toHaveBeenCalled();
+    expect(notify.getNotificationPool().size).toBe(0);
+  });
+
+  it('closes the connection of a failed restore attempt exactly once', async (): Promise<void> => {
+    let capturedCallback:
+      | ((message: oracledb.SubscriptionMessage) => void | Promise<void>)
+      | undefined;
+    const firstConnection = {
+      subscribe: vi
+        .fn<
+          (
+            _channel: string,
+            options: oracledb.SubscribeOptions
+          ) => Promise<void>
+        >()
+        .mockImplementation((_channel, options) => {
+          capturedCallback = options.callback;
+          return Promise.resolve();
+        }),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const secondConnection = {
+      subscribe: vi.fn().mockRejectedValue(new Error('ORA-29970')),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const oracleConnection = {
+      createSingleConnection: vi
+        .fn<() => Promise<object>>()
+        .mockResolvedValueOnce(firstConnection)
+        .mockResolvedValueOnce(secondConnection),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      closeSingleConnection: vi
+        .fn<(_connection: object) => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    const logger = createLogger();
+    const notify = new OracleNotify(oracleConnection as never, logger);
+
+    await notify.listenNotify('SELECT * FROM table_name', vi.fn(), {});
+    void capturedCallback?.({
+      type: oracledb.SUBSCR_EVENT_TYPE_DEREG,
+      registered: false,
+    } as oracledb.SubscriptionMessage);
+    await vi.waitFor(() => {
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Attempt 1/5 failed to restore'),
+        expect.any(String)
+      );
+    });
+    await notify.destroy();
+
+    const secondConnectionCloses =
+      oracleConnection.closeSingleConnection.mock.calls.filter(
+        ([connection]) => connection === secondConnection
+      );
+    expect(secondConnectionCloses).toHaveLength(1);
+  });
+
+  it('restores under the name the caller holds when closing the lost subscription fails', async (): Promise<void> => {
+    let capturedCallback:
+      | ((message: oracledb.SubscriptionMessage) => void | Promise<void>)
+      | undefined;
+    const firstConnection = {
+      subscribe: vi
+        .fn<
+          (
+            _channel: string,
+            options: oracledb.SubscribeOptions
+          ) => Promise<void>
+        >()
+        .mockImplementation((_channel, options) => {
+          capturedCallback = options.callback;
+          return Promise.resolve();
+        }),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const secondConnection = {
+      subscribe: vi
+        .fn<(_channel: string, _options: object) => Promise<void>>()
+        .mockResolvedValue(undefined),
+      unsubscribe: vi
+        .fn<(_channel: string) => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    const oracleConnection = {
+      createSingleConnection: vi
+        .fn<() => Promise<object>>()
+        .mockResolvedValueOnce(firstConnection)
+        .mockResolvedValueOnce(secondConnection),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      closeSingleConnection: vi
+        .fn<(_connection: object) => Promise<void>>()
+        .mockImplementation((connection) =>
+          connection === firstConnection
+            ? Promise.reject(new Error('NJS-500: connection lost'))
+            : Promise.resolve()
+        ),
+    };
+    const logger = createLogger();
+    const notify = new OracleNotify(oracleConnection as never, logger);
+
+    const channelName = await notify.listenNotify(
+      'SELECT * FROM table_name',
+      vi.fn(),
+      {}
+    );
+    await capturedCallback?.({
+      type: oracledb.SUBSCR_EVENT_TYPE_DEREG,
+      registered: false,
+    } as oracledb.SubscriptionMessage);
+
+    expect(secondConnection.subscribe).toHaveBeenCalledWith(
+      channelName,
+      expect.anything()
+    );
+    expect(Array.from(notify.getNotificationPool().entries())).toEqual([
+      [channelName, secondConnection],
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('NJS-500: connection lost')
+    );
+
+    await notify.unlistenNotify(channelName);
+
+    expect(secondConnection.unsubscribe).toHaveBeenCalledWith(channelName);
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledWith(
+      secondConnection
+    );
+    expect(notify.getNotificationPool().size).toBe(0);
+  });
+
+  it('honours an unlisten issued while a restore that could not close the lost subscription resubscribes', async (): Promise<void> => {
+    let capturedCallback:
+      | ((message: oracledb.SubscriptionMessage) => void | Promise<void>)
+      | undefined;
+    let resolveSecondSubscribe!: () => void;
+    let secondSubscribeStarted!: () => void;
+    const secondSubscribePromise = new Promise<void>((resolve) => {
+      resolveSecondSubscribe = resolve;
+    });
+    const secondSubscribeStartedPromise = new Promise<void>((resolve) => {
+      secondSubscribeStarted = resolve;
+    });
+    const firstConnection = {
+      subscribe: vi
+        .fn<
+          (
+            _channel: string,
+            options: oracledb.SubscribeOptions
+          ) => Promise<void>
+        >()
+        .mockImplementation((_channel, options) => {
+          capturedCallback = options.callback;
+          return Promise.resolve();
+        }),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const secondConnection = {
+      subscribe: vi.fn().mockImplementation(() => {
+        secondSubscribeStarted();
+        return secondSubscribePromise;
+      }),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    const oracleConnection = {
+      createSingleConnection: vi
+        .fn<() => Promise<object>>()
+        .mockResolvedValueOnce(firstConnection)
+        .mockResolvedValueOnce(secondConnection),
+      isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      closeSingleConnection: vi
+        .fn<(_connection: object) => Promise<void>>()
+        .mockImplementation((connection) =>
+          connection === firstConnection
+            ? Promise.reject(new Error('NJS-500: connection lost'))
+            : Promise.resolve()
+        ),
+    };
+    const notify = new OracleNotify(oracleConnection as never, createLogger());
+
+    const channelName = await notify.listenNotify(
+      'SELECT * FROM table_name',
+      vi.fn(),
+      {}
+    );
+    const restore = capturedCallback?.({
+      type: oracledb.SUBSCR_EVENT_TYPE_DEREG,
+      registered: false,
+    } as oracledb.SubscriptionMessage);
+    await secondSubscribeStartedPromise;
+
+    const unlisten = notify.unlistenNotify(channelName);
+    await Promise.resolve();
+    resolveSecondSubscribe();
+    await unlisten;
+    await restore;
+
+    expect(notify.getNotificationPool().size).toBe(0);
+    expect(oracleConnection.closeSingleConnection).toHaveBeenCalledWith(
+      secondConnection
+    );
+  });
+
+  it('passes refetched rows to the callback even when the first row looks like an error envelope', async (): Promise<void> => {
+    const rows = [
+      { error_code: 1, error_text: 'job failed', job_id: 1 },
+      { error_code: 0, error_text: null, job_id: 2 },
+    ];
+    const execute = vi.fn().mockResolvedValue({ rows });
+    const callback = vi.fn<(rows: Array<Record<string, unknown>>) => void>();
+    const logger = createLogger();
+    const notify = new OracleNotify({} as never, logger);
+
+    await invokeSubscriptionChange(
+      notify,
+      { execute } as never,
+      callback,
+      {
+        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+        tables: [
+          {
+            name: 'APP.JOB_LOG',
+            rows: [{ rowid: 'AAA' }, { rowid: 'AAB' }],
+          },
+        ],
+      } as IOracleNotifyMsg,
+      'SELECT error_code "error_code", error_text "error_text", job_id "job_id" FROM APP.JOB_LOG'
+    );
+
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback).toHaveBeenCalledWith([
+      { error_code: 1, error_text: 'job failed', job_id: 1 },
+      { error_code: 0, error_text: null, job_id: 2 },
+    ]);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+  describe('package change notifications', (): void => {
+    it('reads the package name from the NAME field of every row, matched case-insensitively', (): void => {
+      const logger = createLogger();
+      const notify = new OracleNotify({} as never, logger);
+
+      expect(
+        notify.readPackageChangeNotification([
+          { NAME: 'BILLING' },
+          { name: 'Reporting', action: 'REPLACE', owner: 'APP' },
+          { Name: 'pkg' },
+        ])
+      ).toEqual(['BILLING', 'Reporting', 'pkg']);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('warns about and skips each row without a string NAME field', (): void => {
+      const logger = createLogger();
+      const notify = new OracleNotify({} as never, logger);
+
+      expect(
+        notify.readPackageChangeNotification([
+          { NAME: 42 },
+          { NAME: 'BILLING' },
+          { OWNER: 'APP' },
+          null,
+          'REPORTING',
+        ])
+      ).toEqual(['BILLING']);
+      expect(logger.warn).toHaveBeenCalledTimes(4);
+      for (const [message] of logger.warn.mock.calls) {
+        expect(message).toBe(
+          'Ignoring Oracle package notification without a string NAME field'
+        );
+      }
+    });
+
+    it.each([
+      { shape: 'a single row object', payload: { NAME: 'BILLING' } },
+      {
+        shape: 'a PostgreSQL NOTIFY payload',
+        payload: { event: 'CREATE', object: 'billing' },
+      },
+      { shape: 'null', payload: null },
+      { shape: 'a string', payload: 'BILLING' },
+    ])(
+      'warns once about and skips a payload that is not an array of rows: $shape',
+      ({ payload }): void => {
+        const logger = createLogger();
+        const notify = new OracleNotify({} as never, logger);
+
+        expect(notify.readPackageChangeNotification(payload)).toEqual([]);
+        expect(logger.warn).toHaveBeenCalledOnce();
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Ignoring Oracle package notification that is not an array of rows'
+        );
+      }
+    );
+
+    it.each([
+      { mode: 'Thin', isThin: true, isSupported: false },
+      { mode: 'Thick', isThin: false, isSupported: true },
+    ])(
+      'reports change notifications as supported: $isSupported in node-oracledb $mode mode',
+      ({ isThin, isSupported }): void => {
+        thinMode.mockReturnValue(isThin);
+        const notify = new OracleNotify({} as never, createLogger());
+
+        expect(notify.isChangeNotificationSupported()).toBe(isSupported);
+      }
+    );
+
+    it.each([
+      { name: 'one operation', options: {} },
+      {
+        name: 'per-operation subscriptions',
+        options: {
+          operations: [oracledb.CQN_OPCODE_INSERT, oracledb.CQN_OPCODE_UPDATE],
+        },
+      },
+    ])(
+      'rejects a subscription in Thin mode before opening a connection: $name',
+      async ({ options }): Promise<void> => {
+        thinMode.mockReturnValue(true);
+        const createSingleConnection = vi.fn();
+        const logger = createLogger();
+        const notify = new OracleNotify(
+          { createSingleConnection } as never,
+          logger
+        );
+
+        const registration = notify.listenNotify(
+          'SELECT ID FROM APP.TABLE_A',
+          vi.fn(),
+          options
+        );
+
+        await expect(registration).rejects.toThrow(ServerError);
+        await expect(registration).rejects.toThrow(
+          'Oracle change notifications require node-oracledb Thick mode (set libraryPath, or call oracledb.initOracleClient() before initDatabase()) and the CHANGE NOTIFICATION privilege'
+        );
+        expect(createSingleConnection).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+      }
+    );
+  });
+
+  describe('CQN callback errors', (): void => {
+    const callbackError = new Error('callback failed');
+    const changedRowIds = Array.from({ length: 1_001 }, (_, index) => ({
+      rowid: `RID${index}`,
+    }));
+
+    it.each([
+      {
+        name: 'throws',
+        failure: (): void => {
+          throw callbackError;
+        },
+      },
+      {
+        name: 'rejects',
+        failure: (): Promise<void> => Promise.reject(callbackError),
+      },
+    ])(
+      'delivers the rest of the event after the callback $name on one chunk and logs it once',
+      async ({ failure }): Promise<void> => {
+        const execute = vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ ID: 1 }] })
+          .mockResolvedValueOnce({ rows: [{ ID: 2 }] });
+        const callback = vi
+          .fn<(rows: Array<Record<string, unknown>>) => void | Promise<void>>()
+          .mockImplementationOnce(failure)
+          .mockImplementationOnce((): void => undefined);
+        const logger = createLogger();
+        const notify = new OracleNotify({} as never, logger);
+
+        await invokeSubscriptionChange(notify, { execute } as never, callback, {
+          type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+          tables: [{ name: 'APP.TABLE_A', rows: changedRowIds }],
+        } as IOracleNotifyMsg);
+
+        expect(execute).toHaveBeenCalledTimes(2);
+        expect(callback.mock.calls).toEqual([[[{ ID: 1 }]], [[{ ID: 2 }]]]);
+        expect(logger.error).toHaveBeenCalledOnce();
+        expect(logger.error).toHaveBeenCalledWith(
+          'Unhandled notification callback error for channel "test-channel": callback failed',
+          callbackError.stack
+        );
+      }
+    );
+
+    it('still stops the event at a refetch error with one Subscription error entry', async (): Promise<void> => {
+      const refetchError = new Error('ORA-00942: table or view does not exist');
+      const execute = vi
+        .fn()
+        .mockRejectedValueOnce(refetchError)
+        .mockResolvedValue({ rows: [{ ID: 2 }] });
+      const callback = vi.fn();
+      const logger = createLogger();
+      const notify = new OracleNotify({} as never, logger);
+
+      await invokeSubscriptionChange(notify, { execute } as never, callback, {
+        type: oracledb.SUBSCR_EVENT_TYPE_OBJ_CHANGE,
+        tables: [{ name: 'APP.TABLE_A', rows: changedRowIds }],
+      } as IOracleNotifyMsg);
+
+      expect(execute).toHaveBeenCalledOnce();
+      expect(callback).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledOnce();
+      expect(logger.error).toHaveBeenCalledWith(
+        'Subscription error: ORA-00942: table or view does not exist',
+        refetchError.stack
+      );
+    });
   });
 });

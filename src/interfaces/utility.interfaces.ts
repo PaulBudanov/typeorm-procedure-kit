@@ -1,8 +1,5 @@
 import type { IProcedureStructuredType } from './procedure.interfaces.js';
-import type {
-  TEventBusListener,
-  TProcedureBindings,
-} from '../types/utility.types.js';
+import type { TProcedureBindings } from '../types/utility.types.js';
 
 export interface ISqlError {
   error_code?: number | string;
@@ -49,7 +46,12 @@ export interface IBindingsObjectReturn {
 }
 
 export interface ISqlBindingsObjectReturn {
-  bindings: Array<unknown>;
+  /**
+   * Positional values for adapters that rewrite placeholders (PostgreSQL), or
+   * values keyed by placeholder name for adapters that leave the SQL text
+   * alone and let the driver resolve `:NAME` itself (Oracle).
+   */
+  bindings: TProcedureBindings;
   sqlString: string;
 }
 
@@ -76,25 +78,4 @@ export interface ISqlBindingLogItem {
 export interface ISqlQueryLogContext {
   kind: 'sql';
   bindings: Array<ISqlBindingLogItem>;
-}
-
-export interface IEventBusService {
-  emit(event: string | symbol, data?: unknown): void;
-  emitAsync(event: string | symbol, data?: unknown): Promise<void>;
-  registerListener(event: string | symbol, callback: TEventBusListener): void;
-  registerOnce(
-    event: string | symbol,
-    callback: TEventBusListener
-  ): { unsubscribe: () => void };
-  getListenedEvents(): Array<string>;
-  removeListener(event: string | symbol, callback: TEventBusListener): void;
-  removeAllListeners(event: string | symbol): void;
-}
-
-export interface ICollectionStrategy<T> {
-  enqueue(key: unknown, item: T): void;
-  dequeue(key?: unknown): T | undefined;
-  clear(): void;
-  size(): number;
-  getItems(): Array<T> | Map<unknown, T> | Set<T>;
 }

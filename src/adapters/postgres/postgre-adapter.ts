@@ -1,5 +1,4 @@
-import { replaceNamedParameters } from '../../typeorm/util/NamedParameterUtils.js';
-import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
+import { NO_ARGUMENT_SENTINEL } from '../../consts/procedure.consts.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
 import { DatabaseAdapter } from '../abstract/database-adapter.js';
@@ -12,6 +11,7 @@ import { PostgreProcedureResultMaterializer } from './postgre-result-materialize
 import { PostgreSerializer } from './postgre-serializer.js';
 import { PostgreSqlCommand } from './postgre-sql.js';
 
+import type { IProcedureMetadataOptions } from '../../interfaces/procedure-metadata-normalizer.interfaces.js';
 import type { DataSource } from '../../typeorm/data-source/DataSource.js';
 import type { PostgresDriver } from '../../typeorm/driver/postgres/PostgresDriver.js';
 import type { EntityManager } from '../../typeorm/entity-manager/EntityManager.js';
@@ -19,7 +19,6 @@ import type { IRegisteredFetchHandlerOptions } from '../../types/adapter.types.j
 import type { ILoggerModule } from '../../types/logger.types.js';
 import type { INotifyRetryOptions } from '../../types/notification.types.js';
 import type {
-  IProcedureArgumentBase,
   TProcedureArgumentList,
   TProcedurePayload,
   TProcedurePayloadInput,
@@ -28,7 +27,6 @@ import type {
   IBindingsObjectReturn,
   IProcedureOutBinding,
   IProcedureResult,
-  ISqlBindingsObjectReturn,
 } from '../../types/utility.types.js';
 import type { Client } from 'pg';
 
@@ -38,28 +36,14 @@ export class PostgreAdapter extends DatabaseAdapter<
   INotifyRetryOptions,
   Client
 > {
-  private static readonly NO_ARGUMENT_SENTINEL = '__tpk_no_argument__';
+  protected override readonly procedureMetadataOptions: IProcedureMetadataOptions =
+    {
+      vendor: 'PostgreSQL',
+      noArgumentSentinel: NO_ARGUMENT_SENTINEL,
+      getOverloadIdentity: ({ specificName }) => specificName,
+    };
   private readonly procedureBindings: PostgreProcedureBindings;
   private readonly resultMaterializer: PostgreProcedureResultMaterializer;
-
-  public override sortArgumentsAlgorithm(
-    rawArguments: Array<IProcedureArgumentBase>,
-    procedureListBase: Array<Lowercase<string>>,
-    packageName: Lowercase<string>,
-    packagesLength: number
-  ): TProcedureArgumentList {
-    return this.normalizeProcedureMetadata(
-      rawArguments,
-      procedureListBase,
-      packageName,
-      packagesLength,
-      {
-        vendor: 'PostgreSQL',
-        noArgumentSentinel: PostgreAdapter.NO_ARGUMENT_SENTINEL,
-        getOverloadIdentity: ({ specificName }) => specificName,
-      }
-    );
-  }
 
   public override registerFetchHandlerHook(): void {
     super.registerFetchHandlerHook();
@@ -112,44 +96,24 @@ export class PostgreAdapter extends DatabaseAdapter<
     );
   }
 
-  /**
-   * Generates a SQL query that loads PostgreSQL procedure metadata from a schema.
-   * @param packageName - schema name to inspect.
-   * @returns SQL query string for procedure metadata loading.
-   */
-  public override generatePackageInfoSql(
-    packageName: string,
-    procedureMetadataSql?: string
-  ): string {
-    const safePackageName = SqlIdentifier.validateIdentifier(
+  /** Validates the schema name and lowercases it for the PostgreSQL catalog. */
+  protected override normalizePackageIdentifier(packageName: string): string {
+    return SqlIdentifier.validateIdentifier(
       packageName,
       'postgres package'
     ).toLowerCase();
-    const query = this.replacePackageNamePlaceholder(
-      procedureMetadataSql ?? PostgreSqlCommand.SQL_GET_PACKAGE_INFO,
-      `'${safePackageName}'`
-    );
-    if (procedureMetadataSql) return query;
-    const maxMetadataRows =
-      this.handlerOptions.resourceLimits?.maxMetadataRows ??
-      DEFAULT_RESOURCE_LIMITS.maxMetadataRows;
-    const detectionLimit = Math.min(
-      maxMetadataRows + 1,
-      Number.MAX_SAFE_INTEGER
-    );
-    return `${query.trimEnd()}\nLIMIT ${detectionLimit}`;
   }
 
-  private replacePackageNamePlaceholder(
-    sql: string,
-    packageNameLiteral: string
+  /**
+   * Default SQL query that loads PostgreSQL procedure metadata from a schema,
+   * with the `LIMIT` clause appended.
+   * @param detectionLimit - maximum number of rows the query may return.
+   * @returns metadata SQL template limited with the PostgreSQL syntax.
+   */
+  protected override buildDefaultPackageInfoSql(
+    detectionLimit: number
   ): string {
-    if (!sql.includes(':PACKAGE_NAME')) {
-      throw new ServerError(
-        'Procedure metadata SQL must contain :PACKAGE_NAME placeholder'
-      );
-    }
-    return sql.split(':PACKAGE_NAME').join(packageNameLiteral);
+    return `${PostgreSqlCommand.SQL_GET_PACKAGE_INFO.trimEnd()}\nLIMIT ${detectionLimit}`;
   }
 
   /** Builds the shared structured-type contract from PostgreSQL catalog rows. */
@@ -235,32 +199,30 @@ export class PostgreAdapter extends DatabaseAdapter<
       payload
     );
   }
+
   /**
-   * Rewrites uppercase named placeholders to PostgreSQL positional bindings.
-   * Example: `:ID` becomes `$1`.
-   * @param sqlQuery - SQL query with uppercase named placeholders.
-   * @param params - values keyed by placeholder name, case-insensitive.
-   * @returns rewritten SQL and ordered binding values.
+   * Rewrites a named placeholder to a PostgreSQL positional parameter, which
+   * has no named form: `:ID` becomes `$1`. A repeated name takes one
+   * positional slot per occurrence.
+   * @param _placeholder - the placeholder exactly as written.
+   * @param position - 1-based position of this occurrence.
+   * @returns the positional parameter for this occurrence.
    */
-  public override makeSqlBindings(
-    sqlQuery: string,
-    params?: Record<string, unknown>
-  ): ISqlBindingsObjectReturn {
-    const bindings: Array<unknown> = [];
-    const paramsInUpperCase = Object.fromEntries(
-      params
-        ? Object.entries(params).map(([key, value]) => {
-            return [key.toUpperCase(), value];
-          })
-        : []
-    );
-    let parameterIndex = 0;
-    const sqlString = replaceNamedParameters(sqlQuery, ({ full, key }) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
-      bindings.push(paramsInUpperCase[key.toUpperCase()] ?? null);
-      parameterIndex += 1;
-      return `$${parameterIndex}`;
-    });
-    return { bindings, sqlString: sqlString };
+  protected override renderRawSqlPlaceholder(
+    _placeholder: string,
+    position: number
+  ): string {
+    return `$${position}`;
+  }
+
+  /**
+   * Orders the values by positional parameter, one per occurrence.
+   * @param placeholders - bound occurrences in SQL order.
+   * @returns the value for `$1`, `$2`, and so on.
+   */
+  protected override collectRawSqlBindings(
+    placeholders: Array<[bindName: string, value: unknown]>
+  ): Array<unknown> {
+    return placeholders.map(([, value]) => value);
   }
 }

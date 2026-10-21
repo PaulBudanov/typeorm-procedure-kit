@@ -8,6 +8,7 @@ export type {
   IDatabaseCredentials,
   IDatabaseFactory,
   IEntityOptions,
+  IErrorEnvelopeKeys,
   IExecutionOptions,
   IMigrationOptions,
   IResourceLimits,

@@ -28,6 +28,21 @@ export interface IResourceLimits {
   maxNotificationRows: number;
 }
 
+export interface IErrorEnvelopeKeys {
+  /**
+   * Response keys inspected for a database error code.
+   * Defaults to `['error_code', 'err_code', 'errorCode', 'errCode']`.
+   * An empty array disables error-envelope detection.
+   */
+  errorCodeKeys: ReadonlyArray<string>;
+  /**
+   * Response keys inspected for a database error message.
+   * Defaults to `['error_text', 'err_text', 'errorText', 'errText']`.
+   * An empty array disables error-envelope detection.
+   */
+  errorTextKeys: ReadonlyArray<string>;
+}
+
 export interface IPackagesSettingsDefault {
   /**
    * Database package/schema names to inspect for callable procedures.
@@ -122,6 +137,14 @@ export interface IExecutionOptions {
   optionsCommands?: Array<string>;
   /** Optional query id used by logs and database error wrapping. */
   queryId?: string;
+  /**
+   * Response keys that mark the first returned row, or a procedure output
+   * binding, as a database error envelope. Keys left out keep their built-in
+   * defaults; an empty array switches that half of the check off, which is how
+   * a statement selecting business columns named `error_code` and `error_text`
+   * asks for its rows back instead of an exception.
+   */
+  errorEnvelopeKeys?: Partial<IErrorEnvelopeKeys>;
 }
 
 export interface IDatabaseFactory {

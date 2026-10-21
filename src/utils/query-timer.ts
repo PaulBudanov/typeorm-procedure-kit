@@ -1,5 +1,3 @@
-import { DateTime } from 'luxon';
-
 import { QueryLogContextStorage } from './query-log-context.js';
 import { safeStringify } from './safe-stringify.js';
 
@@ -22,7 +20,10 @@ export class QueryTimer {
   /**
    * Constructor for QueryTimer class.
    * Initializes the QueryTimer object with the provided SQL query, logger and query ID.
-   * The constructor logs the start of the SQL query execution with the query ID and the first 100 characters of the SQL query.
+   * The clock starts here, so the measured duration covers everything the caller
+   * does before the statement runs, including waiting for a pooled connection.
+   * Nothing is logged yet: call {@link QueryTimer.start} once the query really
+   * starts, so a caller that never gets that far never claims it did.
    * @param {string} sql - SQL query string
    * @param {ILoggerModule} logger - logger module to log messages
    * @param {string} [queryId] - optional query ID, defaults to a generated query ID
@@ -35,8 +36,16 @@ export class QueryTimer {
     private readonly bindingLogMode: TBindingLogMode = 'metadata-only'
   ) {
     this.logContext = QueryLogContextStorage.getStore();
-    this.startTime = DateTime.now().toLocal().toMillis();
+    this.startTime = Date.now();
+  }
 
+  /**
+   * Logs that the query has started. Call it at the moment the statement is
+   * actually handed to the database, not when the timer is created: everything
+   * before that point (acquiring a connection, for instance) can still fail
+   * without the query ever running.
+   */
+  public start(): void {
     this.logger.log(this.formatStartMessage());
   }
 
@@ -49,7 +58,7 @@ export class QueryTimer {
    * @param {number} [rowCount] - number of rows returned by the query
    */
   public success(rowCount?: number): void {
-    const duration = DateTime.now().toMillis() - this.startTime;
+    const duration = Date.now() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
     const rowCountInfo = rowCount != null ? ` with ${rowCount} rows` : '';
@@ -70,7 +79,7 @@ export class QueryTimer {
    * @param error - error to log
    */
   public error(error: ServerError | Error): void {
-    const duration = DateTime.now().toMillis() - this.startTime;
+    const duration = Date.now() - this.startTime;
     const durationStr = this.formatDuration(duration);
 
     const bindingsInfo = this.formatBindingsInfo();

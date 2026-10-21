@@ -1,4 +1,3 @@
-import { DatabaseErrorHandler } from '../../utils/database-error-handler.js';
 import { DEFAULT_RESOURCE_LIMITS } from '../../utils/resource-limits.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
@@ -29,7 +28,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     private readonly listenEventName?: string,
     private readonly maxNotificationQueue = DEFAULT_RESOURCE_LIMITS.maxNotificationQueue
   ) {
-    super(logger);
+    super(logger, postgreConnection);
   }
 
   /**
@@ -42,6 +41,54 @@ export class PostgreNotify extends DatabaseNotify<Client> {
         this.listenEventName
       );
     return PostgreSqlCommand.SQL_GET_NOTIFY_UPDATE_PACKAGE;
+  }
+
+  /**
+   * Reads the package name from a package-change NOTIFY payload: the
+   * `object` field of one JSON object, matched case-insensitively. Other
+   * fields are ignored. Any other payload - an array included - is logged
+   * without its content and skipped.
+   * @param payload - parsed NOTIFY payload, or the raw text when it is not JSON.
+   * @returns the package (schema) name, or no name.
+   * @example
+   * notify.readPackageChangeNotification({ event: 'CREATE', object: 'billing' });
+   * // ['billing']
+   */
+  public readPackageChangeNotification(payload: unknown): Array<string> {
+    const packageName = Array.isArray(payload)
+      ? null
+      : this.readStringField(payload, 'object');
+    if (!packageName) {
+      this.logger.warn(
+        'Ignoring PostgreSQL package notification without a string "object" field'
+      );
+      return [];
+    }
+    return [packageName];
+  }
+
+  /**
+   * Reports whether LISTEN subscriptions can be registered; PostgreSQL
+   * supports them in every driver mode.
+   * @returns always true.
+   */
+  public isChangeNotificationSupported(): boolean {
+    return true;
+  }
+
+  /**
+   * Reads one string field of a notification object, matching the field name
+   * case-insensitively.
+   * @param value - notification object.
+   * @param fieldName - field name in any letter case.
+   * @returns the field value, or null when it is absent or not a string.
+   */
+  private readStringField(value: unknown, fieldName: string): string | null {
+    if (value === null || typeof value !== 'object') return null;
+    const entry = Object.entries(value).find(
+      ([key]) => key.toLowerCase() === fieldName.toLowerCase()
+    );
+    return typeof entry?.[1] === 'string' ? entry[1] : null;
   }
 
   /**
@@ -230,8 +277,9 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       payload = rawPayload as TNotifyCallbackGeneric<T>;
     }
 
+    // A NOTIFY payload is application data, not a procedure result, so it is
+    // never read as an error envelope: the callback decides what it means.
     try {
-      DatabaseErrorHandler.checkForDatabaseError<T>(payload);
       await notifyCallback(payload);
     } catch (error) {
       this.logger.error(
@@ -250,45 +298,21 @@ export class PostgreNotify extends DatabaseNotify<Client> {
    * @param channel - registered channel name.
    */
   public override async unlistenNotify(channel: string): Promise<void> {
-    this.cancelNotificationRestore(channel);
-    await this.closeListenerConnection(channel);
-    this.clearNotificationRestoreState(channel);
+    await this.closeNotificationSubscription(channel);
   }
 
-  private async closeListenerConnection(channel: string): Promise<void> {
-    return this.closeNotificationChannel(channel, () =>
-      this.performCloseListenerConnection(channel)
+  /**
+   * Releases one PostgreSQL LISTEN registration on a live client.
+   * @param channel - registered channel name to unlisten.
+   * @param client - live notification client.
+   */
+  protected override async unsubscribeNotificationConnection(
+    channel: string,
+    client: Client
+  ): Promise<void> {
+    await client.query(
+      `UNLISTEN ${SqlIdentifier.quotePostgresIdentifier(channel)}`
     );
-  }
-
-  private async performCloseListenerConnection(channel: string): Promise<void> {
-    const client = this.notificationPool.get(channel);
-    this.notificationPool.delete(channel);
-    this.stopConnectionHealthCheck(channel);
-    try {
-      if (!client) {
-        this.logger.warn(`No listener found for channel: ${channel}`);
-        return;
-      }
-      const isConnectionAlive =
-        await this.postgreConnection.isSingleConnectionHealthy(client, 500);
-      if (isConnectionAlive)
-        await client.query(
-          `UNLISTEN ${SqlIdentifier.quotePostgresIdentifier(channel)}`
-        );
-      this.logger.log(
-        `Successfully unregistered listener for channel: ${channel}`
-      );
-    } catch (error: unknown) {
-      this.logger.error(
-        `Error unregistering notification listener: ${
-          (error as Error).message
-        }`,
-        (error as Error).stack
-      );
-    } finally {
-      if (client) await this.postgreConnection.closeSingleConnection(client);
-    }
   }
 
   protected override beginNotificationQueueClose(
@@ -348,7 +372,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
     notifyCallback: (args: TNotifyCallbackGeneric<T>) => void | Promise<void>,
     options: INotifyRetryOptions
   ): Promise<void> {
-    await this.closeListenerConnection(channelName);
+    await this.closeNotificationSubscription(channelName, false);
     if (this.isNotificationRestoreCancelled(channelName)) return;
     const listenSql = `LISTEN ${SqlIdentifier.quotePostgresIdentifier(
       channelName
@@ -359,7 +383,7 @@ export class PostgreNotify extends DatabaseNotify<Client> {
       options
     );
     if (this.isNotificationRestoreCancelled(restoredChannelName)) {
-      await this.closeListenerConnection(restoredChannelName);
+      await this.closeNotificationSubscription(restoredChannelName, false);
       return;
     }
     this.logger.log(

@@ -5,6 +5,9 @@ import { ProcedureListBase } from '../../src/core/procedure-list-base.js';
 import { createAdapterMock, createLogger } from '../support/helpers.js';
 
 describe('NotifyBase', (): void => {
+  /** Adapter reader that names package PKG in every notification. */
+  const readsPkg = (): Array<string> => ['PKG'];
+
   it('delegates notification lifecycle to the adapter', async (): Promise<void> => {
     const adapter = createAdapterMock({
       listenNotify: vi.fn().mockResolvedValue('channel'),
@@ -40,55 +43,90 @@ describe('NotifyBase', (): void => {
     expect(adapter.destroyNotifications).toHaveBeenCalledOnce();
   });
 
-  it('refreshes configured packages from notification payloads', async (): Promise<void> => {
+  it('hands the raw payload to the adapter and refreshes the configured packages it names', async (): Promise<void> => {
+    const fetchProcedureListWithArguments = vi
+      .fn<(_packageName: Lowercase<string>) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const readPackageChangeNotification = vi.fn(
+      (_payload: unknown): Array<string> => ['BILLING', 'Reporting']
+    );
+    const notifyBase = new NotifyBase(
+      createAdapterMock({ readPackageChangeNotification }),
+      { fetchProcedureListWithArguments } as never,
+      createLogger(),
+      { packages: ['billing', 'reporting'], procedureObjectList: {} }
+    );
+    const payload = [{ NAME: 'BILLING' }, { NAME: 'Reporting' }];
+
+    await notifyBase.packageNotifyCallback(payload as never);
+
+    expect(readPackageChangeNotification).toHaveBeenCalledOnce();
+    expect(readPackageChangeNotification.mock.calls[0]?.[0]).toBe(payload);
+    expect(fetchProcedureListWithArguments.mock.calls).toEqual([
+      ['billing'],
+      ['reporting'],
+    ]);
+  });
+
+  it('trims and lowercases package names and matches configured packages case-insensitively', async (): Promise<void> => {
     const fetchProcedureListWithArguments = vi
       .fn<(_packageName: Lowercase<string>) => Promise<void>>()
       .mockResolvedValue(undefined);
     const notifyBase = new NotifyBase(
-      createAdapterMock(),
+      createAdapterMock({
+        readPackageChangeNotification: vi.fn((): Array<string> => ['  Pkg  ']),
+      }),
       { fetchProcedureListWithArguments } as never,
       createLogger(),
-      {
-        packages: ['pkg'],
-        procedureObjectList: {},
-      }
+      { packages: ['PKG' as Lowercase<string>], procedureObjectList: {} }
     );
 
-    await notifyBase.packageNotifyCallback({ event: 'CREATE', object: 'PKG' });
-    await notifyBase.packageNotifyCallback([
-      { name: 'PKG' },
-      { name: 'OTHER' },
-    ] as never);
-
-    expect(fetchProcedureListWithArguments).toHaveBeenCalledWith('pkg');
-    expect(fetchProcedureListWithArguments).toHaveBeenCalledTimes(2);
-  });
-
-  it('accepts case-insensitive Oracle field names and ignores malformed rows', async (): Promise<void> => {
-    const fetchProcedureListWithArguments = vi
-      .fn()
-      .mockResolvedValue(undefined);
-    const logger = createLogger();
-    const notifyBase = new NotifyBase(
-      createAdapterMock(),
-      { fetchProcedureListWithArguments } as never,
-      logger,
-      {
-        packages: ['PKG' as Lowercase<string>],
-        procedureObjectList: {},
-      }
-    );
-
-    await notifyBase.packageNotifyCallback([
-      { NAME: 'PKG' },
-      { name: 42 },
-    ] as never);
+    await notifyBase.packageNotifyCallback({ event: 'CREATE', object: 'x' });
 
     expect(fetchProcedureListWithArguments).toHaveBeenCalledOnce();
     expect(fetchProcedureListWithArguments).toHaveBeenCalledWith('pkg');
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('without a string NAME field')
+  });
+
+  it('skips blank and unconfigured package names without logging', async (): Promise<void> => {
+    const fetchProcedureListWithArguments = vi
+      .fn<(_packageName: Lowercase<string>) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const logger = createLogger();
+    const notifyBase = new NotifyBase(
+      createAdapterMock({
+        readPackageChangeNotification: vi.fn(
+          (): Array<string> => ['   ', 'reporting', 'billing']
+        ),
+      }),
+      { fetchProcedureListWithArguments } as never,
+      logger,
+      { packages: ['billing'], procedureObjectList: {} }
     );
+
+    await notifyBase.packageNotifyCallback({ event: 'CREATE', object: 'x' });
+
+    expect(fetchProcedureListWithArguments.mock.calls).toEqual([['billing']]);
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('refreshes nothing when the adapter reads no package name from the payload', async (): Promise<void> => {
+    const fetchProcedureListWithArguments = vi.fn();
+    const logger = createLogger();
+    // The default adapter mock reads no package name from any payload.
+    const adapter = createAdapterMock();
+    const notifyBase = new NotifyBase(
+      adapter,
+      { fetchProcedureListWithArguments } as never,
+      logger,
+      { packages: ['billing'], procedureObjectList: {} }
+    );
+
+    await notifyBase.packageNotifyCallback({ event: 'CREATE' } as never);
+
+    expect(adapter.readPackageChangeNotification).toHaveBeenCalledOnce();
+    expect(fetchProcedureListWithArguments).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('schedules notification refreshes without awaiting database metadata work', async (): Promise<void> => {
@@ -98,7 +136,7 @@ describe('NotifyBase', (): void => {
     });
     const fetchProcedureListWithArguments = vi.fn().mockReturnValue(refresh);
     const notifyBase = new NotifyBase(
-      createAdapterMock(),
+      createAdapterMock({ readPackageChangeNotification: readsPkg }),
       { fetchProcedureListWithArguments } as never,
       createLogger(),
       {
@@ -131,7 +169,7 @@ describe('NotifyBase', (): void => {
       .fn<(_packageName: Lowercase<string>) => Promise<void>>()
       .mockReturnValue(refresh);
     const notifyBase = new NotifyBase(
-      createAdapterMock(),
+      createAdapterMock({ readPackageChangeNotification: readsPkg }),
       { fetchProcedureListWithArguments } as never,
       createLogger(),
       {
@@ -172,6 +210,7 @@ describe('NotifyBase', (): void => {
       );
     const logger = createLogger();
     const adapter = createAdapterMock({
+      readPackageChangeNotification: readsPkg,
       generatePackageInfoSql: vi.fn(() => 'select args'),
       sortArgumentsAlgorithm: vi.fn(() => ({ run: [] })),
     });
@@ -225,7 +264,7 @@ describe('NotifyBase', (): void => {
   it('logs failed scheduled refreshes without an unhandled rejection', async (): Promise<void> => {
     const logger = createLogger();
     const notifyBase = new NotifyBase(
-      createAdapterMock(),
+      createAdapterMock({ readPackageChangeNotification: readsPkg }),
       {
         fetchProcedureListWithArguments: vi
           .fn()
@@ -259,7 +298,10 @@ describe('NotifyBase', (): void => {
     const fetchProcedureListWithArguments = vi.fn().mockReturnValue(refresh);
     const destroyNotifications = vi.fn().mockResolvedValue(undefined);
     const notifyBase = new NotifyBase(
-      createAdapterMock({ destroyNotifications }),
+      createAdapterMock({
+        destroyNotifications,
+        readPackageChangeNotification: readsPkg,
+      }),
       { fetchProcedureListWithArguments } as never,
       createLogger(),
       {

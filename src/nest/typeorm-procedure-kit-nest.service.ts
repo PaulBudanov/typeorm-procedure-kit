@@ -13,14 +13,14 @@ export class TypeOrmProcedureKitNestService
   extends TypeOrmProcedureKit
   implements OnModuleInit, OnApplicationShutdown
 {
-  private settingsLoger: ILoggerModule;
+  private settingsLogger: ILoggerModule;
   /**
    * Creates an instance of TypeOrmProcedureKitService.
    * @param config - Configuration of TypeOrmProcedureKitNestService.
    */
   public constructor(@Inject(DATABASE_CONFIG_TOKEN) config: IModuleConfig) {
     super(config);
-    this.settingsLoger = config.logger.module;
+    this.settingsLogger = config.logger.module;
   }
 
   /**
@@ -39,7 +39,7 @@ export class TypeOrmProcedureKitNestService
    * @returns {Promise<void>} - resolves when all cleanup is completed
    */
   public async onApplicationShutdown(signal?: string): Promise<void> {
-    this.settingsLoger.log(
+    this.settingsLogger.log(
       `Application shutdown signal received: ${signal ?? 'unknown'}`
     );
     await this.destroy();

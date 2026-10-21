@@ -85,5 +85,7 @@ export interface IDatabaseAdapterContract<
   destroyNotifications(): Promise<void>;
   getNotificationPool(): Map<string, unknown>;
   getPackagesNotifySql(packages?: Array<string>): string;
+  readPackageChangeNotification(payload: unknown): Array<string>;
+  isChangeNotificationSupported(): boolean;
   registerFetchHandlerHook(): void;
 }

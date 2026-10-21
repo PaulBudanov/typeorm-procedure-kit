@@ -11,6 +11,7 @@ export type {
   TOracleDbConfig,
   TPostgresDbConfig,
   IDatabaseCredentials,
+  IErrorEnvelopeKeys,
   IResourceLimits,
 } from './config.types.js';
 
@@ -67,11 +68,7 @@ export type {
   ISqlQueryLogContext,
   ISqlBindingsObjectReturn,
   ISqlError,
-  IEventBusService,
-  ICollectionStrategy,
-  TMapKey,
   TQueryLogContext,
-  TQueueType,
 } from './utility.types.js';
 
 // Adapter

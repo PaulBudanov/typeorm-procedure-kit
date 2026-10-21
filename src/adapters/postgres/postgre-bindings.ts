@@ -1,5 +1,7 @@
+import { isPlainObject } from '../../utils/plain-object.js';
 import { ServerError } from '../../utils/server-error.js';
 import { SqlIdentifier } from '../../utils/sql-identifier.js';
+import { readPayloadValue } from '../abstract/procedure-payload-reader.js';
 
 import {
   assertSupportedPostgreComposite,
@@ -50,12 +52,24 @@ export class PostgreProcedureBindings {
     }
 
     const bindings: Array<unknown> = [];
+    /**
+     * Logical value per argument, keyed by argument name. The positional
+     * `bindings` list cannot serve the log: a composite OUT argument is inlined
+     * as `NULL::type` and consumes no binding, so from the first one onwards the
+     * list is shorter than the argument list and a positional lookup would pair
+     * a value with a neighbouring argument's name.
+     */
+    const logBindings: Record<string, unknown> = {};
     const cursorsNames: Array<string> = [];
     const outBindings: Array<IProcedureOutBinding> = [];
     const argumentExpressions: Array<string> = [];
     for (const [index, argument] of procedureArguments.entries()) {
-      if (argument.structuredType !== undefined) {
-        const structuredType = argument.structuredType;
+      // `logValue` is recorded once, after the branches, so no binding branch
+      // can be added, reordered or made to skip a positional bind without the
+      // log keeping the value under the argument it came from.
+      let logValue: unknown;
+      const structuredType = argument.structuredType;
+      if (structuredType !== undefined) {
         assertSupportedPostgreComposite(argument.argumentType, structuredType);
         if (argument.mode !== 'IN') {
           outBindings.push({
@@ -65,58 +79,64 @@ export class PostgreProcedureBindings {
             structuredType,
           });
         }
+        logValue =
+          argument.mode === 'OUT'
+            ? undefined
+            : readPayloadValue(
+                payload,
+                index,
+                argument.argumentName,
+                'PostgreSQL'
+              );
         argumentExpressions.push(
           this.createCompositeExpression(
             bindings,
             argument.mode,
             structuredType,
-            argument.mode === 'OUT'
-              ? null
-              : this.readPayloadValue(
-                  payload,
-                  index,
-                  argument.argumentName,
-                  true
-                ),
+            logValue ?? null,
             argument.argumentName
           )
         );
-        continue;
-      }
-
-      const isCursor =
-        argument.argumentType.toLowerCase() ===
-        PostgreProcedureBindings.REF_CURSOR_TYPE;
-      if (argument.mode !== 'IN') {
-        outBindings.push({
-          name: argument.argumentName,
-          type: isCursor ? 'cursor' : 'scalar',
-          databaseType: argument.argumentType,
-        });
-      }
-      if (isCursor) {
-        if (argument.mode !== 'IN') cursorsNames.push(argument.argumentName);
-        bindings.push(
+      } else {
+        const isCursor =
+          argument.argumentType.toLowerCase() ===
+          PostgreProcedureBindings.REF_CURSOR_TYPE;
+        if (argument.mode !== 'IN') {
+          outBindings.push({
+            name: argument.argumentName,
+            type: isCursor ? 'cursor' : 'scalar',
+            databaseType: argument.argumentType,
+          });
+        }
+        if (isCursor) {
+          if (argument.mode !== 'IN') cursorsNames.push(argument.argumentName);
           // PostgreSQL ignores/requires NULL for a pure OUT input position. The
           // procedure must assign an explicit portal name before opening it.
-          argument.mode === 'OUT'
-            ? null
-            : this.portalNames.normalizeInput(
-                this.readPayloadValue(payload, index, argument.argumentName),
-                argument.argumentName
-              )
-        );
+          logValue =
+            argument.mode === 'OUT'
+              ? undefined
+              : this.portalNames.normalizeInput(
+                  readPayloadValue(
+                    payload,
+                    index,
+                    argument.argumentName,
+                    'PostgreSQL'
+                  ),
+                  argument.argumentName
+                );
+          bindings.push(logValue ?? null);
+        } else {
+          logValue = readPayloadValue(
+            payload,
+            index,
+            argument.argumentName,
+            'PostgreSQL'
+          );
+          bindings.push(logValue);
+        }
         argumentExpressions.push(`$${bindings.length}`);
-        continue;
       }
-
-      const value = this.readPayloadValue(
-        payload,
-        index,
-        argument.argumentName
-      );
-      bindings.push(value);
-      argumentExpressions.push(`$${bindings.length}`);
+      logBindings[argument.argumentName] = logValue;
     }
 
     return {
@@ -124,39 +144,11 @@ export class PostgreProcedureBindings {
         [packageName, processName]
       )}(${argumentExpressions.join(',')})`,
       bindings,
+      logBindings,
       cursorsNames,
       outNames: outBindings.map(({ name }) => name),
       outBindings,
     };
-  }
-
-  private readPayloadValue(
-    payload: TProcedurePayload | null | undefined,
-    index: number,
-    argumentName: string,
-    shouldRejectAliasConflict = false
-  ): unknown {
-    if (Array.isArray(payload)) return payload[index] ?? null;
-    if (!payload || typeof payload !== 'object') return null;
-    const record = payload as Record<string, unknown>;
-    const normalizedName = argumentName.replace(/^p_/, '');
-    const hasNormalizedName = Object.hasOwn(record, normalizedName);
-    const hasArgumentName = Object.hasOwn(record, argumentName);
-    if (shouldRejectAliasConflict) {
-      if (
-        normalizedName !== argumentName &&
-        hasNormalizedName &&
-        hasArgumentName
-      ) {
-        throw new ServerError(
-          `Conflicting PostgreSQL procedure payload keys: "${normalizedName}" and "${argumentName}"`
-        );
-      }
-      if (hasNormalizedName) return record[normalizedName];
-      if (hasArgumentName) return record[argumentName];
-      return null;
-    }
-    return record[normalizedName] ?? record[argumentName] ?? null;
   }
 
   private createCompositeExpression(
@@ -184,13 +176,13 @@ export class PostgreProcedureBindings {
     argumentName: string
   ): string | null {
     if (value === null || value === undefined) return null;
-    if (!this.isPlainObject(value)) {
+    if (!isPlainObject(value)) {
       throw new TypeError(
         `PostgreSQL composite argument "${argumentName}" must be a plain object or null`
       );
     }
 
-    const input = value as Record<string, unknown>;
+    const input = value;
     const acceptedKeys = this.indexCompositeInputKeys(structuredType);
     for (const key of Object.keys(input)) {
       if (!acceptedKeys.has(key)) {
@@ -262,10 +254,5 @@ export class PostgreProcedureBindings {
       return `\\x${value.toString('hex')}`;
     }
     return value;
-  }
-
-  private isPlainObject(value: object): boolean {
-    const prototype = Object.getPrototypeOf(value) as unknown;
-    return prototype === Object.prototype || prototype === null;
   }
 }

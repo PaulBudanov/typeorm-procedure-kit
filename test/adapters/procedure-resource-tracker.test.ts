@@ -105,6 +105,72 @@ describe('ProcedureResourceTracker', (): void => {
     }).toThrow('resourceLimits.maxProcedureBytes');
   });
 
+  it('charges the same bytes on the fast path and in the graph walk', (): void => {
+    const row = {
+      'ключ🙂': 'значение🙂',
+      count: -1_000,
+      enabled: false,
+      big: 9_007_199_254_740_993n,
+      bytes: Buffer.from([1, 2, 3, 4]),
+      date: new Date('2026-01-02T03:04:05.678Z'),
+      missing: null,
+      absent: undefined,
+    };
+    const expectedBytes = measuredRecordBytes(row);
+
+    // addRow takes the flat-row fast path, addValue takes the graph walk.
+    expect(() => {
+      new ProcedureResourceTracker('PostgreSQL', limits(expectedBytes)).addRow(
+        row
+      );
+    }).not.toThrow();
+    expect(() => {
+      new ProcedureResourceTracker(
+        'PostgreSQL',
+        limits(expectedBytes)
+      ).addValue(row);
+    }).not.toThrow();
+    expect(() => {
+      new ProcedureResourceTracker(
+        'PostgreSQL',
+        limits(expectedBytes - 1)
+      ).addRow(row);
+    }).toThrow('resourceLimits.maxProcedureBytes');
+    expect(() => {
+      new ProcedureResourceTracker(
+        'PostgreSQL',
+        limits(expectedBytes - 1)
+      ).addValue(row);
+    }).toThrow('resourceLimits.maxProcedureBytes');
+  });
+
+  it('charges equivalent rows equally whichever path they take', (): void => {
+    // Both rows hold the same payload bytes: 'cdef' weighs as much as the
+    // nested key 'cd' plus its value 'ef', but only the second row has an
+    // object inside it and so falls back to the graph walk.
+    const fastPathRow = { id: 7, payload: 'cdef' };
+    const graphWalkRow = { id: 7, payload: { cd: 'ef' } };
+    const expectedBytes =
+      Buffer.byteLength('id') +
+      String(fastPathRow.id).length +
+      Buffer.byteLength('payload') +
+      Buffer.byteLength('cdef');
+
+    for (const row of [fastPathRow, graphWalkRow]) {
+      expect(() => {
+        new ProcedureResourceTracker('Oracle', limits(expectedBytes)).addRow(
+          row
+        );
+      }).not.toThrow();
+      expect(() => {
+        new ProcedureResourceTracker(
+          'Oracle',
+          limits(expectedBytes - 1)
+        ).addRow(row);
+      }).toThrow('resourceLimits.maxProcedureBytes');
+    }
+  });
+
   it('measures a graph deeper than the JavaScript call stack', (): void => {
     const root: Record<string, unknown> = {};
     let current = root;

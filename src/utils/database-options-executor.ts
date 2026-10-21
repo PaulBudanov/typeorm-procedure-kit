@@ -61,7 +61,7 @@ class DatabaseOptionsExecutorApi {
       return;
     } catch (error) {
       logger.error(
-        `Ошибка выполнения команд базы данных: ${(error as Error).message}`,
+        `Database option commands failed: ${(error as Error).message}`,
         (error as Error).stack
       );
       throw error;

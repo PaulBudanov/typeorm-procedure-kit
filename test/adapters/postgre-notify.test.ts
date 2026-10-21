@@ -262,6 +262,46 @@ describe('PostgreNotify', (): void => {
     await notify.unlistenNotify('secure_channel');
   });
 
+  it.each([
+    {
+      shape: 'a multi-row payload',
+      payload:
+        '[{"error_code":1,"error_text":"job failed","job_id":1},{"job_id":2}]',
+      expected: [
+        { error_code: 1, error_text: 'job failed', job_id: 1 },
+        { job_id: 2 },
+      ],
+    },
+    {
+      shape: 'a single-object payload',
+      payload: '{"errorCode":7,"errorText":"quota exceeded"}',
+      expected: { errorCode: 7, errorText: 'quota exceeded' },
+    },
+  ])(
+    'passes $shape shaped like an error envelope to the callback',
+    async ({ payload, expected }): Promise<void> => {
+      const client = new FakePgClient();
+      client.query.mockResolvedValue(undefined);
+      const connection = {
+        createSingleConnection: vi.fn().mockResolvedValue(client),
+        closeSingleConnection: vi.fn().mockResolvedValue(undefined),
+        registerConnectionErrorHandler: vi.fn(),
+        isSingleConnectionHealthy: vi.fn().mockResolvedValue(true),
+      };
+      const logger = createLogger();
+      const callback = vi.fn();
+      const notify = new PostgreNotify(connection as never, logger);
+      await notify.listenNotify('LISTEN job_events', callback);
+
+      client.emit('notification', { channel: 'job_events', payload });
+      await vi.waitFor(() => expect(callback).toHaveBeenCalledOnce());
+
+      expect(callback).toHaveBeenCalledWith(expected);
+      expect(logger.error).not.toHaveBeenCalled();
+      await notify.unlistenNotify('job_events');
+    }
+  );
+
   it.each(['LISTEN "broken', 'LISTEN broken"'])(
     'rejects unpaired identifier quotes in %s',
     async (sql): Promise<void> => {
@@ -728,5 +768,62 @@ describe('PostgreNotify', (): void => {
       replacementClient
     );
     expect(connection.createSingleConnection).toHaveBeenCalledTimes(2);
+  });
+  describe('package change notifications', (): void => {
+    it.each([
+      {
+        payload: { event: 'CREATE', object: 'billing' },
+        expected: ['billing'],
+      },
+      { payload: { OBJECT: 'Billing' }, expected: ['Billing'] },
+      {
+        payload: { event: 'DROP', object: 'PKG', schema: 'app', tag: 7 },
+        expected: ['PKG'],
+      },
+    ])(
+      'reads the package name from the "object" field of $payload',
+      ({ payload, expected }): void => {
+        const logger = createLogger();
+        const notify = new PostgreNotify({} as never, logger);
+
+        expect(notify.readPackageChangeNotification(payload)).toEqual(expected);
+        expect(logger.warn).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([
+      { shape: 'an object without "object"', payload: { event: 'CREATE' } },
+      {
+        shape: 'a non-string "object"',
+        payload: { event: 'CREATE', object: 42 },
+      },
+      { shape: 'an empty NOTIFY payload', payload: {} },
+      { shape: 'a JSON null', payload: null },
+      { shape: 'a JSON number', payload: 5 },
+      {
+        shape: 'a payload that is not JSON',
+        payload: 'billing\nforged log line',
+      },
+      { shape: 'a JSON array of rows', payload: [{ NAME: 'billing' }] },
+      { shape: 'a JSON array of objects', payload: [{ object: 'billing' }] },
+    ])(
+      'warns once about and skips a PostgreSQL package notification with $shape',
+      ({ payload }): void => {
+        const logger = createLogger();
+        const notify = new PostgreNotify({} as never, logger);
+
+        expect(notify.readPackageChangeNotification(payload)).toEqual([]);
+        expect(logger.warn).toHaveBeenCalledOnce();
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Ignoring PostgreSQL package notification without a string "object" field'
+        );
+      }
+    );
+
+    it('reports change notifications as supported', (): void => {
+      const notify = new PostgreNotify({} as never, createLogger());
+
+      expect(notify.isChangeNotificationSupported()).toBe(true);
+    });
   });
 });

@@ -1,5 +1,7 @@
 import { replaceNamedParameters } from '../typeorm/util/NamedParameterUtils.js';
 
+import { RAW_SQL_PLACEHOLDER_PATTERN } from './raw-sql-placeholder.js';
+
 import type {
   IProcedureArgumentBase,
   TProcedureArgumentList,
@@ -24,31 +26,40 @@ class QueryLogContextBuilderApi {
       packageName,
       procedureName,
       bindings:
-        procedureArguments?.map((argument, index) =>
+        procedureArguments?.map((argument) =>
           this.createProcedureBindingLogItem(
             argument,
-            this.getProcedureBinding(bindings, argument.argumentName, index),
+            this.getProcedureBinding(bindings, argument.argumentName),
             cursorsNames
           )
         ) ?? [],
     };
   }
 
+  /**
+   * Lists every raw SQL placeholder the adapters bind, recognized by the same
+   * rule, with the value it reads case-insensitively from `params`. A key set
+   * to `undefined` yields to a key that differs only in letter case, and a
+   * placeholder left without a value is logged as `null`, which is what a key
+   * set to `undefined` binds.
+   * @param sql - SQL as the caller wrote it, with named placeholders.
+   * @param params - values keyed by placeholder name, case-insensitive.
+   * @returns SQL log context with one binding per placeholder occurrence.
+   */
   public createSqlContext(
     sql: string,
     params?: Record<string, unknown>
   ): TQueryLogContext {
     const paramsByUpperCaseName = Object.fromEntries(
       params
-        ? Object.entries(params).map(([key, value]) => [
-            key.toUpperCase(),
-            value,
-          ])
+        ? Object.entries(params)
+            .filter(([, value]) => value !== undefined)
+            .map(([key, value]) => [key.toUpperCase(), value])
         : []
     );
     const bindings: Array<ISqlBindingLogItem> = [];
     replaceNamedParameters(sql, ({ full, key }) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return full;
+      if (!RAW_SQL_PLACEHOLDER_PATTERN.test(key)) return full;
       bindings.push({
         name: key,
         value: paramsByUpperCaseName[key.toUpperCase()] ?? null,
@@ -86,13 +97,25 @@ class QueryLogContextBuilderApi {
     return binding;
   }
 
+  /**
+   * Resolves the logged value strictly by argument name.
+   *
+   * A positional binding list is deliberately not addressed by the argument's
+   * position: an adapter may bind fewer values than the procedure declares
+   * arguments (a PostgreSQL composite OUT argument, for example, is inlined as
+   * `NULL::type` and consumes no binding), so a positional lookup shifts and
+   * prints one argument's value under another argument's name — which also
+   * defeats name-based redaction. Adapters that bind positionally publish
+   * `logBindings` keyed by argument name for this reason.
+   */
   private getProcedureBinding(
     bindings: IBindingsObjectReturn['bindings'],
-    argumentName: string,
-    index: number
+    argumentName: string
   ): unknown {
-    if (Array.isArray(bindings)) return bindings[index];
-    return bindings[argumentName];
+    if (Array.isArray(bindings)) return undefined;
+    return Object.hasOwn(bindings, argumentName)
+      ? bindings[argumentName]
+      : undefined;
   }
 }
 

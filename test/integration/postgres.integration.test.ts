@@ -510,21 +510,21 @@ describe.skipIf(!settings)('PostgreSQL integration', (): void => {
           outAccount: null,
         },
       });
-      expect(() =>
+      await expect(
         kit.call(`${procedureSchema}.transform_profiles`, {
           input: { firstName: 'invalid', unknownField: true },
           state: null,
           values: [],
         })
-      ).toThrow('Unknown field "unknownField"');
-      expect(() =>
+      ).rejects.toThrow('Unknown field "unknownField"');
+      await expect(
         kit.call(`${procedureSchema}.consume_profile_array`, { profiles: [] })
-      ).toThrow('PostgreSQL composite arrays are not supported');
-      expect(() =>
+      ).rejects.toThrow('PostgreSQL composite arrays are not supported');
+      await expect(
         kit.call(`${procedureSchema}.consume_nested_profile`, {
           value: { child: { value: 'nested' } },
         })
-      ).toThrow('Nested PostgreSQL composites are not supported');
+      ).rejects.toThrow('Nested PostgreSQL composites are not supported');
 
       const refreshedPayload = {
         input: {
@@ -536,9 +536,9 @@ describe.skipIf(!settings)('PostgreSQL integration', (): void => {
         state: { firstName: 'before refresh' },
         values: ['refreshed array'],
       };
-      expect(() =>
+      await expect(
         kit.call(`${procedureSchema}.transform_profiles`, refreshedPayload)
-      ).toThrow('Unknown field "extraNote"');
+      ).rejects.toThrow('Unknown field "extraNote"');
 
       await withPostgresClient(settings!, async (client) => {
         await client.query(

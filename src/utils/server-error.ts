@@ -1,12 +1,10 @@
 import { randomUUID } from 'crypto';
 
-import { DateTime } from 'luxon';
-
 import { safeStringify } from './safe-stringify.js';
 
 export class ServerError<TContext = unknown> extends Error {
   public readonly errorId: string;
-  public readonly timestamp: Date = DateTime.now().toLocal().toJSDate();
+  public readonly timestamp: Date = new Date();
   /**
    * Constructor for ServerError.
    * @param message - The error message.
@@ -102,14 +100,6 @@ export class ServerError<TContext = unknown> extends Error {
       errorObject.error,
       { errorId: errorObject.errorId }
     );
-  }
-
-  /**
-   * Retrieves the error context type inferred when this error was constructed.
-   * @returns The error context as the given type.
-   */
-  public unsafeGetContextAs(): TContext | undefined {
-    return this.errorContext;
   }
 
   /**

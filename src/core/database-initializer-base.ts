@@ -6,6 +6,7 @@ import {
   normalizeQueryTimeoutMs,
 } from '../utils/query-timeout.js';
 import { resolveResourceLimits } from '../utils/resource-limits.js';
+import { safeStringify } from '../utils/safe-stringify.js';
 import { ServerError } from '../utils/server-error.js';
 
 import type { OracleConnectionOptions } from '../typeorm/driver/oracle/OracleConnectionOptions.js';
@@ -27,6 +28,23 @@ import type {
 } from '../types/config.types.js';
 import type { ILoggerModule } from '../types/logger.types.js';
 import type { ICaseStrategyFactory } from '../types/strategy.types.js';
+
+/**
+ * Identity function that accepts a list only when it names every member of `TDbConfig['type']`.
+ *
+ * `const TList extends ReadonlyArray<...>` proves each entry is a real database type; the
+ * `Record<Exclude<...>, never>` intersection proves the opposite direction, demanding a property
+ * named after any member the list forgot. Without the second half a new vendor would compile here
+ * and only the error message would be wrong.
+ */
+const listAllDatabaseTypes = <
+  const TList extends ReadonlyArray<TDbConfig['type']>,
+>(
+  list: TList & Record<Exclude<TDbConfig['type'], TList[number]>, never>
+): TList => list;
+
+/** Every database type the vendor switches below handle, in the order they branch. */
+const SUPPORTED_DATABASE_TYPES = listAllDatabaseTypes(['postgres', 'oracle']);
 
 export class DatabaseInitializerBase {
   private static readonly BINDING_LOG_MODES = new Set([
@@ -230,7 +248,9 @@ export class DatabaseInitializerBase {
         };
       }
       default:
-        throw new ServerError('Unknown database type!');
+        return DatabaseInitializerBase.rejectUnsupportedDatabaseType(
+          this.dbConfig
+        );
     }
   }
 
@@ -267,8 +287,31 @@ export class DatabaseInitializerBase {
           fetchHandlerOptions
         );
       }
+      default:
+        return DatabaseInitializerBase.rejectUnsupportedDatabaseType(
+          this.dbConfig
+        );
     }
   }
+
+  /**
+   * Reports a `dbConfig.type` value that no vendor branch handles.
+   *
+   * The parameter is typed `never`, so adding a third database type to
+   * `TDbConfig` without extending every vendor `switch` fails to compile here.
+   * At runtime the same call guards JavaScript consumers, who can reach these
+   * branches with a typo'd or externally supplied `type`.
+   *
+   * @param config - The configuration left unhandled by every vendor branch.
+   * @throws {ServerError} - Always.
+   */
+  private static rejectUnsupportedDatabaseType(config: never): never {
+    const { type } = config as { type: unknown };
+    throw new ServerError(
+      `Unknown database type! Received ${safeStringify(type)}, supported types are ${SUPPORTED_DATABASE_TYPES.join(', ')}.`
+    );
+  }
+
   /**
    * Returns the options for the Postgres data source connection.
    * These options are used to configure the data source connection.

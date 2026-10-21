@@ -583,9 +583,9 @@ Runtime scope:
   gebunden; REF-CURSOR rows werden anhand ihrer ResultSet metadata transformiert;
 - der Oracle adapter setzt `oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT`.
 
-Serializer-Registrierung und -Loeschung sind pro Kit-Instanz isoliert. PostgreSQL JSON-Strategien gelten fuer JSON und JSONB; beim Loeschen werden beide Standardparser wiederhergestellt. Kollidierende Spaltennamen nach der Case-Konvertierung erzeugen einen Fehler.
+Serializer-Registrierung und -Loeschung sind pro Kit-Instanz isoliert. PostgreSQL JSON-Strategien gelten fuer JSON und JSONB; beim Loeschen werden beide Standardparser wiederhergestellt. Spaltennamen, die schon in der Abfrage doppelt vorkommen, etwa `SELECT a.ID, b.ID`, und Namen, die erst nach der Case-Konvertierung kollidieren, erzeugen beide einen Fehler.
 
-`DateFormatter.convertTimeZone()` verwendet standardmaessig den tatsaechlichen numerischen Offset, etwa `2024-01-02T03:00:00.000+03:00`; UTC-Serializer behalten `Z`. Map-Queues entfernen bei `dequeue()` ohne Schluessel den ersten Eintrag und melden dessen Schluessel. Retry delays erlauben ganze Millisekunden in `0..2_147_483_647`. Unquoted LISTEN-Namen werden kleingeschrieben; quoted Namen behalten ihre Schreibweise.
+`DateFormatter.convertTimeZone()` verwendet standardmaessig den tatsaechlichen numerischen Offset, etwa `2024-01-02T03:00:00.000+03:00`; UTC-Serializer behalten `Z`. Retry delays erlauben ganze Millisekunden in `0..2_147_483_647`. Unquoted LISTEN-Namen werden kleingeschrieben; quoted Namen behalten ihre Schreibweise.
 
 ## NestJS Integration
 
