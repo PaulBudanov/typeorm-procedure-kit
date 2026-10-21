@@ -73,7 +73,6 @@ export class OracleAdapter extends DatabaseAdapter<
       handlerOptions,
       serializer
     );
-    oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
   }
 
   public override async execute<T>(
